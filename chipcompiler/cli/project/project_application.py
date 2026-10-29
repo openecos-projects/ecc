@@ -335,6 +335,7 @@ def _reconcile_workspace_state(
     from chipcompiler.engine.snapshot import (
         LEGACY_SNAPSHOT_SCHEMA_VERSION,
         SNAPSHOT_V3_SCHEMA_VERSION,
+        SNAPSHOT_V4_SCHEMA_VERSION,
         migrate_engineering_snapshot,
     )
     from chipcompiler.project.runtime_processes import (
@@ -355,7 +356,11 @@ def _reconcile_workspace_state(
             repairs.append(f"refresh_exchange:{workspace_id}")
         recover_workspace_file_transaction(workspace)
         version = read_file_schema_version(ENGINEERING_SNAPSHOT, workspace)
-        if version in {LEGACY_SNAPSHOT_SCHEMA_VERSION, SNAPSHOT_V3_SCHEMA_VERSION}:
+        if version in {
+            LEGACY_SNAPSHOT_SCHEMA_VERSION,
+            SNAPSHOT_V3_SCHEMA_VERSION,
+            SNAPSHOT_V4_SCHEMA_VERSION,
+        }:
             loaded = load_workspace(workspace)
             if loaded is None:
                 raise ProjectApplicationError(

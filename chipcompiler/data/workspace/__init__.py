@@ -228,6 +228,8 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
     (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
+    (SkippableStepEnum.DIFF_OPT, "dreamplace"): ("dreamplace",),
+    (StepEnum.DIFF_BUFFERING, "dreamplace"): ("dreamplace",),
     (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),

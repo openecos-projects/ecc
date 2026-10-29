@@ -191,11 +191,11 @@
   "net_weighting_nendpoints": 0,
   "net_weighting_update_interval": 15,
   "timing_propagation_device": "cpu",
-  "timing_grad_balance_target_ratio": 0.2,
+  "timing_grad_balance_target_ratio": 0.01,
   "timing_slew_weight": 1.0,
   "timing_cap_weight": 1.0,
   "overflow_reference_mode": "ordinary",
-  "timing_coeff_growth_factor": 1.0,
+  "timing_coeff_growth_factor": 1.01,
   "timing_opt_coefficients": {
     "mode": "fixed",
     "wns": 500.0,

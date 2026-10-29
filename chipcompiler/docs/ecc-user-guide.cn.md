@@ -361,8 +361,8 @@ root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+skip_steps = ["lec", "diff_opt"]
 ```
 
 ## 4. check — 校验项目配置
@@ -479,7 +479,7 @@ rc=1
 | Yosys slang 前端 | `yosys -Q -T -p "help read_slang"` | 输出**不含** `No such command`（yosys ≥ v0.67 内置；旧版需可加载的 slang 插件） |
 | KLayout GUI（仅 `gdsview` 需要） | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` 或 `command -v klayout` | 可执行文件可解析；需在桌面会话中运行 |
 | Sizer（`ecc doctor` 的必需组件；完整 rtl2gds 链的 Timing optimization 步骤需要） | `which Sizer`；可选 `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | 可执行文件和含 `src/sizer_os.tcl` 的 root 均须可解析；root 可显式设置，或由二进制位置自动发现。新建或 `--overwrite` 的 `rtl2gds` 会在预检检查 Sizer；已有 workspace 或 `--workspace` 重跑不预检，缺失时仍可能在流中段失败 |
-| kepler-formal（`ecc doctor` 的必需组件；LEC/postRouteLec 等价性检查需要，默认 `skip_steps = ["lec"]` 时不预检） | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`；`which kepler-formal` | 二者其一可解析出可执行文件（root 下根级 wrapper 或 `bin/kepler-formal`） |
+| kepler-formal（`ecc doctor` 的必需组件；所选范围启用 LEC/postRouteLec 等价性检查时预检） | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`；`which kepler-formal` | 二者其一可解析出可执行文件（root 下根级 wrapper 或 `bin/kepler-formal`） |
 
 可整体复制的一段自检脚本：
 
@@ -526,7 +526,7 @@ ecc run [OPTIONS]
 `--expected-revision` 与 `--no-wait`，但不接受 `--command-id`。以这种方式
 登记的 run 用 `ecc process` 控制（§6.5）。
 
-新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整 22 步链（Synthesis→lec（按 `[flow] lec_engine` 选择，默认 kepler-formal；默认跳过——`[flow] skip_steps` 默认为 `["lec"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_sizing→CTS→legalization→Timing optimization（sizer）→route→filler→lvs→drc→antennaCheck→postRouteLec（同一所选 LEC 引擎）→RCX→sta→powerAnalysis→emir→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB）。`antennaCheck` 与 `emir` 是 advisory 步骤：分析未完成会记录状态，但不会单独阻断后续 flow。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整步骤链（Synthesis→lec（按 `[flow] lec_engine` 选择，默认 kepler-formal；默认跳过——`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_opt（默认跳过）→diff_sizing→CTS→legalization→Timing optimization（sizer）→route→filler→lvs→drc→antennaCheck→postRouteLec（同一所选 LEC 引擎）→RCX→sta→powerAnalysis→emir→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB）。`antennaCheck` 与 `emir` 是 advisory 步骤：分析未完成会记录状态，但不会单独阻断后续 flow。
 
 #### 外部 workspace 路径
 
@@ -547,7 +547,7 @@ ecc status --project /projects/gcd --workspace archive
 
 路径必须是绝对路径。`ecc` 只创建最后一级目录，因此父目录必须已存在；已有非空目录必须已经是有效 ECC workspace。项目根目录和 legacy `runs/` 目录是受项目保护目录，包含项目目录的路径也会被拒绝。同一个 workspace ID 不能重新绑定到另一个路径，已登记给其他 ID 的路径也不能重复使用。要登记已有 workspace 但不执行或修改它，请使用 `ecc workspace import`。
 
-`synthesis_lec` preset 需要默认策略跳过的 LEC，因此本示例的项目先编辑 `ecc.toml`（`sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml` 或手动修改）显式设置 `skip_steps = []`：
+`synthesis_lec` preset 需要默认策略跳过的 LEC，因此本示例的项目先编辑 `ecc.toml`（`sed -i 's/skip_steps = \["lec", "diff_opt"\]/skip_steps = []/' ecc.toml` 或手动修改）显式设置 `skip_steps = []`：
 
 ```console
 $ ecc run --preset synthesis_lec
@@ -569,7 +569,7 @@ $ ecc run --workspace default          # 已全部成功时再跑一次 → 无�
 
 run 汇总记录会带 `no_op: true`（`--plain` 输出可见；用 `--resume`/`--only` 等选择器时还会带 `executed_steps` 列表）。若 `ecc.toml` 与 `project.json` 记录的基线值实际不一致（如 `pdk.root` 解析到了与首次运行记录不同的 PDK，或 `flow.preset` 与 workspace 声明的范围不一致），汇总块前会多一行 `warning: ...` 提示（`config_layer_diverged`），不影响执行结果。
 
-**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，workspace 的 `home/params.toml` 中已持久化的 `[flow]` 拥有默认目标；如果该段不存在，则以已持久化的 flow ledger 本身作为目标。项目级 `flow.preset` 只用于新建或 `--overwrite`，不会在续跑时静默扩大已有 workspace 的范围。若确实要让本次调用使用其他目标，显式传 `--preset`；若要按项目配置重建 workspace，使用 `ecc workspace refresh` 或 `--overwrite`：
+**已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，`home/params.toml` 中显式保存的 start/end 范围继续作为目标，即使项目声明了 `flow.preset`，有界派生 workspace 也保持所选范围。否则使用项目预设或 workspace 已持久化的目标。显式 `--preset` 可覆盖保存的范围。CLI 将已持久化的账本与该目标对齐：
 
 - 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点；
 - 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
@@ -979,7 +979,7 @@ $ ecc workspace refresh default --keep-backup   # 被替换的目录保留为归
 ```bash
 ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
                                     # 创建并登记空的受管 workspace（不运行）
-ecc workspace derive <SOURCE> <TARGET> [--from STEP]
+ecc workspace derive <SOURCE> <TARGET> [--from STEP] [--to STEP]
                                     # 从已有 workspace 的完成状态分叉出新 workspace
 ecc workspace archive <NAME>        # 标记归档：保留在磁盘上，但退出自动选择
 ecc workspace delete <NAME> [--delete-directory]
@@ -995,9 +995,19 @@ ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删�
 
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
-fresh-run 语义相同）。`derive` 把源 workspace 已完成的步骤复制到
-`<project>/<TARGET>`——可以只从指定步骤开始——并在 `project.json` 中登记分叉关系，
-使实验可以从中间结果继续而不影响源。`archive` 是让 workspace 退出自动选择的推荐方式
+fresh-run 语义相同）。`derive` 把源 workspace 复制到 `<project>/<TARGET>`，
+并在 `project.json` 中登记分叉关系。`--from STEP` 会重置该步骤及后续步骤，保留此前
+步骤的完成状态和输出。从选定输出继续时，应传入**下一个可运行步骤**；例如
+`ecc workspace derive source trial --from preFloorplan` 会保留 Synthesis 的输出。
+不传 `--from` 时重置全部步骤。
+增加 `--to STEP` 后，`home/flow.json` 只包含 `--from` 到 `--to` 的闭区间；未传 `--from`
+时从源工作区的首步开始。入口步骤原本使用的网表、DEF 和约束会复制到新工作区的 `origin/`，
+因此无需将此前步骤重新加入流程。例如，
+`ecc workspace derive source trial --from preFloorplan --to macroPlacement`
+只生成这两个步骤，并使用源 Synthesis 输出作为输入。
+派生快照使用目标 workspace ID，初始 revision 为 1。
+随后可用 `ecc param apply --workspace trial --set KEY=VALUE ...` 批量修改目标参数，
+不影响源 workspace。`archive` 是让 workspace 退出自动选择的推荐方式
 （不必手改 `project.json`）；`delete` 取消登记并可选删除目录。自动化选项按需适用
 （archive/delete/reset-flow 带 `--expected-revision`；创建/分叉类子命令带
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报

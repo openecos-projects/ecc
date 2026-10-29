@@ -46,6 +46,9 @@ def derive_cmd(
     target_workspace: Annotated[str, typer.Argument(help="Target Workspace ID")],
     project: ProjectOption = None,
     from_step: Annotated[str | None, typer.Option("--from")] = None,
+    to_step: Annotated[
+        str | None, typer.Option("--to", help="Create only the inclusive --from/--to range")
+    ] = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
     plain: PlainOption = False,
@@ -56,6 +59,7 @@ def derive_cmd(
         workspace=source_workspace,
         target_workspace=target_workspace,
         from_step=from_step,
+        to_step=to_step,
         command_id=command_id,
         no_wait=no_wait,
     )

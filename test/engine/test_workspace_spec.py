@@ -60,9 +60,14 @@ def test_workspace_spec_discovery_and_validation_are_canonical_and_side_effect_f
     }
     flows = {flow["flowId"]: flow for flow in discovery["flowDefinitions"]}
     rtl2gds = flows["rtl2gds"]
-    assert set(rtl2gds["skippableStepIds"]) == {"lec", "postRouteLec", "Timing optimization"}
+    assert set(rtl2gds["skippableStepIds"]) == {
+        "lec",
+        "diff_opt",
+        "postRouteLec",
+        "Timing optimization",
+    }
     assert set(rtl2gds["skippableStepIds"]) <= set(rtl2gds["stepIds"])
-    assert rtl2gds["defaultSkippedStepIds"] == ["lec"]
+    assert rtl2gds["defaultSkippedStepIds"] == ["lec", "diff_opt"]
     assert result["issues"] == []
     assert result["resolvedWorkspaceSpec"]["parameters"]["design.frequency_mhz"] == 200.0
     assert result["resolvedWorkspaceSpec"]["parameters"]["floorplan.core_util"] == 0.4
@@ -169,7 +174,7 @@ def test_workspace_spec_applies_config_target_parameters(tmp_path, minimal_ics55
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     spec = deepcopy(payload["workspaceSpec"])
     spec["parameters"]["cts.skew_bound"] = "0.12"
-    spec["parameters"]["sta.max_parallel_corners"] = 3
+    spec["parameters"]["sta.max_parallel_corners"] = 13
 
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
     reopened = load_workspace(workspace.directory)
@@ -178,9 +183,9 @@ def test_workspace_spec_applies_config_target_parameters(tmp_path, minimal_ics55
     assert cts["skew_bound"] == "0.12"
     assert reopened.parameters.data["config_overrides"] == {
         "CTS": {"skew_bound": "0.12"},
-        "sta": {"max_parallel_corners": 3},
+        "sta": {"max_parallel_corners": 13},
     }
-    assert json.loads(reopened.config["sta"].read_text())["max_parallel_corners"] == 3
+    assert json.loads(reopened.config["sta"].read_text())["max_parallel_corners"] == 13
 
 
 def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):

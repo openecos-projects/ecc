@@ -33,7 +33,8 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 `skip_steps` 遵循同一收敛方向：显式的 `ecc.toml` `[flow] skip_steps`
 （含空列表 `[]`）优先于 `project.json` workspace 条目，后者优先于代码
-默认 `("lec",)`；两个面声明的策略不一致时，`ecc run`/`ecc check`
+默认 `("lec", "diff_opt")`；设为 `["lec"]` 可开启 `diff_opt`。
+两个面声明的策略不一致时，`ecc run`/`ecc check`
 发出 `skip_steps_shadowed` 警告并指明获胜来源。
 
 ## 生效时机
@@ -108,7 +109,10 @@ renderer 可见的快照投影。
 ### STA corner 最大并行数
 
 Studio 创建 Workspace 时，Flow Setup 可设置 `sta.max_parallel_corners`，
-范围为整数 1–4，默认 1。它是 STA 直配参数：经过 ECC CLI 参数校验后，
+可选范围为 1 到有效 signoff corner 组合数，默认 1。组合数来自 ECC 参数目录和
+项目预设，不在 GUI 固定（标准 ICS55 配置为 13），并兼容旧运行时声明的上限。
+ECC CLI 接受正整数，实际调度上限受生成 STA JSON 的 signoff 组合数约束，
+signoff 缩减时不会启动多余 worker。它是 STA 直配参数：经过 ECC CLI 参数校验后，
 覆盖记录写入 `home/params.toml`，配置刷新将其重放到 STA JSON 的
 `max_parallel_corners`，不得由 GUI 直接写生成配置。
 

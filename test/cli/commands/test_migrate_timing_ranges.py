@@ -4,11 +4,16 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.project.manifest import load_manifest
 
 
 @pytest.mark.parametrize(
     "step,tool,display",
-    [("preplace", "sizer", "Preplace"), ("diff_sizing", "dreamplace", "DiffSizing")],
+    [
+        ("preplace", "sizer", "Preplace"),
+        ("diff_buffering", "dreamplace", "DiffBuffering"),
+        ("diff_sizing", "dreamplace", "DiffSizing"),
+    ],
 )
 def test_migration_preserves_timing_range_endpoints(
     tmp_path,
@@ -39,3 +44,5 @@ def test_migration_preserves_timing_range_endpoints(
         "start_step": display,
         "end_step": display,
     }
+    workspace = load_manifest(str(project)).workspaces[0]
+    assert (workspace.start_step, workspace.end_step) == (display, display)

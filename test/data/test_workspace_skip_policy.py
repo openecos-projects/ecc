@@ -93,6 +93,38 @@ def test_create_workspace_explicit_empty_skip_enables_lec_in_the_ledger(
     ]
 
 
+@pytest.mark.parametrize(
+    ("policy", "expected"),
+    [
+        ({}, ["place", "diff_sizing", "CTS"]),
+        ({"skip_steps": ["lec", "diff_opt"]}, ["place", "diff_sizing", "CTS"]),
+        ({"skip_steps": ["lec"]}, ["place", "diff_opt", "diff_sizing", "CTS"]),
+    ],
+)
+def test_create_workspace_diff_opt_policy_preserves_diff_sizing(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, policy, expected
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    netlist_path = tmp_path / "gcd.v"
+    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    workspace_dir = tmp_path / "workspace"
+
+    create_workspace(
+        directory=workspace_dir,
+        origin_def="",
+        origin_verilog=netlist_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+        flow_config={"start_step": "place", "end_step": "CTS", **policy},
+    )
+
+    flow_data = json_read(workspace_dir / "home" / "flow.json")
+    assert [step["name"] for step in flow_data["steps"]] == expected
+    reloaded = load_workspace(str(workspace_dir))
+    assert reloaded.flow.steps() == flow_data["steps"]
+
+
 def test_create_workspace_skip_timing_opt_chains_route_after_legalization(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):

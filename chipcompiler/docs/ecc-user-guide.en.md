@@ -304,8 +304,8 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+skip_steps = ["lec", "diff_opt"]
 ```
 
 ## 4. check — validate the project configuration
@@ -423,7 +423,7 @@ Notes:
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout GUI (only needed by `gdsview`) | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` or `command -v klayout` | executable resolves; run from a desktop session |
 | Sizer (required by `ecc doctor`; needed by the Timing optimization step in the complete rtl2gds chain) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. Fresh or `--overwrite` `rtl2gds` targets preflight Sizer; existing workspaces and `--workspace` reruns skip preflight, so a missing binary can still fail mid-flow |
-| kepler-formal (required by `ecc doctor`; needed by the LEC/postRouteLec equivalence checks; not probed when the default `skip_steps = ["lec"]` applies) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
+| kepler-formal (required by `ecc doctor`; probed when the selected range enables LEC/postRouteLec equivalence checks) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
 
 A copy-paste self-check snippet:
 
@@ -463,7 +463,7 @@ ecc run [OPTIONS]
 
 Automation options (used by ECOS Studio and CI drivers; optional for interactive use): `--expected-revision N` fails with `revision_conflict` (exit 21) when the workspace revision moved, `--command-id TEXT` stamps the mutation for idempotency/audit, `--no-wait` never blocks on a busy workspace (other mutation errors instead of waiting), `--run-id`/`--runtime-id` name the registered run process, and `--log-file PATH` redirects the whole run's stdout/stderr into a restricted-mode run log owned before preflight. The same revision/wait flags recur on other mutating commands (`param apply`, `macro import`, `workspace …`); `signoff export` accepts `--expected-revision` and `--no-wait`, but not `--command-id`. Runs registered this way are controlled with `ecc process` (§6.5).
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full 22-step chain (Synthesis→lec (the `[flow] lec_engine` check, default kepler-formal; skipped by default — `[flow] skip_steps` defaults to `["lec"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_sizing→CTS→legalization→Timing optimization (sizer)→route→filler→lvs→drc→antennaCheck→postRouteLec (the same selected LEC engine)→RCX→sta→powerAnalysis→emir→Harden; Harden emits GDS + Abstract LEF + timing LIB). `antennaCheck` and `emir` are advisory steps: an incomplete analysis is reported but does not by itself stop the remaining flow.
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full step chain (Synthesis→lec (the `[flow] lec_engine` check, default kepler-formal; skipped by default — `[flow] skip_steps` defaults to `["lec", "diff_opt"]`, set `[]` to enable)→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_opt (skipped by default)→diff_sizing→CTS→legalization→Timing optimization (sizer)→route→filler→lvs→drc→antennaCheck→postRouteLec (the same selected LEC engine)→RCX→sta→powerAnalysis→emir→Harden; Harden emits GDS + Abstract LEF + timing LIB). `antennaCheck` and `emir` are advisory steps: an incomplete analysis is reported but does not by itself stop the remaining flow.
 
 #### External workspace paths
 
@@ -485,7 +485,7 @@ ecc status --project /projects/gcd --workspace archive
 The path must be absolute. `ecc` creates only the final directory, so its parent must already exist; an existing non-empty directory must already be a valid ECC workspace. The project root and its legacy `runs/` directory are protected targets, and a path that contains the project directory is rejected. A workspace ID cannot be rebound to another path, and a path already declared for another ID cannot be reused. Use `ecc workspace import` to register an existing workspace without running or modifying it.
 
 The `synthesis_lec` preset requires the LEC the default policy skips, so this
-example's project edits `ecc.toml` first (`sed -i 's/skip_steps = \["lec"\]/skip_steps = []/' ecc.toml`
+example's project edits `ecc.toml` first (`sed -i 's/skip_steps = \["lec", "diff_opt"\]/skip_steps = []/' ecc.toml`
 or any editor):
 
 ```console
@@ -508,7 +508,11 @@ $ ecc run --workspace default          # everything already succeeded → nothin
 
 The run summary record carries `no_op: true` (visible in `--plain` output; the `--resume`/`--only` selector paths also carry an `executed_steps` list). If `ecc.toml` and the baseline values recorded in `project.json` effectively disagree (for example `pdk.root` resolving to a different PDK than the one recorded by the first run, or `flow.preset` differing from the workspace's declared range), a `warning: ...` line (`config_layer_diverged`) is prepended to the summary block; it does not affect the execution result.
 
-**Target reconciliation on an existing workspace**: on a repeat `ecc run`, the workspace's persisted `[flow]` in `home/params.toml` owns the default target. If that section is absent, the persisted ledger itself is the target. The project-level `flow.preset` is a creation/overwrite setting and does not silently widen an existing workspace. Pass `--preset` when you intentionally want a different target for one invocation; use `ecc workspace refresh` or `--overwrite` to rebuild the workspace from the project configuration:
+**Target reconciliation on an existing workspace**: on a repeat `ecc run`, an explicit
+start/end range in `home/params.toml` remains the target, including for bounded derived
+workspaces in a project declaring `flow.preset`. Otherwise the project preset or the
+workspace's persisted target governs. An explicit `--preset` overrides the saved range.
+The CLI aligns the persisted ledger with that target:
 
 - the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary;
 - the persisted range ⊇ the target and every step succeeded → `no_op` (a default resume never re-runs the wider persisted range past the target end);
@@ -960,7 +964,7 @@ The remaining `ecc workspace` subcommands manage the declared lifecycle without 
 ```bash
 ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
                                     # create and register an empty managed workspace (no run)
-ecc workspace derive <SOURCE> <TARGET> [--from STEP]
+ecc workspace derive <SOURCE> <TARGET> [--from STEP] [--to STEP]
                                     # branch a new workspace from an existing one's completed state
 ecc workspace archive <NAME>        # mark the workspace archived: kept on disk, out of auto-selection
 ecc workspace delete <NAME> [--delete-directory]
@@ -979,9 +983,21 @@ With no pending deletions, the command succeeds without changes.
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
 overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the
-source workspace's completed steps into `<project>/<TARGET>` — optionally only from a given
-step — and registers the branch relationship in `project.json`, so an experiment can continue
-from an intermediate result without touching the source. `archive` is the preferred way to
+source workspace into `<project>/<TARGET>` and registers the branch relationship in
+`project.json`. `--from STEP` resets that step and all later steps, retaining earlier
+completed states and outputs. To continue from a selected output, pass the **next runnable
+step**; for example, `ecc workspace derive source trial --from preFloorplan` retains the
+Synthesis output. Without `--from`, all steps are reset.
+Adding `--to STEP` creates a bounded flow: `home/flow.json` contains only the inclusive
+`--from`/`--to` range (or starts at the source's first step if `--from` is omitted).
+The entry step's inherited netlist/DEF and constraints are copied into `origin/`, so the
+flow can resume without putting earlier steps back into the ledger. For example,
+`ecc workspace derive source trial --from preFloorplan --to macroPlacement` creates
+exactly those two steps, using the source Synthesis output as input.
+The derived snapshot uses the target
+Workspace ID and starts at revision 1. Workspace-local parameter changes can then be applied
+with `ecc param apply --workspace trial --set KEY=VALUE ...`, without modifying the source.
+`archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
 unregisters it and optionally removes the directory. The automation flags apply where
 relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
@@ -1039,7 +1055,7 @@ $ ecc flow show rtl2gds
   ordinal: 0
   skippable: False
   default skipped: False
-  ...                            # all 22 steps in order; lec and Timing optimization are skippable; lec is skipped by default
+  ...                            # all canonical steps in order; lec and diff_opt are skipped by default
 
 $ ecc flow validate
 [status]

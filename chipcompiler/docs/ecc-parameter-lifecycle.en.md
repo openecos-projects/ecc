@@ -36,7 +36,8 @@ re-resolves the matrix:
 
 `skip_steps` follows the same convergence: an explicit `ecc.toml`
 `[flow] skip_steps` (including `[]`) wins over the `project.json`
-workspace entry, which wins over the code default `("lec",)`; when both
+workspace entry, which wins over the code default `("lec", "diff_opt")`.
+Set `["lec"]` to enable `diff_opt`. When both
 surfaces declare different policies, `ecc run`/`ecc check` emit a
 `skip_steps_shadowed` warning naming the winning source.
 
@@ -124,8 +125,13 @@ the renderer-facing Snapshot projection.
 
 ### Maximum parallel STA corners
 
-Studio's Workspace Flow Setup exposes `sta.max_parallel_corners`, an integer
-from 1 to 4 with default 1. This direct parameter follows ECC CLI validation,
+Studio's Workspace Flow Setup exposes `sta.max_parallel_corners`, with choices
+from 1 to the effective signoff corner combination count and default 1. The count
+comes from ECC's parameter catalog and project presets, rather than a fixed GUI
+limit (the standard ICS55 configuration has 13 combinations). Older runtimes'
+catalog limits are also respected. ECC CLI accepts positive integers and caps
+actual dispatch at the generated STA JSON's signoff combination count, so reducing
+the signoff set cannot launch unnecessary workers. This direct parameter follows ECC CLI validation,
 workspace persistence in `home/params.toml`, and configuration regeneration into
 the STA JSON's `max_parallel_corners`; GUI code never edits generated JSON.
 

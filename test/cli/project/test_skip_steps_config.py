@@ -239,13 +239,13 @@ class TestSkipStepsShadowWarning:
 
 def test_init_materializes_the_default_skip_into_generated_ecc_toml(tmp_path):
     from chipcompiler.cli import main as cli_main
+    from chipcompiler.data import DEFAULT_SKIP_STEPS
 
     rc = cli_main.run(["init", str(tmp_path / "gcd")])
 
     assert rc == 0
-    toml = (tmp_path / "gcd" / "ecc.toml").read_text()
-    assert 'skip_steps = ["lec"]' in toml
-    assert "LEC is skipped by default; clear the list to enable it." in toml
+    cfg = load_project_config(str(tmp_path / "gcd" / "ecc.toml"))
+    assert cfg.flow_skip_steps == list(DEFAULT_SKIP_STEPS)
 
 
 def test_pre_register_materializes_declared_skip_steps(tmp_path, monkeypatch):

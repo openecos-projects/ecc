@@ -15,21 +15,17 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 
 
-def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
-    """Manifest-mode target: the workspace's own [flow] range plus the
-    effective declared skip policy.
+def _workspace_range_target(run_dir: str, flow_config) -> dict | None:
+    """Preserve an explicit workspace range while applying declared skip policy.
 
-    None when no policy is declared (the workspace's persisted policy
-    keeps governing) or when the workspace config carries no range (the
-    persisted-ledger fallback stays in charge).
+    Project presets seed fresh workspaces. An explicit persisted range (for
+    example a bounded derive) remains the target of subsequent resumes.
     """
     declared = (
         flow_config.get("skip_steps")
         if isinstance(flow_config, dict) and "skip_steps" in flow_config
         else None
     )
-    if declared is None:
-        return None
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -44,7 +40,7 @@ def _manifest_skip_target(run_dir: str, flow_config) -> dict | None:
         "start" not in workspace_flow or "end" not in workspace_flow
     ):
         return None
-    return {**workspace_flow, "skip_steps": declared}
+    return {**workspace_flow, **({"skip_steps": declared} if declared is not None else {})}
 
 
 def _diverging_workspace_param_fixes(
@@ -177,14 +173,10 @@ def _resume_existing_workspace(
     if spec_drift is not None:
         warning_records = [*warning_records, spec_drift]
 
-    if cfg.manifest_driven:
-        # Manifest mode: the workspace's own [flow] governs the range (the
-        # seeded start/end is not re-consulted), but the effective declared
-        # skip policy (ecc.toml over the project.json entry, carried on the
-        # flow config) is applied over it so classification and any extension
-        # use the same policy a fresh creation would.
-        target_section = _manifest_skip_target(run_dir, flow_config)
-    else:
+    target_section = (
+        _workspace_range_target(run_dir, flow_config) if command_input.preset is None else None
+    )
+    if target_section is None and not cfg.manifest_driven:
         # The target carries the preset plus the effective declared skip
         # policy (already resolved through the shared ecc.toml-over-manifest
         # precedence onto the flow config), so an existing workspace
@@ -409,7 +401,13 @@ def _execute_existing_run(
             run_with_step_progress,
         )
         from chipcompiler.engine import EngineFlow
-        from chipcompiler.engine.rerun import bounded_resume_names, run_resume, selected_step_names
+        from chipcompiler.engine.rerun import (
+            bounded_resume_names,
+            run_from,
+            run_only,
+            run_resume,
+            selected_step_names,
+        )
 
         try:
             from contextlib import nullcontext
@@ -430,16 +428,32 @@ def _execute_existing_run(
             with process_context:
                 engine_flow = EngineFlow(workspace=workspace)
                 flow_ok = True
-                if result.outcome != "no_op":
+                explicit_selector = (
+                    command_input.only is not None or command_input.from_step is not None
+                )
+                if result.outcome != "no_op" or explicit_selector:
                     # Re-read the ledger: reconcile may have appended suffix steps
                     # after load_workspace populated the in-memory copy.
                     engine_flow.load()
 
-                    through = result.target[-1] if result.target else None
-                    if through is not None:
-                        selected = bounded_resume_names(engine_flow, through)
+                    if command_input.only is not None:
+                        selected = selected_step_names(
+                            engine_flow,
+                            only=command_input.only,
+                            force=command_input.force,
+                        )
+                    elif command_input.from_step is not None:
+                        selected = selected_step_names(
+                            engine_flow,
+                            from_step=command_input.from_step,
+                            through=command_input.to_step,
+                        )
                     else:
-                        selected = selected_step_names(engine_flow)
+                        through = result.target[-1] if result.target else None
+                        if through is not None:
+                            selected = bounded_resume_names(engine_flow, through)
+                        else:
+                            selected = selected_step_names(engine_flow)
 
                     from chipcompiler.cli.project.run_preflight import (
                         build_run_preflight,
@@ -481,13 +495,33 @@ def _execute_existing_run(
                         engine_flow.create_step_workspaces(executable_steps=set(selected))
 
                     with preserve_cli_stdio():
-                        run_result = run_with_step_progress(
-                            run_resume,
-                            engine_flow,
-                            ctx,
-                            ctx.project,
-                            through=through,
-                        )
+                        if command_input.only is not None:
+                            run_result = run_with_step_progress(
+                                run_only,
+                                engine_flow,
+                                ctx,
+                                ctx.project,
+                                command_input.only,
+                                force=command_input.force,
+                            )
+                        elif command_input.from_step is not None:
+                            run_result = run_with_step_progress(
+                                run_from,
+                                engine_flow,
+                                ctx,
+                                ctx.project,
+                                command_input.from_step,
+                                through=command_input.to_step,
+                            )
+                        else:
+                            through = result.target[-1] if result.target else None
+                            run_result = run_with_step_progress(
+                                run_resume,
+                                engine_flow,
+                                ctx,
+                                ctx.project,
+                                through=through,
+                            )
                     flow_ok = run_result.ok
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
@@ -515,7 +549,9 @@ def _execute_existing_run(
             "inspect_cmd": disclosure_cmd("ecc status", project, ctx.run_id),
             "log_cmd": disclosure_cmd("ecc log", project, ctx.run_id),
         }
-        if result.outcome == "no_op":
+        if result.outcome == "no_op" and not (
+            command_input.only is not None or command_input.from_step is not None
+        ):
             record["no_op"] = True
         if result.appended:
             record["appended_steps"] = list(result.appended)

@@ -8,7 +8,7 @@ Three kinds of files under ``home/`` are versioned:
   workspace format, and a file without the field is version 0 (the
   pre-versioning era) and loads through the legacy migration.
 - ``flow.json`` — current version 1; version 0 when the field is absent.
-- ``engineering-snapshot.json`` — version 4 (production), with v2/v3 read support;
+- ``engineering-snapshot.json`` — version 6 (production), with v2/v3/v4 read support;
   its field is spelled ``schemaVersion`` because the contract predates this
   registry and is shared with the GUI. Legacy snapshots are rebuilt explicitly
   by Project reconciliation while holding the Workspace lock.
@@ -40,7 +40,7 @@ WORKSPACE_CONFIGS = "workspace-configs"
 SUPPORTED_SCHEMA_VERSIONS: dict[str, int] = {
     PARAMS_TOML: 2,
     FLOW_JSON: 1,
-    ENGINEERING_SNAPSHOT: 4,
+    ENGINEERING_SNAPSHOT: 6,
 }
 
 
@@ -75,7 +75,7 @@ def _migrate_workspace_config_filenames_to_v1(workspace_dir: Path) -> None:
     migrate_workspace_config_filenames(workspace_dir)
 
 
-def _migrate_engineering_snapshot_to_v4(workspace_dir: Path) -> None:
+def _migrate_engineering_snapshot_to_v6(workspace_dir: Path) -> None:
     # Snapshot regeneration needs the loaded
     # workspace, not just the directory; it stays an explicit operation.
     from chipcompiler.data import load_workspace
@@ -88,7 +88,7 @@ def _migrate_engineering_snapshot_to_v4(workspace_dir: Path) -> None:
 SCHEMA_MIGRATIONS: dict[str, dict[int, Callable[[Path], None]]] = {
     PARAMS_TOML: {1: _migrate_params_toml_to_v1, 2: _migrate_params_toml_to_v2},
     WORKSPACE_CONFIGS: {1: _migrate_workspace_config_filenames_to_v1},
-    ENGINEERING_SNAPSHOT: {4: _migrate_engineering_snapshot_to_v4},
+    ENGINEERING_SNAPSHOT: {6: _migrate_engineering_snapshot_to_v6},
 }
 
 

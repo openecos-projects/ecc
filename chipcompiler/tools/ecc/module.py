@@ -65,6 +65,7 @@ def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
         "work_dir": first("work_dir"),
         "thread_number": _positive_int(inputs.get("thread_number"), 2),
         "max_paths": _positive_int(inputs.get("max_paths"), 20),
+        "timing_mode": str(first("timing_mode", "preparation_mode") or "model_only"),
     }
 
 
@@ -116,6 +117,7 @@ class ECCToolsModule:
         with_sta: int,
         include_m2_pg_rail_blockage: bool = False,  # noqa: FBT001, FBT002
         include_m2_pg_rail_density: bool = True,  # noqa: FBT001, FBT002
+        timing_model_only: bool = False,  # noqa: FBT001, FBT002
     ):
         return self.ecc.pydb(
             dm_inst_ptr,
@@ -125,6 +127,7 @@ class ECCToolsModule:
             with_sta,
             include_m2_pg_rail_blockage,
             include_m2_pg_rail_density,
+            timing_model_only,
         )
 
     def _place_timing_config(
@@ -164,6 +167,7 @@ class ECCToolsModule:
         work_dir: PathArg = "",
         thread_number: int = 2,
         max_paths: int = 20,
+        timing_mode: str = "model_only",
     ) -> dict[str, object]:
         normalized_libs = [os.fspath(path) for path in lib_paths if path]
         normalized_sdc = os.fspath(sdc_path)
@@ -202,9 +206,18 @@ class ECCToolsModule:
         sta_config = config_dict.pop("config")
         if self.ecc.init_sta(config=sta_config, config_dict=config_dict) is not True:
             raise RuntimeError("ECC placement timing STA initialization failed")
+        if timing_mode not in {"complete", "model_only"}:
+            raise ValueError("timing_mode must be complete or model_only")
         try:
-            if self.ecc.run_sta() is not True:
-                raise RuntimeError("ECC placement timing STA execution failed")
+            operation = (
+                self.ecc.run_sta if timing_mode == "complete" else self.ecc.prepare_timing_model
+            )
+            if operation() is not True:
+                raise RuntimeError(
+                    "ECC placement timing "
+                    + ("STA execution" if timing_mode == "complete" else "model preparation")
+                    + " failed"
+                )
         except Exception:
             self.ecc.destroy_sta()
             raise
@@ -221,10 +234,11 @@ class ECCToolsModule:
             "work_dir": os.fspath(work_dir),
             "thread_number": int(thread_number),
             "max_paths": int(max_paths),
+            "timing_mode": timing_mode,
         }
         return {
             "status": "ok",
-            "mode": "full_rebuild",
+            "mode": timing_mode,
             "lib_count": len(normalized_libs),
             "sdc_path": normalized_sdc,
             "spef_path": normalized_spef,

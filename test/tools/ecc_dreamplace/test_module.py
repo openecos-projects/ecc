@@ -222,6 +222,7 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "real_size_execution_mode": params.real_size_execution_mode,
         "real_size_warmup_steps": params.real_size_warmup_steps,
         "diff_sizing_continuous_steps": params.diff_sizing_continuous_steps,
+        "diff_sizing_timing_rc_mode": params.diff_sizing_timing_rc_mode,
         "timing_wns_coeff": params.timing_wns_coeff,
         "timing_tns_coeff": params.timing_tns_coeff,
         "timing_slew_weight": params.timing_slew_weight,
@@ -243,14 +244,16 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "routability_opt_flag": params.routability_opt_flag,
         "with_sta": params.with_sta,
         "timing_objective_lane": params.timing_objective_lane,
+        "timing_action_gradient_mode": params.timing_action_gradient_mode,
     } == {
         "flow_kind": "sizing",
         "timing_rc_mode": "gr",
         "placement_sizing_mode": "size_only",
-        "sizing_parameterization": "logits",
+        "sizing_parameterization": "real_size",
         "real_size_execution_mode": "continuous_only",
         "real_size_warmup_steps": 0,
         "diff_sizing_continuous_steps": 0,
+        "diff_sizing_timing_rc_mode": "gr",
         "timing_wns_coeff": dreamplace_default_config["diff_sizing_coefficients"]["wns"],
         "timing_tns_coeff": dreamplace_default_config["diff_sizing_coefficients"]["tns"],
         "timing_slew_weight": dreamplace_default_config["diff_sizing_coefficients"]["slew"],
@@ -261,9 +264,9 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "overflow_reference_mode": "ordinary",
         "gpugr_backend": "cpu_pr_maze",
         "gr_sizing_rrr_iters": 3,
-        "auto_adjust_bins": 0,
-        "num_bins_x": 512,
-        "num_bins_y": 512,
+        "auto_adjust_bins": 1,
+        "num_bins_x": 256,
+        "num_bins_y": 256,
         "route_num_bins_x": 512,
         "route_num_bins_y": 512,
         "timing_opt_enabled": 0,
@@ -272,11 +275,12 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
         "routability_opt_flag": 0,
         "with_sta": 1,
         "timing_objective_lane": "timing_slew_cap",
+        "timing_action_gradient_mode": "lut_action",
     }
     assert {
         key: params.global_place_stages[0][key]
         for key in ("num_bins_x", "num_bins_y", "iteration", "optimizer")
-    } == {"num_bins_x": 512, "num_bins_y": 512, "iteration": 50, "optimizer": "adam"}
+    } == {"num_bins_x": 256, "num_bins_y": 256, "iteration": 50, "optimizer": "adam"}
     assert params.design_inputs["rcx_config"] == ""
 
 

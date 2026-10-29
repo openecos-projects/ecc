@@ -69,6 +69,31 @@ def test_synthesis_lec_preset_conflicts_with_default_skip_policy(
     assert flow_mocks.capture["create_kwargs"] is None
 
 
+@pytest.mark.parametrize("skip_steps", [None, ["lec"], ["lec", "diff_opt"]])
+def test_run_diff_opt_is_optional_and_keeps_diff_sizing(
+    monkeypatch, create_cli_project, flow_mocks, skip_steps
+):
+    from chipcompiler.rtl2gds import build_rtl2gds_flow
+
+    monkeypatch.setattr("chipcompiler.rtl2gds.builder.build_rtl2gds_flow", build_rtl2gds_flow)
+    project_dir = create_cli_project()
+    if skip_steps is not None:
+        with open(os.path.join(project_dir, "ecc.toml"), "a") as config:
+            config.write(f"\nskip_steps = {json.dumps(skip_steps)}\n")
+
+    assert cli_main.run(["run", "--project", project_dir]) == 0
+
+    names = [str(step) for step, _tool, _state in flow_mocks.flow.instances[0].added_steps]
+    place_index = names.index("place")
+    cts_index = names.index("CTS")
+    expected = (
+        ["place", "diff_opt", "diff_sizing", "CTS"]
+        if skip_steps == ["lec"]
+        else ["place", "diff_sizing", "CTS"]
+    )
+    assert names[place_index : cts_index + 1] == expected
+
+
 def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
     tmp_path, create_cli_project, flow_mocks, set_flow_preset, monkeypatch
 ):

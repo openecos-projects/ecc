@@ -21,17 +21,25 @@ from chipcompiler.utility import JsonObject, JsonReadError, json_read_strict, js
 
 LEGACY_SNAPSHOT_SCHEMA_VERSION = 2
 SNAPSHOT_V3_SCHEMA_VERSION = 3
-SNAPSHOT_SCHEMA_VERSION = 4
+SNAPSHOT_V4_SCHEMA_VERSION = 4
+SNAPSHOT_SCHEMA_VERSION = 6
 SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = frozenset(
-    {LEGACY_SNAPSHOT_SCHEMA_VERSION, SNAPSHOT_V3_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION}
+    {
+        LEGACY_SNAPSHOT_SCHEMA_VERSION,
+        SNAPSHOT_V3_SCHEMA_VERSION,
+        SNAPSHOT_V4_SCHEMA_VERSION,
+        SNAPSHOT_SCHEMA_VERSION,
+    }
 )
 SNAPSHOT_FILENAME = "engineering-snapshot.json"
 STALE_SNAPSHOT_FILENAME = "engineering-snapshot.stale.json"
-SNAPSHOT_MIGRATION_CAUSE = "snapshot.migrated.to_v4"
+SNAPSHOT_MIGRATION_CAUSE = "snapshot.migrated.to_v6"
 SNAPSHOT_REBUILD_REQUIRED = "snapshot_rebuild_required"
 SNAPSHOT_IDENTITY_MISMATCH = "snapshot_identity_mismatch"
 SNAPSHOT_REVISION_MISMATCH = "snapshot_revision_mismatch"
+SNAPSHOT_OPEN_REBUILD_CAUSE = "workspace.rebuild.on_open"
 SNAPSHOT_ARTIFACT_LIMIT = 4096
+_CHECKLIST_PROJECTION_MAX_ITEMS = 512
 #: Bound on persisted step-output records carried by a snapshot.
 SNAPSHOT_STEP_LIMIT = 4096
 #: Bound on artifact references carried by persisted step outputs.
@@ -70,14 +78,23 @@ def ensure_engineering_snapshot(workspace: Any) -> dict[str, Any]:
     if path.is_file():
         snapshot = _read_snapshot(path)
         if snapshot["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-            raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 4")
+            raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
         return snapshot
     return create_engineering_snapshot(workspace, cause="workspace.migrated")
 
 
 def open_workspace_snapshot(workspace: Any) -> dict[str, Any]:
-    """Open-time compatibility alias used by the workspace configuration API."""
-    return ensure_engineering_snapshot(workspace)
+    """Open-time snapshot policy (ADR-0009), shared by every open entry point.
+
+    A missing snapshot is rebuilt automatically (only ever writing a file
+    that does not exist); a corrupt, unsupported-version, or
+    identity-conflicting snapshot fails closed with the error's ``code``
+    classifying the failure, leaving the existing file untouched.
+    """
+    path = _snapshot_path(workspace)
+    if not path.exists() and not path.is_symlink():
+        return create_engineering_snapshot(workspace, cause=SNAPSHOT_OPEN_REBUILD_CAUSE)
+    return _read_snapshot(path)
 
 
 def read_engineering_snapshot(
@@ -179,13 +196,14 @@ def migrate_engineering_snapshot(
     expected_workspace_revision: int | None = None,
     cause: str = SNAPSHOT_MIGRATION_CAUSE,
 ) -> dict[str, Any]:
-    """Rebuild one legacy v2/v3 Snapshot into the production v4 contract."""
+    """Rebuild one legacy v2/v3/v4 Snapshot into the production v6 contract."""
     current = _read_snapshot(_snapshot_path(workspace))
     if current["schemaVersion"] not in {
         LEGACY_SNAPSHOT_SCHEMA_VERSION,
         SNAPSHOT_V3_SCHEMA_VERSION,
+        SNAPSHOT_V4_SCHEMA_VERSION,
     }:
-        raise EngineeringSnapshotError("Snapshot migration requires schemaVersion 2 or 3")
+        raise EngineeringSnapshotError("Snapshot migration requires schemaVersion 2, 3, or 4")
     if (
         expected_workspace_revision is not None
         and current["workspaceRevision"] != expected_workspace_revision
@@ -223,7 +241,7 @@ def commit_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 4")
+        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError(
             "Workspace identity changed before commit", code=SNAPSHOT_IDENTITY_MISMATCH
@@ -263,7 +281,7 @@ def invalidate_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 4")
+        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError(
             "Workspace identity changed before invalidation", code=SNAPSHOT_IDENTITY_MISMATCH
@@ -428,8 +446,10 @@ def _checklist_projection(checklist: dict[str, Any]) -> dict[str, Any]:
     items = checklist.get("checklist")
     if not isinstance(items, list):
         return {"items": []}
-    if len(items) > 512:
-        raise EngineeringSnapshotError("Signoff checklist exceeds 512 items")
+    if len(items) > _CHECKLIST_PROJECTION_MAX_ITEMS:
+        raise EngineeringSnapshotError(
+            f"Signoff checklist exceeds {_CHECKLIST_PROJECTION_MAX_ITEMS} items"
+        )
     projection = {"items": [_checklist_item(item) for item in items if isinstance(item, dict)]}
     status = checklist.get("status")
     if status in {"ready", "attention", "blocked"}:
@@ -505,7 +525,12 @@ def _validate_snapshot(
         or not isinstance(snapshot.get("workspaceRevision"), int)
         or snapshot["workspaceRevision"] < 1
         or (
-            schema_version in {SNAPSHOT_V3_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION}
+            schema_version
+            in {
+                SNAPSHOT_V3_SCHEMA_VERSION,
+                SNAPSHOT_V4_SCHEMA_VERSION,
+                SNAPSHOT_SCHEMA_VERSION,
+            }
             and not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
         )
     ):
@@ -531,10 +556,17 @@ def _validate_snapshot_sections(
         if not isinstance(snapshot.get(key), dict):
             raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
     if snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION:
+        # v6 predates the workspace-spec envelope; keep it optional so
+        # snapshots written by the bounded v6 contract stay readable.
         for key in ("workspaceSpec", "workspaceBindings", "stepOutputs"):
-            if not isinstance(snapshot.get(key), dict):
+            if key in snapshot and not isinstance(snapshot[key], dict):
                 raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
-        _validate_step_outputs(snapshot, workspace_root)
+        if "stepOutputs" in snapshot:
+            if not isinstance(snapshot.get("workspaceBindings"), dict):
+                raise EngineeringSnapshotError(
+                    "invalid Engineering Snapshot section: workspaceBindings"
+                )
+            _validate_step_outputs(snapshot, workspace_root)
     if "steps" in snapshot["flow"] and not isinstance(snapshot["flow"]["steps"], list):
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: flow.steps")
     artifacts = snapshot.get("artifacts")
@@ -548,7 +580,7 @@ def _validate_snapshot_sections(
             code=SNAPSHOT_IDENTITY_MISMATCH,
         )
     for artifact in artifacts:
-        _validate_snapshot_artifact(artifact, snapshot["workspaceId"])
+        _validate_snapshot_artifact(artifact, snapshot["workspaceId"], workspace_root)
     stale = snapshot.get("stalePredecessor")
     if stale is not None and (
         not isinstance(stale, dict)
@@ -645,7 +677,11 @@ def _validate_step_output_artifact(
     raise EngineeringSnapshotError("invalid Engineering Snapshot step output path")
 
 
-def _validate_snapshot_artifact(artifact: object, workspace_id: str) -> None:
+def _validate_snapshot_artifact(
+    artifact: object,
+    workspace_id: str,
+    workspace_root: Path,
+) -> None:
     if not isinstance(artifact, dict):
         raise EngineeringSnapshotError("invalid Engineering Snapshot artifact")
     artifact_id = artifact.get("artifactId")
@@ -661,6 +697,22 @@ def _validate_snapshot_artifact(artifact: object, workspace_id: str) -> None:
         or availability not in {"missing", "available", "stale"}
     ):
         raise EngineeringSnapshotError("invalid Engineering Snapshot artifact reference")
+    candidate = workspace_root / reference
+    try:
+        candidate.relative_to(workspace_root)
+    except ValueError as exc:
+        raise EngineeringSnapshotError("invalid Engineering Snapshot artifact path") from exc
+    if _contains_symlink(candidate, workspace_root):
+        raise EngineeringSnapshotError("invalid Engineering Snapshot artifact path")
+
+
+def _contains_symlink(path: Path, root: Path) -> bool:
+    current = path
+    while current != root:
+        if current.is_symlink() or current.parent == current:
+            return True
+        current = current.parent
+    return root.is_symlink()
 
 
 def _workspace_metadata_id(workspace_root: Path) -> str | None:

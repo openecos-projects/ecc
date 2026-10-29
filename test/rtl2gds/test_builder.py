@@ -10,6 +10,7 @@ def test_discovery_includes_current_presets():
         "rtl2gds",
         "syn_sta",
         "synthesis_lec",
+        "defview",
     }
 
 
@@ -62,6 +63,7 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
+        (SkippableStepEnum.DIFF_OPT, "dreamplace", StateEnum.Unstart),
         (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
         (StepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
@@ -138,6 +140,7 @@ def test_build_flow_range_accepts_antenna_after_drc(spelling):
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
+        SkippableStepEnum.DIFF_OPT,
         StepEnum.DIFF_SIZING,
         StepEnum.CTS,
     ]
@@ -255,7 +258,7 @@ def test_resolve_skip_steps_absent_key_yields_the_code_default():
     assert builder_module.resolve_skip_steps(None) == DEFAULT_SKIP_STEPS
     assert builder_module.resolve_skip_steps({}) == DEFAULT_SKIP_STEPS
     assert builder_module.resolve_skip_steps({"start_step": "Synthesis"}) == DEFAULT_SKIP_STEPS
-    assert (SkippableStepEnum.LEC.value,) == DEFAULT_SKIP_STEPS
+    assert (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value) == DEFAULT_SKIP_STEPS
 
 
 def test_resolve_skip_steps_explicit_empty_list_runs_everything():
@@ -268,6 +271,7 @@ def test_resolve_skip_steps_explicit_empty_list_runs_everything():
         (["lec"], ("lec",)),
         (["LEC"], ("lec",)),
         (["lec", "lec"], ("lec",)),
+        (["DIFF-OPT", "lec", "diff_optimization"], ("lec", "diff_opt")),
         (["postRouteLec", "lec"], ("lec", "postRouteLec")),
         (["TimingOpt", "lec", "postlec"], ("lec", "Timing optimization", "postRouteLec")),
     ],
@@ -300,10 +304,11 @@ def test_filter_flow_steps_removes_entries_without_reordering():
     assert builder_module.filter_flow_steps(steps, ("lec",)) == steps[:1]
 
 
-def test_all_creation_paths_build_the_same_ledger_for_one_policy():
+@pytest.mark.parametrize("declared_policy", [{}, {"skip_steps": ["lec"]}])
+def test_all_creation_paths_build_the_same_ledger_for_one_policy(declared_policy):
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    policy = {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": ["lec"]}
+    policy = {"start_step": "Synthesis", "end_step": "Harden", **declared_policy}
 
     # Sidecar/direct flow_config path: the dynamic ledger.
     sidecar = [step["name"] for step in build_dynamic_flow_data(policy).get("steps", [])]
@@ -327,6 +332,8 @@ def test_all_creation_paths_build_the_same_ledger_for_one_policy():
 
     assert sidecar == ranged == preset
     assert "lec" not in sidecar
+    assert ("diff_opt" in sidecar) == bool(declared_policy)
+    assert "diff_sizing" in sidecar
 
 
 def test_policy_only_flow_config_never_yields_a_ledger():

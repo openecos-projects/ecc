@@ -68,6 +68,10 @@ class FakeStaEcc:
             (sdf_dir / "gcd.sdf").write_text("(DELAYFILE\n)\n", encoding="utf-8")
         return True
 
+    def prepare_timing_model(self):
+        self.calls.append(("prepare_timing_model", (), {}))
+        return True
+
     def destroy_sta(self):
         self.calls.append(("destroy_sta", (), {}))
         return True
@@ -320,3 +324,22 @@ def test_run_timing_forwards_path_arguments(tmp_path):
         ("run_sta", (), {}),
         ("destroy_sta", (), {}),
     ]
+
+
+@pytest.mark.parametrize(
+    ("inputs", "operation", "mode"),
+    [
+        ({}, "prepare_timing_model", "model_only"),
+        ({"timing_mode": "complete"}, "run_sta", "complete"),
+    ],
+)
+def test_place_timing_defaults_to_model_only_preparation(tmp_path, inputs, operation, mode):
+    module = make_module()
+    module._place_timing_active = False
+
+    summary = module.prepare_place_timing(
+        {"lib": ["/pdk/lib.lib"], "sdc": "/ws/design.sdc", "work_dir": str(tmp_path), **inputs}
+    )
+
+    assert [call[0] for call in module.ecc.calls][-1] == operation
+    assert summary["mode"] == mode

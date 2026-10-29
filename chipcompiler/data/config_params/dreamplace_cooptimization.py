@@ -4,6 +4,18 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "place.timing_sizing_action",
+        "dreamplace",
+        ("timing_sizing_action",),
+        "up",
+        applies="placement,diff_opt",
+        choices=("up", "down", "quad"),
+        description=(
+            "action family for placement sizing windows and diff_opt sizing: "
+            "up | down | quad; explicit diff_sizing phase masks take precedence"
+        ),
+    ),
+    config_param(
         "place.stop_overflow",
         "dreamplace",
         ("stop_overflow",),
@@ -56,7 +68,7 @@ SCHEMAS = (
         "place.timing_objective_lane",
         "dreamplace",
         ("timing_objective_lane",),
-        "timing_only",
+        "timing_slew_cap",
         applies="placement",
         description="timing objective terms, timing_only | timing_slew_cap",
     ),
@@ -64,11 +76,22 @@ SCHEMAS = (
         "place.timing_grad_balance_target_ratio",
         "dreamplace",
         ("timing_grad_balance_target_ratio",),
-        0.2,
+        0.01,
         applies="placement",
         description=(
             "initial target ratio rho between weighted timing-gradient and wirelength-gradient "
             "L1 norms; 0 disables automatic timing-gradient balancing"
+        ),
+    ),
+    config_param(
+        "place.timing_grad_balance_reset_on_restart",
+        "dreamplace",
+        ("timing_grad_balance_reset_on_restart",),
+        0,
+        applies="placement",
+        description=(
+            "reset and reinitialize the timing-gradient balance weight after "
+            "each inflation/GP restart; 0 preserves the current weight"
         ),
     ),
     config_param(
@@ -92,6 +115,17 @@ SCHEMAS = (
         description=(
             "positive LSE temperature in ps for smooth AAT/RAT aggregation; "
             "smaller values approach hard max/min"
+        ),
+    ),
+    config_param(
+        "place.timing_metric_scope",
+        "dreamplace",
+        ("timing_metric_scope",),
+        "setup_plus_recovery",
+        applies="placement",
+        choices=("setup_only", "setup_plus_recovery"),
+        description=(
+            "max timing checks used by placement WNS/TNS: setup_only or setup_plus_recovery"
         ),
     ),
     config_param(
@@ -185,6 +219,33 @@ SCHEMAS = (
         0,
         applies="placement",
         description="whether enable the enhanced outer-loop inflation controller skeleton",
+    ),
+    config_param(
+        "place.inflation_filler_consumption_mode",
+        "dreamplace",
+        ("inflation_filler_consumption_mode",),
+        "filler_first",
+        applies="placement",
+        choices=("filler_first", "proportional", "capacity_only"),
+        description=(
+            "how routability inflation consumes filler: filler_first subtracts "
+            "the inflation area from filler before raising target density, "
+            "proportional shrinks filler and non-filler whitespace together, "
+            "capacity_only preserves the legacy limit-only shrink"
+        ),
+    ),
+    config_param(
+        "place.inflation_density_weight_scale",
+        "dreamplace",
+        ("inflation_density_weight_scale",),
+        0.001,
+        applies="placement",
+        description=(
+            "positive scale for the Xplace-style density-weight restart ratio after "
+            "inflation; the default 0.001 keeps the restarted density force small, "
+            "1.0 uses the normalized gradient ratio directly, and 0.1 reproduces "
+            "the historical DreamPlace post-restart scale"
+        ),
     ),
     config_param(
         "place.enhanced_inflation_replay_best_round_flag",
@@ -324,7 +385,7 @@ SCHEMAS = (
         "place.timing_coeff_growth_factor",
         "dreamplace",
         ("timing_coeff_growth_factor",),
-        1.0,
+        1.01,
         applies="placement",
         description=(
             "positive finite multiplier applied to WNS/TNS coefficients at each GP "
@@ -556,8 +617,9 @@ SCHEMAS = (
         0.2,
         applies="placement",
         description=(
-            "target ratio between weighted preconditioned L-shape gradient norm and "
-            "preconditioned base wirelength+density gradient norm"
+            "target ratio between raw L-shape gradient norm and raw wirelength "
+            "gradient norm before the shared preconditioner; the printed L-shape "
+            "ratio uses this same definition"
         ),
     ),
     config_param(
@@ -567,6 +629,18 @@ SCHEMAS = (
         0.2,
         applies="placement",
         description="maximum adaptive routability gradient target ratio",
+    ),
+    config_param(
+        "place.l_shape_weight_max_multiplier",
+        "dreamplace",
+        ("l_shape_weight_max_multiplier",),
+        10.0,
+        applies="placement",
+        description=(
+            "maximum adaptive L-shape weight as a multiple of the first "
+            "calibrated weight in each calibration epoch; 0 disables the "
+            "relative cap"
+        ),
     ),
     config_param(
         "place.l_shape_update_interval",

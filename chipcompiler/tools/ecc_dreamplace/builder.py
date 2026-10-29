@@ -1,18 +1,17 @@
 #!/usr/bin/env python
 
-import math
 import os
 from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.data import (
     EccStep,
+    SkippableStepEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
     build_workspace_config_paths,
 )
-from chipcompiler.data.config_params.dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -22,6 +21,10 @@ from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
 )
 from chipcompiler.utility import json_read, json_write
 from chipcompiler.utility.path import require_path
+
+from .diff_opt import apply_diff_opt_defaults
+from .diff_opt import prepare_drive_table as prepare_diff_opt_drive_table
+from .timing_coefficients import resolve_timing_coefficients
 
 
 def apply_parameter_overrides(
@@ -54,7 +57,47 @@ def _set_step_fields(params: dict, step: WorkspaceStep) -> dict:
     return params
 
 
+def _apply_placement_buffering_profile(
+    workspace: Workspace, step: EccStep, params: dict
+) -> tuple[dict, set[str]]:
+    """Expand the small placement buffering mode into internal lane settings."""
+
+    if step.name != StepEnum.PLACEMENT.value or params.get("buffering_mode") != "candidate":
+        return params, set()
+    params = params | {
+        "buffering_segment_strategy": "continuous",
+        "buffering_candidate_strategy": "discrete_net_gradient",
+        "buffering_candidate_drive_type_mode": "four_strength_table",
+        # Placement S5B1 owns one Route-B scheduler round per window.  The
+        # general buffering default is intentionally larger for standalone
+        # buffering flows, so make the placement profile explicit here.
+        "buffering_continuous_steps": 1,
+        "buffering_fixed_buffer_master": "",
+        "buffering_fixed_bsu_index": None,
+    }
+    params = prepare_diff_opt_drive_table(workspace, step, params)
+    return params, {
+        "buffering_segment_strategy",
+        "buffering_candidate_strategy",
+        "buffering_candidate_drive_type_mode",
+        "buffering_candidate_drive_strength_table",
+        "buffering_continuous_steps",
+        "buffering_fixed_buffer_master",
+        "buffering_fixed_bsu_index",
+    }
+
+
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
+        return (
+            require_path(step.data.workdir_for(step.name), "DreamPlace diff-opt workdir")
+            / "dreamplace_diff_opt.json"
+        )
+    if step.name == StepEnum.DIFF_BUFFERING.value:
+        return (
+            require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
+            / "dreamplace_diff_buffering.json"
+        )
     if step.name == StepEnum.DIFF_SIZING.value:
         return (
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
@@ -63,33 +106,66 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
     return Path(workspace.config["dreamplace"])
 
 
-def _apply_diff_sizing_defaults(params: dict) -> dict:
-    """Apply the standalone DreamPlace S50/RRR3 profile to a diff-sizing step."""
+def _resolve_diff_sizing_rc_mode(result: dict, explicit_keys) -> str:
+    explicit = set(explicit_keys or ())
+    if "diff_sizing_timing_rc_mode" in explicit:
+        mode = result.get("diff_sizing_timing_rc_mode", "gr")
+    elif "timing_rc_mode" in explicit:
+        mode = result.get("timing_rc_mode", "gr")
+    elif "diff_sizing_timing_rc_mode" in result:
+        mode = result.get("diff_sizing_timing_rc_mode")
+    elif "timing_rc_mode" in result:
+        mode = result.get("timing_rc_mode")
+    else:
+        mode = "gr"
+    mode = str(mode or "gr")
+    if mode not in {"placement", "gr"}:
+        raise ValueError("diff_sizing_timing_rc_mode must be one of: placement, gr")
+    return mode
+
+
+def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
+    """Apply standalone up-50 sizing with selectable placement/GR RC."""
     result = deepcopy(params)
     continuous_steps = result.get("diff_sizing_continuous_steps", 0)
+    terminal_gr_sta_enabled = result.get("diff_sizing_terminal_gr_sta_enabled", 0)
+    if terminal_gr_sta_enabled not in (0, 1, False, True):
+        raise ValueError("diff_sizing_terminal_gr_sta_enabled must be 0 or 1")
     if (
         isinstance(continuous_steps, bool)
         or not isinstance(continuous_steps, int)
         or not 0 <= continuous_steps <= 1000
     ):
         raise ValueError("diff_sizing_continuous_steps must be an integer in [0, 1000]")
-    policy = result.get("diff_sizing_coefficients", {})
-    if not isinstance(policy, dict) or set(policy) - DEFAULT_DIFF_SIZING_COEFFICIENTS.keys():
-        raise ValueError("diff_sizing_coefficients must be an object with wns, tns, cap, slew")
-    coefficients = DEFAULT_DIFF_SIZING_COEFFICIENTS | policy
-    for name, value in coefficients.items():
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (int, float))
-            or not math.isfinite(value)
-            or value < 0
-        ):
-            raise ValueError(f"diff_sizing_coefficients.{name} must be finite and nonnegative")
+    action_mode = str(result.get("timing_action_gradient_mode", "lut_action") or "lut_action")
+    if action_mode not in {"off", "lut_action"}:
+        raise ValueError("timing_action_gradient_mode must be one of: off, lut_action")
+    score_objective = str(result.get("timing_action_score_objective", "loss") or "loss")
+    if score_objective not in {"loss", "tns", "wns"}:
+        raise ValueError("timing_action_score_objective must be one of: loss, tns, wns")
+    if action_mode == "lut_action" and continuous_steps != 0:
+        raise ValueError(
+            "lut_action standalone diff_sizing requires diff_sizing_continuous_steps=0"
+        )
+    from dreamplace.flows.diff_sizing_spec import parse_diff_sizing_flows
+
+    coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
+    flow_config = result.get("diff_sizing_optimization_flows")
+    if flow_config is None and action_mode == "lut_action":
+        flow_config = [["up", 50, coefficients, 1.0]]
+    flows = parse_diff_sizing_flows(flow_config)
+    if flows is not None and action_mode != "lut_action":
+        raise ValueError(
+            "diff_sizing_optimization_flows requires timing_action_gradient_mode=lut_action"
+        )
+    if flows is not None:
+        result["diff_sizing_optimization_flows"] = [spec.to_list() for spec in flows]
+    timing_rc_mode = _resolve_diff_sizing_rc_mode(result, explicit_keys)
     result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",
         place_io_engine="ecc",
-        timing_rc_mode="gr",
+        timing_rc_mode=timing_rc_mode,
         placement_sizing_mode="size_only",
         sizing_parameterization="real_size",
         real_size_execution_mode="warmup_to_discrete",
@@ -97,9 +173,12 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         continuous_size_dynamics_mode="none",
         target_density=0.4,
         cell_padding_x=0,
-        auto_adjust_bins=0,
-        num_bins_x=512,
-        num_bins_y=512,
+        # Match placement's adaptive bin profile.  compute_auto_bin_counts
+        # keeps its 512-bin cap, and GR sizing follows the resolved placement
+        # bin count when auto_adjust_bins is enabled.
+        auto_adjust_bins=1,
+        num_bins_x=256,
+        num_bins_y=256,
         route_num_bins_x=512,
         route_num_bins_y=512,
         timing_opt_enabled=0,
@@ -121,21 +200,31 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         gpugr_backend="cpu_pr_maze",
         gpugr_bottom_routing_layer=result.get("gpugr_bottom_routing_layer") or "MET2",
         gpugr_top_routing_layer=result.get("gpugr_top_routing_layer") or "MET5",
-        gr_sizing_rrr_iters=3,
+        gr_sizing_rrr_iters=3 if timing_rc_mode == "gr" else 0,
         enable_fillers=0,
         random_center_init_flag=0,
         legalize_flag=1,
         detailed_place_flag=0,
         detailed_place_engine="",
         diff_sizing_continuous_steps=continuous_steps,
+        diff_sizing_terminal_gr_sta_enabled=int(bool(terminal_gr_sta_enabled)),
+        diff_sizing_timing_rc_mode=timing_rc_mode,
         timing_wns_coeff=coefficients["wns"],
         timing_tns_coeff=coefficients["tns"],
         timing_cap_weight=coefficients["cap"],
         timing_slew_weight=coefficients["slew"],
         timing_grad_balance_weight=1.0,
         timing_grad_balance_target_ratio=0.0,
+        timing_action_score_objective=score_objective,
     )
-    if continuous_steps == 0:
+    if action_mode == "lut_action":
+        result.update(
+            sizing_parameterization="real_size",
+            real_size_execution_mode="continuous_only",
+            real_size_warmup_steps=0,
+            continuous_size_dynamics_mode="none",
+        )
+    elif continuous_steps == 0:
         result.update(
             sizing_parameterization="logits",
             real_size_execution_mode="continuous_only",
@@ -144,7 +233,13 @@ def _apply_diff_sizing_defaults(params: dict) -> dict:
         )
     stages = list(result.get("global_place_stages") or [{}])
     first_stage = dict(stages[0]) if isinstance(stages[0], dict) else {}
-    first_stage.update(num_bins_x=512, num_bins_y=512, iteration=50, optimizer="adam")
+    stage_rounds = sum(spec.rounds for spec in flows) if flows is not None else 50
+    first_stage.update(
+        num_bins_x=256,
+        num_bins_y=256,
+        iteration=stage_rounds,
+        optimizer="adam",
+    )
     result["global_place_stages"] = [first_stage]
     return result
 
@@ -193,23 +288,36 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     parameter_data = _current_parameter_data(workspace)
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
-    if step.name == StepEnum.DIFF_SIZING.value:
-        params = _apply_diff_sizing_defaults(params)
-
-    from dreamplace.flows.flow_config import resolve_flow_config
-
+    params, internal_buffering_keys = _apply_placement_buffering_profile(workspace, step, params)
     dreamplace_overrides = parameter_data.get("dreamplace")
     explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
     explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
+    explicit_keys.update(internal_buffering_keys)
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+    elif step.name == StepEnum.DIFF_SIZING.value:
+        params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        # Legacy workspaces retain the old step name, but execute the
+        # placement-parasitic diff_opt controller and its canonical tuple
+        # configuration.  Keep the old fields as aliases for migration.
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+
+    from dreamplace.flows.flow_config import resolve_flow_config
+
     params = resolve_flow_config(params, explicit_keys=explicit_keys)
     # Canonical profiles own defaults; explicit workspace values own the final
     # effective config and therefore must be replayed after profile expansion.
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
-    if step.name == StepEnum.DIFF_SIZING.value:
+    if step.name == SkippableStepEnum.DIFF_OPT.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+    elif step.name == StepEnum.DIFF_SIZING.value:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
-        params = _apply_diff_sizing_defaults(params)
+        params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
+    elif step.name == StepEnum.DIFF_BUFFERING.value:
+        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)

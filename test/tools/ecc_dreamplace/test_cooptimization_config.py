@@ -46,6 +46,8 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
     assert {key: effective[key] for key in fields} == {key: profile[key] for key in fields}
     assert effective["overflow_reference_mode"] == "initial"
     assert profile["overflow_reference_mode"] == "ordinary"
+    assert dreamplace_default_config["inflation_density_weight_scale"] == 0.001
+    assert dreamplace_default_config["inflation_filler_consumption_mode"] == "filler_first"
 
 
 @pytest.mark.parametrize(
@@ -63,6 +65,8 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
         {"place.timing_coeff_growth_factor": 1.02},
         {"place.timing_grad_balance_target_ratio": 0.2},
         {"place.timing_grad_balance_target_ratio": 0.0},
+        {"place.timing_grad_balance_reset_on_restart": 0},
+        {"place.l_shape_weight_max_multiplier": 10.0},
         {
             "place.timing_aggregation_mode": "smooth",
             "place.timing_aggregation_tau_ps": 10.0,
@@ -81,6 +85,11 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
                 "cap": 1,
             }
         },
+        {"place.inflation_density_weight_scale": 0.001},
+        {"place.inflation_density_weight_scale": 0.1},
+        {"place.inflation_filler_consumption_mode": "filler_first"},
+        {"place.inflation_filler_consumption_mode": "proportional"},
+        {"place.inflation_filler_consumption_mode": "capacity_only"},
         {"place.timing_placement_carrier": "pin2pin"},
         {"place.timing_placement_carrier": "direct_loss"},
     ],

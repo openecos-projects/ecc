@@ -104,7 +104,7 @@ def validate_workspace_spec(
         issues.append(_issue("invalid_value", "/design/clockPort"))
 
     input_mode = spec.get("inputMode")
-    if input_mode not in {"rtl", "postSynthesis"}:
+    if input_mode not in {"rtl", "postSynthesis", "def"}:
         issues.append(_issue("invalid_input_mode", "/inputMode"))
     inputs = _refs(spec.get("inputs"), "inputId", _INPUT_ROLES, "/inputs", issues)
     input_bindings = _input_bindings(bindings.get("inputs"), issues)
@@ -237,6 +237,11 @@ def _validate_input_roles(
             issues.append(_issue("netlist_cardinality", "/inputs"))
         if any(role in {"rtl", "filelist"} for role in roles):
             issues.append(_issue("input_role_not_allowed", "/inputs", mode="postSynthesis"))
+    elif input_mode == "def":
+        if roles.count("def") != 1:
+            issues.append(_issue("def_cardinality", "/inputs"))
+        if any(role in {"rtl", "filelist", "netlist"} for role in roles):
+            issues.append(_issue("input_role_not_allowed", "/inputs", mode="def"))
     for role in ("netlist", "goldenNetlist", "def", "sdc", "spef"):
         if roles.count(role) > 1:
             issues.append(_issue(f"{role}_cardinality", "/inputs"))

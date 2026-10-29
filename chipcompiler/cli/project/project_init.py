@@ -201,6 +201,9 @@ def _populate(
 
 
 def _default_toml(design_name: str) -> str:
+    from chipcompiler.data import DEFAULT_SKIP_STEPS
+
+    skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
     return f'''[design]
 name = "{design_name}"
 top = "{design_name}"
@@ -215,8 +218,8 @@ root = ""
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+skip_steps = {skip_steps}
 '''
 
 

@@ -1,7 +1,8 @@
 # Placement regression
 
-这个入口从已准备好的 benchmark batch 读取 case 清单，运行 placement，
-再用同一份最终合法化 DEF 做 OpenROAD placement RC + STA 和 GR50 + STA。
+这个入口从已准备好的 benchmark batch 读取 case 清单，运行 `place → route`，
+再用 Place 输出的未布线 DEF 做 OpenROAD placement RC + STA 和 GR50 + STA；
+Route DEF 同时作为完整 place→route 流程的独立产物保存。
 默认最多 6 个 case 并发；每个 case 的 placement 线程数由 profile 决定。
 
 在 ECC 仓库根目录使用 Python 3.11+。按 `docs/development.md` 准备 Nix/uv
@@ -50,7 +51,9 @@ timing_opt 的 terminal 报告检查最终实体化和合法化。窗口没有�
 runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
 因此改 Python 后需要重新 prepare；涉及 native API 的改动应先构建并验证
 对应的 runtime，再通过 `--runtime-from` 使用它。来源 runtime 需要包含
-`runtime/python-nix` 和已验证的 `run_python.sh`。
+`runtime/python-nix` 和已验证的 `run_python.sh`；如果要运行完整的 `place → route`
+链，还必须包含 `runtime/sizer/src/sizer_os.tcl` 和 Sizer 可执行文件，准备阶段会
+自动把它加入 launcher 的 PATH 和 Sizer runtime root。
 当前 timing 导出要求 schema v2；上面的旧输入 batch 不能直接用作原生 runtime
 来源。只有局部 Python 源码和外部 native 路径的诊断目录也不满足完整 runtime 契约。
 
@@ -70,14 +73,18 @@ runtime、profile、DEF/netlist/SDC 和 LEF/Liberty 都保存到新 batch。
 - `collect`：生成 `results.md`、`results.csv`、`results.json`；未完成指标留空。
 - `verify`：独立校验输入/runtime/PDK/profile/runner 哈希、实际生效参数、传播设置、窗口权重、
   GP 系数恢复、合法化、TRACKS/GCELLGRID、外部评测的 terminal marker 和退出码。
-- `run`：每个 case 在独立目录启动进程，失败后记录具体阶段并继续其他 case；
+- `run`：每个 case 在独立目录启动 `place → route` 进程，失败后记录具体阶段并继续其他 case；
   启动前校验冻结文件，全部成功后自动执行 `verify`。流程或最终校验失败，
   `batch.exit` 都会非零。
 
-外部 evaluator 使用本套 ICS55 TT Liberty、ideal clocks、4 个线程。
-Placement RC 固定 MET2；GR 使用 MET2–MET5、容量调整 0.5、50 次拥塞迭代，
-跳过时钟 net 和超过 100 个终端的 net。两个 evaluator 都不执行 repair，
+外部 evaluator 使用本套 ICS55 TT Liberty、4 个线程，输入为 `place_dreamplace` DEF；
+已详细布线的 `route_ecc` DEF 不直接作为 GR50 输入，因为 OpenROAD GR50 需要先建立
+全局路由拓扑。
+Placement RC 使用 ideal clocks，固定 MET2；GR50 使用 propagated clocks，
+MET2–MET5、容量调整 0.5、50 次拥塞迭代，并保留所有 net（包括 clock net）参与
+global routing。两个 evaluator 都不执行 repair，
 并检查实例、坐标和连接关系没有被改变。它们的 Tcl 文件也会被冻结并核对哈希。
+此前冻结批次保留原脚本和时钟口径；重评测应使用新目录，不能把旧数值改标为新口径。
 
 主要代码入口：`prepare.py` 管输入/runtime/项目准备，`run_case.py` 管单 case
 流程，`runner.py` 管并发，`external.py` 和两份 Tcl 管外部评测，

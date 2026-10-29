@@ -76,7 +76,11 @@ def _target_step_states(flow_data: dict, target: list[tuple[str, str]]) -> set[s
     shifting which states fall inside the evaluated target range.
     """
     states_by_name = {
-        str(step.get("name", "")): str(step.get("state", ""))
+        (
+            "diff_opt"
+            if str(step.get("name", "")) == "diff_buffering"
+            else str(step.get("name", ""))
+        ): str(step.get("state", ""))
         for step in flow_data.get("steps", [])
         if isinstance(step, dict)
     }
@@ -106,7 +110,10 @@ def _normalized_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]
 
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
-        (name, "yosys_lec") if name in lec_names and tool in LEC_STEP_TOOLS else (name, tool)
+        (
+            "diff_opt" if name == "diff_buffering" else name,
+            "yosys_lec" if name in lec_names and tool in LEC_STEP_TOOLS else tool,
+        )
         for name, tool in entries
     ]
 
@@ -170,6 +177,7 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     """
     from chipcompiler.data import LEC_STEP_TOOLS, SkippableStepEnum
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
+    from chipcompiler.data.workspace.flow_data import _flow_entries_for_config
     from chipcompiler.data.workspace_config import flow_range_of
     from chipcompiler.rtl2gds import resolve_lec_engine
 
@@ -177,7 +185,12 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     if flow_range is None:
         return []
     start, end = flow_range
-    chain = _canonical_rtl2gds_flow_entries()
+    preset = flow_section.get("preset") if isinstance(flow_section, dict) else None
+    chain = (
+        _flow_entries_for_config({"preset": preset})
+        if isinstance(preset, str)
+        else _canonical_rtl2gds_flow_entries()
+    )
     names = [name for name, _tool, _state in chain]
     entries = [
         (name, tool) for name, tool, _state in chain[names.index(start) : names.index(end) + 1]

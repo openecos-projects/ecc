@@ -33,8 +33,8 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
     """The effective skip policy carried by a flow config.
 
     Presence-keyed: an absent ``skip_steps`` key yields the code default;
-    an explicitly empty list yields ``()`` (run every step — the only way
-    to enable the synthesis LEC). Entries accept the same aliases as step
+    an explicitly empty list yields ``()`` (run every step). To enable
+    ``diff_opt`` alone, declare ``["lec"]``. Entries accept the same aliases as step
     ranges, must name skippable steps only, and normalize to canonical
     step values in canonical chain order (idempotently).
     """
@@ -110,6 +110,7 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.POST_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((StepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value, StateEnum.Unstart))
@@ -152,6 +153,9 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "preplaceoptimization": StepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
+        "diffbuffering": StepEnum.DIFF_BUFFERING.value,
+        "diffopt": SkippableStepEnum.DIFF_OPT.value,
+        "diffoptimization": SkippableStepEnum.DIFF_OPT.value,
         "diffsizing": StepEnum.DIFF_SIZING.value,
         "cts": StepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
@@ -173,6 +177,7 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "poweranalysis": StepEnum.POWER_ANALYSIS.value,
         "emir": StepEnum.EMIR.value,
         "harden": StepEnum.HARDEN.value,
+        "defview": StepEnum.DEFVIEW.value,
     }
     return aliases.get(alias_key, token)
 
@@ -197,6 +202,10 @@ def build_flow_range(
     ]
     first = normalize_flow_step(from_step)
     last = normalize_flow_step(to_step)
+    # The old standalone buffering spelling remains a runnable alias for
+    # existing workspaces, while new canonical ranges use diff_opt.
+    first = SkippableStepEnum.DIFF_OPT.value if first == StepEnum.DIFF_BUFFERING.value else first
+    last = SkippableStepEnum.DIFF_OPT.value if last == StepEnum.DIFF_BUFFERING.value else last
     if first not in names or last not in names:
         available = ", ".join(names)
         raise ValueError(
@@ -225,6 +234,11 @@ def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum | str = DEFAULT_LEC_EN
     steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
 
     return steps
+
+
+def build_defview_flow() -> list:
+    """LEF+DEF layout preview: load the design DEF and export a geometry snapshot."""
+    return [(StepEnum.DEFVIEW, ToolName.ECC.value, StateEnum.Unstart)]
 
 
 def get_flow_builders() -> dict[str, Callable[[], list]]:

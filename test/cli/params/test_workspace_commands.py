@@ -96,7 +96,7 @@ def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, mo
                 "param",
                 "set",
                 "sta.max_parallel_corners",
-                "3",
+                "13",
                 "--workspace",
                 "baseline",
                 "--project",
@@ -106,11 +106,11 @@ def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, mo
         )
         == 0
     )
-    assert json.loads(config_path.read_text()) == {"max_parallel_corners": 3, "signoff": []}
+    assert json.loads(config_path.read_text()) == {"max_parallel_corners": 13, "signoff": []}
     assert workspace.flow.data["steps"][-1]["state"] == "Unstart"
-    assert workspace.parameters.data["config_overrides"] == {"sta": {"max_parallel_corners": 3}}
+    assert workspace.parameters.data["config_overrides"] == {"sta": {"max_parallel_corners": 13}}
     before = workspace.parameters.path.read_bytes()
-    for value in ("0", "5", "2.5", "true"):
+    for value in ("0", "-1", "2.5", "true"):
         assert (
             cli_main.run(
                 [
@@ -128,7 +128,7 @@ def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, mo
             == 1
         )
         assert workspace.parameters.path.read_bytes() == before
-        assert json.loads(config_path.read_text())["max_parallel_corners"] == 3
+        assert json.loads(config_path.read_text())["max_parallel_corners"] == 13
 
 
 def test_workspace_param_set_persists_and_invalidates_suffix(

@@ -21,19 +21,21 @@ def test_step_base_enum_defines_no_members_and_defaults_to_not_skippable():
 def test_skippable_step_enum_members_are_marked_skippable():
     assert {member.name for member in SkippableStepEnum} == {
         "LEC",
+        "DIFF_OPT",
         "POST_ROUTE_LEC",
         "TIMING_OPT",
     }
     assert all(member.is_skippable() is True for member in SkippableStepEnum)
     assert {member.value for member in SkippableStepEnum} == {
         "lec",
+        "diff_opt",
         "postRouteLec",
         "Timing optimization",
     }
 
 
 def test_core_enum_no_longer_carries_the_skippable_members():
-    for name in ("LEC", "POST_ROUTE_LEC", "TIMING_OPT"):
+    for name in ("LEC", "DIFF_OPT", "POST_ROUTE_LEC", "TIMING_OPT"):
         assert not hasattr(StepEnum, name)
         with pytest.raises(ValueError):
             StepEnum(getattr(SkippableStepEnum, name).value)

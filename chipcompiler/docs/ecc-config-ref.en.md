@@ -7,7 +7,10 @@ This document consolidates **the tool configuration files actually used by each 
 
 ## 0. Configuration System Overview
 
-`sta.max_parallel_corners` is an integer from 1 to 4 (default 1). Set it with
+`sta.max_parallel_corners` is a positive integer (default 1). Its effective maximum
+is the number of process/RC corner combinations in the generated STA JSON's
+`signoff` list (for example, 13 combinations in the standard ICS55 configuration).
+The parameter catalog reports `[1, null]`, where `null` means no fixed upper bound. Set it with
 `ecc param set sta.max_parallel_corners 3 --workspace baseline`. Standard config
 refresh writes the value into the STA JSON's `max_parallel_corners`. ECC/Studio's
 Linux runtime treats it as an upper bound and reduces concurrency when memory
@@ -378,13 +381,16 @@ These steps share `config/dreamplace_ecc.json`; before each step runs, `def_inpu
 
 ### Global placement core (★ the main tuning area)
 
-`place.timing_grad_balance_target_ratio` defaults to 0.2. At the first active
+`place.timing_grad_balance_target_ratio` defaults to 0.01. In legacy mode, the first active
 timing-gradient step in direct-loss placement, it initializes the outer timing
 weight from the timing and wirelength gradient L1 norms, then reuses that weight.
 Set it to 0.0 to disable balancing and retain an outer weight of 1.0. The value
 is an initial gradient-ratio target, rather than a multiplier on WNS/TNS
 coefficients. Standalone `size_only` sizing does not initialize coordinate
 gradient balancing; explicit values retain precedence over defaults.
+`place.timing_grad_balance_reset_on_restart` defaults to `0`, which preserves
+the current timing weight and cached balance state across inflation/GP restarts.
+Set it to `1` to reinitialize the timing balance weight after each restart.
 
 `place.timing_opt_coefficients` controls the coefficients used by GP sizing
 windows. The default fixes WNS/TNS/cap/slew at 500/5/1/1 with outer timing
@@ -427,7 +433,96 @@ For a fresh workspace, use
 `ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
 For an existing workspace, use
 `ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
-S50 retains RRR=3, zero padding, fixed 512×512 bins and final legalization.
+S50 retains RRR=3, zero padding and final legalization. Its placement bins
+start from the placement 256×256 preset and use the adaptive calculation,
+whose cap remains 512×512. The GR route grid follows that adaptive bin count
+with die-aspect-ratio adjustment.
+
+`diff_opt` is an optional independent step between placement and `diff_sizing`.
+New workspaces skip it by default and still run standalone `diff_sizing`.
+Enable it with one parameter in the project's `ecc.toml`:
+
+```toml
+[flow]
+skip_steps = ["lec"]  # Enable diff_opt; the default is ["lec", "diff_opt"].
+```
+
+`skip_steps` replaces the complete skip list; retain any other steps you want
+to skip. An empty list enables both synthesis LEC and `diff_opt`.
+Existing workspaces resume their saved ledgers; use a new workspace or
+`--overwrite` to apply a different policy.
+
+When enabled, it replaces the new-workspace `diff_buffering` entry and reads the preceding
+DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
+with three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
+BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,
+then selects the configured fraction of nets by global gradient benefit.
+The default joint configuration runs the ten S1+B1 cycles shown below,
+with weights 500/5/1/1.
+Each buffering round selects 0.1% of candidate-bearing nets. After native
+buffer insertion it rebuilds the topology,
+runs geometry-only legalization with zero padding, and saves DEF/Verilog and
+terminal hard STA. It performs no GP updates and executes the discrete sizing
+and buffering phases in tuple order.
+Each phase restores its own best objective, with outer timing weight 1.
+The PDK must contain
+all four masters; missing masters cause an explicit error.
+
+The flow can be selected with an ordered tuple list. The tuple action is `sz`
+for discrete sizing or `bf` for typed candidate buffering; `steps` is the
+number of discrete rounds and the four coefficients are WNS/TNS/slew/cap.
+
+```toml
+[params.place]
+diff_optimization_mode = "joint"
+diff_optimization_flows = [
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
+  ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
+]
+```
+
+This is the default configuration when `diff_opt` is enabled: ten S1+B1 cycles.
+The list runs once;
+repeated S1+B1 cycles are explicit entries. Each S phase performs one discrete
+sizing round and each B phase performs one buffering phase.
+When selecting sizing-only or buffering-only mode, replace the flow list with
+the corresponding actions; a JSON `null` flow list selects the mode's S50 or
+B10 shorthand instead.
+
+`diff_opt` uses placement parasitics exclusively; GGR/RRR, route
+grid, route-extracted SPEF and post-route RC are rejected as inputs. The old
+`diff_buffering_*` fields remain legacy aliases for buffering-only `diff_opt`.
+
+After removing `diff_opt` from `skip_steps`, run it alone with
+`ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`;
+use `--to diff_sizing` to continue through the separate standalone GR S50 step.
+Existing workspace ledgers retain the stored `diff_buffering` alias; new
+workspaces run `diff_opt` followed by `diff_sizing` when it is enabled.
+
+Placement sizing windows and `diff_opt` sizing phases also default to LUT
+actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
+`vt_speedup`. Their round counts, shared budgets and coefficients retain
+their own configuration. Set this parameter to `quad` or `down` explicitly
+to select another action family. Standalone `diff_sizing` uses its own phase
+chain, whose explicit action takes precedence.
 
 The number of continuous sizing steps in standalone S50 is controlled by
 `place.diff_sizing_continuous_steps`, which defaults to 0. It is the number of
@@ -436,10 +531,82 @@ start directly from the input masters with logits and `discrete_gradient_topk`;
 set it to 3 to run three continuous sizing steps before switching to discrete
 sizing.
 
+`place.timing_action_gradient_mode` selects the standalone sizing gradient:
+`lut_action` is the default and runs the four-action LUT backward, committing
+one legal size/VT neighbor per selected instance; `off` restores the legacy
+path. The action path currently requires
+`diff_sizing_continuous_steps=0`; it uses real-size coordinates and the S50
+stage iteration count as its discrete round budget. It also requires the
+active ECC-Tools extension to export `flat_lib_pin_names` in cap-table order;
+changing the source alone is insufficient, and the extension must be rebuilt
+and loaded for the active Python version. Placement sizing windows,
+`diff_opt` sizing and standalone `diff_sizing` all default to this gradient
+path.
+Because the action path is now the default, setting
+`diff_sizing_continuous_steps>0` requires explicitly setting
+`timing_action_gradient_mode=off`.
+
+Standalone `diff_sizing` RC selection is controlled by
+`place.diff_sizing_timing_rc_mode`, which defaults to `gr` and accepts
+`placement` or `gr`. `placement` uses placement parasitics, creates no GR
+session, and skips RRR/terminal GR STA; `gr` keeps the frozen GR snapshot plus
+RRR3 path. An explicit `place.timing_rc_mode` is also accepted as a
+compatibility input, with the dedicated parameter taking precedence.
+
+`place.diff_sizing_optimization_flows` organizes one `diff_sizing` step into
+an ordered chain of action phases. Each entry is:
+
+```text
+[action, rounds, [wns, tns, slew, cap], selection_percent]
+```
+
+`action` is `quad`, `up`, or `down`. `quad` chooses one of the four directions;
+`up` chooses between `size_up` and `vt_speedup`; `down` chooses between
+`size_down` and `vt_slowdown`. `selection_percent` is the per-round percentage
+of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
+means 0.1%). Each phase uses its own round budget and coefficients, and phases
+run in list order. The stage iteration is set to the sum of phase rounds.
+For standalone `diff_sizing` in `lut_action` mode, the default `null` expands
+to one `up` phase: 50 rounds with a shared 1% budget per round for
+`size_up`/`vt_speedup`. Its coefficients come from `diff_sizing_coefficients`
+(default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
+
+```toml
+[params.place]
+diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+```
+
+An explicit phase chain uses its own coefficients and budgets; configure
+`quad` explicitly to select among all four directions.
+`timing_action_gradient_mode=off` keeps the legacy path and does not accept
+an action phase chain.
+
+Custom chain example:
+
+```toml
+[params.place]
+diff_sizing_optimization_flows = [
+  ["up", 10, [500, 5, 1, 1], 1],
+  ["down", 1, [500, 5, 1, 1], 0.1],
+  ["quad", 10, [500, 5, 1, 1], 1],
+]
+```
+
+`place.timing_action_score_objective` selects what the local LUT action score
+differentiates. The default `loss` uses the weighted objective from
+`place.diff_sizing_coefficients`; with the default
+`timing_objective_lane=timing_slew_cap`, the WNS/TNS and cap/slew weights all
+enter the objective. Use `timing_only` to compare WNS/TNS alone. `tns` or `wns`
+differentiates only that
+single metric. The parameter affects action ranking only, not the terminal STA
+evaluation after commit.
+
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
-GP density-weight update. The default `1.0` disables growth;
-`1.01` increases the coefficients and `0.99` decays them. The factor must be
-positive and finite. Slew/cap and the outer norm weight retain their own settings.
+GP density-weight update. The default `1.01` increases the coefficients;
+`1.0` disables growth and `0.99` decays them. The factor must be
+positive and finite, and cumulative growth is capped at 1000 times the
+placement's starting WNS/TNS coefficients. Slew/cap and the outer norm weight
+retain their own settings.
 Inherit-mode windows read the resulting live coefficients; fixed-mode windows
 use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
 skips this schedule. For a fresh workspace, configure it with
@@ -448,17 +615,26 @@ skips this schedule. For a fresh workspace, configure it with
 existing workspace, use
 `ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`.
 
-`place.timing_aggregation_mode` selects AAT/RAT propagation aggregation:
-`smooth` (default) uses LSE, and `hard` uses max/min.
-`place.timing_aggregation_tau_ps` is its positive temperature, defaulting to
-2.0 ps; smaller values approach hard max/min, while larger values spread
-gradients more evenly. Endpoint WNS still uses hard min, and TNS still sums
-negative slacks. For example, set the following in `ecc.toml`:
+`place.timing_aggregation_mode` selects aggregation for AAT/RAT propagation and
+for endpoint rise/fall and timing-check candidates: `smooth` (default) uses LSE,
+and `hard` uses max/min. `place.timing_aggregation_tau_ps` is its positive
+temperature, defaulting to 2.0 ps; smaller values approach hard max/min, while
+larger values spread gradients more evenly. With `smooth`, endpoint WNS/TNS use
+the aggregated soft slack, then clamp endpoint slack at zero before summing TNS;
+`hard` preserves hard min/max semantics. For example, set the following in
+`ecc.toml`:
+
+`place.timing_metric_scope` controls which max timing checks enter the
+placement WNS/TNS metric. The default `setup_plus_recovery` includes ordinary
+setup and asynchronous recovery checks; `setup_only` is an explicit ablation
+that excludes recovery-only endpoints. Recovery checks remain exported by the
+STA backend in either mode.
 
 ```toml
 [params.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
+timing_metric_scope = "setup_plus_recovery"
 ```
 
 | Parameter | Default | Meaning |
@@ -467,10 +643,14 @@ timing_aggregation_tau_ps = 2.0
 | `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 8e-05 | Initial weight of the density term (starting point of auto-adjustment) |
-| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
-| `timing_grad_balance_target_ratio` | 0.2 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `inflation_density_weight_scale` | 0.001 | Scale on the Xplace-style `||grad wirelength||_1 / ||grad density||_1` restart ratio after inflation; the default keeps the restarted density force small, `1.0` uses the normalized ratio directly, and `0.1` reproduces the historical DreamPlace restart scale |
+| `inflation_filler_consumption_mode` | `filler_first` | How routability inflation consumes whitespace: `filler_first` shrinks filler before raising target density, `proportional` shrinks filler and other whitespace together, and `capacity_only` preserves filler until the placement-area limit |
+| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
+| `timing_grad_balance_reset_on_restart` | 0 `*place.timing_grad_balance_reset_on_restart` | Reinitialize the timing balance weight after inflation/GP restart; 1 reinitializes, 0 preserves the current weight |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |
 | `timing_aggregation_tau_ps` | 2.0 `*place.timing_aggregation_tau_ps` | Positive temperature in ps for `smooth` mode |
+| `timing_metric_scope` | `setup_plus_recovery` `*place.timing_metric_scope` | Max timing checks in placement WNS/TNS: `setup_only` or `setup_plus_recovery` |
 | `num_bins_x/y` | 256/256 | Number of density grid bins |
 | `global_place_stages[]` | see below | Multi-stage global placement table (multiple entries allowed) |
 | `global_place_stages[].iteration` | 3000 | Iteration limit in this stage; convergence can stop earlier |
@@ -494,13 +674,14 @@ timing_aggregation_tau_ps = 2.0
 | `route_num_bins_x/y` | 512/512 | Congestion evaluation grid |
 | `node_area_adjust_overflow` | 0.15 | Overflow threshold that triggers area adjustment |
 | `two_stage_density_scaler` | 1000 | Two-stage density scaling factor |
-| `max_num_area_adjust` | 3 | Maximum number of area-adjustment rounds |
+| `max_num_area_adjust` | 5 | Maximum number of area-adjustment rounds |
 | `adjust_gpugr_area_flag` | 1 | Use GGR congestion for area inflation |
 | `adjust_nctugr_area_flag` / `adjust_rudy_area_flag` / `adjust_pin_area_flag` | 0 / 0 / 0 | Legacy ECC/iRT EGR compatibility / RUDY / pin area adjustment |
 | `gpugr_backend` | `auto` | CUDA when both device and extension support it; otherwise parallel CPU `cpu_pr_mt`, using `num_threads` |
 | `gpugr_area_adjust_rrr_iters` | 0 | Pattern-routing-only inflation; CPU routing requires 0 |
 | `gpugr_area_adjust_congestion_mode` | `max_hv` | Aggregate horizontal and vertical overflow by maximum |
 | `l_shape_routability_flag` / `l_shape_update_interval` | 1 / 30 | Enable the L-shape objective / iterations between topology and direction refreshes |
+| `l_shape_weight_max_multiplier` | 10.0 `*place.l_shape_weight_max_multiplier` | Cap adaptive L-shape weight growth at this multiple of the first calibrated weight in each calibration epoch; 0 disables the relative cap |
 | `area_adjust_stop_ratio` / `route_area_adjust_stop_ratio` / `pin_area_adjust_stop_ratio` | 0.01 / 0.01 / 0.05 | Stop ratios for each kind of area adjustment |
 | `unit_horizontal_capacity` / `unit_vertical_capacity` / `unit_pin_capacity` | 1.5625 / 1.45 / 0.058 | Unit routing/pin capacities |
 | `max_route_opt_adjust_rate` / `route_opt_adjust_exponent` | 2.0 / 2.0 | Max multiplier / exponent for routing-area adjustment |
@@ -564,6 +745,7 @@ Timing optimization is a multi-stage subflow: first run setup Sizer with `worksp
 
 The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_place_flag=0` to protect the repaired hold timing.
 
+
 `config/sizer_ecc.json` is owned by ECC and is independent of the Sizer repository's command-line defaults. Hold-pass controls are grouped under `hold_stage` so future hold-stage controls can be added without widening the config root:
 
 | Field | Default | Meaning |
@@ -572,6 +754,7 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 | `hold_stage.rc_mode` | `global_routing` | Hold parasitic model: `global_routing` emits a complete per-layer/via `setRCFile`; `placement` is an explicit scalar-RC comparison mode. |
 | `hold_stage.global_routing_rc.corner` | `MIN_m40/Cbest` | Source corner label for the per-layer RC map. |
 | `hold_stage.global_routing_rc.layers` | CX55 MET1–MET5 map | Per-routing-layer resistance in ohm/um and capacitance in pF/um. Default capacitances are 0.5 times the CX55 Cbest source-table values. M6/M7 from the StarRC table are omitted because they are absent from the ECC CX55 LEF. |
+
 | `hold_stage.global_routing_rc.vias` | CX55 CT/VIA1–VIA4 map | Per-via/cut resistance in ohm for the active MET1–MET5 stack. CT uses the conservative 30 ohm value for the CT_NP/CT_PP pair. |
 | `hold_stage.placement_wire_rc` | CX55 `MIN_m40/Cbest` scalar values | Explicit placement-RC comparison mode, with resistance in ohm/um and capacitance in pF/um. Default capacitance is also 0.5 times the Cbest source-table value. |
 
@@ -582,11 +765,13 @@ The final inner DreamPlace legalization uses `legalize_flag=1` and `detailed_pla
 | `timing_optimization_sizer/script/hold.env_file` / `hold.cmd_file` | `MIN` Liberty entries in `sta_ecc.json` | Optional FF/MIN `-hold_only` pass; default hold mode uses propagated clocks and GR RC |
 | `timing_optimization_sizer/script/hold.rc_file` | `hold_stage.global_routing_rc` | Generated `set_layer_rc`/`set_layer_rc -via` file consumed through `-setRCFile` before GR RC initialization |
 | `config/sizer_ecc.json` | ECC template, optionally overridden by `timing_opt.*` | ECC-owned Sizer controls grouped under `hold_stage`; the selected RC mode and source are emitted in the hold scripts |
+
 | `data/to/sizer_setup.def.gz` / `sizer_setup.v.gz` | setup Sizer output | Snapshot consumed by the hold pass; legalization proceeds only after the hold pass writes its outputs |
 | `-min_route_layer` / `-max_route_layer` | `route.bottom_layer` / `route.top_layer` when set | Routing-layer limits passed directly to Sizer |
 | `data/to/sizer.def.gz` / `sizer.v.gz` | Sizer output | Staging artifacts consumed by the inner DreamPlace legalization; successful legalization is then saved as the Timing optimization step output |
 
 The FF hold pass uses only the `MIN` Liberty group from `sta_ecc.json` to repair hold after setup sizing. The default `global_routing` mode loads the complete per-layer/via RC map through `-setRCFile` before running GR in the configured routing-layer range; `placement` remains an explicit scalar-RC comparison mode. It is not final multi-corner signoff and is not equivalent to a `MIN/RCbest` SPEF evaluation. Final signoff still runs STA over the complete corner/SPEF combinations declared by `sta_ecc.json`.
+
 
 The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOMPILER_ECC_SIZER_ROOT` or by walking upward from the `Sizer` binary on `PATH`. `ecc doctor` requires both this runtime root and the Sizer executable. Sizer is required by the complete `rtl2gds` chain; for a fresh or `--overwrite` `rtl2gds` target, `ecc run` also checks it during environment preflight and returns `env_not_ready` before creating the workspace if it is missing. Existing workspaces and `--workspace` reruns skip this preflight and can still fail while executing Timing optimization.
 
@@ -663,7 +848,7 @@ Both steps use the engine-neutral result contract `output/<design>_<step>_result
 
 | Item | Content |
 |---|---|
-| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec"]`). |
+| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`). |
 | `postRouteLec` input | The synthesis-mapped netlist is the golden side and the `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
 | Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
 
@@ -820,6 +1005,7 @@ ecc param set timing_opt.hold_rc_mode global_routing
 ```
 
 `timing_opt.hold_margin` maps to `sizer_ecc.json`'s `hold_stage.hold_margin`, is in ns, defaults to `0.04`, and is emitted as `-hold_margin VALUE` in the generated `hold.cmd_file`. `timing_opt.hold_rc_mode` selects the `hold_stage` RC mode; `global_routing` also generates `hold.rc_file` and emits `-setRCFile`.
+
 
 ### 15.6 cts and routing
 
