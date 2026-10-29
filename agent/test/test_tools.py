@@ -189,7 +189,13 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
 def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path, workers):
     calls = []
     config_path = tmp_path / "sta.json"
-    _write_json(config_path, {"max_parallel_corners": workers})
+    _write_json(
+        config_path,
+        {
+            "max_parallel_corners": workers,
+            "signoff": [{"MAX": ["Cworst", "RCworst"]}, {"MIN": ["Cbest", "RCbest"]}],
+        },
+    )
     workspace = _ns(
         directory=tmp_path / ".agent" / "candidates" / "one",
         logger=None,
@@ -201,6 +207,7 @@ def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path,
         run_step=lambda **_: calls.append("serial") or True,
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(8)), raising=False)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_: None)
     monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_: None)
