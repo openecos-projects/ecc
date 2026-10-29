@@ -96,7 +96,9 @@ jobs:
 
       - name: List revision.toml
         id: resolve
-        run: nix run .#list-versions -- --format github >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
 
   test:
     name: Test
@@ -363,20 +365,19 @@ jobs:
           name: ecc-sizer
           path: ecc-sizer.tar.gz
 
-  stage-e2e-deps:
-    name: Stage E2E dependency (${{ matrix.dependency }})
-    needs: [build-pyinstaller, pdk, sizer, list-versions]
+  stage-e2e-tools:
+    name: Stage E2E tool (${{ matrix.dependency }})
+    needs: list-versions
     runs-on: ecc-nightly-runner-0
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        dependency: [pyinstaller, pdk, sizer, oss-cad-suite, kepler-formal]
+        dependency: [oss-cad-suite, kepler-formal]
     outputs:
       root: ${{ steps.stage.outputs.root }}
     steps:
       - name: Restore cached dependency
-        if: matrix.dependency != 'pyinstaller'
         id: cache
         uses: ./.github/actions/stage-cached-tool
         with:
@@ -392,27 +393,6 @@ jobs:
       - name: Checkout
         if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
         uses: actions/checkout@v4
-
-      - name: Download PyInstaller artifact
-        if: matrix.dependency == 'pyinstaller'
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-cli-linux-x86_64
-          path: ${{ runner.temp }}/e2e-stage-input
-
-      - name: Download PDK artifact
-        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
-        uses: actions/download-artifact@v4
-        with:
-          name: icsprout55-pdk
-          path: ${{ runner.temp }}/e2e-stage-input
-
-      - name: Download Sizer artifact
-        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-sizer
-          path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Setup OSS CAD Suite
         if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
@@ -443,41 +423,6 @@ jobs:
           root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
           github-token: ${{ github.token }}
 
-      - name: Stage PyInstaller on shared storage
-        if: matrix.dependency == 'pyinstaller'
-        run: |
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pyinstaller"
-          rm -rf -- "$stage_root"
-          mkdir -p "$stage_root"
-          cp "$RUNNER_TEMP/e2e-stage-input/ecc.tar" "$stage_root/ecc.tar"
-          test -s "$stage_root/ecc.tar"
-
-      - name: Stage PDK on shared storage
-        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
-        uses: ./.github/actions/stage-tool
-        with:
-          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
-          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
-          extract: "true"
-          extract-subdir: icsprout55-pdk
-          root-marker: icsprout55-pdk/techfile/icsprout55.layermap
-          metadata-path: icsprout55-pdk/ci-metadata
-          metadata: |
-            revision=${{ needs.pdk.outputs.revision }}
-            release=${{ needs.pdk.outputs.release }}
-
-      - name: Stage Sizer on shared storage
-        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
-        uses: ./.github/actions/stage-tool
-        with:
-          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/sizer
-          archive-path: ${{ runner.temp }}/e2e-stage-input/ecc-sizer.tar.gz
-          extract: "true"
-          root-marker: src/sizer_os.tcl
-          metadata: |
-            revision=${{ needs.list-versions.outputs.sizer_git_commit }}
-            run_id=${{ needs.sizer.outputs.run-id }}
-
       - name: Stage OSS CAD Suite on shared storage
         if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
         uses: ./.github/actions/stage-tool
@@ -507,15 +452,98 @@ jobs:
         id: stage
         run: echo "root=/mnt/arc-stage/runs/${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
+  stage-e2e-artifacts:
+    name: Stage E2E artifact (${{ matrix.dependency }})
+    needs: [list-versions, pdk, sizer]
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dependency: [pdk, sizer]
+    steps:
+      - name: Restore cached dependency
+        id: cache
+        uses: ./.github/actions/stage-cached-tool
+        with:
+          dependency: ${{ matrix.dependency }}
+          stage-root: /mnt/arc-stage/runs/${{ github.run_id }}
+          oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
+          kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
+          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
+          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+
+      - name: Download PDK artifact
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Download Sizer artifact
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-sizer
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Stage PDK on shared storage
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
+          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
+          extract: "true"
+          extract-subdir: icsprout55-pdk
+          root-marker: icsprout55-pdk/techfile/icsprout55.layermap
+          metadata-path: icsprout55-pdk/ci-metadata
+          metadata: |
+            revision=${{ needs.pdk.outputs.revision }}
+            release=${{ needs.pdk.outputs.release }}
+
+      - name: Stage Sizer on shared storage
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/sizer
+          archive-path: ${{ runner.temp }}/e2e-stage-input/ecc-sizer.tar.gz
+          extract: "true"
+          root-marker: src/sizer_os.tcl
+          metadata: |
+            revision=${{ needs.list-versions.outputs.sizer_git_commit }}
+            run_id=${{ needs.sizer.outputs.run-id }}
+
+  stage-pyinstaller:
+    name: Stage PyInstaller artifact
+    needs: build-pyinstaller
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 10
+    steps:
+      - name: Download PyInstaller artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Stage PyInstaller on shared storage
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pyinstaller"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          cp "$RUNNER_TEMP/e2e-stage-input/ecc.tar" "$stage_root/ecc.tar"
+          test -s "$stage_root/ecc.tar"
+
   verify-e2e-deps:
     name: Smoke test staged E2E dependencies
-    needs: stage-e2e-deps
+    needs: [stage-e2e-tools, stage-e2e-artifacts, stage-pyinstaller]
     runs-on: ecc-nightly-runner-0
     timeout-minutes: 10
     outputs:
-      root: ${{ needs.stage-e2e-deps.outputs.root }}
+      root: ${{ needs.stage-e2e-tools.outputs.root }}
     env:
-      E2E_STAGE_ROOT: ${{ needs.stage-e2e-deps.outputs.root }}
+      E2E_STAGE_ROOT: ${{ needs.stage-e2e-tools.outputs.root }}
     steps:
       - name: Smoke test and record dependency versions
         shell: bash
