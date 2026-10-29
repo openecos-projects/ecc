@@ -584,7 +584,7 @@ class ECCToolsModule:
         """
         generate feature summary
         """
-        self.ecc.feature_summary(json_path)
+        return self.ecc.feature_summary(json_path)
 
     def feature_step(self, step: str, json_path: PathArg):
         """

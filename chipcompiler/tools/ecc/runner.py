@@ -1123,6 +1123,11 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
 
+    # Use the current iDB's instantiated PAD cells, not loaded IO libraries or stale features.
+    if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
+        raise RuntimeError("Cannot export current iDB IO-cell count for signoff SDC")
+    has_io_cells = json_read(step.feature.db or "")["Instances"]["iopads"]["num"] > 0
+
     for signoff_item in signoff_items:
         corner_name = signoff_item["corner"]
         temperature = signoff_item["temperature"]
@@ -1181,6 +1186,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             step.data.steps[StepEnum.STA.value] / corner / "signoff.sdc",
             corner=corner_name,
             rc_para=rcx_corner_name,
+            has_io_cells=has_io_cells,
         )
 
         ecc_module.run_timing(

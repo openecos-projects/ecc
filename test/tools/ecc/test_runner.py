@@ -906,8 +906,9 @@ def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("generated_sdc", [False, True])
+@pytest.mark.parametrize("io_cell_count", [0, 1])
 def test_run_sta_uses_matched_report_and_feature_corner_directories(
-    tmp_path, monkeypatch, generated_sdc
+    tmp_path, monkeypatch, generated_sdc, io_cell_count
 ):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
@@ -958,9 +959,22 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
         name=StepEnum.STA.value,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
-        feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
+        feature=EccFeature(
+            dir=tmp_path / "sta_ecc" / "feature",
+            db=tmp_path / "sta_ecc" / "feature" / "sta.db.json",
+        ),
     )
     module = FakeSynthesisStaModule()
+
+    def export_summary(json_path):
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": io_cell_count}}}))
+        return True
+
+    assert step.feature.db is not None
+    step.feature.db.parent.mkdir(parents=True)
+    # The classification must come from a fresh export, not this previous run's data.
+    step.feature.db.write_text(json.dumps({"Instances": {"iopads": {"num": 1 - io_cell_count}}}))
+    monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
     if generated_sdc:
         create_default_sdc(workspace)
     original_sdc = sdc.read_bytes()
@@ -1024,8 +1038,38 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
                 f'set corner "{corner}"',
                 f'set rc_para "{rc}"',
             ]
+            + (
+                []
+                if io_cell_count
+                else [
+                    'set virtual_clk_name "VCLK_clk"',
+                    "set data_inputs [remove_from_collection "
+                    "[get_ports -quiet -filter {direction == in} *] [get_ports $clk_port_name]]",
+                    "set data_outputs [get_ports -quiet -filter {direction == out} *]",
+                ]
+            )
             for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
         ]
+
+
+def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypatch):
+    sdc = tmp_path / "gcd.sdc"
+    sdc.write_text("# ECC-generated SDC file\n")
+    db_feature = tmp_path / "sta.db.json"
+    db_feature.write_text(json.dumps({"Instances": {"iopads": {"num": 10}}}))
+    workspace = Workspace(directory=tmp_path, pdk=PDK(sdc=sdc))
+    step = EccStep(name=StepEnum.STA.value, feature=EccFeature(db=db_feature))
+    module = Mock()
+    module.feature_sammry.return_value = False
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
+    monkeypatch.setattr(ecc_runner, "collect_sta_signoff_items", lambda _: [{}])
+    monkeypatch.setattr(ecc_runner, "_workspace_sta_config_path", lambda _: "sta.json")
+
+    with pytest.raises(RuntimeError, match="Cannot export current iDB IO-cell count"):
+        ecc_runner.run_sta(workspace, step)
+
+    assert module.run_timing.call_args_list == []
 
 
 def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
