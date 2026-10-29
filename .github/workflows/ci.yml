@@ -308,6 +308,84 @@ jobs:
           name: ecc-sizer
           path: ecc-sizer.tar.gz
 
+  stage-e2e-deps:
+    name: Stage E2E dependencies
+    needs: [build-pyinstaller, pdk, sizer]
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 30
+    outputs:
+      root: ${{ steps.stage.outputs.root }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download PyInstaller artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input/pyinstaller
+
+      - name: Download PDK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: ${{ runner.temp }}/e2e-stage-input/pdk
+
+      - name: Download Sizer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-sizer
+          path: ${{ runner.temp }}/e2e-stage-input/sizer
+
+      - name: Setup OSS CAD Suite
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          version: ${{ env.OSS_CAD_SUITE_VERSION }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup kepler-formal
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: openecos-projects/kepler-formal
+          workflow: package.yml
+          artifact: kepler-formal-linux-x64
+          archive: kepler-formal-linux-x64.tar.gz
+          root-marker: bin/kepler-formal
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          # TODO: drop once the kepler-formal package workflow runs on main.
+          fallback-branch: emin/add-ci-pkgs
+          github-token: ${{ github.token }}
+
+      - name: Stage dependencies on shared storage
+        id: stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p \
+            "$stage_root/pyinstaller" \
+            "$stage_root/pdk/icsprout55-pdk" \
+            "$stage_root/sizer" \
+            "$stage_root/oss-cad-suite" \
+            "$stage_root/kepler-formal"
+
+          cp "$RUNNER_TEMP/e2e-stage-input/pyinstaller/ecc.tar" "$stage_root/pyinstaller/ecc.tar"
+          tar -xzf "$RUNNER_TEMP/e2e-stage-input/pdk/icsprout55-pdk.tar.gz" \
+            -C "$stage_root/pdk/icsprout55-pdk"
+          tar -xzf "$RUNNER_TEMP/e2e-stage-input/sizer/ecc-sizer.tar.gz" \
+            -C "$stage_root/sizer"
+          cp -a "$RUNNER_TEMP/oss-cad-suite/." "$stage_root/oss-cad-suite/"
+          cp -a "$CHIPCOMPILER_KEPLER_FORMAL_ROOT/." "$stage_root/kepler-formal/"
+
+          test -s "$stage_root/pyinstaller/ecc.tar"
+          test -s "$stage_root/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
+          test -x "$stage_root/sizer/bin/Sizer"
+          test -x "$stage_root/sizer/libexec/Sizer"
+          test -f "$stage_root/sizer/src/sizer_os.tcl"
+          test -x "$stage_root/oss-cad-suite/bin/yosys"
+          test -x "$stage_root/kepler-formal/bin/kepler-formal"
+          echo "root=$stage_root" >> "$GITHUB_OUTPUT"
+
   e2e-designs:
     name: List e2e designs
     runs-on: ecc-nightly-runner-0
@@ -335,7 +413,7 @@ jobs:
 
   e2e-packaged-flow:
     name: E2E Packaged Flow (${{ matrix.design }})
-    needs: [build-pyinstaller, e2e-designs, pdk, sizer]
+    needs: [stage-e2e-deps, e2e-designs]
     strategy:
       fail-fast: false
       matrix:
@@ -343,6 +421,8 @@ jobs:
     # Bare self-hosted runner (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
     runs-on: ecc-nightly-runner-0
+    env:
+      E2E_STAGE_ROOT: ${{ needs.stage-e2e-deps.outputs.root }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -356,47 +436,27 @@ jobs:
           repository: openecos-projects/ecc-ci-designs
           path: designs
 
-      - name: Download PyInstaller artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-cli-linux-x86_64
-
-      - name: Extract PyInstaller bundle
+      - name: Extract PyInstaller artifact from shared storage
         run: |
           mkdir -p dist/ecc-bundle
-          tar -xf ecc.tar -C dist/ecc-bundle
+          tar -xf "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" -C dist/ecc-bundle
           test -x dist/ecc-bundle/ecc
 
-      - name: Setup PDK
-        uses: actions/download-artifact@v4
-        with:
-          name: icsprout55-pdk
-          path: ../pdk
-
-      - name: Extract PDK
+      - name: Setup PDK from shared storage
         run: |
-          mkdir -p ../pdk/icsprout55-pdk
-          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
+          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
-      - name: Setup OSS CAD Suite
-        uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          version: ${{ env.OSS_CAD_SUITE_VERSION }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup OSS CAD Suite from shared storage
+        run: |
+          test -x "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys"
+          echo "$E2E_STAGE_ROOT/oss-cad-suite/bin" >> "$GITHUB_PATH"
 
-      - name: Setup Sizer
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-sizer
-
-      - name: Extract Sizer
+      - name: Setup Sizer from shared storage
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/ecc-sizer"
-          tar -xzf ecc-sizer.tar.gz -C "$RUNNER_TEMP/ecc-sizer"
-          echo "$RUNNER_TEMP/ecc-sizer/bin" >> "$GITHUB_PATH"
-          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$RUNNER_TEMP/ecc-sizer" >> "$GITHUB_ENV"
+          echo "$E2E_STAGE_ROOT/sizer/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$E2E_STAGE_ROOT/sizer" >> "$GITHUB_ENV"
 
       - name: Verify Sizer
         shell: bash
@@ -406,18 +466,15 @@ jobs:
           test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
           test -x "${CHIPCOMPILER_ECC_SIZER_ROOT}/libexec/Sizer"
 
-      - name: Setup kepler-formal
-        uses: ./.github/actions/install-ci-tool
-        with:
-          repo: openecos-projects/kepler-formal
-          workflow: package.yml
-          artifact: kepler-formal-linux-x64
-          archive: kepler-formal-linux-x64.tar.gz
-          root-marker: bin/kepler-formal
-          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
-          # TODO: drop once the kepler-formal package workflow runs on main.
-          fallback-branch: emin/add-ci-pkgs
-          github-token: ${{ github.token }}
+      - name: Setup kepler-formal from shared storage
+        run: |
+          echo "$E2E_STAGE_ROOT/kepler-formal/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_KEPLER_FORMAL_ROOT=$E2E_STAGE_ROOT/kepler-formal" >> "$GITHUB_ENV"
+
+      - name: Verify kepler-formal
+        run: |
+          command -v kepler-formal
+          "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v19
