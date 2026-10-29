@@ -45,6 +45,7 @@ permissions:
 env:
   # Known-good synthesis toolchain: Yosys 0.70+16 (3bb533450).
   OSS_CAD_SUITE_VERSION: "2026-10-14"
+  SIZER_REVISION: 05e19e75a7172c14df81a06e3375820c5a696cd2
 
 jobs:
   check-version:
@@ -214,17 +215,26 @@ jobs:
   pdk:
     name: Fetch PDK
     runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.checkout.outputs.revision }}
+      release: ${{ steps.unpack.outputs.release }}
     steps:
       - name: Checkout PDK
-        run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
+        id: checkout
+        run: |
+          git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
+          echo "revision=$(git -C pdk rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Unpack PDK
+        id: unpack
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd pdk
+          release="$(gh release view --repo openecos-projects/icsprout55-pdk --json tagName --jq .tagName)"
           gh release download --repo openecos-projects/icsprout55-pdk --pattern '*.tar.bz2'
           make unzip
+          echo "release=$release" >> "$GITHUB_OUTPUT"
 
       - name: Package PDK
         run: tar -czf icsprout55-pdk.tar.gz -C pdk .
@@ -238,12 +248,14 @@ jobs:
   sizer:
     name: Fetch Sizer
     runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.download.outputs.run-id }}
     steps:
       - name: Download ecc-sizer CI artifact
+        id: download
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SIZER_REVISION: 05e19e75a7172c14df81a06e3375820c5a696cd2
         run: |
           set -euo pipefail
 
@@ -270,6 +282,7 @@ jobs:
             echo "::error::No successful ecc-sizer CI artifact found for ${SIZER_REVISION}"
             exit 1
           fi
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
 
           install_root="${RUNNER_TEMP}/ecc-sizer-${run_id}"
           mkdir -p "$install_root"
@@ -309,41 +322,52 @@ jobs:
           path: ecc-sizer.tar.gz
 
   stage-e2e-deps:
-    name: Stage E2E dependencies
+    name: Stage E2E dependency (${{ matrix.dependency }})
     needs: [build-pyinstaller, pdk, sizer]
     runs-on: ecc-nightly-runner-0
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dependency: [pyinstaller, pdk, sizer, oss-cad-suite, kepler-formal]
     outputs:
       root: ${{ steps.stage.outputs.root }}
     steps:
       - name: Checkout
+        if: matrix.dependency == 'kepler-formal'
         uses: actions/checkout@v4
 
       - name: Download PyInstaller artifact
+        if: matrix.dependency == 'pyinstaller'
         uses: actions/download-artifact@v4
         with:
           name: ecc-cli-linux-x86_64
-          path: ${{ runner.temp }}/e2e-stage-input/pyinstaller
+          path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download PDK artifact
+        if: matrix.dependency == 'pdk'
         uses: actions/download-artifact@v4
         with:
           name: icsprout55-pdk
-          path: ${{ runner.temp }}/e2e-stage-input/pdk
+          path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download Sizer artifact
+        if: matrix.dependency == 'sizer'
         uses: actions/download-artifact@v4
         with:
           name: ecc-sizer
-          path: ${{ runner.temp }}/e2e-stage-input/sizer
+          path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Setup OSS CAD Suite
+        if: matrix.dependency == 'oss-cad-suite'
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           version: ${{ env.OSS_CAD_SUITE_VERSION }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup kepler-formal
+        if: matrix.dependency == 'kepler-formal'
+        id: install
         uses: ./.github/actions/install-ci-tool
         with:
           repo: openecos-projects/kepler-formal
@@ -356,35 +380,133 @@ jobs:
           fallback-branch: emin/add-ci-pkgs
           github-token: ${{ github.token }}
 
-      - name: Stage dependencies on shared storage
+      - name: Stage PyInstaller on shared storage
+        if: matrix.dependency == 'pyinstaller'
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pyinstaller"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          cp "$RUNNER_TEMP/e2e-stage-input/ecc.tar" "$stage_root/ecc.tar"
+          test -s "$stage_root/ecc.tar"
+
+      - name: Stage PDK on shared storage
+        if: matrix.dependency == 'pdk'
+        env:
+          PDK_REVISION: ${{ needs.pdk.outputs.revision }}
+          PDK_RELEASE: ${{ needs.pdk.outputs.release }}
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pdk/icsprout55-pdk"
+          rm -rf -- "${stage_root%/icsprout55-pdk}"
+          mkdir -p "$stage_root"
+          tar -xzf "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" -C "$stage_root"
+          cp "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" \
+            "${stage_root%/icsprout55-pdk}/icsprout55-pdk.tar.gz"
+          printf 'revision=%s\nrelease=%s\n' "$PDK_REVISION" "$PDK_RELEASE" > "$stage_root/ci-metadata"
+          test -s "$stage_root/techfile/icsprout55.layermap"
+
+      - name: Stage Sizer on shared storage
+        if: matrix.dependency == 'sizer'
+        env:
+          SIZER_RUN_ID: ${{ needs.sizer.outputs.run-id }}
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/sizer"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          tar -xzf "$RUNNER_TEMP/e2e-stage-input/ecc-sizer.tar.gz" -C "$stage_root"
+          cp "$RUNNER_TEMP/e2e-stage-input/ecc-sizer.tar.gz" "$stage_root/ecc-sizer.tar.gz"
+          printf 'revision=%s\nrun_id=%s\n' "$SIZER_REVISION" "$SIZER_RUN_ID" > "$stage_root/ci-metadata"
+          test -x "$stage_root/bin/Sizer"
+          test -x "$stage_root/libexec/Sizer"
+          test -f "$stage_root/src/sizer_os.tcl"
+
+      - name: Stage OSS CAD Suite on shared storage
+        if: matrix.dependency == 'oss-cad-suite'
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/oss-cad-suite"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          cp -a "$RUNNER_TEMP/oss-cad-suite/." "$stage_root/"
+          cp "$RUNNER_TEMP/oss-cad-suite.tgz" "$stage_root/oss-cad-suite.tgz"
+          printf 'version=%s\n' "$OSS_CAD_SUITE_VERSION" > "$stage_root/ci-metadata"
+          test -x "$stage_root/bin/yosys"
+
+      - name: Stage kepler-formal on shared storage
+        if: matrix.dependency == 'kepler-formal'
+        env:
+          KEPLER_RUN_ID: ${{ steps.install.outputs.run-id }}
+          KEPLER_HEAD_SHA: ${{ steps.install.outputs.head-sha }}
+          KEPLER_ARCHIVE_PATH: ${{ steps.install.outputs.archive-path }}
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/kepler-formal"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          cp -a "$CHIPCOMPILER_KEPLER_FORMAL_ROOT/." "$stage_root/"
+          cp "$KEPLER_ARCHIVE_PATH" "$stage_root/kepler-formal-linux-x64.tar.gz"
+          printf 'head_sha=%s\nrun_id=%s\n' "$KEPLER_HEAD_SHA" "$KEPLER_RUN_ID" > "$stage_root/ci-metadata"
+          test -x "$stage_root/bin/kepler-formal"
+
+      - name: Record shared stage root
         id: stage
+        run: echo "root=/mnt/arc-stage/runs/${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+  verify-e2e-deps:
+    name: Smoke test staged E2E dependencies
+    needs: stage-e2e-deps
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 10
+    outputs:
+      root: ${{ needs.stage-e2e-deps.outputs.root }}
+    env:
+      E2E_STAGE_ROOT: ${{ needs.stage-e2e-deps.outputs.root }}
+    steps:
+      - name: Smoke test and record dependency versions
         shell: bash
         run: |
           set -euo pipefail
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          mkdir -p \
-            "$stage_root/pyinstaller" \
-            "$stage_root/pdk/icsprout55-pdk" \
-            "$stage_root/sizer" \
-            "$stage_root/oss-cad-suite" \
-            "$stage_root/kepler-formal"
+          mkdir -p "$RUNNER_TEMP/ecc-smoke"
+          tar -xf "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" -C "$RUNNER_TEMP/ecc-smoke"
+          test -x "$RUNNER_TEMP/ecc-smoke/ecc"
+          "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys" -p "plugin -i slang" >/dev/null
+          test -x "$E2E_STAGE_ROOT/sizer/bin/Sizer"
+          test -x "$E2E_STAGE_ROOT/sizer/libexec/Sizer"
+          test -f "$E2E_STAGE_ROOT/sizer/src/sizer_os.tcl"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
+          test -s "$E2E_STAGE_ROOT/pyinstaller/ecc.tar"
+          test -s "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
+          test -s "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
+          test -s "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
 
-          cp "$RUNNER_TEMP/e2e-stage-input/pyinstaller/ecc.tar" "$stage_root/pyinstaller/ecc.tar"
-          tar -xzf "$RUNNER_TEMP/e2e-stage-input/pdk/icsprout55-pdk.tar.gz" \
-            -C "$stage_root/pdk/icsprout55-pdk"
-          tar -xzf "$RUNNER_TEMP/e2e-stage-input/sizer/ecc-sizer.tar.gz" \
-            -C "$stage_root/sizer"
-          cp -a "$RUNNER_TEMP/oss-cad-suite/." "$stage_root/oss-cad-suite/"
-          cp -a "$CHIPCOMPILER_KEPLER_FORMAL_ROOT/." "$stage_root/kepler-formal/"
+          print_sha256() {
+            local archive="$1"
+            local checksum
+            checksum="$(sha256sum "$archive")"
+            printf 'archive=%s\nsha256=%s\n' "${archive#"$E2E_STAGE_ROOT"/}" "${checksum%% *}"
+          }
 
-          test -s "$stage_root/pyinstaller/ecc.tar"
-          test -s "$stage_root/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
-          test -x "$stage_root/sizer/bin/Sizer"
-          test -x "$stage_root/sizer/libexec/Sizer"
-          test -f "$stage_root/sizer/src/sizer_os.tcl"
-          test -x "$stage_root/oss-cad-suite/bin/yosys"
-          test -x "$stage_root/kepler-formal/bin/kepler-formal"
-          echo "root=$stage_root" >> "$GITHUB_OUTPUT"
+          # Summary code fences are literal Markdown, not shell expressions.
+          # shellcheck disable=SC2016
+          {
+            printf '## Staged E2E dependency versions\n\n'
+            printf '### PyInstaller\n\n```text\n'
+            "$RUNNER_TEMP/ecc-smoke/ecc" version --json
+            print_sha256 "$E2E_STAGE_ROOT/pyinstaller/ecc.tar"
+            printf '```\n\n### OSS CAD Suite\n\n```text\n'
+            grep '^version=' "$E2E_STAGE_ROOT/oss-cad-suite/ci-metadata"
+            "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys" -V
+            print_sha256 "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
+            printf '```\n\n### Sizer\n\n```text\n'
+            grep -E '^(revision|run_id)=' "$E2E_STAGE_ROOT/sizer/ci-metadata"
+            print_sha256 "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
+            printf '```\n\n### kepler-formal\n\n```text\n'
+            grep -E '^(head_sha|run_id)=' "$E2E_STAGE_ROOT/kepler-formal/ci-metadata"
+            "$E2E_STAGE_ROOT/kepler-formal/bin/kepler-formal" --version
+            print_sha256 "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
+            printf '```\n\n### PDK\n\n```text\n'
+            grep -E '^(revision|release)=' "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata"
+            print_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
+            printf '```\n'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   e2e-designs:
     name: List e2e designs
@@ -413,7 +535,7 @@ jobs:
 
   e2e-packaged-flow:
     name: E2E Packaged Flow (${{ matrix.design }})
-    needs: [stage-e2e-deps, e2e-designs]
+    needs: [verify-e2e-deps, e2e-designs]
     strategy:
       fail-fast: false
       matrix:
@@ -422,7 +544,7 @@ jobs:
     # manylinux-built bundle runs on a current distro.
     runs-on: ecc-nightly-runner-0
     env:
-      E2E_STAGE_ROOT: ${{ needs.stage-e2e-deps.outputs.root }}
+      E2E_STAGE_ROOT: ${{ needs.verify-e2e-deps.outputs.root }}
     timeout-minutes: 60
     steps:
       - name: Checkout

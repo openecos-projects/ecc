@@ -32,10 +32,22 @@ inputs:
     description: Token used to query and download the source repository's artifacts.
     required: true
 
+outputs:
+  run-id:
+    description: Source workflow run used for the downloaded artifact.
+    value: ${{ steps.install.outputs.run-id }}
+  head-sha:
+    description: Source Git commit associated with the selected workflow run.
+    value: ${{ steps.install.outputs.head-sha }}
+  archive-path:
+    description: Local path to the downloaded tool archive.
+    value: ${{ steps.install.outputs.archive-path }}
+
 runs:
   using: composite
   steps:
     - name: Download and extract tool
+      id: install
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
@@ -56,6 +68,13 @@ runs:
           echo "::error::No successful ${{ inputs.workflow }} run found in ${{ inputs.repo }}"
           exit 1
         fi
+        head_sha="$(gh api "repos/${{ inputs.repo }}/actions/runs/${run_id}" --jq '.head_sha')"
+        if [ -z "$head_sha" ]; then
+          echo "::error::Could not resolve the source commit for run ${run_id}"
+          exit 1
+        fi
+        echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+        echo "head-sha=$head_sha" >> "$GITHUB_OUTPUT"
 
         install_root="${RUNNER_TEMP}/${{ inputs.artifact }}"
         mkdir -p "$install_root"
@@ -70,6 +89,7 @@ runs:
           echo "::error::${{ inputs.archive }} was not in the downloaded artifact"
           exit 1
         fi
+        echo "archive-path=$archive" >> "$GITHUB_OUTPUT"
         tar -xf "$archive" -C "$install_root"
 
         marker="$(find "$install_root" -type f -path '*/${{ inputs.root-marker }}' -print -quit)"
