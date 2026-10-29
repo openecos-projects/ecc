@@ -359,10 +359,21 @@ def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_sou
 def test_bounded_derive_run_preserves_range_with_explicit_project_preset(
     completed_source, corrupt_ledger, capsys, plain_records
 ):
-    project, _source, _steps = completed_source
+    project, source, _steps = completed_source
+    pdk_root = load_workspace(source).pdk.root
+    assert pdk_root is not None
     assert (
         cli_main.run(
-            ["project", "apply", "--project", str(project), "--set", "flow.preset=rtl2gds"]
+            [
+                "project",
+                "apply",
+                "--project",
+                str(project),
+                "--set",
+                "flow.preset=rtl2gds",
+                "--set",
+                f"pdk.root={pdk_root}",
+            ]
         )
         == 0
     )
