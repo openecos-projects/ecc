@@ -29,6 +29,7 @@ on:
       - '.github/actions/**'
       - '.github/revision.toml'
       - '.github/scripts/**'
+      - 'deploy/arc-cache/**'
       - 'nix/**'
   # Nightly on main: same pipeline, e2e matrix additionally covers the big
   # designs (see e2e-designs).
@@ -374,8 +375,22 @@ jobs:
     outputs:
       root: ${{ steps.stage.outputs.root }}
     steps:
+      - name: Restore cached dependency
+        if: matrix.dependency != 'pyinstaller'
+        id: cache
+        uses: ./.github/actions/stage-cached-tool
+        with:
+          dependency: ${{ matrix.dependency }}
+          stage-root: /mnt/arc-stage/runs/${{ github.run_id }}
+          oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
+          kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
+          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
+          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+
       - name: Checkout
-        if: matrix.dependency == 'kepler-formal'
+        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
         uses: actions/checkout@v4
 
       - name: Download PyInstaller artifact
@@ -386,35 +401,35 @@ jobs:
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download PDK artifact
-        if: matrix.dependency == 'pdk'
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
         uses: actions/download-artifact@v4
         with:
           name: icsprout55-pdk
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download Sizer artifact
-        if: matrix.dependency == 'sizer'
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
         uses: actions/download-artifact@v4
         with:
           name: ecc-sizer
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Setup OSS CAD Suite
-        if: matrix.dependency == 'oss-cad-suite'
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
         uses: YosysHQ/setup-oss-cad-suite@v4
         with:
           version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify OSS CAD Suite archive
-        if: matrix.dependency == 'oss-cad-suite'
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
         run: |
           printf '%s  %s\n' \
             '${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}' \
             "$RUNNER_TEMP/oss-cad-suite.tgz" | sha256sum -c -
 
       - name: Setup kepler-formal
-        if: matrix.dependency == 'kepler-formal'
+        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
         id: install
         uses: ./.github/actions/install-ci-tool
         with:
@@ -438,64 +453,55 @@ jobs:
           test -s "$stage_root/ecc.tar"
 
       - name: Stage PDK on shared storage
-        if: matrix.dependency == 'pdk'
-        env:
-          PDK_REVISION: ${{ needs.pdk.outputs.revision }}
-          PDK_RELEASE: ${{ needs.pdk.outputs.release }}
-        run: |
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pdk/icsprout55-pdk"
-          rm -rf -- "${stage_root%/icsprout55-pdk}"
-          mkdir -p "$stage_root"
-          tar -xzf "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" -C "$stage_root"
-          cp "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" \
-            "${stage_root%/icsprout55-pdk}/icsprout55-pdk.tar.gz"
-          printf 'revision=%s\nrelease=%s\n' "$PDK_REVISION" "$PDK_RELEASE" > "$stage_root/ci-metadata"
-          test -s "$stage_root/techfile/icsprout55.layermap"
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
+          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
+          extract: "true"
+          extract-subdir: icsprout55-pdk
+          root-marker: icsprout55-pdk/techfile/icsprout55.layermap
+          metadata-path: icsprout55-pdk/ci-metadata
+          metadata: |
+            revision=${{ needs.pdk.outputs.revision }}
+            release=${{ needs.pdk.outputs.release }}
 
       - name: Stage Sizer on shared storage
-        if: matrix.dependency == 'sizer'
-        env:
-          SIZER_RUN_ID: ${{ needs.sizer.outputs.run-id }}
-          SIZER_REVISION: ${{ needs.list-versions.outputs.sizer_git_commit }}
-        run: |
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/sizer"
-          rm -rf -- "$stage_root"
-          mkdir -p "$stage_root"
-          tar -xzf "$RUNNER_TEMP/e2e-stage-input/ecc-sizer.tar.gz" -C "$stage_root"
-          cp "$RUNNER_TEMP/e2e-stage-input/ecc-sizer.tar.gz" "$stage_root/ecc-sizer.tar.gz"
-          printf 'revision=%s\nrun_id=%s\n' "$SIZER_REVISION" "$SIZER_RUN_ID" > "$stage_root/ci-metadata"
-          test -x "$stage_root/bin/Sizer"
-          test -x "$stage_root/libexec/Sizer"
-          test -f "$stage_root/src/sizer_os.tcl"
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/sizer
+          archive-path: ${{ runner.temp }}/e2e-stage-input/ecc-sizer.tar.gz
+          extract: "true"
+          root-marker: src/sizer_os.tcl
+          metadata: |
+            revision=${{ needs.list-versions.outputs.sizer_git_commit }}
+            run_id=${{ needs.sizer.outputs.run-id }}
 
       - name: Stage OSS CAD Suite on shared storage
-        if: matrix.dependency == 'oss-cad-suite'
-        env:
-          OSS_CAD_SUITE_VERSION: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
-        run: |
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/oss-cad-suite"
-          rm -rf -- "$stage_root"
-          mkdir -p "$stage_root"
-          cp -a "$RUNNER_TEMP/oss-cad-suite/." "$stage_root/"
-          cp "$RUNNER_TEMP/oss-cad-suite.tgz" "$stage_root/oss-cad-suite.tgz"
-          printf 'version=%s\n' "$OSS_CAD_SUITE_VERSION" > "$stage_root/ci-metadata"
-          test -x "$stage_root/bin/yosys"
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/oss-cad-suite
+          source-path: ${{ runner.temp }}/oss-cad-suite
+          archive-path: ${{ runner.temp }}/oss-cad-suite.tgz
+          root-marker: bin/yosys
+          metadata: |
+            version=${{ needs.list-versions.outputs.oss_cad_suite_version }}
 
       - name: Stage kepler-formal on shared storage
-        if: matrix.dependency == 'kepler-formal'
-        env:
-          KEPLER_RUN_ID: ${{ steps.install.outputs.run-id }}
-          KEPLER_HEAD_SHA: ${{ steps.install.outputs.head-sha }}
-          KEPLER_ARCHIVE_PATH: ${{ steps.install.outputs.archive-path }}
-        run: |
-          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/kepler-formal"
-          rm -rf -- "$stage_root"
-          mkdir -p "$stage_root"
-          test "$KEPLER_HEAD_SHA" = '${{ needs.list-versions.outputs.kepler_formal_git_commit }}'
-          cp -a "$CHIPCOMPILER_KEPLER_FORMAL_ROOT/." "$stage_root/"
-          cp "$KEPLER_ARCHIVE_PATH" "$stage_root/kepler-formal-linux-x64.tar.gz"
-          printf 'head_sha=%s\nrun_id=%s\n' "$KEPLER_HEAD_SHA" "$KEPLER_RUN_ID" > "$stage_root/ci-metadata"
-          test -x "$stage_root/bin/kepler-formal"
+        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/kepler-formal
+          source-path: ${{ env.CHIPCOMPILER_KEPLER_FORMAL_ROOT }}
+          archive-path: ${{ steps.install.outputs.archive-path }}
+          root-marker: bin/kepler-formal
+          actual-head-sha: ${{ steps.install.outputs.head-sha }}
+          expected-head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          metadata: |
+            head_sha=${{ steps.install.outputs.head-sha }}
+            run_id=${{ steps.install.outputs.run-id }}
 
       - name: Record shared stage root
         id: stage

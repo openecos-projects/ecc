@@ -1,0 +1,89 @@
+name: Stage Cached Tool
+description: Restore an immutable dependency from the read-only cache into the current workflow's stage directory.
+inputs:
+  dependency:
+    description: Dependency to restore (oss-cad-suite, sizer, kepler-formal, or pdk).
+    required: true
+  stage-root:
+    description: Absolute root directory for the current workflow's staged dependencies.
+    required: true
+  oss-cad-suite-sha256:
+    required: false
+    default: ""
+  sizer-sha256:
+    required: false
+    default: ""
+  kepler-formal-sha256:
+    required: false
+    default: ""
+  pdk-repo:
+    required: false
+    default: ""
+  pdk-release:
+    required: false
+    default: ""
+  pdk-git-commit:
+    required: false
+    default: ""
+outputs:
+  hit:
+    description: Whether a complete cache entry was restored.
+    value: ${{ steps.restore.outputs.hit }}
+runs:
+  using: composite
+  steps:
+    - name: Restore cached dependency
+      id: restore
+      shell: bash
+      env:
+        DEPENDENCY: ${{ inputs.dependency }}
+        STAGE_ROOT: ${{ inputs.stage-root }}
+        OSS_CAD_SUITE_SHA256: ${{ inputs.oss-cad-suite-sha256 }}
+        SIZER_SHA256: ${{ inputs.sizer-sha256 }}
+        KEPLER_FORMAL_SHA256: ${{ inputs.kepler-formal-sha256 }}
+        PDK_REPO: ${{ inputs.pdk-repo }}
+        PDK_RELEASE: ${{ inputs.pdk-release }}
+        PDK_GIT_COMMIT: ${{ inputs.pdk-git-commit }}
+      run: |
+        set -euo pipefail
+        cache_store="${ARC_CACHE_STORE:-/mnt/arc-cache/store}"
+        stage_path="$STAGE_ROOT/$DEPENDENCY"
+
+        case "$DEPENDENCY" in
+          oss-cad-suite)
+            store_path="$cache_store/${OSS_CAD_SUITE_SHA256}-oss-cad-suite"
+            root_marker=bin/yosys
+            ;;
+          sizer)
+            store_path="$cache_store/${SIZER_SHA256}-sizer"
+            root_marker=src/sizer_os.tcl
+            ;;
+          kepler-formal)
+            store_path="$cache_store/${KEPLER_FORMAL_SHA256}-kepler-formal"
+            root_marker=bin/kepler-formal
+            ;;
+          pdk)
+            identity="${PDK_REPO}:${PDK_RELEASE}:${PDK_GIT_COMMIT}"
+            digest="$(printf '%s' "$identity" | sha256sum)"
+            store_path="$cache_store/${digest%% *}-icsprout55-pdk"
+            root_marker=icsprout55-pdk/techfile/icsprout55.layermap
+            ;;
+          *)
+            echo "::error::Unsupported cached dependency: $DEPENDENCY"
+            exit 1
+            ;;
+        esac
+
+        if [[ -e "$store_path/$root_marker" ]]; then
+          rm -rf -- "$stage_path"
+          mkdir -p "$stage_path"
+          cp -r --no-preserve=ownership "$store_path/." "$stage_path/"
+          test -e "$stage_path/$root_marker"
+          echo "hit=true" >> "$GITHUB_OUTPUT"
+        else
+          if [[ -e "$store_path" ]]; then
+            echo "::error::Incomplete cache entry at $store_path"
+            exit 1
+          fi
+          echo "hit=false" >> "$GITHUB_OUTPUT"
+        fi
