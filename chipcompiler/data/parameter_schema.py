@@ -180,6 +180,21 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         maps_to="run_analysis",
         example="false",
     ),
+    ParamSchema(
+        param="geometry.clock_tree",
+        group="geometry",
+        name="clock_tree",
+        type="bool",
+        default=False,
+        applies="all",
+        description=(
+            "Generate clock-tree visualization data for postFloorplan, CTS, and filler; "
+            "filler uses TYPICAL RC when available"
+        ),
+        maps_to={"geometry": "clock_tree"},
+        example="true",
+        output_only=True,
+    ),
 )
 
 PARAM_REGISTRY = _LEGACY_PARAM_REGISTRY + CONFIG_PARAM_SCHEMAS + MACRO_SCHEMAS

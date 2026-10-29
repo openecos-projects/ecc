@@ -480,7 +480,7 @@ class TestOutputContracts:
         assert rc == 0
         out = capsys.readouterr().out
         lines = [line for line in out.strip().split("\n") if line.strip()]
-        assert len(lines) == 15
+        assert len(lines) == 16
 
 
 class TestConfigResolved:
@@ -502,7 +502,7 @@ class TestConfigResolved:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         param_records = [r for r in records if r.get("kind") == "param"]
-        assert len(param_records) == 15
+        assert len(param_records) == 16
         first_param = param_records[0]
         assert "source" in first_param
         assert "maps_to" in first_param
@@ -571,7 +571,7 @@ class TestPrettyOutput:
         assert rc == 0
         out = capsys.readouterr().out
         lines = [line for line in out.strip().split("\n") if line.strip()]
-        assert len(lines) == 15
+        assert len(lines) == 16
         assert "\033[" not in out
 
     def test_param_show_default_is_pretty(self, tmp_path, capsys, create_cli_project):

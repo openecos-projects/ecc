@@ -330,6 +330,36 @@ def invalidate_engineering_snapshot(
     return snapshot
 
 
+def refresh_engineering_snapshot(
+    workspace: Any,
+    *,
+    workspace_id: str,
+    cause: str,
+) -> dict[str, Any]:
+    """Advance the revision and rebuild projections without invalidating steps.
+
+    This is reserved for configuration that only affects future output
+    generation. Execution states and published artifacts remain untouched.
+    """
+    current = read_engineering_snapshot(workspace)
+    if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
+        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
+    if current["workspaceId"] != workspace_id:
+        raise EngineeringSnapshotError(
+            "Workspace identity changed before refresh", code=SNAPSHOT_IDENTITY_MISMATCH
+        )
+    snapshot = _build_snapshot(
+        workspace,
+        workspace_id=workspace_id,
+        workspace_revision=current["workspaceRevision"] + 1,
+        cause=cause,
+    )
+    if isinstance(current.get("stalePredecessor"), dict):
+        snapshot["stalePredecessor"] = deepcopy(current["stalePredecessor"])
+    _write_snapshot(_snapshot_path(workspace), snapshot)
+    return snapshot
+
+
 def _build_snapshot(
     workspace: Any,
     *,

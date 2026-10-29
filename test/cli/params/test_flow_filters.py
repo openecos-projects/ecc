@@ -11,6 +11,7 @@ def test_param_list_synthesis_includes_global_parameters(capsys, create_cli_proj
     assert [record["param"] for record in plain_records(capsys.readouterr().out)] == [
         "design.frequency_mhz",
         "flow.run_analysis",
+        "geometry.clock_tree",
     ]
 
 

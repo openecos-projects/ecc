@@ -236,14 +236,22 @@ def _mutate(
                 )
             try:
                 refresh_workspace_config(workspace)
+                from chipcompiler.data.workspace.flow_options import (
+                    sync_flow_options_projection,
+                )
+
+                sync_flow_options_projection(workspace, persist=True)
                 if schema.param == "macro.placements":
                     from chipcompiler.data.workspace.macro_location import (
                         prune_macro_location_tcl,
                     )
 
                     prune_macro_location_tcl(workspace)
-                flow = EngineFlow(workspace=workspace)
-                invalidated = rerun.invalidate_from(flow, step)
+                if step is None:
+                    invalidated = []
+                else:
+                    flow = EngineFlow(workspace=workspace)
+                    invalidated = rerun.invalidate_from(flow, step)
             except Exception as exc:
                 rollback_failures = _restore_transaction(snapshot)
                 reason = str(exc)
@@ -262,13 +270,15 @@ def _mutate(
         )
     effective_value = requested_value if status == "set" else value
     record = _record(ctx, schema.param, effective_value, status)
-    record["from_step"] = step
+    if step is not None:
+        record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
 
 def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: str):
     from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
+    from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine import update_workspace_step_configuration
     from chipcompiler.engine.snapshot import read_engineering_snapshot
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
@@ -286,13 +296,22 @@ def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: 
     step = workspace_param_step(schema)
     try:
         revision = read_engineering_snapshot(workspace)["workspaceRevision"]
-        updated = update_workspace_step_configuration(
-            ctx.run_dir,
-            revision,
-            step,
-            {schema.param: value},
-            command_id="",
-        )
+        if step is None:
+            updated = apply_workspace_parameters(
+                ctx.run_dir,
+                revision,
+                {schema.param: value} if status == "set" else {},
+                (schema.param,) if status == "unset" else (),
+                command_id="",
+            )
+        else:
+            updated = update_workspace_step_configuration(
+                ctx.run_dir,
+                revision,
+                step,
+                {schema.param: value},
+                command_id="",
+            )
     except WorkspaceLifecycleError as exc:
         return CommandResult.err(
             [error_record(exc.code, param=schema.param, reason=str(exc), **exc.details)]
@@ -302,23 +321,26 @@ def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: 
             [error_record("workspace_param_refresh_failed", param=schema.param, reason=str(exc))]
         )
 
-    updated_steps = updated.flow.steps()
-    target = normalize_flow_step(step).casefold()
-    start = next(
-        (
-            index
-            for index, item in enumerate(updated_steps)
-            if normalize_flow_step(item.get("name", "")).casefold() == target
-        ),
-        len(updated_steps),
-    )
-    invalidated = [
-        str(item.get("name", ""))
-        for item in updated_steps[start:]
-        if item.get("name") and item.get("state") == "Unstart"
-    ]
+    invalidated = []
+    if step is not None:
+        updated_steps = updated.flow.steps()
+        target = normalize_flow_step(step).casefold()
+        start = next(
+            (
+                index
+                for index, item in enumerate(updated_steps)
+                if normalize_flow_step(item.get("name", "")).casefold() == target
+            ),
+            len(updated_steps),
+        )
+        invalidated = [
+            str(item.get("name", ""))
+            for item in updated_steps[start:]
+            if item.get("name") and item.get("state") == "Unstart"
+        ]
     record = _record(ctx, schema.param, value, status)
-    record["from_step"] = step
+    if step is not None:
+        record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
@@ -327,12 +349,13 @@ def _schema_and_workspace_error(key: str, ctx: CommandContext):
     schema = lookup_schema(key)
     if schema is None:
         raise CommandError([error_record("unknown_parameter", param=key)])
-    try:
-        workspace_param_step(schema)
-    except ValueError as exc:
-        raise CommandError(
-            [error_record("workspace_param_refresh_required", param=key, reason=str(exc))]
-        ) from exc
+    if not schema.output_only:
+        try:
+            workspace_param_step(schema)
+        except ValueError as exc:
+            raise CommandError(
+                [error_record("workspace_param_refresh_required", param=key, reason=str(exc))]
+            ) from exc
     _workspace_scope_error(ctx)
     return schema
 
