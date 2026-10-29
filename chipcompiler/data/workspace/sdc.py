@@ -88,14 +88,22 @@ def refresh_generated_sdc(workspace: "Workspace") -> None:
 
 
 def signoff_sdc_path(
-    workspace: "Workspace", output_path: Path, *, corner: str, rc_para: str, has_io_cells: bool
+    workspace: "Workspace",
+    output_path: Path,
+    *,
+    phase: str,
+    corner: str,
+    rc_para: str,
+    has_io_cells: bool,
 ) -> Path:
-    """Materialize the golden for one post-layout STA job, or return custom SDC.
+    """Write one post-layout STA constraint Tcl script, or return custom SDC.
 
     ``corner`` and ``rc_para`` come from the same signoff item as the Liberty/SPEF
     inputs, never from a guessed global default. Actual instantiated IO cells
     select the golden's father-empty branch; bare cores select father-nonempty.
     Each job owns its file so parallel STA cannot overwrite shared constraints.
+    The caller supplies the analysis phase; the Tcl CTS condition alone controls
+    propagated clocks, independently of the primary clock name.
     """
     source = workspace.pdk.sdc
     if source is None:
@@ -103,7 +111,7 @@ def signoff_sdc_path(
     if not _is_generated(source):
         return source
 
-    lines = _design_constraints(workspace, "CTS")
+    lines = _design_constraints(workspace, phase)
     lines.extend(
         [
             *_section("3. Signoff scenario - selected by ECC"),
@@ -207,13 +215,14 @@ def signoff_sdc_path(
             "set_max_fanout 32 [current_design]",
         ]
     )
-    if clock:
-        lines.extend(
-            [
-                *_section("9. Propagated clocks - post-layout signoff"),
-                "set_propagated_clock [all_clocks]",
-            ]
-        )
+    lines.extend(
+        [
+            *_section("9. Propagated clocks - CTS phase only"),
+            "if {[regexp {CTS} $phase match]} {",
+            "    set_propagated_clock [all_clocks]",
+            "}",
+        ]
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

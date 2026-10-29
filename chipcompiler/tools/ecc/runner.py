@@ -1183,7 +1183,8 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         corner = f"{report_dir.parent.name}/{report_dir.name}"
         sdc_path = signoff_sdc_path(
             workspace,
-            step.data.steps[StepEnum.STA.value] / corner / "signoff.sdc",
+            step.data.steps[StepEnum.STA.value] / corner / "signoff.tcl",
+            phase="CTS",  # Final STA analyzes the post-CTS physical database.
             corner=corner_name,
             rc_para=rcx_corner_name,
             has_io_cells=has_io_cells,

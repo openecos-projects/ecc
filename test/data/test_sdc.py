@@ -140,16 +140,19 @@ def _configured_signoff_pairs():
 @pytest.mark.parametrize("corner,rc", _configured_signoff_pairs())
 @pytest.mark.parametrize("frequency", [12.288, 100, 10000, 10001])
 @pytest.mark.parametrize("has_io_cells", [False, True])
+@pytest.mark.parametrize("phase", ["SYN", "PLACE", "CTS", "POST_CTS"])
 def test_signoff_evaluates_golden_for_each_configured_pair(
-    workspace, sdc_trace, corner, rc, frequency, has_io_cells
+    workspace, sdc_trace, corner, rc, frequency, has_io_cells, phase
 ):
     workspace.parameters.data["frequency_max"] = frequency
     create_default_sdc(workspace)
     original = workspace.pdk.sdc.read_bytes()
-    target = workspace.directory / "sta" / corner / rc / "signoff.sdc"
+    target = workspace.directory / "sta" / corner / rc / "signoff.tcl"
 
     assert (
-        signoff_sdc_path(workspace, target, corner=corner, rc_para=rc, has_io_cells=has_io_cells)
+        signoff_sdc_path(
+            workspace, target, phase=phase, corner=corner, rc_para=rc, has_io_cells=has_io_cells
+        )
         == target
     )
 
@@ -204,9 +207,10 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
             ("set_max_transition", period * 0.17, "-clock_path", clocks),
             ("set_max_transition", period * 0.34, "-data_path", clocks),
             ("set_max_fanout", 32, "chip"),
-            ("set_propagated_clock", clocks),
         ]
     )
+    if "CTS" in phase:
+        expected.append(("set_propagated_clock", clocks))
     assert sdc_trace(target) == expected
     assert workspace.pdk.sdc.read_bytes() == original
 
@@ -219,13 +223,16 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
     ],
 )
 @pytest.mark.parametrize("has_io_cells", [False, True])
-def test_custom_sdc_is_authoritative_for_refresh_and_signoff(workspace, content, has_io_cells):
+@pytest.mark.parametrize("phase", ["SYN", "CTS"])
+def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
+    workspace, content, has_io_cells, phase
+):
     workspace.pdk.sdc.write_bytes(content)
-    target = workspace.directory / "sta" / "signoff.sdc"
+    target = workspace.directory / "sta" / "signoff.tcl"
 
     refresh_generated_sdc(workspace)
     actual = signoff_sdc_path(
-        workspace, target, corner="MAX", rc_para="Cworst", has_io_cells=has_io_cells
+        workspace, target, phase=phase, corner="MAX", rc_para="Cworst", has_io_cells=has_io_cells
     )
 
     assert (actual, actual.read_bytes(), target.exists()) == (workspace.pdk.sdc, content, False)
@@ -245,9 +252,11 @@ def test_generated_names_are_literal_tcl_words(workspace, sdc_trace):
 def test_clockless_core_uses_core_loads_without_inventing_a_virtual_clock(workspace, sdc_trace):
     workspace.parameters.data["clock"] = ""
     create_default_sdc(workspace)
-    target = workspace.directory / "sta" / "signoff.sdc"
+    target = workspace.directory / "sta" / "signoff.tcl"
 
-    signoff_sdc_path(workspace, target, corner="TYP", rc_para="TYPICAL", has_io_cells=False)
+    signoff_sdc_path(
+        workspace, target, phase="CTS", corner="TYP", rc_para="TYPICAL", has_io_cells=False
+    )
 
     assert sdc_trace(target) == [
         ("set_load", "-max", 0.2, "out"),
@@ -255,7 +264,21 @@ def test_clockless_core_uses_core_loads_without_inventing_a_virtual_clock(worksp
         ("set_timing_derate", "-late", 1.0),
         ("set_timing_derate", "-early", 0.95),
         ("set_max_fanout", 32, "chip"),
+        ("set_propagated_clock", ""),
     ]
+
+
+def test_generated_phase_controls_propagation_at_tcl_execution(workspace, sdc_trace):
+    create_default_sdc(workspace)
+    target = workspace.directory / "signoff.tcl"
+    signoff_sdc_path(
+        workspace, target, phase="CTS", corner="TYP", rc_para="TYPICAL", has_io_cells=False
+    )
+    post_cts_calls = sdc_trace(target)
+    target.write_text(target.read_text().replace('set phase "CTS"', 'set phase "SYN"'))
+
+    assert post_cts_calls[-1] == ("set_propagated_clock", "CLK_clk VCLK_clk")
+    assert sdc_trace(target) == post_cts_calls[:-1]
 
 
 @pytest.mark.parametrize("frequency", [0, -1, float("inf"), float("nan")])

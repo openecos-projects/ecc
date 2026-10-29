@@ -997,7 +997,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
             "sdc_path": (
-                step.data.steps[StepEnum.STA.value] / "MAX_125/RCworst/signoff.sdc"
+                step.data.steps[StepEnum.STA.value] / "MAX_125/RCworst/signoff.tcl"
                 if generated_sdc
                 else sdc
             ),
@@ -1013,7 +1013,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
             "sdc_path": (
-                step.data.steps[StepEnum.STA.value] / "MIN_m40/Cbest/signoff.sdc"
+                step.data.steps[StepEnum.STA.value] / "MIN_m40/Cbest/signoff.tcl"
                 if generated_sdc
                 else sdc
             ),
