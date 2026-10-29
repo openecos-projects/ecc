@@ -21,7 +21,7 @@
 
 ECOS Chip Compiler is an **open-source chip design automation solution** that integrates EDA tools (Yosys, [**ECC-DreamPlace**](https://github.com/openecos-projects/ecc-dreamplace), [**ECC-Tools**](https://github.com/openecos-projects/ecc-tools), KLayout) to achieve complete RTL-to-GDS design flow. Developed and maintained by the [**ECOS Team**](https://github.com/openecos-projects).
 
-The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/0xharry/ecos-studio) repo.
+The GUI (ECOS Studio) has been moved to the [ecos-studio](https://github.com/openecos-projects/ecos-studio) repo.
 
 **How to use:**
 - **CLI (`ecc`)** - Project-oriented command-line flow execution
