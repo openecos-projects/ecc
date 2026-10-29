@@ -28,6 +28,14 @@ inputs:
     description: Branch to use when the preferred branch has no successful run.
     required: false
     default: ""
+  run-id:
+    description: Exact workflow run ID to download instead of resolving a branch.
+    required: false
+    default: ""
+  sha256:
+    description: Expected SHA-256 of the downloaded archive, verified before extraction.
+    required: false
+    default: ""
   github-token:
     description: Token used to query and download the source repository's artifacts.
     required: true
@@ -60,7 +68,10 @@ runs:
             --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
         }
 
-        run_id="$(resolve_run_id '${{ inputs.branch }}')"
+        run_id='${{ inputs.run-id }}'
+        if [ -z "$run_id" ]; then
+          run_id="$(resolve_run_id '${{ inputs.branch }}')"
+        fi
         if [ -z "$run_id" ] && [ -n '${{ inputs.fallback-branch }}' ]; then
           run_id="$(resolve_run_id '${{ inputs.fallback-branch }}')"
         fi
@@ -90,6 +101,9 @@ runs:
           exit 1
         fi
         echo "archive-path=$archive" >> "$GITHUB_OUTPUT"
+        if [ -n '${{ inputs.sha256 }}' ]; then
+          printf '%s  %s\n' '${{ inputs.sha256 }}' "$archive" | sha256sum -c -
+        fi
         tar -xf "$archive" -C "$install_root"
 
         marker="$(find "$install_root" -type f -path '*/${{ inputs.root-marker }}' -print -quit)"
