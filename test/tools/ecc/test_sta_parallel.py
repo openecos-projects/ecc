@@ -230,11 +230,14 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
             corner=str(index),
             lib_paths=["lib"],
             spef_path="spef",
-            sdc_path="sdc",
+            sdc_path=tmp_path / "sdc" / f"{index}.sdc",
             config="sta.json",
         )
         for index in range(13)
     ]
+    (tmp_path / "sdc").mkdir()
+    for job in originals:
+        job["sdc_path"].write_text(f"# corner {job['corner']}\n")
     calls = []
 
     def run(jobs, workers, check):
@@ -243,8 +246,9 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
         assert len(jobs) == 13
         assert len({job[2]["work_dir"] for job in jobs}) == 13
         for original, (_, _, job, _) in zip(originals, jobs, strict=True):
-            assert job["corner"] == original["corner"]
-            assert job["lib_paths"] == original["lib_paths"]
+            keys = ("corner", "lib_paths", "spef_path", "sdc_path")
+            assert {key: job[key] for key in keys} == {key: original[key] for key in keys}
+            assert job["sdc_path"].read_text() == f"# corner {job['corner']}\n"
             assert not original["report_dir"].exists()
             for key in ("report_dir", "feature_dir"):
                 (job[key] / "result.json").write_text(job["corner"])

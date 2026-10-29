@@ -20,6 +20,7 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -904,7 +905,10 @@ def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
     } in sub_flow.updates
 
 
-def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, monkeypatch):
+@pytest.mark.parametrize("generated_sdc", [False, True])
+def test_run_sta_uses_matched_report_and_feature_corner_directories(
+    tmp_path, monkeypatch, generated_sdc
+):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     max_lib = tmp_path / "pdk" / "max.lib"
@@ -946,7 +950,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
-        parameters=Parameters(data={"sta_max_paths": 500}),
+        parameters=Parameters(data={"sta_max_paths": 500, "clock": "clk", "frequency_max": 100}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
@@ -957,6 +961,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
     )
     module = FakeSynthesisStaModule()
+    if generated_sdc:
+        create_default_sdc(workspace)
+    original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
@@ -974,7 +981,11 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                step.data.steps[StepEnum.STA.value] / "MAX_125/RCworst/signoff.sdc"
+                if generated_sdc
+                else sdc
+            ),
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
@@ -986,13 +997,35 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                step.data.steps[StepEnum.STA.value] / "MIN_m40/Cbest/signoff.sdc"
+                if generated_sdc
+                else sdc
+            ),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
             "corner": "MIN_m40/Cbest",
         },
     ]
+    assert sdc.read_bytes() == original_sdc
+    if generated_sdc:
+        assert [
+            [line for line in call["sdc_path"].read_text().splitlines() if line.startswith("set ")]
+            for call in calls
+        ] == [
+            [
+                'set top "gcd"',
+                'set phase "CTS"',
+                'set clk_port_name "clk"',
+                'set clk_name "CLK_clk"',
+                "set clk_freq_mhz 100.0",
+                "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
+                f'set corner "{corner}"',
+                f'set rc_para "{rc}"',
+            ]
+            for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
+        ]
 
 
 def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):

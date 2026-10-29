@@ -14,6 +14,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.sdc import signoff_sdc_path
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
@@ -1175,6 +1176,12 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         corner = f"{report_dir.parent.name}/{report_dir.name}"
+        sdc_path = signoff_sdc_path(
+            workspace,
+            step.data.steps[StepEnum.STA.value] / corner / "signoff.sdc",
+            corner=corner_name,
+            rc_para=rcx_corner_name,
+        )
 
         ecc_module.run_timing(
             config=sta_config,
@@ -1182,7 +1189,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             report_dir=report_dir,
             feature_dir=feature_dir,
             lib_paths=liberty_files,
-            sdc_path=workspace.pdk.sdc,
+            sdc_path=sdc_path,
             spef_path=spef_file,
             output_modes=("report", "structured"),
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
