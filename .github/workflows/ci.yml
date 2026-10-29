@@ -377,6 +377,9 @@ jobs:
     outputs:
       root: ${{ steps.stage.outputs.root }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Restore cached dependency
         id: cache
         uses: ./.github/actions/stage-cached-tool
@@ -389,10 +392,6 @@ jobs:
           pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
           pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
           pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
-
-      - name: Checkout
-        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
-        uses: actions/checkout@v4
 
       - name: Setup OSS CAD Suite
         if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
@@ -462,6 +461,9 @@ jobs:
       matrix:
         dependency: [pdk, sizer]
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Restore cached dependency
         id: cache
         uses: ./.github/actions/stage-cached-tool
