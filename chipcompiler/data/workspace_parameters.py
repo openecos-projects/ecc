@@ -28,7 +28,9 @@ _APPLIES_TO_STEP = {
 _MISSING = object()
 
 
-def workspace_param_step(schema) -> str:
+def workspace_param_step(schema) -> str | None:
+    if schema.output_only:
+        return None
     step = _APPLIES_TO_STEP.get(schema.applies)
     if step is None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
@@ -57,7 +59,7 @@ def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
     raise ValueError(f"{schema.param} has no workspace configuration target")
 
 
-def set_workspace_param(workspace, schema, value: object) -> tuple[object, str]:
+def set_workspace_param(workspace, schema, value: object) -> tuple[object, str | None]:
     baseline = update_workspace_param_value(workspace, schema, value)
     return baseline, workspace_param_step(schema)
 
@@ -77,7 +79,7 @@ def update_workspace_param_value(workspace, schema, value: object) -> object:
     return record["baseline"]
 
 
-def unset_workspace_param(workspace, schema) -> tuple[object, str] | None:
+def unset_workspace_param(workspace, schema) -> tuple[object, str | None] | None:
     records = _override_records(workspace.parameters.data)
     record = next((item for item in records if item["key"] == schema.param), None)
     if record is None:
@@ -98,6 +100,10 @@ def _apply_workspace_value(workspace, schema, value: object) -> None:
     config_overrides = build_config_overrides([resolved])
     if config_overrides:
         update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, workspace.parameters.data)
+    if schema.output_only:
+        from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
+
+        sync_flow_options_projection(workspace)
 
 
 def _override_records(parameters: dict) -> list[dict]:

@@ -32,6 +32,7 @@ def _workspace(workspace_dir):
         ),
         config={},
         flow=SimpleNamespace(
+            path=parameters_path.parent / "flow.json",
             data={
                 "steps": [
                     {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
@@ -327,6 +328,7 @@ def test_workspace_param_list_matches_first_step_configuration(
     assert [record["id"] for record in records] == [
         "design.frequency_mhz",
         "flow.run_analysis",
+        "geometry.clock_tree",
     ]
     assert records[0]["record"] == "parameter"
     assert records[0]["step_id"] == "Synthesis"
@@ -369,5 +371,6 @@ def test_workspace_param_list_hydrates_persisted_flow_ledger(
     assert [record["id"] for record in records] == [
         "design.frequency_mhz",
         "flow.run_analysis",
+        "geometry.clock_tree",
     ]
     assert records[0]["step_id"] == "Synthesis"

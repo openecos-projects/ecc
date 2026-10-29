@@ -47,6 +47,7 @@ def describe_workspace_spec() -> dict[str, Any]:
                 "default": deepcopy(schema.default),
                 "appliesTo": schema.applies,
                 "backendMapping": deepcopy(schema.maps_to),
+                **({"outputOnly": True} if schema.output_only else {}),
                 "display_key": display_key_for(schema.param),
                 "knob_id": knob_id_for(schema.param),
                 **({"range": list(schema.range)} if schema.range else {}),

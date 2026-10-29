@@ -33,6 +33,7 @@ def _workspace(workspace_dir):
         ),
         config={},
         flow=SimpleNamespace(
+            path=parameters_path.parent / "flow.json",
             data={
                 "steps": [
                     {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},

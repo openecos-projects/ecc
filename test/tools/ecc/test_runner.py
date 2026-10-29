@@ -280,6 +280,8 @@ class SnapshotSaveEccModule:
         self.geometry_output = None
         self.geometry_includes_drc = None
         self.geometry_thumbnail = None
+        self.clock_tree_stage = None
+        self.clock_tree_graph = None
 
     def def_save(self, **_kwargs):
         return True
@@ -290,10 +292,20 @@ class SnapshotSaveEccModule:
     def save_data(self, **_kwargs):
         return True
 
-    def geometry_snapshot_save(self, output_dir, *, include_drc=False, thumbnail_path=None):
+    def geometry_snapshot_save(
+        self,
+        output_dir,
+        *,
+        include_drc=False,
+        thumbnail_path=None,
+        clock_tree_stage=None,
+        clock_tree_graph=None,
+    ):
         self.geometry_output = output_dir
         self.geometry_includes_drc = include_drc
         self.geometry_thumbnail = thumbnail_path
+        self.clock_tree_stage = clock_tree_stage
+        self.clock_tree_graph = clock_tree_graph
         if not self.write_snapshot:
             return False
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -612,6 +624,50 @@ def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
     )
     save.assert_not_called()
     analysis.assert_not_called()
+
+
+def test_run_cts_captures_clock_graph_before_saving_geometry(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    graph = {"timing_source": "cts_fast_sta", "clocks": [{"name": "clk"}]}
+
+    class ClockGraphCtsModule(FakeCtsModule):
+        def clock_tree_graph(self):
+            self.calls.append(("clock_tree_graph", {}))
+            return graph
+
+    module: Any = ClockGraphCtsModule({})
+    save = Mock(return_value=True)
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "save_data", save)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **kwargs: None)
+
+    assert ecc_runner.run_cts(workspace, step, module) is True
+
+    save.assert_called_once()
+    assert save.call_args.kwargs["clock_tree_graph"] is graph
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "run_cts",
+        "clock_tree_graph",
+        "report_cts",
+        "feature_cts_map",
+        "feature_cts_timing",
+    ]
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(
@@ -1090,6 +1146,106 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
     ]
 
 
+def test_run_filler_captures_clock_tree_before_snapshot(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def __init__(self):
+            self.calls = []
+
+        def init_mj(self, output_dir):
+            self.calls.append(("init_mj", output_dir))
+
+        def run_filler(self, config):
+            self.calls.append(("run_filler", config))
+
+        def destroy_mj(self):
+            self.calls.append(("destroy_mj",))
+
+        def gds_save(self, **kwargs):
+            self.calls.append(("gds_save", kwargs))
+
+    filler_config = tmp_path / "config" / "filler_ecc.json"
+    filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
+    workspace = Workspace(
+        directory=tmp_path,
+        logger=_fake_logger(),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.FILLER.value: filler_config},
+    )
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),
+    )
+    module = FakeFillerModule()
+    graph = {"stage": "filler", "clocks": []}
+    saved = {}
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
+    monkeypatch.setattr(ecc_runner, "capture_filler_clock_tree", lambda *_args: graph)
+
+    def save_data(**kwargs):
+        saved.update(kwargs)
+        return True
+
+    monkeypatch.setattr(ecc_runner, "save_data", save_data)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert saved["clock_tree_graph"] is graph
+
+
+def test_run_filler_keeps_topology_when_clock_tree_capture_fails(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def init_mj(self, output_dir):
+            return None
+
+        def run_filler(self, config):
+            return None
+
+        def destroy_mj(self):
+            return None
+
+        def gds_save(self, **kwargs):
+            return None
+
+    workspace = Workspace(
+        directory=tmp_path,
+        logger=_fake_logger(),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.FILLER.value: tmp_path / "config" / "filler_ecc.json"},
+    )
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: tmp_path / "filler_ecc" / "data" / "mj"}),
+    )
+    saved = {}
+
+    def fail_capture(*_args):
+        raise RuntimeError("no TYPICAL SPEF")
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: FakeFillerModule())
+    monkeypatch.setattr(ecc_runner, "capture_filler_clock_tree", fail_capture)
+
+    def save_data(**kwargs):
+        saved.update(kwargs)
+        return True
+
+    monkeypatch.setattr(ecc_runner, "save_data", save_data)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert saved["clock_tree_graph"] is None
+    assert workspace.logger.warnings
+    assert "topology only" in workspace.logger.warnings[0][0]
+
+
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
     checklist = EccRcxChecklist.__new__(EccRcxChecklist)
     checklist.workspace = Workspace(
@@ -1129,6 +1285,33 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
     assert module.geometry_thumbnail == step.output.image
     assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
+
+
+def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+    )
+    step = build_step(workspace, StepEnum.CTS.value, None, None)
+    module: Any = SnapshotSaveEccModule(write_snapshot=True)
+    graph = {"timing_source": "cts_fast_sta", "clocks": []}
+
+    assert (
+        ecc_runner.save_data(
+            workspace,
+            step,
+            module,
+            feature_step=False,
+            clock_tree_graph=graph,
+        )
+        is True
+    )
+    assert module.clock_tree_stage == "CTS"
+    assert module.clock_tree_graph is graph
 
 
 def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):

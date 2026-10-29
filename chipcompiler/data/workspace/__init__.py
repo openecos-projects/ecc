@@ -1172,6 +1172,9 @@ def create_workspace(
         from .flow_ledger import save_ledger
 
         workspace.flow.data = dynamic_flow_data
+        from .flow_options import sync_flow_options_projection
+
+        sync_flow_options_projection(workspace)
         from ..workspace_config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)

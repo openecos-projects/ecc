@@ -507,6 +507,8 @@ class ECCToolsModule:
         *,
         include_drc: bool = False,
         thumbnail_path: PathArg | None = None,
+        clock_tree_stage: str | None = None,
+        clock_tree_graph: dict | None = None,
     ):
         """Export the current in-memory IDB geometry for GUI rendering."""
         kwargs: dict[str, object] = {"output_dir": output_dir}
@@ -514,6 +516,10 @@ class ECCToolsModule:
             kwargs["include_drc"] = True
         if thumbnail_path is not None:
             kwargs["thumbnail_path"] = thumbnail_path
+        if clock_tree_stage is not None:
+            kwargs["clock_tree_stage"] = clock_tree_stage
+        if clock_tree_graph is not None:
+            kwargs["clock_tree_graph"] = clock_tree_graph
         return self.ecc.geometry_snapshot_save(**kwargs)
 
     def initialize_geometry_session(self):
@@ -670,6 +676,10 @@ class ECCToolsModule:
     def feature_cts_timing(self) -> dict:
         """Return post-optimization CTS FastSTA timing aggregates."""
         return self.ecc.cts_timing_feature()
+
+    def clock_tree_graph(self) -> dict:
+        """Return the committed CTS clock graph while its native context is alive."""
+        return self.ecc.cts_clock_graph()
 
     def feature_cts_map(self, json_path: PathArg, map_grid_size=5):
         """
