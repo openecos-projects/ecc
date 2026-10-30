@@ -108,9 +108,43 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  prepare-test-tools:
+    name: Prepare test tools
+    needs: list-versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OSS CAD Suite
+        uses: ./.github/actions/setup-oss-cad-suite-cached
+        with:
+          version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
+          sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup kepler-formal
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: ${{ needs.list-versions.outputs.kepler_formal_repo }}
+          workflow: ${{ needs.list-versions.outputs.kepler_formal_workflow }}
+          run-id: ${{ needs.list-versions.outputs.kepler_formal_run_id }}
+          head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          cache-key: kepler-formal-${{ needs.list-versions.outputs.kepler_formal_run_id }}-${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          artifact: ${{ needs.list-versions.outputs.kepler_formal_artifact }}
+          archive: ${{ needs.list-versions.outputs.kepler_formal_archive }}
+          root-marker: ${{ needs.list-versions.outputs.kepler_formal_root_marker }}
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          github-token: ${{ github.token }}
+
+      - name: Verify kepler-formal
+        run: |
+          "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
+
   test:
     name: Test
-    needs: [check-version, list-versions, pdk, sizer]
+    needs: [check-version, list-versions, prepare-test-tools, pdk, sizer]
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
@@ -137,21 +171,11 @@ jobs:
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
-        uses: YosysHQ/setup-oss-cad-suite@v4
+        uses: ./.github/actions/setup-oss-cad-suite-cached
         with:
           version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
+          sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify OSS CAD Suite archive
-        run: |
-          printf '%s  %s\n' \
-            '${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}' \
-            "$RUNNER_TEMP/oss-cad-suite.tgz" | sha256sum -c -
-
-      - name: Verify Yosys
-        run: |
-          yosys -V
-          yosys -p "plugin -i slang"
 
       - name: Setup Sizer
         uses: actions/download-artifact@v4
@@ -181,6 +205,8 @@ jobs:
           repo: ${{ needs.list-versions.outputs.kepler_formal_repo }}
           workflow: ${{ needs.list-versions.outputs.kepler_formal_workflow }}
           run-id: ${{ needs.list-versions.outputs.kepler_formal_run_id }}
+          head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          cache-key: kepler-formal-${{ needs.list-versions.outputs.kepler_formal_run_id }}-${{ needs.list-versions.outputs.kepler_formal_sha256 }}
           sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
           artifact: ${{ needs.list-versions.outputs.kepler_formal_artifact }}
           archive: ${{ needs.list-versions.outputs.kepler_formal_archive }}

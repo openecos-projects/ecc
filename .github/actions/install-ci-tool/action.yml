@@ -36,6 +36,14 @@ inputs:
     description: Expected SHA-256 of the downloaded archive, verified before extraction.
     required: false
     default: ""
+  head-sha:
+    description: Expected source commit associated with run-id.
+    required: false
+    default: ""
+  cache-key:
+    description: Optional actions/cache key used to reuse the extracted tool across workflows.
+    required: false
+    default: ""
   github-token:
     description: Token used to query and download the source repository's artifacts.
     required: true
@@ -54,7 +62,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Restore tool cache
+      if: ${{ inputs.cache-key != '' }}
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/${{ inputs.artifact }}
+        key: ${{ inputs.cache-key }}
+
     - name: Download and extract tool
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
       id: install
       shell: bash
       env:
@@ -120,3 +137,25 @@ runs:
         echo "Installed ${{ inputs.artifact }} at ${tool_root}"
         echo "${tool_root}/bin" >> "$GITHUB_PATH"
         echo "${{ inputs.root-env }}=${tool_root}" >> "$GITHUB_ENV"
+
+    - name: Restore cached tool
+      if: ${{ steps.cache.outputs.cache-hit == 'true' }}
+      shell: bash
+      env:
+        ROOT_MARKER: ${{ inputs.root-marker }}
+        ROOT_ENV: ${{ inputs.root-env }}
+        RUN_ID: ${{ inputs.run-id }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+      run: |
+        set -euo pipefail
+        install_root="${RUNNER_TEMP}/${{ inputs.artifact }}"
+        marker="$(find "$install_root" -type f -path "*/$ROOT_MARKER" -print -quit)"
+        if [ -z "$marker" ]; then
+          echo "::error::Cached tool is missing $ROOT_MARKER"
+          exit 1
+        fi
+        tool_root="${marker%/"$ROOT_MARKER"}"
+        echo "$tool_root/bin" >> "$GITHUB_PATH"
+        echo "$ROOT_ENV=$tool_root" >> "$GITHUB_ENV"
+        echo "run-id=$RUN_ID" >> "$GITHUB_OUTPUT"
+        echo "head-sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
