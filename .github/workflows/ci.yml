@@ -882,6 +882,7 @@ jobs:
       - name: Lit check flow artifacts
         run: |
           nixpkgs="github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde"
+          export ECC_LIT_EXEC_ROOT="$RUNNER_TEMP/lit-out"
           ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" nix shell \
             "${nixpkgs}#lit" \
             "${nixpkgs}#llvmPackages_21.libllvm" \
