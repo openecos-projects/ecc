@@ -791,8 +791,12 @@ jobs:
 
       - name: Lit check flow artifacts
         run: |
-          ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
-            nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
+          nixpkgs="github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde"
+          ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" nix shell \
+            "${nixpkgs}#lit" \
+            "${nixpkgs}#llvmPackages_21.libllvm" \
+            "${nixpkgs}#jq" \
+            -c bash nix/scripts/signoff-lit.sh designs --filter "${{ matrix.design }}"
 
       - name: Upload e2e workspaces on failure
         if: failure()
