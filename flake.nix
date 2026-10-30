@@ -149,8 +149,13 @@
       # packages and the devShell here so CI builds them.
       checks = config.packages // {
         devShell = config.devShells.default;
+        revision = pkgs.runCommand "revision-check" {} ''
+          ${self'.packages.list-versions}/bin/list-versions --format json >/dev/null
+          ${self'.packages.list-versions}/bin/list-versions --format github >$out
+        '';
       };
 
+      packages.list-versions = pkgs.callPackage ./nix/revisions.nix {};
       packages.keplerFormal = pkgs.callPackage keplerFormal {
         inherit nix-eda system;
       };
@@ -160,6 +165,11 @@
         keplerFormal = self'.packages.keplerFormal;
         rosettakit = pkgs.callPackage rosettakit {};
         yosysWithSlang = infra.packages.${system}.yosysWithSlang;
+      };
+
+      apps.list-versions = {
+        type = "app";
+        program = "${self'.packages.list-versions}/bin/list-versions";
       };
 
       devShells.default = pkgs.mkShell.override {

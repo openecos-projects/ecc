@@ -27,7 +27,9 @@ on:
       - 'flake.lock'
       - '.github/workflows/**'
       - '.github/actions/**'
+      - '.github/revision.toml'
       - '.github/scripts/**'
+      - 'deploy/arc-cache/**'
       - 'nix/**'
   # Nightly on main: same pipeline, e2e matrix additionally covers the big
   # designs (see e2e-designs).
@@ -42,10 +44,6 @@ permissions:
   actions: read
   contents: read
 
-env:
-  # Known-good synthesis toolchain: Yosys 0.70+16 (3bb533450).
-  OSS_CAD_SUITE_VERSION: "2026-10-14"
-
 jobs:
   check-version:
     name: Check Version Consistency
@@ -59,9 +57,94 @@ jobs:
         with:
           expected_ref: ${{ startsWith(github.ref, 'refs/heads/release/v') && github.ref || startsWith(github.base_ref, 'release/v') && github.base_ref || '' }}
 
+  list-versions:
+    name: List dependency versions
+    runs-on: ubuntu-latest
+    outputs:
+      oss_cad_suite_version: ${{ steps.resolve.outputs.oss_cad_suite_version }}
+      oss_cad_suite_sha256: ${{ steps.resolve.outputs.oss_cad_suite_sha256 }}
+      sizer_repo: ${{ steps.resolve.outputs.sizer_repo }}
+      sizer_workflow: ${{ steps.resolve.outputs.sizer_workflow }}
+      sizer_run_id: ${{ steps.resolve.outputs.sizer_run_id }}
+      sizer_git_commit: ${{ steps.resolve.outputs.sizer_git_commit }}
+      sizer_artifact: ${{ steps.resolve.outputs.sizer_artifact }}
+      sizer_archive: ${{ steps.resolve.outputs.sizer_archive }}
+      sizer_root_marker: ${{ steps.resolve.outputs.sizer_root_marker }}
+      sizer_sha256: ${{ steps.resolve.outputs.sizer_sha256 }}
+      kepler_formal_repo: ${{ steps.resolve.outputs.kepler_formal_repo }}
+      kepler_formal_workflow: ${{ steps.resolve.outputs.kepler_formal_workflow }}
+      kepler_formal_version: ${{ steps.resolve.outputs.kepler_formal_version }}
+      kepler_formal_run_id: ${{ steps.resolve.outputs.kepler_formal_run_id }}
+      kepler_formal_git_commit: ${{ steps.resolve.outputs.kepler_formal_git_commit }}
+      kepler_formal_artifact: ${{ steps.resolve.outputs.kepler_formal_artifact }}
+      kepler_formal_archive: ${{ steps.resolve.outputs.kepler_formal_archive }}
+      kepler_formal_root_marker: ${{ steps.resolve.outputs.kepler_formal_root_marker }}
+      kepler_formal_sha256: ${{ steps.resolve.outputs.kepler_formal_sha256 }}
+      pdk_repo: ${{ steps.resolve.outputs.pdk_repo }}
+      pdk_release: ${{ steps.resolve.outputs.pdk_release }}
+      pdk_git_commit: ${{ steps.resolve.outputs.pdk_git_commit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List revision.toml
+        id: resolve
+        run: |
+          set -euo pipefail
+          nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
+
+      - name: Upload CI actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+          if-no-files-found: error
+          retention-days: 1
+
+  prepare-test-tools:
+    name: Prepare test tools
+    needs: list-versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OSS CAD Suite
+        uses: ./.github/actions/setup-oss-cad-suite-cached
+        with:
+          version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
+          sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup kepler-formal
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: ${{ needs.list-versions.outputs.kepler_formal_repo }}
+          workflow: ${{ needs.list-versions.outputs.kepler_formal_workflow }}
+          run-id: ${{ needs.list-versions.outputs.kepler_formal_run_id }}
+          head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          cache-key: kepler-formal-${{ needs.list-versions.outputs.kepler_formal_run_id }}-${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          artifact: ${{ needs.list-versions.outputs.kepler_formal_artifact }}
+          archive: ${{ needs.list-versions.outputs.kepler_formal_archive }}
+          root-marker: ${{ needs.list-versions.outputs.kepler_formal_root_marker }}
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          github-token: ${{ github.token }}
+
+      - name: Verify kepler-formal
+        run: |
+          "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
+
   test:
     name: Test
-    needs: [check-version, pdk, sizer]
+    needs: [check-version, list-versions, prepare-test-tools, pdk, sizer]
     runs-on: ubuntu-latest
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
@@ -88,15 +171,11 @@ jobs:
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
-        uses: YosysHQ/setup-oss-cad-suite@v4
+        uses: ./.github/actions/setup-oss-cad-suite-cached
         with:
-          version: ${{ env.OSS_CAD_SUITE_VERSION }}
+          version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
+          sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify Yosys
-        run: |
-          yosys -V
-          yosys -p "plugin -i slang"
 
       - name: Setup Sizer
         uses: actions/download-artifact@v4
@@ -120,20 +199,24 @@ jobs:
           test -x "${CHIPCOMPILER_ECC_SIZER_ROOT}/libexec/Sizer"
 
       - name: Setup kepler-formal
+        id: install
         uses: ./.github/actions/install-ci-tool
         with:
-          repo: openecos-projects/kepler-formal
-          workflow: package.yml
-          artifact: kepler-formal-linux-x64
-          archive: kepler-formal-linux-x64.tar.gz
-          root-marker: bin/kepler-formal
+          repo: ${{ needs.list-versions.outputs.kepler_formal_repo }}
+          workflow: ${{ needs.list-versions.outputs.kepler_formal_workflow }}
+          run-id: ${{ needs.list-versions.outputs.kepler_formal_run_id }}
+          head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          cache-key: kepler-formal-${{ needs.list-versions.outputs.kepler_formal_run_id }}-${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          artifact: ${{ needs.list-versions.outputs.kepler_formal_artifact }}
+          archive: ${{ needs.list-versions.outputs.kepler_formal_archive }}
+          root-marker: ${{ needs.list-versions.outputs.kepler_formal_root_marker }}
           root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
-          # TODO: drop once the kepler-formal package workflow runs on main.
-          fallback-branch: emin/add-ci-pkgs
           github-token: ${{ github.token }}
 
       - name: Verify kepler-formal
         run: |
+          test '${{ steps.install.outputs.head-sha }}' = '${{ needs.list-versions.outputs.kepler_formal_git_commit }}'
           command -v kepler-formal
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
@@ -213,18 +296,35 @@ jobs:
 
   pdk:
     name: Fetch PDK
+    needs: list-versions
     runs-on: ubuntu-latest
+    env:
+      PDK_REPO: ${{ needs.list-versions.outputs.pdk_repo }}
+      PDK_RELEASE: ${{ needs.list-versions.outputs.pdk_release }}
+      PDK_GIT_COMMIT: ${{ needs.list-versions.outputs.pdk_git_commit }}
+    outputs:
+      revision: ${{ steps.checkout.outputs.revision }}
+      release: ${{ steps.unpack.outputs.release }}
     steps:
       - name: Checkout PDK
-        run: git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git pdk
+        id: checkout
+        run: |
+          git init pdk
+          git -C pdk remote add origin "https://github.com/${PDK_REPO}.git"
+          git -C pdk fetch --depth 1 origin "$PDK_GIT_COMMIT"
+          git -C pdk checkout --detach FETCH_HEAD
+          test "$(git -C pdk rev-parse HEAD)" = "$PDK_GIT_COMMIT"
+          echo "revision=$PDK_GIT_COMMIT" >> "$GITHUB_OUTPUT"
 
       - name: Unpack PDK
+        id: unpack
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd pdk
-          gh release download --repo openecos-projects/icsprout55-pdk --pattern '*.tar.bz2'
+          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
           make unzip
+          echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Package PDK
         run: tar -czf icsprout55-pdk.tar.gz -C pdk .
@@ -237,53 +337,44 @@ jobs:
 
   sizer:
     name: Fetch Sizer
+    needs: list-versions
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SIZER_REPO: ${{ needs.list-versions.outputs.sizer_repo }}
+      SIZER_RUN_ID: ${{ needs.list-versions.outputs.sizer_run_id }}
+      SIZER_GIT_COMMIT: ${{ needs.list-versions.outputs.sizer_git_commit }}
+      SIZER_ARTIFACT: ${{ needs.list-versions.outputs.sizer_artifact }}
+      SIZER_ARCHIVE: ${{ needs.list-versions.outputs.sizer_archive }}
+      SIZER_SHA256: ${{ needs.list-versions.outputs.sizer_sha256 }}
+    outputs:
+      run-id: ${{ steps.download.outputs.run-id }}
     steps:
       - name: Download ecc-sizer CI artifact
+        id: download
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SIZER_REVISION: 05e19e75a7172c14df81a06e3375820c5a696cd2
         run: |
           set -euo pipefail
 
-          run_id="$(
-            gh api --paginate \
-              "repos/openecos-projects/ecc-sizer/actions/workflows/ci.yml/runs?head_sha=${SIZER_REVISION}&status=completed&per_page=100" |
-              python3 -c '
-          import json
-          import os
-          import sys
-
-          pages = [json.loads(line) for line in sys.stdin if line.strip()]
-          runs = [
-              run
-              for page in pages
-              for run in page.get("workflow_runs", [])
-              if run.get("status") == "completed" and run.get("conclusion") == "success"
-              and run.get("head_sha") == os.environ["SIZER_REVISION"]
-          ]
-          print(max(runs, key=lambda run: run["created_at"])["id"] if runs else "")
-          '
-          )"
-          if [ -z "$run_id" ]; then
-            echo "::error::No successful ecc-sizer CI artifact found for ${SIZER_REVISION}"
-            exit 1
-          fi
+          run_id="$SIZER_RUN_ID"
+          head_sha="$(gh api "repos/${SIZER_REPO}/actions/runs/${run_id}" --jq '.head_sha')"
+          test "$head_sha" = "$SIZER_GIT_COMMIT"
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
 
           install_root="${RUNNER_TEMP}/ecc-sizer-${run_id}"
           mkdir -p "$install_root"
-          echo "Downloading ecc-sizer ${SIZER_REVISION} from CI run ${run_id}"
+          echo "Downloading ecc-sizer ${SIZER_GIT_COMMIT} from CI run ${run_id}"
           gh run download "$run_id" \
-            --repo openecos-projects/ecc-sizer \
-            --name ecc-sizer-linux-x64 \
+            --repo "$SIZER_REPO" \
+            --name "$SIZER_ARTIFACT" \
             --dir "$install_root"
 
-          archive="$(find "$install_root" -name 'ecc-sizer-linux-x64.tar.gz' -print -quit)"
+          archive="$(find "$install_root" -name "$SIZER_ARCHIVE" -print -quit)"
           if [ -z "$archive" ]; then
-            echo "::error::ecc-sizer-linux-x64.tar.gz was not in the downloaded artifact"
+            echo "::error::${SIZER_ARCHIVE} was not in the downloaded artifact"
             exit 1
           fi
+          printf '%s  %s\n' "$SIZER_SHA256" "$archive" | sha256sum -c -
           tar -xzf "$archive" -C "$install_root"
 
           mapfile -t sizer_roots < <(
@@ -308,9 +399,310 @@ jobs:
           name: ecc-sizer
           path: ecc-sizer.tar.gz
 
+  stage-e2e-tools:
+    name: Stage E2E tool (${{ matrix.dependency }})
+    needs: list-versions
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dependency: [oss-cad-suite, kepler-formal]
+    outputs:
+      root: ${{ steps.stage.outputs.root }}
+    steps:
+      - name: Download CI actions
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+
+      - name: Verify local actions
+        run: |
+          test -f .github/actions/stage-cached-tool/action.yml
+          test -f .github/actions/stage-tool/action.yml
+          test -f .github/actions/install-ci-tool/action.yml
+
+      - name: Restore cached dependency
+        id: cache
+        uses: ./.github/actions/stage-cached-tool
+        with:
+          dependency: ${{ matrix.dependency }}
+          stage-root: /mnt/arc-stage/runs/${{ github.run_id }}
+          oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
+          kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
+          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
+          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+
+      - name: Setup OSS CAD Suite
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
+        uses: YosysHQ/setup-oss-cad-suite@v4
+        with:
+          version: ${{ needs.list-versions.outputs.oss_cad_suite_version }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify OSS CAD Suite archive
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
+        run: |
+          printf '%s  %s\n' \
+            '${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}' \
+            "$RUNNER_TEMP/oss-cad-suite.tgz" | sha256sum -c -
+
+      - name: Setup kepler-formal
+        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
+        id: install
+        uses: ./.github/actions/install-ci-tool
+        with:
+          repo: ${{ needs.list-versions.outputs.kepler_formal_repo }}
+          workflow: ${{ needs.list-versions.outputs.kepler_formal_workflow }}
+          run-id: ${{ needs.list-versions.outputs.kepler_formal_run_id }}
+          sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          artifact: ${{ needs.list-versions.outputs.kepler_formal_artifact }}
+          archive: ${{ needs.list-versions.outputs.kepler_formal_archive }}
+          root-marker: ${{ needs.list-versions.outputs.kepler_formal_root_marker }}
+          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
+          github-token: ${{ github.token }}
+
+      - name: Stage OSS CAD Suite on shared storage
+        if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/oss-cad-suite
+          source-path: ${{ runner.temp }}/oss-cad-suite
+          archive-path: ${{ runner.temp }}/oss-cad-suite.tgz
+          root-marker: bin/yosys
+          metadata: |
+            version=${{ needs.list-versions.outputs.oss_cad_suite_version }}
+
+      - name: Stage kepler-formal on shared storage
+        if: matrix.dependency == 'kepler-formal' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/kepler-formal
+          source-path: ${{ env.CHIPCOMPILER_KEPLER_FORMAL_ROOT }}
+          archive-path: ${{ steps.install.outputs.archive-path }}
+          root-marker: bin/kepler-formal
+          actual-head-sha: ${{ steps.install.outputs.head-sha }}
+          expected-head-sha: ${{ needs.list-versions.outputs.kepler_formal_git_commit }}
+          metadata: |
+            head_sha=${{ steps.install.outputs.head-sha }}
+            run_id=${{ steps.install.outputs.run-id }}
+
+      - name: Record shared stage root
+        id: stage
+        run: echo "root=/mnt/arc-stage/runs/${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+  stage-e2e-artifacts:
+    name: Stage E2E artifact (${{ matrix.dependency }})
+    needs: [list-versions, pdk, sizer]
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        dependency: [pdk, sizer]
+    steps:
+      - name: Download CI actions
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+
+      - name: Verify local actions
+        run: |
+          test -f .github/actions/stage-cached-tool/action.yml
+          test -f .github/actions/stage-tool/action.yml
+          test -f .github/actions/install-ci-tool/action.yml
+
+      - name: Restore cached dependency
+        id: cache
+        uses: ./.github/actions/stage-cached-tool
+        with:
+          dependency: ${{ matrix.dependency }}
+          stage-root: /mnt/arc-stage/runs/${{ github.run_id }}
+          oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
+          sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
+          kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
+          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
+          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
+          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+
+      - name: Download PDK artifact
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: icsprout55-pdk
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Download Sizer artifact
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-sizer
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Stage PDK on shared storage
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
+          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
+          extract: "true"
+          extract-subdir: icsprout55-pdk
+          root-marker: icsprout55-pdk/techfile/icsprout55.layermap
+          metadata-path: icsprout55-pdk/ci-metadata
+          metadata: |
+            revision=${{ needs.pdk.outputs.revision }}
+            release=${{ needs.pdk.outputs.release }}
+
+      - name: Stage Sizer on shared storage
+        if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/sizer
+          archive-path: ${{ runner.temp }}/e2e-stage-input/ecc-sizer.tar.gz
+          extract: "true"
+          root-marker: src/sizer_os.tcl
+          metadata: |
+            revision=${{ needs.list-versions.outputs.sizer_git_commit }}
+            run_id=${{ needs.sizer.outputs.run-id }}
+
+  stage-pyinstaller:
+    name: Stage PyInstaller artifact
+    needs: build-pyinstaller
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 10
+    steps:
+      - name: Download PyInstaller artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Stage PyInstaller on shared storage
+        run: |
+          stage_root="/mnt/arc-stage/runs/${GITHUB_RUN_ID}/pyinstaller"
+          rm -rf -- "$stage_root"
+          mkdir -p "$stage_root"
+          cp "$RUNNER_TEMP/e2e-stage-input/ecc.tar" "$stage_root/ecc.tar"
+          test -s "$stage_root/ecc.tar"
+
+  verify-e2e-deps:
+    name: Smoke test staged E2E dependencies
+    needs: [stage-e2e-tools, stage-e2e-artifacts, stage-pyinstaller]
+    runs-on: ecc-nightly-runner-0
+    timeout-minutes: 10
+    outputs:
+      root: ${{ needs.stage-e2e-tools.outputs.root }}
+    env:
+      E2E_STAGE_ROOT: ${{ needs.stage-e2e-tools.outputs.root }}
+    steps:
+      - name: Smoke test and record dependency versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ecc-smoke"
+          tar -xf "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" -C "$RUNNER_TEMP/ecc-smoke"
+          test -x "$RUNNER_TEMP/ecc-smoke/ecc"
+          "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys" -p "plugin -i slang" >/dev/null
+          test -x "$E2E_STAGE_ROOT/sizer/bin/Sizer"
+          test -x "$E2E_STAGE_ROOT/sizer/libexec/Sizer"
+          test -f "$E2E_STAGE_ROOT/sizer/src/sizer_os.tcl"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
+          test -s "$E2E_STAGE_ROOT/pyinstaller/ecc.tar"
+          test -s "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
+          test -s "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
+          test -s "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
+
+          archive_sha256() {
+            local archive="$1"
+            local checksum
+            checksum="$(sha256sum "$archive")"
+            printf '%s' "${checksum%% *}"
+          }
+
+          metadata_value() {
+            local key="$1"
+            local file="$2"
+            local value
+            value="$(grep -m1 "^${key}=" "$file")"
+            printf '%s' "${value#*=}"
+          }
+
+          sizer_revision="$(metadata_value revision "$E2E_STAGE_ROOT/sizer/ci-metadata")"
+          sizer_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/sizer/ci-metadata")"
+          kepler_head_sha="$(metadata_value head_sha "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          kepler_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          pdk_revision="$(metadata_value revision "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
+          pdk_release="$(metadata_value release "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
+          ecc_commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/"
+
+          # Keep archive locations in the job log, but out of the summary page.
+          printf 'Staged artifact checksums:\n'
+          for archive in \
+            "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" \
+            "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz" \
+            "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz" \
+            "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz" \
+            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"; do
+            checksum="$(archive_sha256 "$archive")"
+            printf '%s  %s\n' "$checksum" "${archive#"$E2E_STAGE_ROOT"/}"
+          done
+
+          pyinstaller_summary="$(
+            "$RUNNER_TEMP/ecc-smoke/ecc" version --json |
+              jq -er --arg commit_url "$ecc_commit_url" '
+                "| Field | Value |",
+                "|---|---|",
+                "| ECC | \(.ecc) |",
+                "| DreamPlace | \(.dreamplace) |",
+                "| ECC-Tools | \(.ecc_tools) |",
+                "| CLI contract | \(.cli_contract) |",
+                "| Build commit | [\(.build_commit)](\($commit_url + .build_commit)) |",
+                "| Build date | \(.build_date) |"
+              '
+          )"
+
+          # Summary code fences are literal Markdown, not shell expressions.
+          # shellcheck disable=SC2016
+          {
+            printf '## Staged E2E dependency versions\n\n'
+            printf '### PyInstaller\n\n'
+            printf '%s\n' "$pyinstaller_summary"
+            printf '| SHA-256 | %s |\n\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pyinstaller/ecc.tar")"
+            printf '### OSS CAD Suite\n\n```text\n'
+            grep '^version=' "$E2E_STAGE_ROOT/oss-cad-suite/ci-metadata"
+            "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys" -V
+            printf 'sha256=%s\n' "$(archive_sha256 "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz")"
+            printf '```\n\n### Sizer\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/ecc-sizer/commit/%s)\n' \
+              "$sizer_revision" "$sizer_revision"
+            printf -- '- CI run: [%s](https://github.com/openecos-projects/ecc-sizer/actions/runs/%s)\n' \
+              "$sizer_run_id" "$sizer_run_id"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz")"
+            printf '\n### kepler-formal\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/kepler-formal/commit/%s)\n' \
+              "$kepler_head_sha" "$kepler_head_sha"
+            printf -- '- CI run: [%s](https://github.com/openecos-projects/kepler-formal/actions/runs/%s)\n' \
+              "$kepler_run_id" "$kepler_run_id"
+            printf -- '- SHA-256: `%s`\n\n' \
+              "$(archive_sha256 "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz")"
+            printf '```text\n'
+            "$E2E_STAGE_ROOT/kepler-formal/bin/kepler-formal" --version
+            printf '```\n\n### PDK\n\n'
+            printf -- '- Git commit: [%s](https://github.com/openecos-projects/icsprout55-pdk/commit/%s)\n' \
+              "$pdk_revision" "$pdk_revision"
+            printf -- '- Release: [%s](https://github.com/openecos-projects/icsprout55-pdk/releases/tag/%s)\n' \
+              "$pdk_release" "$pdk_release"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz")"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   e2e-designs:
     name: List e2e designs
-    runs-on: ubuntu-latest
+    runs-on: ecc-nightly-runner-0
     outputs:
       designs: ${{ steps.list.outputs.designs }}
     steps:
@@ -324,13 +716,10 @@ jobs:
         id: list
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
-          # which would keep its strict signoff gates red until tuned.
-          # Keep aes (~50min) and memory-heavy BM64 out of PR validation;
-          # retain both for push, scheduled, and manual runs.
+          # which would keep its strict signoff gates red until tuned. All
+          # other designs, including the memory-heavy BM64, run on the
+          # self-hosted runner for every event.
           excludes=(xtea)
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            excludes+=(aes BM64)
-          fi
           designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
             | jq -R . | jq -cs .)"
@@ -338,14 +727,16 @@ jobs:
 
   e2e-packaged-flow:
     name: E2E Packaged Flow (${{ matrix.design }})
-    needs: [build-pyinstaller, e2e-designs, pdk, sizer]
+    needs: [verify-e2e-deps, e2e-designs]
     strategy:
       fail-fast: false
       matrix:
         design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
-    # Bare ubuntu-latest (not the manylinux container): also proves the
+    # Bare self-hosted runner (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
-    runs-on: ubuntu-latest
+    runs-on: ecc-nightly-runner-0
+    env:
+      E2E_STAGE_ROOT: ${{ needs.verify-e2e-deps.outputs.root }}
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -359,47 +750,27 @@ jobs:
           repository: openecos-projects/ecc-ci-designs
           path: designs
 
-      - name: Download PyInstaller artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-cli-linux-x86_64
-
-      - name: Extract PyInstaller bundle
+      - name: Extract PyInstaller artifact from shared storage
         run: |
           mkdir -p dist/ecc-bundle
-          tar -xf ecc.tar -C dist/ecc-bundle
+          tar -xf "$E2E_STAGE_ROOT/pyinstaller/ecc.tar" -C dist/ecc-bundle
           test -x dist/ecc-bundle/ecc
 
-      - name: Setup PDK
-        uses: actions/download-artifact@v4
-        with:
-          name: icsprout55-pdk
-          path: ../pdk
-
-      - name: Extract PDK
+      - name: Setup PDK from shared storage
         run: |
-          mkdir -p ../pdk/icsprout55-pdk
-          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
-          test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
+          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
-      - name: Setup OSS CAD Suite
-        uses: YosysHQ/setup-oss-cad-suite@v4
-        with:
-          version: ${{ env.OSS_CAD_SUITE_VERSION }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Setup OSS CAD Suite from shared storage
+        run: |
+          test -x "$E2E_STAGE_ROOT/oss-cad-suite/bin/yosys"
+          echo "$E2E_STAGE_ROOT/oss-cad-suite/bin" >> "$GITHUB_PATH"
 
-      - name: Setup Sizer
-        uses: actions/download-artifact@v4
-        with:
-          name: ecc-sizer
-
-      - name: Extract Sizer
+      - name: Setup Sizer from shared storage
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/ecc-sizer"
-          tar -xzf ecc-sizer.tar.gz -C "$RUNNER_TEMP/ecc-sizer"
-          echo "$RUNNER_TEMP/ecc-sizer/bin" >> "$GITHUB_PATH"
-          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$RUNNER_TEMP/ecc-sizer" >> "$GITHUB_ENV"
+          echo "$E2E_STAGE_ROOT/sizer/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_ECC_SIZER_ROOT=$E2E_STAGE_ROOT/sizer" >> "$GITHUB_ENV"
 
       - name: Verify Sizer
         shell: bash
@@ -409,18 +780,15 @@ jobs:
           test -f "${CHIPCOMPILER_ECC_SIZER_ROOT}/src/sizer_os.tcl"
           test -x "${CHIPCOMPILER_ECC_SIZER_ROOT}/libexec/Sizer"
 
-      - name: Setup kepler-formal
-        uses: ./.github/actions/install-ci-tool
-        with:
-          repo: openecos-projects/kepler-formal
-          workflow: package.yml
-          artifact: kepler-formal-linux-x64
-          archive: kepler-formal-linux-x64.tar.gz
-          root-marker: bin/kepler-formal
-          root-env: CHIPCOMPILER_KEPLER_FORMAL_ROOT
-          # TODO: drop once the kepler-formal package workflow runs on main.
-          fallback-branch: emin/add-ci-pkgs
-          github-token: ${{ github.token }}
+      - name: Setup kepler-formal from shared storage
+        run: |
+          echo "$E2E_STAGE_ROOT/kepler-formal/bin" >> "$GITHUB_PATH"
+          echo "CHIPCOMPILER_KEPLER_FORMAL_ROOT=$E2E_STAGE_ROOT/kepler-formal" >> "$GITHUB_ENV"
+
+      - name: Verify kepler-formal
+        run: |
+          command -v kepler-formal
+          "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v19
@@ -429,26 +797,6 @@ jobs:
 
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
-
-      - name: Add swap cushion
-        shell: bash
-        # The image already carries a 3 GiB /swapfile, and fallocate on an
-        # in-use swap file fails with ETXTBSY, so the cushion is a separate
-        # file. It absorbs a short overshoot instead of letting the kernel
-        # OOM-kill a native tool; a sustained overshoot still shows up as the
-        # job's timeout.
-        run: |
-          free -h
-          swapon --show
-          df -h /
-          sudo fallocate -l 4G /swapfile.ecc
-          sudo chmod 600 /swapfile.ecc
-          sudo mkswap /swapfile.ecc
-          sudo swapon /swapfile.ecc
-          # Keep swap as a safety net rather than a routine spill area.
-          sudo sysctl -w vm.swappiness=10
-          swapon --show
-          free -h
 
       - name: Run design flows
         id: design-flow
@@ -469,8 +817,12 @@ jobs:
 
       - name: Lit check flow artifacts
         run: |
-          ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" \
-            nix run -L .#signoff-lit -- designs --filter "${{ matrix.design }}"
+          nixpkgs="github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde"
+          ECC_FLOW_WORKSPACES="$RUNNER_TEMP/e2e" nix shell \
+            "${nixpkgs}#lit" \
+            "${nixpkgs}#llvmPackages_21.libllvm" \
+            "${nixpkgs}#jq" \
+            -c bash nix/scripts/signoff-lit.sh designs --filter "${{ matrix.design }}"
 
       - name: Upload e2e workspaces on failure
         if: failure()

@@ -1,0 +1,93 @@
+name: Stage Tool
+description: Extract or copy a downloaded tool into shared staging, with archive and metadata checks.
+inputs:
+  stage-path:
+    description: Absolute path of the staging directory to replace.
+    required: true
+  source-path:
+    description: Existing tool root to copy when extract is false.
+    required: false
+    default: ""
+  archive-path:
+    description: Optional archive to verify, extract, and retain in the stage directory.
+    required: false
+    default: ""
+  archive-name:
+    description: Retained archive filename; defaults to the archive basename.
+    required: false
+    default: ""
+  extract:
+    description: Extract archive-path into the stage directory instead of copying source-path.
+    required: false
+    default: "false"
+  extract-subdir:
+    description: Optional subdirectory of stage-path used for extraction.
+    required: false
+    default: ""
+  root-marker:
+    description: Required file relative to stage-path, checked after staging.
+    required: true
+  metadata:
+    description: Optional ci-metadata content.
+    required: false
+    default: ""
+  metadata-path:
+    description: Metadata path relative to stage-path.
+    required: false
+    default: ci-metadata
+  actual-head-sha:
+    description: Optional resolved source commit to validate.
+    required: false
+    default: ""
+  expected-head-sha:
+    description: Expected source commit when actual-head-sha is provided.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Stage downloaded tool
+      shell: bash
+      env:
+        STAGE_PATH: ${{ inputs.stage-path }}
+        SOURCE_PATH: ${{ inputs.source-path }}
+        ARCHIVE_PATH: ${{ inputs.archive-path }}
+        ARCHIVE_NAME: ${{ inputs.archive-name }}
+        EXTRACT: ${{ inputs.extract }}
+        EXTRACT_SUBDIR: ${{ inputs.extract-subdir }}
+        ROOT_MARKER: ${{ inputs.root-marker }}
+        METADATA: ${{ inputs.metadata }}
+        METADATA_PATH: ${{ inputs.metadata-path }}
+        ACTUAL_HEAD_SHA: ${{ inputs.actual-head-sha }}
+        EXPECTED_HEAD_SHA: ${{ inputs.expected-head-sha }}
+      run: |
+        set -euo pipefail
+        if [[ -n "$ACTUAL_HEAD_SHA" && "$ACTUAL_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]]; then
+          echo "::error::Expected commit $EXPECTED_HEAD_SHA, got $ACTUAL_HEAD_SHA"
+          exit 1
+        fi
+
+        rm -rf -- "$STAGE_PATH"
+        mkdir -p "$STAGE_PATH"
+
+        if [[ "$EXTRACT" == true ]]; then
+          test -s "$ARCHIVE_PATH"
+          extract_dir="$STAGE_PATH"
+          if [[ -n "$EXTRACT_SUBDIR" ]]; then
+            extract_dir="$STAGE_PATH/$EXTRACT_SUBDIR"
+          fi
+          mkdir -p "$extract_dir"
+          tar -xf "$ARCHIVE_PATH" -C "$extract_dir"
+        else
+          test -d "$SOURCE_PATH"
+          cp -r --no-preserve=ownership "$SOURCE_PATH/." "$STAGE_PATH/"
+        fi
+
+        if [[ -n "$ARCHIVE_PATH" ]]; then
+          archive_name="${ARCHIVE_NAME:-$(basename "$ARCHIVE_PATH")}"
+          cp "$ARCHIVE_PATH" "$STAGE_PATH/$archive_name"
+        fi
+        if [[ -n "$METADATA" ]]; then
+          printf '%s\n' "$METADATA" > "$STAGE_PATH/$METADATA_PATH"
+        fi
+        test -e "$STAGE_PATH/$ROOT_MARKER"

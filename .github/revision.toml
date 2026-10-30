@@ -1,0 +1,33 @@
+# Locked dependency versions for ECC CI and downstream installers.
+# Inspect with: nix run .#list-versions -- --format json
+# SHA-256 values cover the original archives downloaded by the actions.
+
+[oss_cad_suite]
+version = "2026-10-14"
+sha256 = "a6ccc6b96b2d985336a1061c78b2fd2bdd73e0f68690da17db88e00457881a11"
+
+[sizer]
+repo = "openecos-projects/ecc-sizer"
+workflow = "ci.yml"
+run_id = 38876272896
+git_commit = "05e19e75a7172c14df81a06e3375820c5a696cd2"
+artifact = "ecc-sizer-linux-x64"
+archive = "ecc-sizer-linux-x64.tar.gz"
+root_marker = "src/sizer_os.tcl"
+sha256 = "2f08f4c1d91343bd9379f8f0690a7464ae0dad97a3c0e45382970c3d6fb5a4f7"
+
+[kepler-formal]
+repo = "openecos-projects/kepler-formal"
+workflow = "package.yml"
+version = "0.5.0"
+run_id = 36442480272
+git_commit = "92759a6cbf58aafb4905de099c862698b2d686fc"
+artifact = "kepler-formal-linux-x64"
+archive = "kepler-formal-linux-x64.tar.gz"
+root_marker = "bin/kepler-formal"
+sha256 = "f8e0e728c23d5eff49a6eb89a9f5e0e8b17274dc07c09042dccd16cceb411bfa"
+
+[pdk]
+repo = "openecos-projects/icsprout55-pdk"
+release = "v1.10.103"
+git_commit = "4f0a4124e3528163f6805e464a0f2fc4587549ec"
