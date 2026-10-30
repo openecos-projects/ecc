@@ -867,9 +867,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          nixpkgs="github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde"
           export ECC_REPO_ROOT="$PWD"
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}:$PWD/test/lit"
-          bash nix/scripts/export-signoff-csv.sh \
+          nix shell \
+            --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.pyyaml ps.typing-extensions ps.tomli-w])" \
+            -c bash nix/scripts/export-signoff-csv.sh \
             --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
             --out-dir "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}" \
             --spec "$E2E_DESIGNS_DIR/profiles/signoff.yml"
