@@ -1,101 +1,290 @@
-from types import SimpleNamespace
-from typing import Any
+import json
+import shutil
+import subprocess
+from pathlib import Path
 
 import pytest
 
 from chipcompiler.data.parameter import Parameters
 from chipcompiler.data.pdk import PDK
-from chipcompiler.data.workspace import Workspace
-from chipcompiler.data.workspace.sdc import create_default_sdc, refresh_generated_sdc
+from chipcompiler.data.workspace import OriginDesign, Workspace
+from chipcompiler.data.workspace.sdc import (
+    create_default_sdc,
+    refresh_generated_sdc,
+    signoff_sdc_path,
+)
+from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
 
 
-@pytest.mark.parametrize("clock", ["core_clk", ""])
-def test_generated_sdc_refresh_uses_current_parameters_and_load(tmp_path, clock):
-    path = tmp_path / "constraints.sdc"
-    workspace = Workspace(
+@pytest.fixture
+def workspace(tmp_path):
+    return Workspace(
         directory=tmp_path,
-        pdk=PDK(name="custom", sdc=path, sdc_load=0.4),
-        parameters=Parameters(data={"clock": clock, "frequency_max": 100, "max_fanout": 16}),
+        design=OriginDesign(name="design", top_module="chip"),
+        pdk=PDK(sdc=tmp_path / "origin.sdc"),
+        parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
-    create_default_sdc(workspace)
-    content = path.read_text()
-    expected_bindings = {
-        f"set clk_name      {clock or '__VIRTUAL_CLK__'}",
-        "set clk_freq_mhz  100",
-        "set_load 0.4 [all_outputs]",
-        "set_max_fanout      16   [current_design]",
+
+
+@pytest.fixture
+def sdc_trace(tmp_path):
+    """Execute actual Tcl substitution, recording only the EDA commands."""
+    executable = "tclsh"
+    if shutil.which(executable) is None:
+        pytest.skip("Tcl interpreter not installed")
+    harness = tmp_path / "trace.tcl"
+    harness.write_text(
+        """\
+proc record {args} {
+    set words {}
+    foreach word $args {
+        lappend words [binary encode hex [encoding convertto utf-8 $word]]
     }
+    puts [join $words "\t"]
+}
+foreach cmd {
+    set_load set_timing_derate set_clock_uncertainty
+    set_max_transition set_max_fanout set_propagated_clock
+    set_input_delay set_output_delay set_multicycle_path
+} {
+    proc $cmd {args} [format {record %s {*}$args} $cmd]
+}
+set clocks {}
+proc create_clock {args} {
+    lappend ::clocks [lindex $args 1]
+    record create_clock {*}$args
+}
+proc get_ports {args} {
+    if {[lsearch -exact $args -filter] >= 0} {
+        if {[lindex $args 2] == "direction == in"} {return [all_inputs]}
+        if {[lindex $args 2] == "direction == out"} {return [all_outputs]}
+        error "unhandled port filter"
+    }
+    return [lindex $args 0]
+}
+proc all_inputs {} {return [list $::clk_port_name data]}
+proc remove_from_collection {collection objects} {
+    set result {}
+    foreach item $collection {
+        if {[lsearch -exact $objects $item] < 0} {lappend result $item}
+    }
+    return $result
+}
+proc get_clocks {name} {return $name}
+proc all_outputs {} {return out}
+proc all_clocks {} {return $::clocks}
+proc current_design {} {return $::top}
+set input_file [open [lindex $argv 0] r]
+set input_text [read $input_file]
+close $input_file
+eval $input_text
+if {[info exists ::injected]} {error "input executed as Tcl"}
+""",
+        encoding="utf-8",
+    )
+
+    command = [executable, str(harness)]
+
+    def trace(path: Path) -> list[tuple[str | float, ...]]:
+        result = subprocess.run(
+            [*command, str(path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        calls = []
+        for line in result.stdout.splitlines():
+            words: list[str | float] = []
+            for encoded in line.split("\t"):
+                word = bytes.fromhex(encoded).decode("utf-8")
+                try:
+                    words.append(float(word))
+                except ValueError:
+                    words.append(word)
+            calls.append(tuple(words))
+        return calls
+
+    return trace
+
+
+@pytest.mark.parametrize("clock", ["clk", ""])
+def test_generated_sdc_refresh_uses_current_design_parameters(workspace, sdc_trace, clock):
+    workspace.parameters.data["clock"] = clock
+    create_default_sdc(workspace)
+    path = workspace.pdk.sdc
+    original = path.read_text()
+    expected = [("create_clock", "-name", "CLK_clk", "-period", 10.0, "clk")] if clock else []
+    assert sdc_trace(path) == expected
+
+    workspace.design.top_module = "new_chip"
+    workspace.parameters.data["frequency_max"] = 250
     if clock:
-        expected_bindings.add(f"set clk_port_name {clock}")
-    assert {
-        line
-        for line in content.splitlines()
-        if line.startswith(
-            (
-                "set clk_name ",
-                "set clk_port_name ",
-                "set clk_freq_mhz ",
-                "set_load ",
-                "set_max_fanout ",
+        workspace.parameters.data["clock"] = "fast_clk"
+    refresh_generated_sdc(workspace)
+
+    assert path.read_text() == (
+        original.replace('set top "chip"', 'set top "new_chip"')
+        .replace('"clk"', '"fast_clk"')
+        .replace('"CLK_clk"', '"CLK_fast_clk"')
+        .replace("set clk_freq_mhz 100.0", "set clk_freq_mhz 250.0")
+    )
+
+
+def _configured_signoff_pairs():
+    template = Path(__file__).parents[2] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
+    config = json.loads(template.read_text())
+    return [
+        (corner, rc)
+        for group in config["signoff"]
+        for corner, rc_corners in group.items()
+        for rc in rc_corners
+    ]
+
+
+@pytest.mark.parametrize("corner,rc", _configured_signoff_pairs())
+@pytest.mark.parametrize("frequency", [12.288, 100, 10000, 10001])
+@pytest.mark.parametrize("has_io_cells", [False, True])
+@pytest.mark.parametrize("post_cts", [False, True])
+def test_signoff_evaluates_golden_for_each_configured_pair(
+    workspace, sdc_trace, corner, rc, frequency, has_io_cells, post_cts
+):
+    workspace.parameters.data["frequency_max"] = frequency
+    create_default_sdc(workspace)
+    original = workspace.pdk.sdc.read_bytes()
+    write_timing_io_context(workspace, has_io_cells=has_io_cells)
+    target = workspace.directory / "sta" / corner / rc / "signoff.tcl"
+
+    assert (
+        signoff_sdc_path(workspace, target, post_cts=post_cts, corner=corner, rc_para=rc) == target
+    )
+
+    period = 1000.0 / frequency
+    expected: list[tuple[str | float, ...]] = [
+        ("create_clock", "-name", "CLK_clk", "-period", period, "clk")
+    ]
+    if has_io_cells:
+        load = {"MAX": 8, "WCL": 8, "MIN": 6, "ML": 6, "TYP": 7}[corner]
+        expected.append(("set_load", load, "out"))
+    else:
+        expected.append(("create_clock", "-name", "VCLK_clk", "-period", period))
+        expected.extend(
+            (command, period * fraction, bound, "-clock", "VCLK_clk", "-add_delay", ports)
+            for command, ports in (("set_input_delay", "data"), ("set_output_delay", "out"))
+            for fraction, bound in ((0.6, "-max"), (0.3, "-min"))
+        )
+        expected.extend(
+            [
+                ("set_multicycle_path", 4, "-setup", "-end", "-from", "clk data", "-to", "out"),
+                ("set_multicycle_path", 3, "-hold", "-end", "-from", "clk data", "-to", "out"),
+                ("set_load", "-max", 0.2, "out"),
+                ("set_load", "-min", 0.1, "out"),
+            ]
+        )
+    if corner == "TYP":
+        expected.extend(
+            [("set_timing_derate", "-late", 1.0), ("set_timing_derate", "-early", 0.95)]
+        )
+    else:
+        early = 0.95 if corner in {"MAX", "WCL"} else 0.9
+        expected.extend(
+            ("set_timing_derate", delay, path, bound, factor)
+            for delay in ("-cell_delay", "-net_delay")
+            for path, bound, factor in (
+                ("-clock", "-late", 1.0),
+                ("-clock", "-early", early),
+                ("-data", "-late", 1.0),
+                ("-data", "-early", 1.0),
             )
         )
-    } == expected_bindings
-    expected = (
-        content.replace("set clk_freq_mhz  100\n", "set clk_freq_mhz  250.0\n")
-        .replace("set_max_fanout      16   ", "set_max_fanout      48   ")
-        .replace("set_load 0.4 ", "set_load 0.8 ")
+    clocks = "CLK_clk" if has_io_cells else "CLK_clk VCLK_clk"
+    if frequency <= 10000:
+        expected.extend(
+            [
+                ("set_clock_uncertainty", "-setup", 0.2, clocks),
+                ("set_clock_uncertainty", "-hold", 0.1, clocks),
+            ]
+        )
+    expected.extend(
+        [
+            ("set_max_transition", period * 0.17, "-clock_path", clocks),
+            ("set_max_transition", period * 0.34, "-data_path", clocks),
+            ("set_max_fanout", 32, "chip"),
+        ]
     )
-    if clock:
-        expected = expected.replace("core_clk", "fast_clk")
-        workspace.parameters.data["clock"] = "fast_clk"
-    workspace.parameters.data.update(frequency_max=250.0, max_fanout=48)
-    workspace.pdk.sdc_load = 0.8
+    if post_cts:
+        expected.append(("set_propagated_clock", clocks))
+    assert sdc_trace(target) == expected
+    assert workspace.pdk.sdc.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"# Auto-generated SDC file\ncreate_clock -period 1.5 [get_ports clk]\n",
+        "# 用户时序约束\ncreate_clock -period 1.5 [get_ports clk]\n".encode("gbk"),
+    ],
+)
+@pytest.mark.parametrize("has_io_cells", [False, True])
+@pytest.mark.parametrize("post_cts", [False, True])
+def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
+    workspace, content, has_io_cells, post_cts
+):
+    workspace.pdk.sdc.write_bytes(content)
+    target = workspace.directory / "sta" / "signoff.tcl"
 
     refresh_generated_sdc(workspace)
+    actual = signoff_sdc_path(workspace, target, post_cts=post_cts, corner="MAX", rc_para="Cworst")
 
-    assert path.read_text() == expected
-
-
-def _ns(**kwargs: object) -> Any:
-    return SimpleNamespace(**kwargs)
+    assert (actual, actual.read_bytes(), target.exists()) == (workspace.pdk.sdc, content, False)
 
 
-def test_external_generated_sdc_retains_electrical_constraints(tmp_path):
-    path = tmp_path / "constraints.sdc"
-    content = (
-        "# Auto-generated SDC file\n"
-        "create_clock -period 1.5 [get_ports clk]\n"
-        "set_max_fanout 32 [current_design]\n"
-        "set_load 0.001 [all_outputs]\n"
-    )
-    path.write_text(content)
-    workspace = _ns(
-        pdk=_ns(sdc=path),
-        parameters=_ns(data={"clock": "clk", "frequency_max": 100}),
-    )
-    refresh_generated_sdc(workspace)
-    assert path.read_text() == content
+def test_generated_names_are_literal_tcl_words(workspace, sdc_trace):
+    clock = 'clk[0]$x; [set ::injected 1] " \\ {}'
+    workspace.parameters.data["clock"] = clock
+    workspace.design.top_module = "top[0]$top; [set ::injected 1]"
+    create_default_sdc(workspace)
+
+    assert sdc_trace(workspace.pdk.sdc) == [
+        ("create_clock", "-name", f"CLK_{clock}", "-period", 10.0, clock)
+    ]
 
 
-def test_clock_only_workspace_refresh_keeps_its_constraint_mode(tmp_path):
-    path = tmp_path / "constraints.sdc"
-    path.write_text("# ECC-generated clock-only SDC\nset clk_freq_mhz 100\n")
-    workspace = _ns(
-        pdk=_ns(sdc=path),
-        parameters=_ns(data={"clock": "clk", "frequency_max": 200}),
-    )
+def test_clockless_core_uses_core_loads_without_inventing_a_virtual_clock(workspace, sdc_trace):
+    workspace.parameters.data["clock"] = ""
+    create_default_sdc(workspace)
+    target = workspace.directory / "sta" / "signoff.tcl"
+    write_timing_io_context(workspace, has_io_cells=False)
 
-    refresh_generated_sdc(workspace)
+    signoff_sdc_path(workspace, target, post_cts=True, corner="TYP", rc_para="TYPICAL")
 
-    content = path.read_text()
-    assert {
-        "updated_frequency": "set clk_freq_mhz 200" in content,
-        "clock": "create_clock" in content,
-        "io_delays": "set_input_delay" in content or "set_output_delay" in content,
-        "output_load": "set_load" in content,
-    } == {
-        "updated_frequency": True,
-        "clock": True,
-        "io_delays": False,
-        "output_load": False,
-    }
+    assert sdc_trace(target) == [
+        ("set_load", "-max", 0.2, "out"),
+        ("set_load", "-min", 0.1, "out"),
+        ("set_timing_derate", "-late", 1.0),
+        ("set_timing_derate", "-early", 0.95),
+        ("set_max_fanout", 32, "chip"),
+        ("set_propagated_clock", ""),
+    ]
+
+
+def test_pre_and_post_cts_only_differ_in_propagation(workspace, sdc_trace):
+    create_default_sdc(workspace)
+    write_timing_io_context(workspace, has_io_cells=False)
+    paths = [workspace.directory / "pre.tcl", workspace.directory / "post.tcl"]
+    for path, post_cts in zip(paths, (False, True), strict=True):
+        signoff_sdc_path(workspace, path, post_cts=post_cts, corner="TYP", rc_para="TYPICAL")
+    pre_calls, post_calls = map(sdc_trace, paths)
+    assert post_calls == [*pre_calls, ("set_propagated_clock", "CLK_clk VCLK_clk")]
+    assert paths[1].read_text().startswith(paths[0].read_text())
+
+
+@pytest.mark.parametrize("frequency", [0, -1, float("inf"), float("nan")])
+def test_invalid_clock_frequency_does_not_replace_sdc(workspace, frequency):
+    create_default_sdc(workspace)
+    original = workspace.pdk.sdc.read_bytes()
+    workspace.parameters.data["frequency_max"] = frequency
+
+    with pytest.raises(ValueError, match="finite and positive"):
+        refresh_generated_sdc(workspace)
+
+    assert workspace.pdk.sdc.read_bytes() == original

@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -20,6 +21,8 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.data.workspace.sdc import create_default_sdc
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -262,6 +265,9 @@ class FakeCtsModule:
 
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
+
+    def update_sta_data_config(self, **kwargs):
+        self.calls.append(("update_sta_data_config", kwargs))
 
     def report_cts(self, **kwargs):
         self.calls.append(("report_cts", kwargs))
@@ -578,6 +584,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     }
     assert [call[0] for call in module.calls] == [
         "update_step_paths",
+        "update_sta_data_config",
         "run_cts",
         "report_cts",
         "feature_cts_map",
@@ -606,7 +613,11 @@ def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(ecc_runner, "run_analysis", analysis)
 
     assert ecc_runner.run_cts(workspace, step, module) is False
-    assert [call[0] for call in module.calls] == ["update_step_paths", "run_cts"]
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "update_sta_data_config",
+        "run_cts",
+    ]
     sub_flow.update_step.assert_any_call(
         step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete
     )
@@ -904,7 +915,11 @@ def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
     } in sub_flow.updates
 
 
-def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, monkeypatch):
+@pytest.mark.parametrize("generated_sdc", [False, True])
+@pytest.mark.parametrize("io_cell_count", [0, 1])
+def test_run_sta_uses_matched_report_and_feature_corner_directories(
+    tmp_path, monkeypatch, generated_sdc, io_cell_count
+):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     max_lib = tmp_path / "pdk" / "max.lib"
@@ -946,7 +961,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
-        parameters=Parameters(data={"sta_max_paths": 500}),
+        parameters=Parameters(data={"sta_max_paths": 500, "clock": "clk", "frequency_max": 100}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
@@ -954,9 +969,26 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         name=StepEnum.STA.value,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
-        feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
+        feature=EccFeature(
+            dir=tmp_path / "sta_ecc" / "feature",
+            db=tmp_path / "sta_ecc" / "feature" / "sta.db.json",
+        ),
     )
     module = FakeSynthesisStaModule()
+
+    def export_summary(json_path):
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": io_cell_count}}}))
+        return True
+
+    assert step.feature.db is not None
+    step.feature.db.parent.mkdir(parents=True)
+    # The classification must come from a fresh export, not this previous run's data.
+    step.feature.db.write_text(json.dumps({"Instances": {"iopads": {"num": 1 - io_cell_count}}}))
+    monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
+    if generated_sdc:
+        create_default_sdc(workspace)
+        generate_timing_scripts(workspace)
+    original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
@@ -974,7 +1006,11 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                workspace.directory / "origin/post_CTS/MAX_125_RCworst.tcl"
+                if generated_sdc
+                else sdc
+            ),
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
@@ -986,13 +1022,58 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl" if generated_sdc else sdc
+            ),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
             "corner": "MIN_m40/Cbest",
         },
     ]
+    assert sdc.read_bytes() == original_sdc
+    if generated_sdc:
+        assert [
+            [
+                line
+                for line in re.sub(
+                    r"[ \t]*\\\n[ \t]*", " ", call["sdc_path"].read_text()
+                ).splitlines()
+                if line.startswith("set ")
+            ]
+            for call in calls
+        ] == [
+            [
+                'set top "gcd"',
+                'set clk_port_name "clk"',
+                'set clk_name "CLK_clk"',
+                "set clk_freq_mhz 100.0",
+                "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
+                f'set corner "{corner}"',
+                f'set rc_para "{rc}"',
+            ]
+            for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
+        ]
+
+
+def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypatch):
+    sdc = tmp_path / "gcd.sdc"
+    sdc.write_text("# ECC-generated SDC file\n")
+    db_feature = tmp_path / "sta.db.json"
+    db_feature.write_text(json.dumps({"Instances": {"iopads": {"num": 10}}}))
+    workspace = Workspace(directory=tmp_path, pdk=PDK(sdc=sdc))
+    step = EccStep(name=StepEnum.STA.value, feature=EccFeature(db=db_feature))
+    module = Mock()
+    module.feature_sammry.return_value = False
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
+    monkeypatch.setattr(ecc_runner, "collect_sta_signoff_items", lambda _: [{}])
+    monkeypatch.setattr(ecc_runner, "_workspace_sta_config_path", lambda _: "sta.json")
+
+    with pytest.raises(RuntimeError, match="Cannot export current iDB IO-cell count"):
+        ecc_runner.run_sta(workspace, step)
+
+    assert module.run_timing.call_args_list == []
 
 
 def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):

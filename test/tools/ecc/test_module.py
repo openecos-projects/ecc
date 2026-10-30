@@ -363,7 +363,7 @@ def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module.json_save(Path("/ws/output/gcd.json"))
     module.save_data(Path("/ws/output/db"))
     module.load_data(Path("/ws/input/db"))
-    module.feature_sammry(Path("/ws/feature/db.json"))
+    assert module.feature_sammry(Path("/ws/feature/db.json")) is True
     module.feature_step("placement", Path("/ws/feature/step.json"))
     module.feature_eval_map(Path("/ws/feature/eval.json"), 4, 4)
     module.feature_eval_summary(Path("/ws/feature/eval_summary.json"), 8)

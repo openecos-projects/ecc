@@ -7,6 +7,7 @@ from pathlib import Path
 
 from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.tools.ecc import runner as ecc_runner
+from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
 from chipcompiler.tools.ecc_dreamplace.utility import is_eda_exist as is_dreamplace_exist
 from chipcompiler.utility.path import MissingPathError, require_path
@@ -202,6 +203,7 @@ def run_step(
     _delete_staging_outputs(step)
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
+    prepare_timing_context(workspace, step)
     if not _run_sizer_pass(
         env_path,
         cmd_path,

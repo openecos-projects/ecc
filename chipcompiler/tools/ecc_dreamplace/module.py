@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.utility.path import optional_path
 
 _LEGALIZE_OWNERS = frozenset(
@@ -199,6 +200,8 @@ class DreamplaceModule:
         if rc_tcl and not Path(rc_tcl).is_file():
             raise FileNotFoundError(f"OpenROAD RC Tcl does not exist: {rc_tcl}")
 
+        prepare_timing_context(self.workspace, self.step, self.ecc_module)
+
         return {
             **existing,
             "tech_lef": getattr(self.workspace.pdk, "tech", None) or "",
@@ -206,7 +209,7 @@ class DreamplaceModule:
             "lib": list(getattr(self.workspace.pdk, "libs", None) or []),
             "def": self.input_def or "",
             "verilog": self.input_verilog or "",
-            "sdc": getattr(self.workspace.pdk, "sdc", None) or "",
+            "sdc": step_tcl_path(self.workspace, self.step) or "",
             "rc_tcl": rc_tcl,
         }
 
@@ -229,7 +232,7 @@ class DreamplaceModule:
             "lib": list(getattr(self.workspace.pdk, "libs", None) or []),
             "def": self.input_def or "",
             "verilog": self.input_verilog or "",
-            "sdc": getattr(self.workspace.pdk, "sdc", None) or "",
+            "sdc": step_tcl_path(self.workspace, self.step) or "",
             "spef": ("" if gr_timing else (getattr(self.workspace.pdk, "spef", None) or "")),
             "sta_config": sta_config or "",
             "rcx_config": rcx_config or "",

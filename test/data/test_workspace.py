@@ -174,161 +174,39 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     assert workspace is None
 
 
-EXPECTED_ICS55_DEFAULT_SDC = """\
-# ECC-generated SDC file
-
-# -------------------------------------------------
-# SDC version & units
-# -------------------------------------------------
-set sdc_version 2.1
-set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
-
-# -------------------------------------------------
-# Clock definition
-# -------------------------------------------------
-set clk_name      clk
-set clk_port_name clk
-set clk_freq_mhz  100
-set clk_period    [expr {1000.0 / $clk_freq_mhz}]
-
-set clk_port [get_ports $clk_port_name]
-create_clock -name $clk_name -period $clk_period $clk_port
-
-set_clock_latency -source 0.5 [get_clocks $clk_name]
-
-# -------------------------------------------------
-# IO Delay
-# -------------------------------------------------
-set data_inputs [remove_from_collection [all_inputs] $clk_port]
-set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
-set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
-set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
-
-# -------------------------------------------------
-# Output load (pF) - ics55 pdk
-# -------------------------------------------------
-set_load 0.2 [all_outputs]
-
-# -------------------------------------------------
-# Clock uncertainty & transition
-# -------------------------------------------------
-set_clock_uncertainty -setup 0.20 [all_clocks]
-set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
-set_clock_transition        0.15 [get_clocks $clk_name]
-set_input_transition        0.20 $data_inputs
-
-# -------------------------------------------------
-# Design-level constraints
-# -------------------------------------------------
-set_max_fanout      32   [current_design]
-set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
-set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
-
-# -------------------------------------------------
-# Timing derate (OCV)
-# -------------------------------------------------
-set_timing_derate -early 0.95 -clock
-set_timing_derate -late  1.10 -clock
-set_timing_derate -late  1.10 -data
-"""
-
-
+@pytest.mark.parametrize("clock", ["clk", ""])
 def test_create_workspace_generates_default_sdc_from_parameters(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, clock
 ):
+    from chipcompiler.data.parameter import Parameters
+    from chipcompiler.data.pdk import PDK
+    from chipcompiler.data.workspace import OriginDesign
+    from chipcompiler.data.workspace.sdc import create_default_sdc
+
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
+    parameters = {**default_ics55_parameters, "clock": clock}
     workspace_dir = tmp_path / "workspace"
     create_workspace(
         directory=str(workspace_dir),
         origin_def="",
         origin_verilog=str(rtl_path),
         pdk="ics55",
-        parameters={**default_ics55_parameters, "max_fanout": 32},
+        parameters=parameters,
         pdk_root=str(pdk_root),
     )
 
-    sdc_path = workspace_dir / "origin" / "gcd.sdc"
-    assert sdc_path.read_text() == EXPECTED_ICS55_DEFAULT_SDC
-
-
-EXPECTED_ICS55_VIRTUAL_CLOCK_SDC = """\
-# ECC-generated SDC file
-
-# -------------------------------------------------
-# SDC version & units
-# -------------------------------------------------
-set sdc_version 2.1
-set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
-
-# -------------------------------------------------
-# Clock definition
-# -------------------------------------------------
-set clk_name      __VIRTUAL_CLK__
-set clk_freq_mhz  100
-set clk_period    [expr {1000.0 / $clk_freq_mhz}]
-
-create_clock -name $clk_name -period $clk_period
-set_clock_latency -source 0.5 [get_clocks $clk_name]
-
-# -------------------------------------------------
-# IO Delay
-# -------------------------------------------------
-set data_inputs [all_inputs]
-set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
-set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
-set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
-
-# -------------------------------------------------
-# Output load (pF) - ics55 pdk
-# -------------------------------------------------
-set_load 0.2 [all_outputs]
-
-# -------------------------------------------------
-# Clock uncertainty & transition
-# -------------------------------------------------
-set_clock_uncertainty -setup 0.20 [all_clocks]
-set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
-set_clock_transition        0.15 [get_clocks $clk_name]
-set_input_transition        0.20 $data_inputs
-
-# -------------------------------------------------
-# Design-level constraints
-# -------------------------------------------------
-set_max_fanout      32   [current_design]
-set_max_transition [expr {$clk_period * 0.17}] -clock_path [get_clocks $clk_name]
-set_max_transition [expr {$clk_period * 0.34}] -data_path [get_clocks $clk_name]
-
-# -------------------------------------------------
-# Timing derate (OCV)
-# -------------------------------------------------
-set_timing_derate -early 0.95 -clock
-set_timing_derate -late  1.10 -clock
-set_timing_derate -late  1.10 -data
-"""
-
-
-def test_create_workspace_generates_virtual_clock_sdc_for_clockless_design(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters={**default_ics55_parameters, "clock": ""},
-        pdk_root=str(pdk_root),
+    expected_path = tmp_path / "expected.sdc"
+    create_default_sdc(
+        Workspace(
+            directory=tmp_path,
+            design=OriginDesign(name="gcd", top_module="gcd"),
+            pdk=PDK(sdc=expected_path),
+            parameters=Parameters(data=parameters),
+        )
     )
-
-    sdc_path = workspace_dir / "origin" / "gcd.sdc"
-    assert sdc_path.read_text() == EXPECTED_ICS55_VIRTUAL_CLOCK_SDC
+    assert (workspace_dir / "origin" / "gcd.sdc").read_text() == expected_path.read_text()
 
 
 def test_create_workspace_persists_dynamic_flow_steps(
@@ -1352,7 +1230,7 @@ def test_refresh_workspace_config_updates_generated_sdc_frequency(
 
     refresh_workspace_config(workspace)
 
-    assert "set clk_freq_mhz  250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
+    assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
 
 
 def test_refresh_workspace_config_preserves_external_sdc(

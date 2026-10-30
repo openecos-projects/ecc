@@ -14,6 +14,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
@@ -42,6 +43,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     sta_power_summary_payload,
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read, json_write
 
@@ -306,6 +308,7 @@ def get_eda_instance(
             output_dir=step.data.dir or "",
             feature_dir=step.feature.dir or "",
         )
+        prepare_timing_context(workspace, step, ecc_module)
 
     return ecc_module
 
@@ -377,6 +380,10 @@ def run_sta_without_spef(
         sta_config = _workspace_sta_config_path(workspace)
         if sta_config is None:
             raise ValueError("workspace STA config path is not configured")
+
+        prepare_timing_context(workspace, step, ecc_module)
+        sdc_path = step_tcl_path(workspace, step)
+        assert sdc_path is not None  # The source constraint was validated above.
 
         ecc_module.run_timing(
             config=sta_config,
@@ -565,6 +572,12 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        ecc_module.update_sta_data_config(
+            db_config=workspace.config.get("db", ""),
+            output_dir=step.data.dir or "",
+            lib_paths=[*workspace.pdk.libs],
+            sdc_path=step_tcl_path(workspace, step) or "",
+        )
         if not ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
@@ -858,7 +871,7 @@ def run_harden(
             config=sta_config,
             output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
-            sdc_path=workspace.pdk.sdc or "",
+            sdc_path=step_tcl_path(workspace, step) or "",
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
@@ -1029,7 +1042,7 @@ def run_power_analysis(
     if not ecc_module.init_pw(
         output_dir=power_data_dir,
         lib_paths=liberty_files,
-        sdc_path=workspace.pdk.sdc,
+        sdc_path=step_tcl_path(workspace, step) or "",
         spef_path=spef_file,
     ):
         workspace.logger.error("Failed to initialize power analysis")
@@ -1122,6 +1135,12 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
 
+    # Use the current iDB's instantiated PAD cells, not loaded IO libraries or stale features.
+    if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
+        raise RuntimeError("Cannot export current iDB IO-cell count for signoff SDC")
+    has_io_cells = json_read(step.feature.db or "")["Instances"]["iopads"]["num"] > 0
+    write_timing_io_context(workspace, has_io_cells=has_io_cells)
+
     for signoff_item in signoff_items:
         corner_name = signoff_item["corner"]
         temperature = signoff_item["temperature"]
@@ -1175,6 +1194,13 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         corner = f"{report_dir.parent.name}/{report_dir.name}"
+        sdc_path = step_tcl_path(
+            workspace,
+            step,
+            corner=corner_name,
+            rc=rcx_corner_name,
+        )
+        assert sdc_path is not None  # The source constraint was validated above.
 
         ecc_module.run_timing(
             config=sta_config,
@@ -1182,7 +1208,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             report_dir=report_dir,
             feature_dir=feature_dir,
             lib_paths=liberty_files,
-            sdc_path=workspace.pdk.sdc,
+            sdc_path=sdc_path,
             spef_path=spef_file,
             output_modes=("report", "structured"),
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),

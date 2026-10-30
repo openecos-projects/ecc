@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace, step_storage_name
 from chipcompiler.tools.ecc import builder as ecc_builder
+from chipcompiler.tools.ecc.timing_constraints import step_tcl_path
 from chipcompiler.utility import json_read
 
 from .utility import find_sizer_root
@@ -377,7 +378,7 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
     )
     command.option(
         "sdc",
-        workspace.pdk.sdc,
+        step_tcl_path(workspace, step),
         value_type=cmdfile.ValueType.PATH,
         omit_empty=True,
     )
@@ -414,7 +415,12 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
         sizer_setup_staging_verilog(step),
         value_type=cmdfile.ValueType.PATH,
     )
-    command.option("sdc", workspace.pdk.sdc, value_type=cmdfile.ValueType.PATH, omit_empty=True)
+    command.option(
+        "sdc",
+        step_tcl_path(workspace, step),
+        value_type=cmdfile.ValueType.PATH,
+        omit_empty=True,
+    )
     command.option("outputPath", ".")
     command.option(
         "def_out_path",
