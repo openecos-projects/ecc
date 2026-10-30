@@ -51,10 +51,10 @@ inputs:
 outputs:
   run-id:
     description: Source workflow run used for the downloaded artifact.
-    value: ${{ steps.install.outputs.run-id }}
+    value: ${{ steps.install.outputs.run-id || steps.restore.outputs.run-id }}
   head-sha:
     description: Source Git commit associated with the selected workflow run.
-    value: ${{ steps.install.outputs.head-sha }}
+    value: ${{ steps.install.outputs.head-sha || steps.restore.outputs.head-sha }}
   archive-path:
     description: Local path to the downloaded tool archive.
     value: ${{ steps.install.outputs.archive-path }}
@@ -140,6 +140,7 @@ runs:
 
     - name: Restore cached tool
       if: ${{ steps.cache.outputs.cache-hit == 'true' }}
+      id: restore
       shell: bash
       env:
         ROOT_MARKER: ${{ inputs.root-marker }}
