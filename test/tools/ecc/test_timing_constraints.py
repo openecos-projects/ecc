@@ -135,6 +135,41 @@ def test_final_sta_selects_each_actual_corner(timing_workspace):
         assert f'set rc_para "{scenario.rc}"' in path.read_text()
 
 
+def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(timing_workspace):
+    workspace = timing_workspace
+    config_path = workspace.config["sta"]
+    config = json.loads(config_path.read_text())
+    max_library = next(item for item in config["liberty"] if item["corner"] == "MAX")
+    config["liberty"] = [{**max_library, "temperature": 85}]
+    config["signoff"] = [{"MAX": ["Cworst", "RCbest"]}]
+    config_path.write_text(json.dumps(config))
+    config_before = config_path.read_bytes()
+    generate_timing_scripts(workspace)
+
+    items = runner.collect_sta_signoff_items(workspace)
+    assert [(item["corner"], item["temperature"], item["rcx_corner"]) for item in items] == [
+        ("MAX", 85, "Cworst"),
+        ("MAX", 85, "RCbest"),
+    ]
+    step = build_step(workspace, StepEnum.STA.value, input_def=None, input_verilog=None)
+    paths = [
+        step_tcl_path(workspace, step, corner=item["corner"], rc=item["rcx_corner"])
+        for item in items
+    ]
+    assert paths == [
+        workspace.directory / "origin/post_CTS/MAX_85_Cworst.tcl",
+        workspace.directory / "origin/post_CTS/MAX_85_RCbest.tcl",
+    ]
+    assert all(path is not None and path.is_file() for path in paths)
+
+    for name, phase in ((StepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
+        step = build_step(workspace, name.value, input_def=None, input_verilog=None)
+        typical = step_tcl_path(workspace, step)
+        assert typical == workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
+        assert typical is not None and typical.is_file()
+    assert config_path.read_bytes() == config_before
+
+
 def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_module, monkeypatch):
     workspace = timing_workspace
     step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)

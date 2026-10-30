@@ -20,11 +20,7 @@ class TimingScenario:
     rc: str
 
 
-def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
-    from . import workspace_config_key_path
-
-    path = workspace_config_key_path(workspace.directory, "sta")
-    config = json_read(path) if path else {}
+def _config_scenarios(config: dict) -> list[TimingScenario]:
     libraries = {entry["corner"]: entry for entry in config.get("liberty", [])}
     return [
         TimingScenario(corner, str(libraries[corner]["temperature"]), rc)
@@ -33,6 +29,21 @@ def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
         if corner in libraries
         for rc in rc_corners
     ]
+
+
+def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
+    """Keep the complete default script set, with configured scenarios taking precedence."""
+    from . import workspace_config_key_path
+
+    template = Path(__file__).resolve().parents[2] / "tools/ecc/configs/sta_ecc.json"
+    path = workspace_config_key_path(workspace.directory, "sta")
+    configs = (json_read(template), json_read(path) if path else {})
+    scenarios = {
+        (scenario.corner, scenario.rc): scenario
+        for config in configs
+        for scenario in _config_scenarios(config)
+    }
+    return list(scenarios.values())
 
 
 def scenario_tcl_path(directory: Path, scenario: TimingScenario, *, post_cts: bool) -> Path:
