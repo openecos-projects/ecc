@@ -31,8 +31,8 @@ on:
       - '.github/scripts/**'
       - 'deploy/arc-cache/**'
       - 'nix/**'
-  # Nightly on main: same pipeline, e2e matrix additionally covers the big
-  # designs (see e2e-designs).
+  # Nightly on main: same pipeline and same e2e design matrix as push/PR; it
+  # exists to catch dependency drift, not to run extra designs.
   schedule:
     - cron: "17 18 * * *"
 
