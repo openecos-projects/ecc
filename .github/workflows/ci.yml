@@ -83,6 +83,9 @@ jobs:
       pdk_repo: ${{ steps.resolve.outputs.pdk_repo }}
       pdk_release: ${{ steps.resolve.outputs.pdk_release }}
       pdk_git_commit: ${{ steps.resolve.outputs.pdk_git_commit }}
+      e2e_designs_repo: ${{ steps.resolve.outputs.e2e_designs_repo }}
+      e2e_designs_git_commit: ${{ steps.resolve.outputs.e2e_designs_git_commit }}
+      e2e_designs_sha256: ${{ steps.resolve.outputs.e2e_designs_sha256 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -702,25 +705,63 @@ jobs:
 
   e2e-designs:
     name: List e2e designs
+    needs: list-versions
     runs-on: ecc-nightly-runner-0
     outputs:
       designs: ${{ steps.list.outputs.designs }}
+      designs_dir: ${{ steps.source.outputs.designs_dir }}
     steps:
-      - name: Checkout designs
+      - name: Restore E2E designs from cache
+        id: source
+        env:
+          DESIGNS_SHA256: ${{ needs.list-versions.outputs.e2e_designs_sha256 }}
+        run: |
+          cache_dir="/mnt/arc-cache/store/${DESIGNS_SHA256}-ecc-ci-designs/designs"
+          if [[ -f "$cache_dir/lit.cfg.py" ]]; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "designs_dir=$cache_dir" >> "$GITHUB_OUTPUT"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download CI actions on cache miss
+        if: steps.source.outputs.hit == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+
+      - name: Checkout designs on cache miss
+        if: steps.source.outputs.hit == 'false'
         uses: actions/checkout@v4
         with:
-          repository: openecos-projects/ecc-ci-designs
+          repository: ${{ needs.list-versions.outputs.e2e_designs_repo }}
+          ref: ${{ needs.list-versions.outputs.e2e_designs_git_commit }}
           path: designs
+
+      - name: Stage E2E designs on cache miss
+        if: steps.source.outputs.hit == 'false'
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/e2e-designs
+          source-path: designs
+          root-marker: lit.cfg.py
+
+      - name: Locate staged E2E designs directory
+        if: steps.source.outputs.hit == 'false'
+        run: echo "designs_dir=/mnt/arc-stage/runs/${GITHUB_RUN_ID}/e2e-designs" >> "$GITHUB_OUTPUT"
 
       - name: List designs
         id: list
+        env:
+          DESIGNS_DIR: ${{ steps.source.outputs.designs_dir }}
         run: |
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned. All
           # other designs, including the memory-heavy BM64, run on the
           # self-hosted runner for every event.
           excludes=(xtea)
-          designs="$(find designs -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
+          designs="$(find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
             | jq -R . | jq -cs .)"
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
@@ -737,16 +778,18 @@ jobs:
     runs-on: ecc-nightly-runner-0
     env:
       E2E_STAGE_ROOT: ${{ needs.verify-e2e-deps.outputs.root }}
+      E2E_DESIGNS_DIR: ${{ needs.e2e-designs.outputs.designs_dir }}
     timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout designs
-        uses: actions/checkout@v4
-        with:
-          repository: openecos-projects/ecc-ci-designs
-          path: designs
+      - name: Link E2E designs
+        run: |
+          test -f "$E2E_DESIGNS_DIR/lit.cfg.py"
+          if [[ "$E2E_DESIGNS_DIR" != "$PWD/designs" ]]; then
+            ln -s "$E2E_DESIGNS_DIR" designs
+          fi
 
       - name: Extract PyInstaller artifact from shared storage
         run: |

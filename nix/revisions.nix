@@ -38,6 +38,11 @@ let
       "release"
       "git_commit"
     ];
+    e2e-designs = [
+      "repo"
+      "git_commit"
+      "sha256"
+    ];
   };
 
   missing = lib.flatten (
@@ -72,6 +77,7 @@ let
     "oss_cad_suite"
     "sizer"
     "kepler-formal"
+    "e2e-designs"
   ];
   badSha = lib.filter (
     section: builtins.match "[0-9a-f]{64}" manifest.${section}.sha256 == null
@@ -81,6 +87,7 @@ let
     "sizer"
     "kepler-formal"
     "pdk"
+    "e2e-designs"
   ];
   badCommits = lib.filter (
     section: builtins.match "[0-9a-f]{40}" manifest.${section}.git_commit == null

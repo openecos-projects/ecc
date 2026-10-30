@@ -31,3 +31,8 @@ sha256 = "f8e0e728c23d5eff49a6eb89a9f5e0e8b17274dc07c09042dccd16cceb411bfa"
 repo = "openecos-projects/icsprout55-pdk"
 release = "v1.10.103"
 git_commit = "4f0a4124e3528163f6805e464a0f2fc4587549ec"
+
+[e2e-designs]
+repo = "openecos-projects/ecc-ci-designs"
+git_commit = "f6ca72be7b3b18b09141442b9e18bc0e640710b2"
+sha256 = "c417e73ba8debaf84157281403715b241f2624fe87167f622467f67316533bbb"
