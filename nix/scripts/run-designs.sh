@@ -83,7 +83,11 @@ run_one() {
   fi
   rm -rf "$dst"
   mkdir -p "$OUT_ROOT"
-  cp -a "$src" "$dst"
+  if [[ "${CI:-}" == true ]]; then
+    cp -r --no-preserve=ownership "$src" "$dst"
+  else
+    cp -a "$src" "$dst"
+  fi
   if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" PYTHONUNBUFFERED=1 \
     "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log" \
     && [[ -f "$dst/default/home/flow.json" ]]; then

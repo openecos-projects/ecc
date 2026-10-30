@@ -839,20 +839,27 @@ jobs:
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
 
+      - name: Prepare writable design project
+        uses: ./.github/actions/stage-tool
+        with:
+          stage-path: ${{ runner.temp }}/e2e-design-input/${{ matrix.design }}
+          source-path: ${{ env.E2E_DESIGNS_DIR }}/${{ matrix.design }}
+          root-marker: ecc.toml
+
       - name: Run design flows
         id: design-flow
         run: |
           emir_params="$(dist/ecc-bundle/ecc param list --step emir --plain \
-            --project "designs/${{ matrix.design }}")"
+            --project "$RUNNER_TEMP/e2e-design-input/${{ matrix.design }}")"
           if [[ -n "$emir_params" ]]; then
             echo "::warning::EMIR uses synthetic process data for flow testing, not signoff."
             dist/ecc-bundle/ecc param set emir.technology_file_path \
               "$PWD/test/fixtures/emir/ics55_synthetic.tech" \
-              --project "designs/${{ matrix.design }}"
+              --project "$RUNNER_TEMP/e2e-design-input/${{ matrix.design }}"
           fi
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
-            --designs-dir designs \
+            --designs-dir "$RUNNER_TEMP/e2e-design-input" \
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
