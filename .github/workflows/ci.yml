@@ -856,6 +856,19 @@ jobs:
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
+      - name: Export signoff package
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ECC_REPO_ROOT="$PWD"
+          export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}:$PWD/test/lit"
+          bash nix/scripts/export-signoff-csv.sh \
+            --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
+            --out-dir "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}" \
+            --spec "$E2E_DESIGNS_DIR/profiles/signoff.yml"
+          test -s "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}/reports/run_manifest.json"
+          test -s "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}/reports/metrics.check.txt"
+
       - name: Lit check flow artifacts
         run: |
           nixpkgs="github:NixOS/nixpkgs/f4b140d5b253f5e2a1ff4e5506edbf8267724bde"
