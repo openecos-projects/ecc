@@ -100,6 +100,14 @@ jobs:
           set -euo pipefail
           nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
 
+      - name: Upload CI actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+          if-no-files-found: error
+          retention-days: 1
+
   test:
     name: Test
     needs: [check-version, list-versions, pdk, sizer]
@@ -377,8 +385,17 @@ jobs:
     outputs:
       root: ${{ steps.stage.outputs.root }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Download CI actions
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+
+      - name: Verify local actions
+        run: |
+          test -f .github/actions/stage-cached-tool/action.yml
+          test -f .github/actions/stage-tool/action.yml
+          test -f .github/actions/install-ci-tool/action.yml
 
       - name: Restore cached dependency
         id: cache
@@ -461,8 +478,17 @@ jobs:
       matrix:
         dependency: [pdk, sizer]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Download CI actions
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+
+      - name: Verify local actions
+        run: |
+          test -f .github/actions/stage-cached-tool/action.yml
+          test -f .github/actions/stage-tool/action.yml
+          test -f .github/actions/install-ci-tool/action.yml
 
       - name: Restore cached dependency
         id: cache
