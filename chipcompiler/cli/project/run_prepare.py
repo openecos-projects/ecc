@@ -505,6 +505,11 @@ def execute_fresh_run(
                         policies["skip_steps"] = flow_config["skip_steps"]
                     if isinstance(flow_config, dict) and "lec_engine" in flow_config:
                         policies["lec_engine"] = flow_config["lec_engine"]
+                    if cfg.flow_no_clock or (
+                        isinstance(flow_config, dict) and flow_config.get("no_clock")
+                    ):
+                        policies["no_clock"] = True
+                        workspace_parameters.data["no_clock"] = True
                     if policies:
                         from chipcompiler.data.workspace_config import validate_flow_config
 

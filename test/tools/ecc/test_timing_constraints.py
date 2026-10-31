@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
+from chipcompiler.data import PDK, OriginDesign, Parameters, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
@@ -69,7 +69,7 @@ def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_works
     for name, phase_dir in (
         (StepEnum.SYNTHESIS, "pre_CTS"),
         (StepEnum.PRE_FLOORPLAN, "pre_CTS"),
-        (StepEnum.CTS, "pre_CTS"),
+        (SkippableStepEnum.CTS, "pre_CTS"),
         (StepEnum.ROUTING, "post_CTS"),
         (StepEnum.POWER_ANALYSIS, "post_CTS"),
         (StepEnum.HARDEN, "post_CTS"),
@@ -115,7 +115,7 @@ def test_custom_constraints_are_used_unchanged_without_native_probe(
     custom.write_bytes(contents)
     workspace.pdk.sdc = custom
     workspace.config.clear()
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, SkippableStepEnum.CTS.value, input_def=None, input_verilog=None)
     files = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
     generate_timing_scripts(workspace)
     prepare_timing_context(workspace, step, native_module)
@@ -172,7 +172,7 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
 
 def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_module, monkeypatch):
     workspace = timing_workspace
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, SkippableStepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False
     monkeypatch.setattr(runner, "EccSubFlow", Mock())

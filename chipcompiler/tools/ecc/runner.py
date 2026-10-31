@@ -58,7 +58,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         SkippableStepEnum.DIFF_OPT.value,
         StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
-        StepEnum.CTS.value,
+        SkippableStepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
@@ -506,7 +506,7 @@ def run_step(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             state = run_pre_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.POST_FLOORPLAN.value:
             state = run_post_floorplan(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.CTS.value:
+        case SkippableStepEnum.CTS.value:
             state = run_cts(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.ROUTING.value:
             state = run_routing(workspace=workspace, step=step, ecc_module=ecc_module)
@@ -579,14 +579,14 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sdc_path=step_tcl_path(workspace, step) or "",
         )
         if not ecc_module.run_cts(
-            config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
-            output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
+            config=workspace.config.get(f"{SkippableStepEnum.CTS.value}", ""),
+            output=(step.data.steps or {}).get(SkippableStepEnum.CTS.value, ""),
         ):
             workspace.logger.error("CTS failed")
             sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
             return False
 
-        ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
+        ecc_module.report_cts(output=(step.data.steps or {}).get(SkippableStepEnum.CTS.value, ""))
 
         ecc_module.feature_cts_map(json_path=step.feature.map or "")
 
