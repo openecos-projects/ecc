@@ -182,3 +182,159 @@ class TestManifest:
         assert manifest.gates_failed == 1
         assert manifest.tools["ecc"]
         assert manifest.spec_sha256
+
+
+class TestSignoffThresholdGates:
+    def test_sta_setup_wns_must_be_nonnegative(self):
+        spec = MetricSpec(id="sta_setup_wns", reference=0, op=">=")
+        assert evaluate_metric_gate({"present": "true", "value": "-0.01"}, spec) == "fail"
+        assert evaluate_metric_gate({"present": "true", "value": "0.0"}, spec) == "pass"
+
+    def test_sta_setup_tns_must_be_zero(self):
+        spec = MetricSpec(id="sta_setup_tns", reference=0, op="==")
+        assert evaluate_metric_gate({"present": "true", "value": "1.0"}, spec) == "fail"
+        assert evaluate_metric_gate({"present": "true", "value": "0.0"}, spec) == "pass"
+
+    def test_harden_artifact_missing_count_must_be_zero(self):
+        spec = MetricSpec(id="harden_artifact_missing_count", reference=0, op="==")
+        assert evaluate_metric_gate({"present": "true", "value": "2"}, spec) == "fail"
+        assert evaluate_metric_gate({"present": "true", "value": "0"}, spec) == "pass"
+
+
+SIGNOFF_CRITERIA = [
+    (
+        "drc-zero-violations",
+        MetricSpec(id="drc_count", reference=0, op="=="),
+        {"present": "true", "value": "0"},
+        {"present": "true", "value": "1"},
+    ),
+    (
+        "lvs-topology-match",
+        ChecklistItemSpec(id="quality.lvs.matched", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "erc-no-severe-violations",
+        ChecklistItemSpec(id="quality.erc.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "antenna-ratios-clean",
+        ChecklistItemSpec(id="quality.antenna.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "sta-setup-wns-nonnegative",
+        MetricSpec(id="sta_setup_wns", reference=0, op=">="),
+        {"present": "true", "value": "0.05"},
+        {"present": "true", "value": "-0.05"},
+    ),
+    (
+        "sta-setup-tns-zero",
+        MetricSpec(id="sta_setup_tns", reference=0, op="=="),
+        {"present": "true", "value": "0"},
+        {"present": "true", "value": "0.1"},
+    ),
+    (
+        "sta-max-slew-zero",
+        MetricSpec(id="sta_max_slew_violation_count", reference=0, op="=="),
+        {"present": "true", "value": "0"},
+        {"present": "true", "value": "1"},
+    ),
+    (
+        "sta-max-cap-zero",
+        MetricSpec(id="sta_max_cap_violation_count", reference=0, op="=="),
+        {"present": "true", "value": "0"},
+        {"present": "true", "value": "2"},
+    ),
+    (
+        "ir-drop-static",
+        MetricSpec(id="ir_drop_static_pct", reference=5, op="<"),
+        {"present": "true", "value": "4.9"},
+        {"present": "true", "value": "5.1"},
+    ),
+    (
+        "ir-drop-dynamic",
+        MetricSpec(id="ir_drop_dynamic_pct", reference=10, op="<"),
+        {"present": "true", "value": "9.9"},
+        {"present": "true", "value": "10.1"},
+    ),
+    (
+        "em-current-density",
+        ChecklistItemSpec(id="quality.em.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "signal-integrity-budget",
+        ChecklistItemSpec(id="quality.si.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "esd-protection-path",
+        ChecklistItemSpec(id="quality.esd.complete", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "lec-zero-mismatch",
+        MetricSpec(id="lec_mismatch_count", reference=0, op="=="),
+        {"present": "true", "value": "0"},
+        {"present": "true", "value": "1"},
+    ),
+    (
+        "cdc-zero-unresolved",
+        ChecklistItemSpec(id="quality.cdc.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "dfm-density-and-vias",
+        ChecklistItemSpec(id="quality.dfm.clean", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "harden-final-db",
+        ChecklistItemSpec(
+            id="quality.harden.complete", require_state="pass", require_blocked=False
+        ),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "area-budget",
+        MetricSpec(id="core_utilization", reference=0.9, op="<="),
+        {"present": "true", "value": "0.75"},
+        {"present": "true", "value": "0.95"},
+    ),
+    (
+        "pdk-version-locked",
+        ChecklistItemSpec(id="pdk.version_locked", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+    (
+        "waiver-approved",
+        ChecklistItemSpec(id="waiver.approved", require_state="pass", require_blocked=False),
+        {"present": "true", "state": "pass", "blocked": "false"},
+        {"present": "true", "state": "fail", "blocked": "false"},
+    ),
+]
+
+
+def _gate_status(spec, row: dict[str, Any]) -> str:
+    if isinstance(spec, MetricSpec):
+        return evaluate_metric_gate(row, spec)
+    return evaluate_checklist_gate(row, spec)
+
+
+class TestSignoffCriteria:
+    @pytest.mark.parametrize("name,spec,pass_row,fail_row", SIGNOFF_CRITERIA)
+    def test_expected_pass_and_fail(self, name, spec, pass_row, fail_row):
+        assert _gate_status(spec, pass_row) == "pass", name
+        assert _gate_status(spec, fail_row) == "fail", name
