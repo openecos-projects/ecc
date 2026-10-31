@@ -5,7 +5,7 @@
 { pkgs, ... }:
 
 let
-  inherit (pkgs) lit jq writeShellApplication symlinkJoin;
+  inherit (pkgs) lit jq python3 writeShellApplication symlinkJoin;
 
   filecheck = pkgs.llvmPackages_21.libllvm;
 
@@ -32,12 +32,26 @@ let
     '';
   };
 
+  signoff-csv = writeShellApplication {
+    name = "signoff-csv";
+    runtimeInputs = [
+      python3
+    ];
+    text = ''
+      root="''${ECC_REPO_ROOT:-$PWD}"
+      export ECC_REPO_ROOT="$root"
+      export PYTHONPATH="$root/nix/scripts''${PYTHONPATH:+:$PYTHONPATH}"
+      exec python3 -m signoff_csv.cli "$@"
+    '';
+  };
+
   signoff-tools = symlinkJoin {
     name = "ecc-signoff-tools";
     paths = [
       lit
       filecheck
       signoff-lit
+      signoff-csv
       jq
     ];
     meta.description = "lit + FileCheck (llvmPackages_21); run via signoff-lit";
@@ -45,11 +59,16 @@ let
 in
 {
   packages = {
-    inherit filecheck lit signoff-lit signoff-tools;
+    inherit filecheck lit signoff-csv signoff-lit signoff-tools;
   };
 
   apps.signoff-lit = {
     type = "app";
     program = "${signoff-lit}/bin/signoff-lit";
+  };
+
+  apps.signoff-csv = {
+    type = "app";
+    program = "${signoff-csv}/bin/signoff-csv";
   };
 }
