@@ -571,7 +571,7 @@ run 汇总记录会带 `no_op: true`（`--plain` 输出可见；用 `--resume`/`
 
 **已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，`home/params.toml` 中显式保存的 start/end 范围继续作为目标，即使项目声明了 `flow.preset`，有界派生 workspace 也保持所选范围。否则使用项目预设或 workspace 已持久化的目标。显式 `--preset` 可覆盖保存的范围。CLI 将已持久化的账本与该目标对齐：
 
-- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完）；
+- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点；
 - 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
 - 目标与持久化 flow **分叉**（既非前缀也非超集）→ `flow_mismatch`，按提示 `--overwrite` 重建或换新的 `--workspace`。
 
@@ -987,6 +987,11 @@ ecc workspace delete <NAME> [--delete-directory]
 ecc workspace reset-flow <NAME>     # 清除持久化 flow 状态，下次 run 从头开始
 ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删除
 ```
+
+`reconcile-deletes` 面向整个项目，不需要选择工作区，也不接受 `--workspace`。
+在项目根目录运行，或使用 `ecc workspace reconcile-deletes --project /path/to/project`
+指定项目；项目中没有工作区或有多个工作区时都可以执行。该命令只处理有有效删除意图记录的
+暂存目录：manifest 中仍有登记时恢复原目录，已移除登记时清理暂存目录；没有待恢复项时成功返回。
 
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
@@ -1460,7 +1465,10 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 
 `--max-candidates N` 把 `sweep run` 限制为计划的前 N 个候选（适合对大笛卡尔积先做
 一轮冒烟）。`sweep run` 可续跑：已有四种状态之一的结果记录且 workspace 存在时直接复用，
-不重跑，也不重新采集证据。`sweep show` 与 `explore rank` 直接输出 JSON；`sweep compare`
+不重跑，也不重新采集证据。旧候选若含 `runtime_processes: []`，会在持锁修复该字段后
+重新运行，保留原工作区文件。新候选使用空对象 `{}`，不继承父工程进程记录。批处理
+完成时退出 `0`，候选仍可能失败；需检查各候选的 `exit_code`、`status` 和步骤证据。
+`sweep show` 与 `explore rank` 直接输出 JSON；`sweep compare`
 默认输出人类可读表格，可用 `--json` 切换为 JSON。它们都是 `results.json` 的只读视图；
 排序为 passed 优先、QoR 分数降序。候选模式的 `explore promote` 只检查缓存结果行及其
 `passed` 状态，然后写入 `experiments/<name>/winner.json`，不会重新校验当前证据。需要按

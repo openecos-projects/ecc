@@ -709,9 +709,10 @@ def test_derived_snapshot_inputs_bind_to_final_workspace(
     original = (source / "home/engineering-snapshot.json").read_bytes()
     target = tmp_path / "derived"
 
-    derive_workspace(source, target)
+    derive_workspace(source, target, target_workspace_id="derived")
 
     snapshot = read_engineering_snapshot_from_directory(target)
+    assert snapshot["workspaceId"] == "derived"
     inputs = snapshot["workspaceBindings"]["inputs"]
     assert inputs
     for path in inputs.values():
