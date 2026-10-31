@@ -6,7 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
+from chipcompiler.data import PDK, OriginDesign, Parameters, SkippableStepEnum, StepEnum, Workspace
+from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -68,7 +69,7 @@ def test_stage_selection_reuses_resolved_constraints(timing_workspace, io_cells)
     for name, phase_dir in (
         (StepEnum.SYNTHESIS, "pre_CTS"),
         (StepEnum.PRE_FLOORPLAN, "pre_CTS"),
-        (StepEnum.CTS, "pre_CTS"),
+        (SkippableStepEnum.CTS, "pre_CTS"),
         (StepEnum.ROUTING, "post_CTS"),
         (StepEnum.POWER_ANALYSIS, "post_CTS"),
         (StepEnum.HARDEN, "post_CTS"),
@@ -94,7 +95,7 @@ def test_native_preparation_resolves_current_io_branch(timing_workspace, io_cell
         return True
 
     module.feature_sammry.side_effect = export
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, SkippableStepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     generate_timing_scripts(workspace, has_io_cells=not bool(io_cells))
     prepare_timing_context(workspace, step, module)
@@ -125,7 +126,7 @@ def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
     ("step_name", "phase"),
     [
         (StepEnum.PREPLACE, "pre_CTS"),
-        (StepEnum.CTS, "pre_CTS"),
+        (SkippableStepEnum.CTS, "pre_CTS"),
         (StepEnum.ROUTING, "post_CTS"),
         (StepEnum.STA, "post_CTS"),
         (StepEnum.POWER_ANALYSIS, "post_CTS"),
@@ -207,7 +208,7 @@ def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monke
             "create_clock -period 10 [get_ports clk]\nset_propagated_clock [all_clocks]\n"
         )
         filename = "user.sdc.ecc.tcl"
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, SkippableStepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False
     monkeypatch.setattr(runner, "EccSubFlow", Mock())
