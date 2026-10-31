@@ -43,7 +43,6 @@ class StepEnum(StepBaseEnum):
     PLACEMENT = "place"
     DIFF_BUFFERING = "diff_buffering"
     DIFF_SIZING = "diff_sizing"
-    CTS = "CTS"
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
@@ -64,14 +63,18 @@ class StepEnum(StepBaseEnum):
 class SkippableStepEnum(StepBaseEnum):
     """Optional flow steps a project may exclude from its ledger.
 
-    These are check/optimization steps whose outputs downstream steps can
-    do without; persisted string values match the former StepEnum members.
+    LEC / postRouteLec / Timing optimization are check/optimization steps
+    whose outputs downstream steps can do without. CTS is also skippable,
+    but only when ``flow.no_clock`` is set — ``resolve_skip_steps`` enforces
+    that gate so a clocked design cannot drop CTS by accident. Persisted
+    string values match the former StepEnum members.
     """
 
     LEC = "lec"
     DIFF_OPT = "diff_opt"
     POST_ROUTE_LEC = "postRouteLec"
     TIMING_OPT = "Timing optimization"
+    CTS = "CTS"
 
     def is_skippable(self) -> bool:
         return True
@@ -118,7 +121,7 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(FlowStepCategory.PNR),
     SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),

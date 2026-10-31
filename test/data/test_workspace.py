@@ -30,7 +30,7 @@ from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     "db": "db_ecc.json",
-    StepEnum.CTS.value: "cts_ecc.json",
+    SkippableStepEnum.CTS.value: "cts_ecc.json",
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
     "macro_location": "macro_location.tcl",
@@ -142,7 +142,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert not (workspace_dir / "home" / "home.json").exists()
     assert not (workspace_dir / "home" / "home.json.lock").exists()
 
-    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts = json_read(workspace.config[SkippableStepEnum.CTS.value])
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
 
@@ -823,7 +823,7 @@ def test_workspace_config_path_handles_known_and_unknown_keys(tmp_path):
 
 
 def test_step_config_keys_return_workspace_config_keys():
-    assert data_api.step_config_keys("CTS", "ecc") == ("db", StepEnum.CTS.value)
+    assert data_api.step_config_keys("CTS", "ecc") == ("db", SkippableStepEnum.CTS.value)
     assert data_api.step_config_keys(StepEnum.PRE_FLOORPLAN, "ecc") == (
         "db",
         StepEnum.FLOORPLAN.value,
@@ -1131,9 +1131,9 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     params["routability_opt_flag"] = 0
     _write_parameters(parameter_path, params)
 
-    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts = json_read(workspace.config[SkippableStepEnum.CTS.value])
     cts["skew_bound"] = "0.13"
-    json_write(workspace.config[StepEnum.CTS.value], cts)
+    json_write(workspace.config[SkippableStepEnum.CTS.value], cts)
 
     refresh_workspace_config(workspace)
 
@@ -1141,7 +1141,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     db = json_read(workspace.config["db"])
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     routing = json_read(workspace.config["route"])
-    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts = json_read(workspace.config[SkippableStepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
 
     assert cts["max_fanout"] == 91
@@ -1343,7 +1343,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
     )
     assert workspace is not None
 
-    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts = json_read(workspace.config[SkippableStepEnum.CTS.value])
     dreamplace = json_read(workspace.config["dreamplace"])
     assert cts["skew_bound"] == "0.05"
     assert cts["buffer_type"] == workspace.pdk.buffers
@@ -1351,12 +1351,12 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
 
     cts["skew_bound"] = "0.20"
     dreamplace["num_threads"] = 1
-    json_write(workspace.config[StepEnum.CTS.value], cts)
+    json_write(workspace.config[SkippableStepEnum.CTS.value], cts)
     json_write(workspace.config["dreamplace"], dreamplace)
 
     refresh_workspace_config(workspace)
 
-    cts = json_read(workspace.config[StepEnum.CTS.value])
+    cts = json_read(workspace.config[SkippableStepEnum.CTS.value])
     assert cts["skew_bound"] == "0.05"
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert json_read(workspace.config["dreamplace"])["num_threads"] == 12
@@ -1563,7 +1563,7 @@ def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
         minimal_ics55_pdk_factory,
         default_ics55_parameters,
     )
-    cts_path = workspace.config[StepEnum.CTS.value]
+    cts_path = workspace.config[SkippableStepEnum.CTS.value]
     cts = json_read(cts_path)
     cts["max_fanout"] = 48
     json_write(cts_path, cts)

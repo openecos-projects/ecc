@@ -25,7 +25,7 @@ STEP_DIRECTORIES = {
     SkippableStepEnum.DIFF_OPT.value: "diff_opt_dreamplace",
     StepEnum.DIFF_BUFFERING.value: "diff_buffering_dreamplace",
     StepEnum.DIFF_SIZING.value: "diff_sizing_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
+    SkippableStepEnum.CTS.value: "CTS_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
     StepEnum.ROUTING.value: "route_ecc",
     StepEnum.FILLER.value: "filler_ecc",

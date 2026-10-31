@@ -913,7 +913,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.CTS.value,
+        step_name=SkippableStepEnum.CTS.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
@@ -1040,7 +1040,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.CTS.value,
+        step_name=SkippableStepEnum.CTS.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
@@ -1099,7 +1099,7 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.CTS.value,
+        step_name=SkippableStepEnum.CTS.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
