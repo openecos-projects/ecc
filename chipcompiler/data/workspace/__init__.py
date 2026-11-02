@@ -214,7 +214,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
-    (StepEnum.PREPLACE, "sizer"): ("db",),
+    (SkippableStepEnum.PREPLACE, "sizer"): ("db",),
     (StepEnum.PLACEMENT, "ecc"): ("db",),
     (SkippableStepEnum.CTS, "ecc"): ("db", SkippableStepEnum.CTS.value),
     (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
@@ -228,7 +228,7 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.DIFF_OPT, "dreamplace"): ("dreamplace",),
     (StepEnum.DIFF_BUFFERING, "dreamplace"): ("dreamplace",),
-    (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
+    (SkippableStepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
 }

@@ -38,7 +38,8 @@ class ProjectConfig:
     # code default then applies). An explicit declaration wins over the
     # manifest's per-workspace value, like every other key.
     flow_skip_steps: list[str] | None = None
-    # Clockless RTL2GDS mode: omit CTS via the skippable-step policy and
+    # Clockless RTL2GDS mode: omit placement/CTS timing steps via the
+    # skippable-step policy and
     # relax design.clock_port / design.frequency_mhz requirements. SDC
     # falls back to the virtual clock from the default generator when
     # clock_port is empty.

@@ -6,6 +6,7 @@ from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
     LEC_STEP_TOOLS,
+    NO_CLOCK_SKIP_STEPS,
     LECEngineEnum,
     SkippableStepEnum,
     StateEnum,
@@ -122,9 +123,11 @@ def resolve_skip_steps(
     step values in canonical chain order (idempotently).
 
     Effective no-clock (explicit ``flow.no_clock`` or empty clock materials
-    when ``materials`` is supplied) always adds CTS to the skip set. Listing
-    CTS in ``skip_steps`` without effective no-clock is rejected — CTS is
-    only omitted for clockless designs.
+    when ``materials`` is supplied) always adds the no-clock placement and
+    timing optimization steps to the skip set: diff_opt, preplace,
+    diff_sizing, CTS and Timing optimization. Listing CTS in ``skip_steps``
+    without effective no-clock is rejected — CTS is only omitted for
+    clockless designs.
     """
     no_clock = resolve_no_clock(flow_config, materials=materials).enabled
     requested: set[str]
@@ -157,7 +160,7 @@ def resolve_skip_steps(
                 "(or clock materials are empty)"
             )
     if no_clock:
-        requested.add(SkippableStepEnum.CTS.value)
+        requested.update(NO_CLOCK_SKIP_STEPS)
     chain_names = [
         step.value if isinstance(step, StepBaseEnum) else str(step)
         for step, _tool, _state in build_rtl2gds_flow()
@@ -211,10 +214,10 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.PRE_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value, StateEnum.Unstart))
@@ -251,15 +254,15 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,
-        "preplace": StepEnum.PREPLACE.value,
-        "preplaceopt": StepEnum.PREPLACE.value,
-        "preplaceoptimization": StepEnum.PREPLACE.value,
+        "preplace": SkippableStepEnum.PREPLACE.value,
+        "preplaceopt": SkippableStepEnum.PREPLACE.value,
+        "preplaceoptimization": SkippableStepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
         "diffbuffering": StepEnum.DIFF_BUFFERING.value,
         "diffopt": SkippableStepEnum.DIFF_OPT.value,
         "diffoptimization": SkippableStepEnum.DIFF_OPT.value,
-        "diffsizing": StepEnum.DIFF_SIZING.value,
+        "diffsizing": SkippableStepEnum.DIFF_SIZING.value,
         "cts": SkippableStepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,

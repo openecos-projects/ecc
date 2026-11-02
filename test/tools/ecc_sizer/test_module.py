@@ -197,7 +197,7 @@ def test_sizer_config_emits_global_routing_layer_rc_file(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize(
     "step_name, rc_mode",
-    [(SkippableStepEnum.TIMING_OPT.value, "1"), (StepEnum.PREPLACE.value, "0")],
+    [(SkippableStepEnum.TIMING_OPT.value, "1"), (SkippableStepEnum.PREPLACE.value, "0")],
 )
 def test_sizer_step_config_writes_ff_hold_pass_from_sta_contract(
     tmp_path, monkeypatch, step_name, rc_mode

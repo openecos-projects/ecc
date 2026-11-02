@@ -14,7 +14,7 @@ Layout::
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
                skip_steps = [...]  (optional, normalized)
-               no_clock = true     (optional; omits CTS via skip policy)
+               no_clock = true     (optional; omits placement/CTS timing steps via skip policy)
                lec_engine = "..."  (optional, normalized)
     [params]   flat snake_case parameters; nested dicts map to subtables;
                identity mirrors are reconstructed on load, not persisted
@@ -160,8 +160,9 @@ def validate_flow_config(flow: object) -> dict:
     invalid ``skip_steps`` list, or an unknown ``lec_engine``. ``skip_steps``
     is stored normalized (canonical step values in canonical chain order);
     an explicit empty list round-trips as ``[]`` and an absent key stays
-    absent. ``no_clock`` is preserved and folded into the skip policy (CTS
-    is always skipped). ``lec_engine`` is stored normalized (the ``dual``
+    absent. ``no_clock`` is preserved and folded into the skip policy
+    (placement/CTS timing optimization steps are always skipped).
+    ``lec_engine`` is stored normalized (the ``dual``
     alias becomes ``lec_dual``); an absent key stays absent.
     """
     if flow is None:
@@ -317,7 +318,8 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
     stores always describe the same contiguous range. A declared
     ``skip_steps`` policy and ``lec_engine`` ride along (normalized); an
     undeclared one stays absent so the code default keeps applying.
-    ``no_clock`` rides along and forces CTS into the skip policy. Returns {}
+    ``no_clock`` rides along and forces the placement/CTS timing optimization
+    steps into the skip policy. Returns {}
     when the flow_config does not select steps and carries no policy.
     """
     if not isinstance(flow_config, dict) or not flow_config:

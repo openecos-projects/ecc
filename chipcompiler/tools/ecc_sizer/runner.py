@@ -5,7 +5,7 @@ import signal
 import subprocess
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, Workspace
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context
 from chipcompiler.tools.ecc_dreamplace.runner import legalize_layout
@@ -157,7 +157,7 @@ def run_step(
     del ecc_module
 
     sub_flow = SizerSubFlow(workspace=workspace, workspace_step=step)
-    is_preplace = step.name == StepEnum.PREPLACE.value
+    is_preplace = step.name == SkippableStepEnum.PREPLACE.value
     run_sizer_step = (
         SizerSubFlowEnum.run_preplace.value if is_preplace else SizerSubFlowEnum.run_sizer.value
     )

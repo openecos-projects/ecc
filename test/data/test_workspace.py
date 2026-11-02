@@ -804,7 +804,7 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("place", "ecc") == ("db",)
     assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
-    assert data_api.step_config_keys(StepEnum.DIFF_SIZING, "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys(SkippableStepEnum.DIFF_SIZING, "dreamplace") == ("dreamplace",)
     assert data_api.step_config_keys("legalization", "ecc") == ("db",)
     assert data_api.step_config_keys("filler", "ecc") == (
         "db",

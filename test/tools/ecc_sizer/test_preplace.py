@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import SkippableStepEnum
 from chipcompiler.tools.ecc_sizer import builder, runner
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace, _write_staging
@@ -18,7 +18,7 @@ def test_preplace_publishes_native_pair_without_legalization(
     workspace = _workspace(tmp_path)
     (workspace.directory / "home").mkdir(parents=True, exist_ok=True)
     step: Any = builder.build_step(
-        workspace, StepEnum.PREPLACE.value, Path("input.def"), Path("input.v")
+        workspace, SkippableStepEnum.PREPLACE.value, Path("input.def"), Path("input.v")
     )
     builder.build_step_space(step)
     builder.build_step_config(workspace, step)
