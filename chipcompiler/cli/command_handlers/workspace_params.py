@@ -278,9 +278,9 @@ def _mutate(
 
 def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: str):
     from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
-    from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine import update_workspace_step_configuration
     from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 
     overrides = workspace_param_diff(workspace)

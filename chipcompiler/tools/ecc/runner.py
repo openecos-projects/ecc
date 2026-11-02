@@ -429,14 +429,13 @@ def save_data(
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
-        snapshot_options = {"include_drc": True} if step.name == StepEnum.DRC.value else {}
         clock_tree_stage = clock_tree_stage_for_step(workspace, step.name)
-        if clock_tree_stage is not None:
-            snapshot_options["clock_tree_stage"] = clock_tree_stage
-        if clock_tree_graph is not None:
-            snapshot_options["clock_tree_graph"] = clock_tree_graph
         if not ecc_module.geometry_snapshot_save(
-            output_dir=geometry_dir, thumbnail_path=step.output.image, **snapshot_options
+            output_dir=geometry_dir,
+            thumbnail_path=step.output.image,
+            include_drc=step.name == StepEnum.DRC.value,
+            clock_tree_stage=clock_tree_stage,
+            clock_tree_graph=clock_tree_graph,
         ):
             workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
             return False
@@ -596,17 +595,25 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
             return False
 
-        clock_tree_graph = None
+        clock_tree_graph: dict | None = None
         if clock_tree_stage_for_step(workspace, step.name) is not None:
             getter = getattr(ecc_module, "clock_tree_graph", None)
             if callable(getter):
                 try:
-                    clock_tree_graph = getter()
+                    captured = getter()
                 except Exception as exc:
                     workspace.logger.warning(
                         "CTS clock graph capture failed; geometry will keep topology only: %s",
                         exc,
                     )
+                else:
+                    if isinstance(captured, dict):
+                        clock_tree_graph = captured
+                    else:
+                        workspace.logger.warning(
+                            "Native CTS clock graph API returned invalid data; "
+                            "geometry will keep topology only"
+                        )
             else:
                 workspace.logger.warning(
                     "Native CTS clock graph API is unavailable; geometry will keep topology only"

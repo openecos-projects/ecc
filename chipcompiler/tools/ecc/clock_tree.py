@@ -85,9 +85,7 @@ def _select_typ_liberty(sta_config: Path) -> tuple[list[str], str, float]:
         )
     missing = [path for path in paths if not isinstance(path, str) or not Path(path).is_file()]
     if missing:
-        raise ClockTreeCaptureError(
-            f"STA {FILLER_LIBERTY_CORNER} Liberty is missing: {missing}"
-        )
+        raise ClockTreeCaptureError(f"STA {FILLER_LIBERTY_CORNER} Liberty is missing: {missing}")
     return list(paths), str(entry.get("corner", FILLER_LIBERTY_CORNER)), float(entry["temperature"])
 
 

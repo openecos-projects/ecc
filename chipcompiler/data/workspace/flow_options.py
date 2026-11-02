@@ -39,15 +39,9 @@ def sync_flow_options_projection(workspace, *, persist: bool = False) -> bool:
         flow.data = data
 
     options = data.get(OPTIONS_KEY)
-    if not isinstance(options, dict):
-        options = {}
-    else:
-        options = deepcopy(options)
+    options = {} if not isinstance(options, dict) else deepcopy(options)
     geometry = options.get(GEOMETRY_KEY)
-    if not isinstance(geometry, dict):
-        geometry = {}
-    else:
-        geometry = deepcopy(geometry)
+    geometry = {} if not isinstance(geometry, dict) else deepcopy(geometry)
     desired = clock_tree_requested(workspace)
     changed = geometry.get(CLOCK_TREE_KEY) is not desired
     geometry[CLOCK_TREE_KEY] = desired

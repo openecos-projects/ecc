@@ -45,7 +45,7 @@ def _workspace(workspace_dir):
                     },
                     {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                 ]
-            }
+            },
         ),
     )
 

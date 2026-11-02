@@ -37,9 +37,7 @@ def _sta_config(tmp_path: Path, *, typ_temperature: int = 25) -> tuple[Path, Pat
 
 def _write_spef(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        '*SPEF "IEEE 1481-1998"\n*DESIGN "gcd"\n*T_UNIT 1 NS\n', encoding="utf-8"
-    )
+    path.write_text('*SPEF "IEEE 1481-1998"\n*DESIGN "gcd"\n*T_UNIT 1 NS\n', encoding="utf-8")
 
 
 def test_select_typ_liberty_does_not_take_the_first_corner(tmp_path):
@@ -162,6 +160,7 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
         "destroy_sta",
     ]
     assert module.native.calls[3][1]["config_dict"]["-timing_corner"] == "TYP"
+    assert graph is not None
     assert graph["stage"] == "filler"
     assert graph["analysis_source"] == "ista_typical"
     assert graph["rc_corner"] == "TYPICAL"

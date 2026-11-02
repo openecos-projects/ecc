@@ -673,6 +673,7 @@ def test_run_cts_captures_clock_graph_before_saving_geometry(tmp_path, monkeypat
     assert save.call_args.kwargs["clock_tree_graph"] is graph
     assert [call[0] for call in module.calls] == [
         "update_step_paths",
+        "update_sta_data_config",
         "run_cts",
         "clock_tree_graph",
         "report_cts",
@@ -1292,9 +1293,10 @@ def test_run_filler_keeps_topology_when_clock_tree_capture_fails(tmp_path, monke
         def gds_save(self, **kwargs):
             return None
 
+    logger: Any = FakeLogger()
     workspace = Workspace(
         directory=tmp_path,
-        logger=_fake_logger(),
+        logger=logger,
         parameters=Parameters(
             path=tmp_path / "home" / "params.toml",
             data={"geometry": {"clock_tree": True}},
@@ -1323,8 +1325,8 @@ def test_run_filler_keeps_topology_when_clock_tree_capture_fails(tmp_path, monke
 
     assert ecc_runner.run_filler(workspace, step) is True
     assert saved["clock_tree_graph"] is None
-    assert workspace.logger.warnings
-    assert "topology only" in workspace.logger.warnings[0][0]
+    assert logger.warnings
+    assert "topology only" in logger.warnings[0][0]
 
 
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
