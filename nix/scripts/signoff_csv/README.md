@@ -11,6 +11,9 @@ workspace already produces:
 - `postRouteLec_*/output/<design>_postRouteLec_result.json`
 - `Harden_ecc/output/<design>_Harden.{gds,lef,lib}`
 
+The collector is implemented in shell (`fixture.sh` and `export.sh`) with `jq`;
+there is no Python runtime dependency in this workflow.
+
 ## Exported views
 
 | Check | CSV | Gate |
@@ -25,7 +28,7 @@ workspace already produces:
 
 This is a collector skeleton, not a signoff gate:
 
-- CI runs `nix/scripts/signoff_csv/fixture.py` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
+- CI runs `nix/scripts/signoff_csv/fixture.sh` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC not `proven`, negative WNS, Harden missing artifacts) are not covered by fixture tests.
@@ -69,11 +72,17 @@ Includes Harden QoR metrics and the three final artifacts: `gds`, `lef`, `lib`.
 Collects `synthesis_cell_area`, `die_area`, `core_area`, and `core_utilization`
 from `Synthesis`, `postFloorplan`, and `Harden` outputs.
 
+## Fixture
+
+```bash
+bash nix/scripts/signoff_csv/fixture.sh \
+  --workspace /tmp/signoff-workspace
+```
+
 ## CLI
 
 ```bash
-PYTHONPATH="$PWD/nix/scripts" \
-python3 -m signoff_csv.cli \
+bash nix/scripts/signoff_csv/export.sh \
   --workspace /path/to/workspace \
   --out-dir /path/to/signoff_csv
 ```

@@ -5,11 +5,12 @@
 { pkgs, ... }:
 
 let
-  inherit (pkgs) lit jq python3 writeShellApplication symlinkJoin;
+  inherit (pkgs) lit jq writeShellApplication symlinkJoin coreutils findutils gawk;
 
   filecheck = pkgs.llvmPackages_21.libllvm;
 
   exportCsvSh = ./scripts/export-signoff-csv.sh;
+  signoffCsvExportSh = ./scripts/signoff_csv/export.sh;
   signoffLitSh = ./scripts/signoff-lit.sh;
 
   signoff-lit = writeShellApplication {
@@ -35,13 +36,15 @@ let
   signoff-csv = writeShellApplication {
     name = "signoff-csv";
     runtimeInputs = [
-      python3
+      jq
+      coreutils
+      findutils
+      gawk
     ];
     text = ''
       root="''${ECC_REPO_ROOT:-$PWD}"
       export ECC_REPO_ROOT="$root"
-      export PYTHONPATH="$root/nix/scripts''${PYTHONPATH:+:$PYTHONPATH}"
-      exec python3 -m signoff_csv.cli "$@"
+      exec bash ${signoffCsvExportSh} "$@"
     '';
   };
 

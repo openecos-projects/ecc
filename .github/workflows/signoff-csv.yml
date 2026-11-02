@@ -32,23 +32,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Generate deterministic workspace
         run: |
-          PYTHONPATH="$PWD/nix/scripts" \
-          python3 -m signoff_csv.fixture \
+          bash nix/scripts/signoff_csv/fixture.sh \
             --workspace "$RUNNER_TEMP/signoff-workspace"
 
       - name: Export signoff product CSVs
         id: export
         run: |
           mkdir -p signoff-artifacts
-          PYTHONPATH="$PWD/nix/scripts" \
-          python3 -m signoff_csv.cli \
+          bash nix/scripts/signoff_csv/export.sh \
             --workspace "$RUNNER_TEMP/signoff-workspace" \
             --out-dir signoff-artifacts
 
