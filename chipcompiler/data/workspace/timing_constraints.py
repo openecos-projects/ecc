@@ -61,8 +61,8 @@ def write_timing_io_context(workspace: "Workspace", *, has_io_cells: bool) -> No
 
 
 def generate_timing_scripts(workspace: "Workspace") -> None:
-    """Generate both complete sets without loading RTL or a native database."""
-    if not is_generated_sdc(workspace.pdk.sdc):
+    """Generate both sets and use pre-CTS TYP/TYPICAL as the default entry point."""
+    if workspace.pdk.sdc is not None and not is_generated_sdc(workspace.pdk.sdc):
         return
     scenarios = timing_scenarios(workspace)
     if not scenarios:
@@ -82,3 +82,5 @@ def generate_timing_scripts(workspace: "Workspace") -> None:
                 corner=scenario.corner,
                 rc_para=scenario.rc,
             )
+    typical = next(item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL"))
+    workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)

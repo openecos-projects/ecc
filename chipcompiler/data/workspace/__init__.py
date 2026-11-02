@@ -54,8 +54,6 @@ from .flow_data import (
 from .flow_types import FlowDocument, FlowStepEntry, load_flow_document
 from .layout import EccData, WorkspaceStepBase
 from .macro_location import refresh_generated_macro_location
-from .sdc import create_default_sdc as create_default_sdc
-from .sdc import refresh_generated_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -705,7 +703,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    refresh_generated_sdc(workspace)
     refresh_generated_macro_location(workspace)
 
     db = json_read(workspace.config["db"])
@@ -797,6 +794,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     from .timing_constraints import generate_timing_scripts
 
     generate_timing_scripts(workspace)
+    db = json_read(workspace.config["db"])
+    db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
+    if not json_write(workspace.config["db"], db):
+        raise OSError(f"Failed to write DB config: {workspace.config['db']}")
     record_derived_config(workspace)
 
 

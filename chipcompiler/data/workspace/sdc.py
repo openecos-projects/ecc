@@ -1,4 +1,4 @@
-"""Generate design clocks and pre/post-CTS golden timing-constraint Tcl.
+"""Generate pre/post-CTS golden timing-constraint Tcl.
 
 The two scenario sets share golden rules; only post-CTS propagates clocks.
 Custom full constraint files remain authoritative and are never supplemented.
@@ -67,27 +67,6 @@ def is_generated_sdc(path: Path | None) -> bool:
         return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
 
 
-def create_default_sdc(workspace: "Workspace") -> None:
-    """Write design clocks without assuming a signoff corner or built clock tree.
-
-    ECC's default design interface declares a single clock port and frequency.
-    Design-specific clocks, groups, IO delays and exceptions require a custom SDC.
-    Consumers select the golden IO policy after loading the current design.
-    A clockless design does not acquire an invented virtual clock.
-    """
-    if workspace.pdk.sdc is not None:
-        workspace.pdk.sdc.write_text(
-            "\n".join(_design_constraints(workspace)) + "\n", encoding="utf-8"
-        )
-
-
-def refresh_generated_sdc(workspace: "Workspace") -> None:
-    """Refresh only the common SDC owned by this generator."""
-    path = workspace.pdk.sdc
-    if is_generated_sdc(path):
-        create_default_sdc(workspace)
-
-
 def signoff_sdc_path(
     workspace: "Workspace",
     output_path: Path,
@@ -98,9 +77,7 @@ def signoff_sdc_path(
 ) -> Path:
     """Write a pre/post-CTS scenario; actual IO mode is supplied by the loaded design."""
     source = workspace.pdk.sdc
-    if source is None:
-        raise ValueError("Signoff STA requires an SDC path")
-    if not is_generated_sdc(source):
+    if source is not None and not is_generated_sdc(source):
         return source
 
     lines = _design_constraints(workspace)

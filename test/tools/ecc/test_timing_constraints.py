@@ -7,7 +7,6 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
-from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -31,11 +30,10 @@ def timing_workspace(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(libs=[Path(path) for path in config["liberty"][0]["path"]], sdc=origin / "gcd.sdc"),
+        pdk=PDK(libs=[Path(path) for path in config["liberty"][0]["path"]]),
         config={StepEnum.STA.value: config_path},
         parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
-    create_default_sdc(workspace)
     generate_timing_scripts(workspace)
     return workspace
 

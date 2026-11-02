@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import SkippableStepEnum, StepEnum
-from chipcompiler.data.workspace.sdc import create_default_sdc
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_sizer import builder
 
@@ -26,8 +26,8 @@ def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
     workspace = _workspace(tmp_path)
     origin = workspace.directory / "origin"
     origin.mkdir(parents=True)
-    workspace.pdk.sdc = origin / "gcd.sdc"
-    create_default_sdc(workspace)
+    workspace.pdk.sdc = None
+    generate_timing_scripts(workspace)
     template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
     config = json.loads(template.read_text())
     config_path = workspace.directory / "config" / "sta_ecc.json"
