@@ -16,6 +16,10 @@ from chipcompiler.data import (
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.clock_tree import (
+    capture_filler_clock_tree,
+    clock_tree_stage_for_step,
+)
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
@@ -412,6 +416,7 @@ def save_data(
     ecc_module: ECCToolsModule,
     *,
     feature_step: bool = True,
+    clock_tree_graph: dict | None = None,
 ) -> bool:
     """
     module is ecc module from db engine,
@@ -424,9 +429,13 @@ def save_data(
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
-        snapshot_options = {"include_drc": True} if step.name == StepEnum.DRC.value else {}
+        clock_tree_stage = clock_tree_stage_for_step(workspace, step.name)
         if not ecc_module.geometry_snapshot_save(
-            output_dir=geometry_dir, thumbnail_path=step.output.image, **snapshot_options
+            output_dir=geometry_dir,
+            thumbnail_path=step.output.image,
+            include_drc=step.name == StepEnum.DRC.value,
+            clock_tree_stage=clock_tree_stage,
+            clock_tree_graph=clock_tree_graph,
         ):
             workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
             return False
@@ -586,6 +595,30 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
             return False
 
+        clock_tree_graph: dict | None = None
+        if clock_tree_stage_for_step(workspace, step.name) is not None:
+            getter = getattr(ecc_module, "clock_tree_graph", None)
+            if callable(getter):
+                try:
+                    captured = getter()
+                except Exception as exc:
+                    workspace.logger.warning(
+                        "CTS clock graph capture failed; geometry will keep topology only: %s",
+                        exc,
+                    )
+                else:
+                    if isinstance(captured, dict):
+                        clock_tree_graph = captured
+                    else:
+                        workspace.logger.warning(
+                            "Native CTS clock graph API returned invalid data; "
+                            "geometry will keep topology only"
+                        )
+            else:
+                workspace.logger.warning(
+                    "Native CTS clock graph API is unavailable; geometry will keep topology only"
+                )
+
         ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
 
         ecc_module.feature_cts_map(json_path=step.feature.map or "")
@@ -596,7 +629,12 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             workspace.logger.error("Failed to persist CTS timing feature facts")
             return False
 
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            clock_tree_graph=clock_tree_graph,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -740,11 +778,26 @@ def run_filler(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
+        clock_tree_graph = None
+        if clock_tree_stage_for_step(workspace, step.name) == "filler":
+            try:
+                clock_tree_graph = capture_filler_clock_tree(workspace, step, ecc_module)
+            except Exception as exc:
+                workspace.logger.warning(
+                    "filler clock-tree timing capture failed; geometry will keep topology only: %s",
+                    exc,
+                )
+
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file or "",
         )
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            clock_tree_graph=clock_tree_graph,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 

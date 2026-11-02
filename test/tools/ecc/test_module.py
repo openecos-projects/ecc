@@ -63,6 +63,10 @@ class FakeEcc:
             "clocks": [],
         }
 
+    def cts_clock_graph(self):
+        self.calls.append(("cts_clock_graph", (), {}))
+        return {"timing_source": "cts_fast_sta", "clocks": [{"name": "clk"}]}
+
     def read_liberty(self, lib_paths):
         self.calls.append(("read_liberty", lib_paths))
         return True
@@ -267,6 +271,41 @@ def test_geometry_snapshot_save_passes_thumbnail_path():
             {"output_dir": Path("/tmp/geometry"), "thumbnail_path": Path("/tmp/geometry.png")},
         ),
     ]
+
+
+def test_geometry_snapshot_save_forwards_clock_graph_and_stage():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    graph = {"timing_source": "cts_fast_sta", "clocks": []}
+
+    assert (
+        module.geometry_snapshot_save(
+            Path("/tmp/geometry"), clock_tree_stage="CTS", clock_tree_graph=graph
+        )
+        is True
+    )
+
+    assert module.ecc.calls == [
+        (
+            "geometry_snapshot_save",
+            (),
+            {
+                "output_dir": Path("/tmp/geometry"),
+                "clock_tree_stage": "CTS",
+                "clock_tree_graph": graph,
+            },
+        ),
+    ]
+
+
+def test_clock_tree_graph_forwards_native_committed_graph():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    graph = module.clock_tree_graph()
+
+    assert graph == {"timing_source": "cts_fast_sta", "clocks": [{"name": "clk"}]}
+    assert ("cts_clock_graph", (), {}) in module.ecc.calls
 
 
 def test_geometry_edit_session_wrappers_forward_instance_name():

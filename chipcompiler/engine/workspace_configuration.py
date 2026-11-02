@@ -28,6 +28,7 @@ from chipcompiler.engine.snapshot import (
     ensure_engineering_snapshot,
     invalidate_engineering_snapshot,
     open_workspace_snapshot,
+    refresh_engineering_snapshot,
 )
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility import JsonReadError
@@ -154,9 +155,11 @@ def _apply_workspace_parameters(
                 f"Parameter {parameter} is not configurable at {step_id}",
             )
         try:
-            affected_steps.append(workspace_param_step(schema))
+            affected_step = workspace_param_step(schema)
         except ValueError as exc:
             raise WorkspaceLifecycleError("parameter_requires_refresh", str(exc)) from exc
+        if affected_step is not None:
+            affected_steps.append(affected_step)
         schemas[parameter] = schema
     for parameter, value in sets.items():
         schema = schemas[parameter]
@@ -190,9 +193,25 @@ def _apply_workspace_parameters(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
+    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
+    sync_flow_options_projection(workspace, persist=True)
     _prune_macro_location_after_write(workspace, set_keys)
+    if not affected_steps:
+        updated = refresh_engineering_snapshot(
+            workspace,
+            workspace_id=snapshot["workspaceId"],
+            cause="workspace.output_parameters_applied",
+        )
+        write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            updated["workspaceId"],
+            updated["workspaceRevision"],
+        )
+        return _load_committed_workspace(target)
     first_step = _earliest_flow_step(workspace, affected_steps)
     invalidate_from(EngineFlow(workspace), first_step)
     updated = invalidate_engineering_snapshot(
@@ -267,6 +286,7 @@ def _update_workspace_configuration(
         )
 
     changed = False
+    changed_schemas = []
     for parameter, value in parameters.items():
         schema = lookup_schema(parameter)
         if schema is None or schema.pdk_target is not None:
@@ -278,6 +298,7 @@ def _update_workspace_configuration(
         if workspace_param_value(workspace, schema) != normalized:
             update_workspace_param_value(workspace, schema, normalized)
             changed = True
+            changed_schemas.append(schema)
 
     if not changed:
         write_workspace_command(
@@ -291,9 +312,25 @@ def _update_workspace_configuration(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
+    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
+    sync_flow_options_projection(workspace, persist=True)
     _prune_macro_location_after_write(workspace, set(parameters))
+    if changed_schemas and all(schema.output_only for schema in changed_schemas):
+        updated = refresh_engineering_snapshot(
+            workspace,
+            workspace_id=current["workspaceId"],
+            cause="workspace.output_configuration_updated",
+        )
+        write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            updated["workspaceId"],
+            updated["workspaceRevision"],
+        )
+        return _load_committed_workspace(target)
     flow = EngineFlow(workspace)
     steps = workspace.flow.steps()
     if steps:
@@ -465,6 +502,7 @@ def _update_workspace_step_configuration(
     step, schemas = _step_catalog(workspace, step_id)
     allowed = {schema.param: schema for schema in schemas}
     changed = False
+    changed_schemas = []
     for parameter, value in patch.items():
         schema = lookup_schema(parameter)
         if schema is None or schema.pdk_target is not None:
@@ -481,6 +519,7 @@ def _update_workspace_step_configuration(
         if workspace_param_value(workspace, schema) != normalized:
             update_workspace_param_value(workspace, schema, normalized)
             changed = True
+            changed_schemas.append(schema)
 
     if not changed:
         write_workspace_command(
@@ -494,9 +533,25 @@ def _update_workspace_step_configuration(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
+    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
+    sync_flow_options_projection(workspace, persist=True)
     _prune_macro_location_after_write(workspace, set(patch))
+    if changed_schemas and all(schema.output_only for schema in changed_schemas):
+        updated = refresh_engineering_snapshot(
+            workspace,
+            workspace_id=snapshot["workspaceId"],
+            cause="workspace.output_step_configuration_updated",
+        )
+        write_workspace_command(
+            target,
+            command_id,
+            fingerprint,
+            updated["workspaceId"],
+            updated["workspaceRevision"],
+        )
+        return _load_committed_workspace(target)
     invalidate_from(EngineFlow(workspace), step)
     updated = invalidate_engineering_snapshot(
         workspace,
@@ -543,6 +598,7 @@ def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
         "value": workspace_param_value(workspace, schema),
         "default": deepcopy(schema.default),
         "applies": schema.applies,
+        **({"output_only": True} if schema.output_only else {}),
         "description": schema.description,
         "display_key": display_key_for(schema.param),
         "knob_id": knob_id_for(schema.param),
