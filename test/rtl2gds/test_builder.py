@@ -61,10 +61,10 @@ def test_build_rtl2gds_flow_is_the_complete_flow():
         (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
         (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
         (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
-        (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
+        (SkippableStepEnum.PREPLACE, "sizer", StateEnum.Unstart),
         (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.DIFF_OPT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
+        (SkippableStepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.CTS, "ecc", StateEnum.Unstart),
         (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
         (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
@@ -114,7 +114,7 @@ def test_build_flow_range_slices_the_canonical_chain():
     flow = builder_module.build_flow_range("diff_sizing", "route")
 
     assert [(step, tool) for step, tool, _state in flow] == [
-        (StepEnum.DIFF_SIZING, "dreamplace"),
+        (SkippableStepEnum.DIFF_SIZING, "dreamplace"),
         (SkippableStepEnum.CTS, "ecc"),
         (StepEnum.LEGALIZATION, "dreamplace"),
         (SkippableStepEnum.TIMING_OPT, "sizer"),
@@ -141,7 +141,7 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
         StepEnum.PLACEMENT,
         SkippableStepEnum.DIFF_OPT,
-        StepEnum.DIFF_SIZING,
+        SkippableStepEnum.DIFF_SIZING,
         SkippableStepEnum.CTS,
     ]
     assert [
@@ -301,15 +301,26 @@ def test_resolve_skip_steps_rejects_invalid_values(raw):
 def test_resolve_skip_steps_no_clock_always_omits_cts():
     assert builder_module.resolve_skip_steps({"no_clock": True}) == (
         "lec",
+        "preplace",
         "diff_opt",
+        "diff_sizing",
         SkippableStepEnum.CTS.value,
+        "Timing optimization",
     )
     assert builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": []}) == (
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
         SkippableStepEnum.CTS.value,
+        "Timing optimization",
     )
     assert builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": ["lec", "CTS"]}) == (
         "lec",
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
         SkippableStepEnum.CTS.value,
+        "Timing optimization",
     )
 
 
@@ -317,7 +328,11 @@ def test_resolve_no_clock_and_materials_for_cts_skip():
     decision = builder_module.resolve_no_clock({}, materials={"clock_port": ""})
     assert decision.enabled and decision.source == "inferred"
     assert builder_module.resolve_skip_steps({"skip_steps": []}, materials={"clock": ""}) == (
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
         SkippableStepEnum.CTS.value,
+        "Timing optimization",
     )
     # Named clock without flag: CTS listing still rejected.
     with pytest.raises(ValueError, match="CTS"):
@@ -329,7 +344,14 @@ def test_build_rtl2gds_flow_no_clock_skips_cts_via_policy():
     names = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow(skip=skip)]
     assert SkippableStepEnum.CTS.value not in names
     assert "lec" not in names
-    # place still chains into legalization without CTS in the ledger
+    for omitted in (
+        SkippableStepEnum.PREPLACE.value,
+        SkippableStepEnum.DIFF_OPT.value,
+        SkippableStepEnum.DIFF_SIZING.value,
+        SkippableStepEnum.TIMING_OPT.value,
+    ):
+        assert omitted not in names
+    # place still chains into legalization without the placement/timing stages
     assert names.index(StepEnum.PLACEMENT.value) < names.index(StepEnum.LEGALIZATION.value)
 
 

@@ -72,7 +72,7 @@ _STAGES: dict[StepBaseEnum, tuple[EccSubFlowEnum, ...]] = {
         EccSubFlowEnum.run_diff_opt,
         EccSubFlowEnum.save_data,
     ),
-    StepEnum.DIFF_SIZING: (
+    SkippableStepEnum.DIFF_SIZING: (
         EccSubFlowEnum.load_data,
         EccSubFlowEnum.run_diff_sizing,
         EccSubFlowEnum.save_data,

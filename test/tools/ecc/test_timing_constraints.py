@@ -190,7 +190,7 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     ]
     assert all(path is not None and path.is_file() for path in paths)
 
-    for name, phase in ((StepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
+    for name, phase in ((SkippableStepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
         step = build_step(workspace, name.value, input_def=None, input_verilog=None)
         typical = step_tcl_path(workspace, step)
         assert typical == workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"

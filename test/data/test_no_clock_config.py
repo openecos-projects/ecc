@@ -80,7 +80,13 @@ def test_project_config_explicit_false_still_requires_clock_port(tmp_path):
 
 def test_resolve_skip_steps_matches_validate_flow_config():
     section = validate_flow_config({"preset": "rtl2gds", "no_clock": True, "skip_steps": []})
-    assert resolve_skip_steps(section) == ("CTS",)
+    assert resolve_skip_steps(section) == (
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
+        "CTS",
+        "Timing optimization",
+    )
 
 
 def test_resolve_no_clock_precedence():

@@ -61,7 +61,7 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
         StepEnum.DIFF_BUFFERING.value,
-        StepEnum.DIFF_SIZING.value,
+        SkippableStepEnum.DIFF_SIZING.value,
         SkippableStepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
