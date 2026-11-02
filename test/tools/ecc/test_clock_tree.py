@@ -84,7 +84,9 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
     step = SimpleNamespace(
         name=StepEnum.FILLER.value,
         directory=tmp_path / "filler_ecc",
-        data=SimpleNamespace(steps={StepEnum.FILLER.value: tmp_path / "filler_ecc" / "data" / "mj"}),
+        data=SimpleNamespace(
+            steps={StepEnum.FILLER.value: tmp_path / "filler_ecc" / "data" / "mj"}
+        ),
     )
 
     class FakeNative:
