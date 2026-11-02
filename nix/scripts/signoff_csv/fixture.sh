@@ -32,9 +32,21 @@ write_json() {
 
 design=gcd
 
+mkdir -p "$workspace/home"
+cat > "$workspace/home/params.toml" <<'TOML'
+schema_version = 2
+
+[design]
+name = "gcd"
+top = "gcd"
+
+[pdk]
+name = "sky130A"
+TOML
+
 write_json "$workspace/home/flow.json" <<'JSON'
 {
-  "design": "gcd",
+  "schema_version": 2,
   "steps": [
     {"name": "Synthesis", "tool": "yosys", "state": "Success"},
     {"name": "postFloorplan", "tool": "ecc", "state": "Success"},
@@ -119,15 +131,22 @@ write_json "$workspace/sta_ecc/feature/MAX_125/RCworst/qor_summary.json" <<'JSON
 }
 JSON
 
-write_json "$workspace/postRouteLec_kepler_formal/output/${design}_postRouteLec_result.json" <<'JSON'
+printf 'module gcd;\nendmodule\n' > "$workspace/golden.v"
+printf 'module gcd_gate;\nendmodule\n' > "$workspace/gate.v"
+golden_sha="$(sha256sum "$workspace/golden.v" | awk '{print $1}')"
+gate_sha="$(sha256sum "$workspace/gate.v" | awk '{print $1}')"
+golden_size="$(stat -c %s "$workspace/golden.v")"
+gate_size="$(stat -c %s "$workspace/gate.v")"
+
+write_json "$workspace/postRouteLec_kepler_formal/output/${design}_postRouteLec_result.json" <<JSON
 {
   "status": "proven",
   "golden_verilog": "golden.v",
   "gate_verilog": "gate.v",
-  "golden_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-  "gate_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-  "golden_size_bytes": 10,
-  "gate_size_bytes": 20
+  "golden_sha256": "${golden_sha}",
+  "gate_sha256": "${gate_sha}",
+  "golden_size_bytes": ${golden_size},
+  "gate_size_bytes": ${gate_size}
 }
 JSON
 

@@ -4,12 +4,14 @@ This directory is intentionally independent of `chipcompiler`, CLI command
 handlers, engine code, and tool wrappers. It reads only the artifacts an ECC
 workspace already produces:
 
+- `home/params.toml`
 - `home/flow.json`
 - `<step>/analysis/qor_metrics.json`
 - `<step>/analysis/qor_summary.json`
 - `sta_ecc/feature/<corner>/<rc_corner>/qor_summary.json`
-- `postRouteLec_*/output/<design>_postRouteLec_result.json`
+- `postRouteLec_<engine>/output/<design>_postRouteLec_result.json`
 - `Harden_ecc/output/<design>_Harden.{gds,lef,lib}`
+- the golden/gate netlists referenced by the selected LEC result
 
 The collector is implemented in shell (`fixture.sh` and `export.sh`) with `jq`;
 there is no Python runtime dependency in this workflow.
@@ -32,6 +34,7 @@ This is a collector skeleton, not a signoff gate:
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC not `proven`, negative WNS, Harden missing artifacts) are not covered by fixture tests.
+- LEC engine selection is strict: a result from a non-selected `postRouteLec_<engine>` directory is not used.
 - On fork PRs, the `pull_request` token is read-only, so the notification step cannot reliably post/update the PR comment.
 
 The `Signoff CSV collector` check is therefore not a substitute for reviewing the active PDK, rule deck, STA signoff criteria, or repository branch-protection required checks.
@@ -56,8 +59,10 @@ Currently exports `drc_count` and the `qor.drc.clean` gate state.
 
 `status,golden_verilog,golden_sha256,golden_size_bytes,gate_verilog,gate_sha256,gate_size_bytes,source,present`
 
-`status` is `proven`, `incomplete`, or `missing`. A stale/missing result fails
-the CI gate.
+`status` is `proven`, `incomplete`, `stale`, or `missing`. The collector
+re-verifies the recorded `*_sha256` and `*_size_bytes` against the referenced
+netlist files; a missing or changed netlist is reported as `stale`, and only
+`proven` passes the gate.
 
 ### `harden.csv`
 

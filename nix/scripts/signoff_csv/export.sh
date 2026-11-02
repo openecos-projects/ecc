@@ -48,6 +48,46 @@ trim() {
   printf '%s' "$v"
 }
 
+design_from_params() {
+  local params="${workspace}/home/params.toml"
+  [[ -f "${params}" ]] || return 0
+  sed -n '/^\[design\]/,/^\[/p' "${params}" \
+    | sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | sed -n '1p'
+}
+
+resolve_workspace_path() {
+  local p="$1"
+  [[ -n "${p}" ]] || return 0
+  case "${p}" in
+    /*) printf '%s' "${p}" ;;
+    *) printf '%s/%s' "${workspace}" "${p}" ;;
+  esac
+}
+
+file_digest() {
+  local file="$1"
+  [[ -f "${file}" ]] || return 0
+  printf '%s %s' \
+    "$(sha256sum "${file}" | awk '{print $1}')" \
+    "$(stat -c %s "${file}")"
+}
+
+lec_netlist_current() {
+  local recorded_path="$1"
+  local recorded_sha="$2"
+  local recorded_size="$3"
+  local resolved digest sha size
+  [[ -n "${recorded_path}" && -n "${recorded_sha}" && "${recorded_size}" =~ ^[0-9]+$ ]] || return 1
+  resolved="$(resolve_workspace_path "${recorded_path}")"
+  [[ -f "${resolved}" ]] || return 1
+  digest="$(file_digest "${resolved}")"
+  [[ -n "${digest}" ]] || return 1
+  sha="${digest%% *}"
+  size="${digest#* }"
+  [[ "${sha}" == "${recorded_sha}" && "${size}" == "${recorded_size}" ]]
+}
+
 IFS=',' read -r -a check_array <<< "${checks}"
 for i in "${!check_array[@]}"; do
   check_array[i]="$(trim "${check_array[i]}")"
@@ -63,8 +103,8 @@ for c in "${check_array[@]}"; do
 done
 
 flow_file="${workspace}/home/flow.json"
-design=
-if [[ -f "${flow_file}" ]]; then
+design="$(design_from_params)"
+if [[ -z "${design}" && -f "${flow_file}" ]]; then
   design="$(jq -r '.design // empty' "${flow_file}" 2>/dev/null || true)"
 fi
 [[ -n "${design}" ]] || design="$(basename "${workspace}")"
@@ -236,33 +276,39 @@ collect_lec() {
   local preferred
   preferred="$(step_directory postRouteLec)"
   local result=""
-  local fallback=""
-  local p parent_dir
-  while IFS= read -r -d '' p; do
-    parent_dir="$(basename "$(dirname "$(dirname "$p")")")"
-    if [[ "${parent_dir}" == postRouteLec_*_* ]]; then
-      fallback="${fallback:-$p}"
-      if [[ "${parent_dir}" == "${preferred}" ]]; then
-        result="$p"
-        break
-      fi
-    fi
-  done < <(find "${workspace}" -mindepth 3 -maxdepth 3 -type f -name '*_postRouteLec_result.json' -print0 | sort -z)
-  result="${result:-$fallback}"
+  local p
+  if [[ -d "${workspace}/${preferred}/output" ]]; then
+    while IFS= read -r p; do
+      result="$p"
+      break
+    done < <(find "${workspace}/${preferred}/output" -maxdepth 1 -type f -name '*_postRouteLec_result.json' -print 2>/dev/null | sort || true)
+  fi
 
   if [[ -z "${result}" ]]; then
     csv_row missing "" "" "" "" "" "" "" false
     return 0
   fi
 
-  local status golden_verilog golden_sha256 golden_size_bytes gate_verilog gate_sha256 gate_size_bytes
-  status="$(jq -r '.status // "incomplete"' "${result}" 2>/dev/null || true)"
+  local raw_status status golden_verilog golden_sha256 golden_size_bytes gate_verilog gate_sha256 gate_size_bytes
+  raw_status="$(jq -r '.status // ""' "${result}" 2>/dev/null || true)"
   golden_verilog="$(jq -r '.golden_verilog // ""' "${result}" 2>/dev/null || true)"
   golden_sha256="$(jq -r '.golden_sha256 // ""' "${result}" 2>/dev/null || true)"
   golden_size_bytes="$(jq -r '.golden_size_bytes // ""' "${result}" 2>/dev/null || true)"
   gate_verilog="$(jq -r '.gate_verilog // ""' "${result}" 2>/dev/null || true)"
   gate_sha256="$(jq -r '.gate_sha256 // ""' "${result}" 2>/dev/null || true)"
   gate_size_bytes="$(jq -r '.gate_size_bytes // ""' "${result}" 2>/dev/null || true)"
+
+  if [[ "${raw_status}" == proven ]]; then
+    if lec_netlist_current "${golden_verilog}" "${golden_sha256}" "${golden_size_bytes}" &&
+      lec_netlist_current "${gate_verilog}" "${gate_sha256}" "${gate_size_bytes}"; then
+      status=proven
+    else
+      status=stale
+    fi
+  else
+    status="${raw_status:-incomplete}"
+  fi
+
   csv_row "$status" "$golden_verilog" "$golden_sha256" "$golden_size_bytes" "$gate_verilog" "$gate_sha256" "$gate_size_bytes" "$(relative_path "${result}")" true
 }
 
@@ -289,9 +335,10 @@ collect_harden() {
 
   local artifact path present sha bytes
   for artifact in gds lef lib; do
-    path="${workspace}/${harden_dir}/output/${design}_Harden.${artifact}"
+    path="$(find "${workspace}/${harden_dir}/output" -maxdepth 1 -type f -name "*_Harden.${artifact}" -print 2>/dev/null | sort | sed -n '1p' || true)"
+    path="${path:-}"
     source="$(relative_path "${path}")"
-    if [[ -f "${path}" ]]; then
+    if [[ -n "${path}" && -f "${path}" ]]; then
       present=true
       sha="$(sha256sum "${path}" | awk '{print $1}')"
       bytes="$(stat -c %s "${path}")"

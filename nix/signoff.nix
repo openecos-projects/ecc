@@ -5,7 +5,7 @@
 { pkgs, ... }:
 
 let
-  inherit (pkgs) lit jq writeShellApplication symlinkJoin coreutils findutils gawk;
+  inherit (pkgs) lit jq writeShellApplication symlinkJoin coreutils findutils gawk gnused;
 
   filecheck = pkgs.llvmPackages_21.libllvm;
 
@@ -40,6 +40,7 @@ let
       coreutils
       findutils
       gawk
+      gnused
     ];
     text = ''
       root="''${ECC_REPO_ROOT:-$PWD}"
