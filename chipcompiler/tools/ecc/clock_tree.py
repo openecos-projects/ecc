@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import StepEnum
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.workspace.flow_options import clock_tree_requested
 
 CLOCK_TREE_STAGE_BY_STEP = {
@@ -38,7 +39,9 @@ def _clock_tree_dir(workspace, step) -> Path:
     filler_dir = (step.data.steps or {}).get(StepEnum.FILLER.value)
     if filler_dir is not None:
         return Path(filler_dir).parent / "clock_tree"
-    return Path(workspace.directory) / "filler_ecc" / "data" / "clock_tree"
+    return (
+        Path(workspace.directory) / STEP_DIRECTORIES[StepEnum.FILLER.value] / "data" / "clock_tree"
+    )
 
 
 def _sta_config_path(workspace) -> Path:
