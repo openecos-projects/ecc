@@ -6,6 +6,7 @@ on:
     paths:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
+      - '.github/scripts/signoff-csv-summary.js'
       - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
+      - '.github/scripts/signoff-csv-summary.js'
       - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -24,6 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
@@ -50,6 +53,45 @@ jobs:
 
       - name: Verify signoff CSV failure modes
         run: bash .github/scripts/signoff-csv-test.sh
+
+      - name: Link previous successful summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if ! response="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/signoff-csv.yml/runs" \
+              -f event="${GITHUB_EVENT_NAME}" \
+              -f branch="${HEAD_BRANCH}" \
+              -f status=success \
+              -f per_page=100
+          )"; then
+            printf '## Previous successful CI\n\nThe previous successful run could not be retrieved.\n\n' \
+              >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          previous_run_url="$(
+            jq -r --arg repository "${HEAD_REPOSITORY}" --argjson current "${CURRENT_RUN_ID}" \
+              '[.workflow_runs[] | select(
+                .id != $current and .head_repository.full_name == $repository
+              )][0].html_url // empty' <<< "${response}"
+          )"
+          if [[ -n "${previous_run_url}" ]]; then
+            printf '## Previous successful CI\n\n[View the previous successful Signoff CSV summary](%s)\n\n' \
+              "${previous_run_url}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            printf '## Previous successful CI\n\nNo previous successful run was found for this source branch.\n\n' \
+              >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Publish signoff CSV job summary
+        if: always()
+        run: node .github/scripts/signoff-csv-summary.js
 
       - name: Upload CSV evidence
         if: always()

@@ -7,6 +7,7 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "${here}/../.." && pwd)"
 fixture_sh="${root}/nix/scripts/signoff-csv-fixture.sh"
 export_sh="${root}/nix/scripts/signoff_csv/export.sh"
+summary_js="${root}/.github/scripts/signoff-csv-summary.js"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
@@ -73,6 +74,45 @@ mutate_json() {
 ws="${tmp}/happy"
 fresh_workspace "${ws}"
 check_export "happy path passes" "${ws}" pass
+
+summary_file="${tmp}/summary.md"
+ln -s "${ws}/out" "${ws}/signoff-artifacts"
+(
+  cd "${ws}"
+  GITHUB_STEP_SUMMARY="${summary_file}" node "${summary_js}"
+)
+printf -v expected_summary '%s\n' \
+  '## Signoff CSV Report' \
+  '' \
+  "- **Workspace**: \`${ws}\`" \
+  '- **Design**: `gcd`' \
+  '- **Gate**: `PASS`' \
+  '' \
+  '| Check | Status | Rows | CSV |' \
+  '| --- | --- | --- | --- |' \
+  '| `area` | `pass` | 7 | `area.csv` |' \
+  '| `drc` | `pass` | 1 | `drc.csv` |' \
+  '| `harden` | `pass` | 7 | `harden.csv` |' \
+  '| `lec` | `pass` | 1 | `lec.csv` |' \
+  '| `sta` | `pass` | 17 | `sta.csv` |'
+if ! diff -u <(printf '%s' "${expected_summary}") "${summary_file}"; then
+  fail "job summary contains the exported report"
+fi
+pass "job summary contains the exported report"
+
+missing_summary="${tmp}/missing-summary.md"
+(
+  cd "${tmp}"
+  GITHUB_STEP_SUMMARY="${missing_summary}" node "${summary_js}"
+)
+printf -v expected_missing '%s\n' \
+  '## Signoff CSV Report' \
+  '' \
+  'Export step failed before producing a manifest.'
+if ! diff -u <(printf '%s' "${expected_missing}") "${missing_summary}"; then
+  fail "job summary reports a missing manifest"
+fi
+pass "job summary reports a missing manifest"
 
 # 2. LEC: no selected-engine result -> mandatory gate fails.
 ws="${tmp}/lec-missing"

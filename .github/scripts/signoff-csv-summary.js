@@ -67,40 +67,19 @@ function buildBody(manifest) {
   ].join('\n');
 }
 
-async function main() {
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  const repo = process.env.GITHUB_REPOSITORY;
-  const issueNumber = process.env.PR_NUMBER;
-
-  if (!issueNumber) {
-    console.log('signoff-csv-notify: PR_NUMBER is empty; skipping');
-    return;
+function main() {
+  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  if (!summaryPath) {
+    throw new Error('GITHUB_STEP_SUMMARY is not set');
   }
-  if (!token || !repo) {
-    throw new Error('missing GITHUB_TOKEN/GITHUB_REPOSITORY');
-  }
-
-  const apiUrl = process.env.GITHUB_API_URL || 'https://api.github.com';
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'ecc-signoff-csv-notify',
-  };
 
   const manifest = normalizeManifest(loadManifest());
-  const body = buildBody(manifest);
-  const createResponse = await fetch(`${apiUrl}/repos/${repo}/issues/${issueNumber}/comments`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ body }),
-  });
-  if (!createResponse.ok) {
-    throw new Error(`create comment failed: ${createResponse.status}`);
-  }
+  fs.appendFileSync(summaryPath, buildBody(manifest), 'utf8');
 }
 
-main().catch((error) => {
-  console.error(`signoff-csv-notify: ${error.message}`);
+try {
+  main();
+} catch (error) {
+  console.error(`signoff-csv-summary: ${error.message}`);
   process.exit(1);
-});
+}
