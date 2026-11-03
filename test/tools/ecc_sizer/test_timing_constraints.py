@@ -14,7 +14,7 @@ from ._sizer_helpers import _sizer_runtime, _workspace
 @pytest.mark.parametrize(
     "step_name,phase_dir",
     [
-        (StepEnum.PREPLACE.value, "pre_CTS"),
+        (SkippableStepEnum.PREPLACE.value, "pre_CTS"),
         (SkippableStepEnum.TIMING_OPT.value, "post_CTS"),
     ],
 )

@@ -102,7 +102,7 @@ gcd_workspace/
 
 Then we can set up the flow engine, add steps, create step workspaces, and run the steps as follows:
 ```python
-from chipcompiler.data import StepEnum, StateEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum, StateEnum
 from chipcompiler.engine import EngineFlow
 
 engine_flow = EngineFlow(workspace=workspace)
@@ -113,7 +113,7 @@ if not engine_flow.has_init():
     engine_flow.add_step(step=StepEnum.MACRO_PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.POST_FLOORPLAN, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.PLACEMENT, tool="dreamplace", state=StateEnum.Unstart)
-    engine_flow.add_step(step=StepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
+    engine_flow.add_step(step=SkippableStepEnum.CTS, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.LEGALIZATION, tool="dreamplace", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.ROUTING, tool="ecc", state=StateEnum.Unstart)
     engine_flow.add_step(step=StepEnum.FILLER, tool="ecc", state=StateEnum.Unstart)

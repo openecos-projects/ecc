@@ -98,7 +98,7 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
             / "dreamplace_diff_buffering.json"
         )
-    if step.name == StepEnum.DIFF_SIZING.value:
+    if step.name == SkippableStepEnum.DIFF_SIZING.value:
         return (
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
             / "dreamplace_diff_sizing.json"
@@ -295,7 +295,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     explicit_keys.update(internal_buffering_keys)
     if step.name == SkippableStepEnum.DIFF_OPT.value:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
-    elif step.name == StepEnum.DIFF_SIZING.value:
+    elif step.name == SkippableStepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
     elif step.name == StepEnum.DIFF_BUFFERING.value:
         # Legacy workspaces retain the old step name, but execute the
@@ -312,7 +312,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     params = apply_direct_config_overrides(params, parameter_data)
     if step.name == SkippableStepEnum.DIFF_OPT.value:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
-    elif step.name == StepEnum.DIFF_SIZING.value:
+    elif step.name == SkippableStepEnum.DIFF_SIZING.value:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)

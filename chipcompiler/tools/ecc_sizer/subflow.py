@@ -1,7 +1,7 @@
 from copy import deepcopy
 from enum import Enum
 
-from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum
 from chipcompiler.data.workspace.flow_ledger import ledger_lock, save_ledger
 from chipcompiler.tools.subflow import SubFlow, stage_template
 
@@ -30,7 +30,7 @@ class SizerSubFlow(SubFlow):
         self.build_sub_flow()
 
     def stages(self) -> tuple[str, ...]:
-        if self.workspace_step.name == StepEnum.PREPLACE.value:
+        if self.workspace_step.name == SkippableStepEnum.PREPLACE.value:
             stages = (SizerSubFlowEnum.run_preplace, SizerSubFlowEnum.save_data)
         else:
             stages = (

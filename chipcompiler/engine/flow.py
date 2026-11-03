@@ -80,8 +80,8 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
         StepEnum.DIFF_BUFFERING.value,
-        StepEnum.DIFF_SIZING.value,
-        StepEnum.CTS.value,
+        SkippableStepEnum.DIFF_SIZING.value,
+        SkippableStepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
         StepEnum.LEGALIZATION.value,
         StepEnum.ROUTING.value,
@@ -318,9 +318,9 @@ class EngineFlow:
             case (
                 SkippableStepEnum.TIMING_OPT.value
                 | SkippableStepEnum.DIFF_OPT.value
-                | StepEnum.PREPLACE.value
+                | SkippableStepEnum.PREPLACE.value
                 | StepEnum.DIFF_BUFFERING.value
-                | StepEnum.DIFF_SIZING.value
+                | SkippableStepEnum.DIFF_SIZING.value
             ):
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
                     success = True

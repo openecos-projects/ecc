@@ -7,13 +7,13 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.data import StepEnum
+from chipcompiler.data import SkippableStepEnum, StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.workspace.flow_options import clock_tree_requested
 
 CLOCK_TREE_STAGE_BY_STEP = {
     StepEnum.POST_FLOORPLAN.value: "postFloorplan",
-    StepEnum.CTS.value: "CTS",
+    SkippableStepEnum.CTS.value: "CTS",
     StepEnum.FILLER.value: "filler",
 }
 

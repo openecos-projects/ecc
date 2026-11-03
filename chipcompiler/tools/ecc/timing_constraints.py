@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
 from chipcompiler.data.workspace.sdc import is_generated_sdc
 from chipcompiler.data.workspace.timing_constraints import (
     scenario_tcl_path,
@@ -33,8 +33,12 @@ def step_tcl_path(
     if scenario is None:
         raise ValueError(f"No configured timing scenario for {corner}/{rc}")
     names = [entry[0].value for entry in build_rtl2gds_flow()]
-    name = StepEnum.DIFF_SIZING.value if step.name == StepEnum.DIFF_BUFFERING.value else step.name
-    post_cts = names.index(name) > names.index(StepEnum.CTS.value)
+    name = (
+        SkippableStepEnum.DIFF_SIZING.value
+        if step.name == StepEnum.DIFF_BUFFERING.value
+        else step.name
+    )
+    post_cts = names.index(name) > names.index(SkippableStepEnum.CTS.value)
     return scenario_tcl_path(workspace.directory, scenario, post_cts=post_cts)
 
 
