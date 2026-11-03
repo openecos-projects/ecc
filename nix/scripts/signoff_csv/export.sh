@@ -123,6 +123,14 @@ step_tool() {
     "${flow_file}" 2>/dev/null || true
 }
 
+step_state() {
+  local name="$1"
+  [[ -f "${flow_file}" ]] || return 0
+  jq -r --arg name "${name}" \
+    '([.steps[]? | select(.name == $name) | .state // ""] | .[0]) // ""' \
+    "${flow_file}" 2>/dev/null || true
+}
+
 step_directory() {
   local name="$1"
   local tool
@@ -272,6 +280,17 @@ collect_drc() {
 
 collect_lec() {
   csv_row status golden_verilog golden_sha256 golden_size_bytes gate_verilog gate_sha256 gate_size_bytes source present
+
+  local ledger_state
+  ledger_state="$(step_state postRouteLec)"
+  if [[ -z "${ledger_state}" ]]; then
+    csv_row skipped "" "" "" "" "" "" "" false
+    return 0
+  fi
+  if [[ "${ledger_state}" != Success ]]; then
+    csv_row incomplete "" "" "" "" "" "" "" false
+    return 0
+  fi
 
   local preferred
   preferred="$(step_directory postRouteLec)"
@@ -443,7 +462,7 @@ status_for() {
     lec)
       local lec_state
       lec_state="$(awk -F, 'NR==2 {print $1; exit}' "${file}")"
-      if [[ "${lec_state}" == proven ]]; then
+      if [[ "${lec_state}" == proven || "${lec_state}" == skipped ]]; then
         printf 'pass'
       else
         printf 'fail'

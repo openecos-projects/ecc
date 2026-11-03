@@ -48,15 +48,26 @@ async function main() {
     'User-Agent': 'ecc-signoff-csv-notify'
   };
 
-  const listUrl = `${apiUrl}/repos/${repo}/issues/${issueNumber}/comments?per_page=100`;
-  const listResponse = await fetch(listUrl, { headers });
-  if (!listResponse.ok) {
-    throw new Error(`list comments failed: ${listResponse.status}`);
+  async function findExistingComment() {
+    let page = 1;
+    while (true) {
+      const listUrl = `${apiUrl}/repos/${repo}/issues/${issueNumber}/comments?per_page=100&page=${page}`;
+      const listResponse = await fetch(listUrl, { headers });
+      if (!listResponse.ok) {
+        throw new Error(`list comments failed: ${listResponse.status}`);
+      }
+      const comments = await listResponse.json();
+      const existing = comments.find(
+        (comment) => comment.user && comment.user.login === 'github-actions[bot]' && comment.body.includes(marker)
+      );
+      if (existing) return existing;
+      const link = listResponse.headers.get('link') || '';
+      if (!link.includes('rel="next"')) return null;
+      page += 1;
+    }
   }
-  const comments = await listResponse.json();
-  const existing = comments.find(
-    (comment) => comment.user && comment.user.login === 'github-actions[bot]' && comment.body.includes(marker)
-  );
+
+  const existing = await findExistingComment();
   const body = buildBody();
   if (existing) {
     const updateResponse = await fetch(`${apiUrl}/repos/${repo}/issues/comments/${existing.id}`, {

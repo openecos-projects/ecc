@@ -143,4 +143,16 @@ fresh_workspace "${ws}"
 rm -f "${ws}/home/flow.json"
 check_export "no flow.json still passes from params design" "${ws}" pass
 
+# 12. postRouteLec omitted from the ledger is not a mandatory LEC gate.
+ws="${tmp}/lec-skipped"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "postRouteLec")]'
+check_export "postRouteLec omitted from ledger is skipped and passes" "${ws}" pass
+
+# 13. postRouteLec present but non-success must fail, never read stale residue.
+ws="${tmp}/lec-non-success"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "postRouteLec") | .state) = "Incomplete"'
+check_export "postRouteLec non-success fails despite stale result" "${ws}" fail
+
 echo "all signoff CSV negative-path checks passed"

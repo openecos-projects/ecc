@@ -36,7 +36,7 @@ This is a collector skeleton, not a signoff gate:
 - The DRC check requires both `drc_count` presence and `qor.drc.clean == pass`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
-- LEC engine selection is strict: a result from a non-selected `postRouteLec_<engine>` directory is not used.
+- LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
 - On fork PRs, the `pull_request` token is read-only, so the notification step cannot reliably post/update the PR comment.
 
 The `Signoff CSV collector` check is therefore not a substitute for reviewing the active PDK, rule deck, STA signoff criteria, or repository branch-protection required checks.
@@ -61,7 +61,9 @@ Currently exports `drc_count` and the `qor.drc.clean` gate state.
 
 `status,golden_verilog,golden_sha256,golden_size_bytes,gate_verilog,gate_sha256,gate_size_bytes,source,present`
 
-`status` is `proven`, `incomplete`, `stale`, or `missing`. The collector
+`status` is `proven`, `incomplete`, `stale`, `missing`, or `skipped`.
+`skipped` is emitted when the flow ledger has no `postRouteLec` step and
+passes the gate as not required. The collector
 re-verifies the recorded `*_sha256` and `*_size_bytes` against the referenced
 netlist files; a missing or changed netlist is reported as `stale`, and only
 `proven` passes the gate.
