@@ -38,8 +38,9 @@ This is a collector skeleton, not a signoff gate:
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
 - LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
 - The CI job writes the report to its GitHub Actions job summary and uploads the CSV products as the
-  `ecc-signoff-csv` artifact. The summary also links to the previous successful run for the same source branch when
-  one exists. No PR comment token or follow-up notification workflow is required.
+  `ecc-signoff-csv` artifact. The summary includes area metrics, the DRC count, and setup/hold WNS/TNS,
+  and links to the previous successful run for the same source branch when one exists. No PR comment token
+  or follow-up notification workflow is required.
 
 The `Signoff CSV collector` check is therefore not a substitute for reviewing the active PDK, rule deck, STA signoff criteria, or repository branch-protection required checks.
 

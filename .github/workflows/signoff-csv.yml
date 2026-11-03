@@ -75,15 +75,16 @@ jobs:
             exit 0
           fi
 
-          previous_run_url="$(
+          previous_run="$(
             jq -r --arg repository "${HEAD_REPOSITORY}" --argjson current "${CURRENT_RUN_ID}" \
               '[.workflow_runs[] | select(
                 .id != $current and .head_repository.full_name == $repository
-              )][0].html_url // empty' <<< "${response}"
+              )][0] | if . then [.id, .html_url] | @tsv else empty end' <<< "${response}"
           )"
-          if [[ -n "${previous_run_url}" ]]; then
-            printf '## Previous successful CI\n\n[View the previous successful Signoff CSV summary](%s)\n\n' \
-              "${previous_run_url}" >> "${GITHUB_STEP_SUMMARY}"
+          if [[ -n "${previous_run}" ]]; then
+            IFS=$'\t' read -r previous_run_id previous_run_url <<< "${previous_run}"
+            printf '## Previous successful CI\n\n[Actions run #%s](%s)\n\n' \
+              "${previous_run_id}" "${previous_run_url}" >> "${GITHUB_STEP_SUMMARY}"
           else
             printf '## Previous successful CI\n\nNo previous successful run was found for this source branch.\n\n' \
               >> "${GITHUB_STEP_SUMMARY}"

@@ -84,7 +84,6 @@ ln -s "${ws}/out" "${ws}/signoff-artifacts"
 printf -v expected_summary '%s\n' \
   '## Signoff CSV Report' \
   '' \
-  "- **Workspace**: \`${ws}\`" \
   '- **Design**: `gcd`' \
   '- **Gate**: `PASS`' \
   '' \
@@ -94,7 +93,30 @@ printf -v expected_summary '%s\n' \
   '| `drc` | `pass` | 1 | `drc.csv` |' \
   '| `harden` | `pass` | 7 | `harden.csv` |' \
   '| `lec` | `pass` | 1 | `lec.csv` |' \
-  '| `sta` | `pass` | 17 | `sta.csv` |'
+  '| `sta` | `pass` | 17 | `sta.csv` |' \
+  '' \
+  '### Area' \
+  '' \
+  '| Step | Metric | Value |' \
+  '| --- | --- | --- |' \
+  '| `Synthesis` | `synthesis_cell_area` | `4200.0` um^2 |' \
+  '| `postFloorplan` | `die_area` | `40000.0` um^2 |' \
+  '| `postFloorplan` | `core_area` | `32000.0` um^2 |' \
+  '| `postFloorplan` | `core_utilization` | `0.62` ratio |' \
+  '| `Harden` | `die_area` | `40000.0` um^2 |' \
+  '| `Harden` | `core_area` | `32000.0` um^2 |' \
+  '| `Harden` | `core_utilization` | `0.62` ratio |' \
+  '' \
+  '### DRC' \
+  '' \
+  '- **DRC count**: `0` count' \
+  '' \
+  '### STA' \
+  '' \
+  '| Corner | RC corner | Setup WNS | Setup TNS | Hold WNS | Hold TNS |' \
+  '| --- | --- | --- | --- | --- | --- |' \
+  '| `Overall` | `-` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
+  '| `MAX_125` | `RCworst` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |'
 if ! diff -u <(printf '%s' "${expected_summary}") "${summary_file}"; then
   fail "job summary contains the exported report"
 fi
