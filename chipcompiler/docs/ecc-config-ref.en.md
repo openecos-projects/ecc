@@ -227,9 +227,9 @@ The file must cover every hard macro in the design — `postFloorplan` fails wit
 
 ### 1.6 Auto-generated SDC
 
-When `[design].sdc` is absent, workspace creation writes `origin/<design>.sdc`; a user-provided SDC is copied instead and is never regenerated. ECC recognizes its own file by the first-line `# Auto-generated SDC file` marker and refreshes only such generated files when parameters change.
+When `[design].sdc` is absent, workspace creation generates the complete corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`, without a standalone `origin/<design>.sdc`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. A user-provided full SDC or Tcl is copied instead and is never regenerated. ECC recognizes its generated constraints by the first-line `# ECC-generated SDC file` marker and refreshes them when parameters change.
 
-The current generator creates the real clock from `design.clock_port` (or a virtual clock when no port is available) at `design.frequency_mhz`, sets input/output delay to 0, applies setup uncertainty at 1.5% and hold uncertainty at 0.5% of the period, caps clock transition at 0.15 ns and input transition at 0.20 ns, applies `set_max_fanout` from `cts.max_fanout`, and adds the PDK's output-load constraint when `sdc_load > 0`.
+The generated Tcl defines the primary clock from `design.clock_port` and `design.frequency_mhz`, together with the scenario's IO constraints, OCV derates, setup/hold uncertainty, transition limits, and fanout constraints. The IO branch is selected from the loaded iDB's IO-cell presence; clockless designs do not acquire an invented clock. For the same corner, pre-CTS and post-CTS rules are identical except that post-CTS adds `set_propagated_clock [all_clocks]`.
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -242,7 +242,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
-| `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | Default timing entry (generated Tcl or user-provided full constraints) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
 | `LayerSettings.routing_layer_1st` | `MET2` | parameter `route.bottom_layer` | First usable routing layer (affects database layer settings) |

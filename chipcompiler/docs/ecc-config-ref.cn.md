@@ -228,9 +228,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.6 自动生成的 SDC
 
-未声明 `[design].sdc` 时，workspace 创建过程会写出 `origin/<design>.sdc`；用户提供的 SDC 则只复制、不重新生成。ECC 通过首行 `# Auto-generated SDC file` 标记识别自己生成的文件，参数变化时也只刷新带该标记的 SDC。
+未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 则只复制、不重新生成。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的约束，参数变化时刷新这些文件。
 
-当前生成器按 `design.frequency_mhz` 为 `design.clock_port` 创建真实时钟（无端口时创建虚拟时钟），把输入/输出 delay 设为 0，分别按周期的 1.5% 和 0.5% 设置 setup/hold uncertainty，把时钟 transition 上限设为 0.15 ns、输入 transition 上限设为 0.20 ns，按 `cts.max_fanout` 写入 `set_max_fanout`，并在 PDK 的 `sdc_load > 0` 时增加输出负载约束。
+生成的 Tcl 按 `design.clock_port` 和 `design.frequency_mhz` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。IO 约束分支由运行时 iDB 中是否存在 IO cell 决定；未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -243,7 +243,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
-| `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | 时序约束（自动生成或用户提供） |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认时序入口（生成的 Tcl 或用户提供的完整约束） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
 | `LayerSettings.routing_layer_1st` | `MET2` | 参数 `route.bottom_layer` | 首个可用绕线层（影响数据库层设置） |

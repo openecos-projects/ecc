@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 
 from .filelist_copy import copy_filelist_with_sources
-from .sdc import create_default_sdc
+from .sdc import is_generated_sdc
 
 
 def persist_origin_inputs(
@@ -78,14 +78,13 @@ def persist_origin_inputs(
         shutil.copy(golden_verilog_path, target)
         workspace.design.golden_verilog = target
 
-    if workspace.pdk.sdc and workspace.pdk.sdc.exists():
+    if workspace.pdk.sdc and workspace.pdk.sdc.exists() and not is_generated_sdc(workspace.pdk.sdc):
         sdc_target = origin_dir / workspace.pdk.sdc.name
         shutil.copy(workspace.pdk.sdc, sdc_target)
         workspace.pdk.sdc = sdc_target
     else:
-        # create default sdc file
-        workspace.pdk.sdc = origin_dir / f"{workspace.design.name}.sdc"
-        create_default_sdc(workspace)
+        # Owned timing inputs are generated with the workspace configuration.
+        workspace.pdk.sdc = None
 
     if workspace.pdk.spef and workspace.pdk.spef.exists():
         spef_target = origin_dir / workspace.pdk.spef.name

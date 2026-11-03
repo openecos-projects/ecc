@@ -21,7 +21,6 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
-from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -1043,8 +1042,10 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     step.feature.db.write_text(json.dumps({"Instances": {"iopads": {"num": 1 - io_cell_count}}}))
     monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
     if generated_sdc:
-        create_default_sdc(workspace)
+        workspace.pdk.sdc = None
         generate_timing_scripts(workspace)
+        sdc = workspace.pdk.sdc
+    assert sdc is not None
     original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
