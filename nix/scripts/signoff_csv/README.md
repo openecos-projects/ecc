@@ -13,8 +13,9 @@ workspace already produces:
 - `Harden_ecc/output/<design>_Harden.{gds,lef,lib}`
 - the golden/gate netlists referenced by the selected LEC result
 
-The collector is implemented in shell (`fixture.sh` and `export.sh`) with `jq`;
-there is no Python runtime dependency in this workflow.
+The collector is implemented in shell (`export.sh`) with `jq`; the
+CI-only deterministic workspace fixture is `nix/scripts/signoff-csv-fixture.sh`
+and is exposed as the `.#signoff-csv-fixture` flake package.
 
 ## Exported views
 
@@ -30,7 +31,7 @@ there is no Python runtime dependency in this workflow.
 
 This is a collector skeleton, not a signoff gate:
 
-- CI runs `nix/scripts/signoff_csv/fixture.sh` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
+- CI runs `nix/scripts/signoff-csv-fixture.sh` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC not `proven`, negative WNS, Harden missing artifacts) are not covered by fixture tests.
@@ -80,8 +81,7 @@ from `Synthesis`, `postFloorplan`, and `Harden` outputs.
 ## Fixture
 
 ```bash
-bash nix/scripts/signoff_csv/fixture.sh \
-  --workspace /tmp/signoff-workspace
+nix run .#signoff-csv-fixture -- --workspace /tmp/signoff-workspace
 ```
 
 ## CLI

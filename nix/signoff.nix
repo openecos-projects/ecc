@@ -11,6 +11,7 @@ let
 
   exportCsvSh = ./scripts/export-signoff-csv.sh;
   signoffCsvExportSh = ./scripts/signoff_csv/export.sh;
+  signoffCsvFixtureSh = ./scripts/signoff-csv-fixture.sh;
   signoffLitSh = ./scripts/signoff-lit.sh;
 
   signoff-lit = writeShellApplication {
@@ -49,6 +50,18 @@ let
     '';
   };
 
+  signoff-csv-fixture = writeShellApplication {
+    name = "signoff-csv-fixture";
+    runtimeInputs = [
+      coreutils
+      gawk
+      gnused
+    ];
+    text = ''
+      exec bash ${signoffCsvFixtureSh} "$@"
+    '';
+  };
+
   signoff-tools = symlinkJoin {
     name = "ecc-signoff-tools";
     paths = [
@@ -63,7 +76,7 @@ let
 in
 {
   packages = {
-    inherit filecheck lit signoff-csv signoff-lit signoff-tools;
+    inherit filecheck lit signoff-csv signoff-csv-fixture signoff-lit signoff-tools;
   };
 
   apps.signoff-lit = {

@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'nix/scripts/signoff_csv/**'
+      - 'nix/scripts/signoff-csv-fixture.sh'
       - '.github/scripts/signoff-csv-notify.js'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -13,6 +14,7 @@ on:
       - 'agency/signoff-csv-standalone'
     paths:
       - 'nix/scripts/signoff_csv/**'
+      - 'nix/scripts/signoff-csv-fixture.sh'
       - '.github/scripts/signoff-csv-notify.js'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -36,7 +38,7 @@ jobs:
 
       - name: Generate deterministic workspace
         run: |
-          bash nix/scripts/signoff_csv/fixture.sh \
+          bash nix/scripts/signoff-csv-fixture.sh \
             --workspace "$RUNNER_TEMP/signoff-workspace"
 
       - name: Export signoff product CSVs
