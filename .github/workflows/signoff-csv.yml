@@ -68,7 +68,7 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node .github/scripts/signoff-csv-notify.js
