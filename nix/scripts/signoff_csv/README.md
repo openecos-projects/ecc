@@ -37,7 +37,10 @@ This is a collector skeleton, not a signoff gate:
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
 - LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
-- On fork PRs, the `pull_request` token is read-only, so the notification step cannot reliably post/update the PR comment.
+- Report generation and notification are separated: the `pull_request` workflow only uploads the artifact, while a
+  `workflow_run` workflow on the default branch downloads that artifact and posts a fresh comment using the repository
+  token. It checks out scripts from the default branch and never executes fork code. That workflow becomes active only
+  after this file is present on the default branch.
 
 The `Signoff CSV collector` check is therefore not a substitute for reviewing the active PDK, rule deck, STA signoff criteria, or repository branch-protection required checks.
 

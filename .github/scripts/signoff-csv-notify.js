@@ -1,96 +1,106 @@
 const fs = require('fs');
 
-const marker = '<!-- ecc-signoff-csv-report -->';
 const manifestPath = 'signoff-artifacts/signoff_csv_manifest.json';
 
-function buildBody() {
-  let body = `## Signoff CSV Report\n\nExport step failed before producing a manifest.\n\n${marker}\n`;
-  if (fs.existsSync(manifestPath)) {
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    const rows = Object.entries(manifest.checks || {})
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, data]) =>
-        `| \`${name}\` | \`${data.status || 'fail'}\` | ${data.rows || 0} | \`${data.file || ''}\` |`
-      )
-      .join('\n');
-    body = [
-      '## Signoff CSV Report',
-      '',
-      `- **Workspace**: \`${manifest.workspace || ''}\``,
-      `- **Design**: \`${manifest.design || 'unknown'}\``,
-      `- **Gate**: \`${manifest.gate || 'FAIL'}\``,
-      '',
-      '| Check | Status | Rows | CSV |',
-      '| --- | --- | --- | --- |',
-      rows,
-      '',
-      marker,
-      ''
-    ].join('\n');
+function sanitizeCell(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/`/g, "'")
+    .replace(/\|/g, '/')
+    .slice(0, 200);
+}
+
+function loadManifest() {
+  if (!fs.existsSync(manifestPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  } catch {
+    return null;
   }
-  return body;
+}
+
+function normalizeManifest(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const checks = raw.checks;
+  if (!checks || typeof checks !== 'object' || Array.isArray(checks)) return null;
+
+  const normalizedChecks = Object.entries(checks)
+    .filter(([, data]) => data && typeof data === 'object' && !Array.isArray(data))
+    .map(([name, data]) => ({
+      name: sanitizeCell(name),
+      status: sanitizeCell(data.status || 'fail'),
+      rows: sanitizeCell(data.rows ?? 0),
+      file: sanitizeCell(data.file || ''),
+    }));
+
+  return {
+    workspace: sanitizeCell(raw.workspace),
+    design: sanitizeCell(raw.design || 'unknown'),
+    gate: sanitizeCell(raw.gate || 'FAIL'),
+    checks: normalizedChecks,
+  };
+}
+
+function buildBody(manifest) {
+  if (!manifest) {
+    return '## Signoff CSV Report\n\nExport step failed before producing a manifest.\n';
+  }
+
+  const rows = manifest.checks
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((check) => `| \`${check.name}\` | \`${check.status}\` | ${check.rows} | \`${check.file}\` |`)
+    .join('\n');
+
+  return [
+    '## Signoff CSV Report',
+    '',
+    `- **Workspace**: \`${manifest.workspace}\``,
+    `- **Design**: \`${manifest.design}\``,
+    `- **Gate**: \`${manifest.gate}\``,
+    '',
+    '| Check | Status | Rows | CSV |',
+    '| --- | --- | --- | --- |',
+    rows,
+    '',
+  ].join('\n');
 }
 
 async function main() {
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const repo = process.env.GITHUB_REPOSITORY;
   const issueNumber = process.env.PR_NUMBER;
-  if (!token || !repo || !issueNumber) {
-    console.error('signoff-csv-notify: missing GITHUB_TOKEN/GITHUB_REPOSITORY/PR_NUMBER');
-    process.exit(1);
+
+  if (!issueNumber) {
+    console.log('signoff-csv-notify: PR_NUMBER is empty; skipping');
+    return;
+  }
+  if (!token || !repo) {
+    throw new Error('missing GITHUB_TOKEN/GITHUB_REPOSITORY');
   }
 
   const apiUrl = process.env.GITHUB_API_URL || 'https://api.github.com';
   const headers = {
-    'Authorization': `Bearer ${token}`,
-    'Accept': 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'ecc-signoff-csv-notify'
+    'User-Agent': 'ecc-signoff-csv-notify',
   };
 
-  async function findExistingComment() {
-    let page = 1;
-    while (true) {
-      const listUrl = `${apiUrl}/repos/${repo}/issues/${issueNumber}/comments?per_page=100&page=${page}`;
-      const listResponse = await fetch(listUrl, { headers });
-      if (!listResponse.ok) {
-        throw new Error(`list comments failed: ${listResponse.status}`);
-      }
-      const comments = await listResponse.json();
-      const existing = comments.find(
-        (comment) => comment.user && comment.user.login === 'github-actions[bot]' && comment.body.includes(marker)
-      );
-      if (existing) return existing;
-      const link = listResponse.headers.get('link') || '';
-      if (!link.includes('rel="next"')) return null;
-      page += 1;
-    }
-  }
-
-  const existing = await findExistingComment();
-  const body = buildBody();
-  if (existing) {
-    const updateResponse = await fetch(`${apiUrl}/repos/${repo}/issues/comments/${existing.id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({ body })
-    });
-    if (!updateResponse.ok) {
-      throw new Error(`update comment failed: ${updateResponse.status}`);
-    }
-  } else {
-    const createResponse = await fetch(`${apiUrl}/repos/${repo}/issues/${issueNumber}/comments`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ body })
-    });
-    if (!createResponse.ok) {
-      throw new Error(`create comment failed: ${createResponse.status}`);
-    }
+  const manifest = normalizeManifest(loadManifest());
+  const body = buildBody(manifest);
+  const createResponse = await fetch(`${apiUrl}/repos/${repo}/issues/${issueNumber}/comments`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ body }),
+  });
+  if (!createResponse.ok) {
+    throw new Error(`create comment failed: ${createResponse.status}`);
   }
 }
 
 main().catch((error) => {
   console.error(`signoff-csv-notify: ${error.message}`);
-  process.exit(0);
+  process.exit(1);
 });

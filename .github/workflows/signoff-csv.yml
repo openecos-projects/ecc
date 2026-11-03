@@ -6,7 +6,6 @@ on:
     paths:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
-      - '.github/scripts/signoff-csv-notify.js'
       - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -16,7 +15,6 @@ on:
     paths:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
-      - '.github/scripts/signoff-csv-notify.js'
       - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
@@ -27,7 +25,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   signoff-csv:
@@ -63,12 +60,3 @@ jobs:
           path: signoff-artifacts/
           if-no-files-found: ignore
           retention-days: 90
-
-      - name: Notify PR with signoff CSV report
-        if: always() && github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: node .github/scripts/signoff-csv-notify.js
