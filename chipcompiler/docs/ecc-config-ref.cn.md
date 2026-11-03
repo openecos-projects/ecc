@@ -232,6 +232,54 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 生成的 Tcl 按 `design.clock_port` 和 `design.frequency_mhz` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
 
+### 1.7 用户填写的五组时序输入
+
+`ecc init` 生成的 `ecc.toml` 已包含带注释和填写示例的 `[params.sdc]`。把内容写入三单引号之间，**不要额外包一层 `set clock_list {...}` 等 Tcl 变量赋值**。三单引号保留 Tcl 的反斜杠、换行及 `$变量`，示例中的端口、引脚、时钟名和延迟需按设计修改。
+
+```toml
+[params.sdc]
+# 1. 主时钟：每行一个端口或内部引脚，以及各 corner 的 MHz。
+# 留空或仅注释时，沿用 design.clock_port / frequency_mhz。
+# 非空时替代默认主时钟，必须覆盖所有生成的 PVT corner；支持小数 MHz。
+clock_list = '''
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+clk_aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25
+'''
+
+# 2. 派生时钟：取消下面示例的注释前，先确认源和目标引脚存在。
+generated_clock_txt = '''
+# create_generated_clock -name CLK_div2 -divide_by 2 \
+#     -source [get_ports clk] [get_pins u_div/clk_reg/Q]
+'''
+
+# 3. 时钟分组：只对真正异步的时钟域设置，并包含各自派生时钟。
+# 无 IO cell 时，还应把 VCLK_<端口> 放入对应组。
+clk_group_txt = '''
+# set_clock_groups -asynchronous \
+#     -group {CLK_clk VCLK_clk} -group {CLK_clk_aux VCLK_clk_aux}
+'''
+
+# 4. 用户 IO 约束：在自动 IO 约束之后执行。下面的 ns 数值仅为示例。
+io_constraint_txt = '''
+# set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]
+# set_output_delay 0.0625 -max -clock CLK_clk [get_ports data_out*]
+'''
+
+# 5. 时序例外：需有设计依据，不要机械地把所有复位路径设为 false path。
+timing_exception_txt = '''
+# set_false_path -from [get_ports reset_n]
+# set_multicycle_path -setup 3 -end -to [get_ports data_out*]
+# set_multicycle_path -hold 2 -end -to [get_ports data_out*]
+'''
+```
+
+- 生成位置仍为 `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` 与 `origin/post_CTS/...`。两套都写入上述输入，主时钟频率按文件对应的 corner 选择；只有 post-CTS 额外开启传播时钟。
+- 主时钟先查端口，再查内部引脚。端口时钟名是 `CLK_<端口>`；含 `/` 的内部引脚名会将 `/`、`.`、`[` 替换为 `_`，去掉 `]`，例如 `u_pll/Q` → `CLK_u_pll_Q`。完整层次名保留，避免截断后重名。
+- 执行顺序：主时钟（无 IO cell 时为端口主时钟建立虚拟时钟）→ 派生时钟 → 分组 → 自动 IO 约束 → 用户 IO 约束 → 时序例外 → golden 电气/时序约束 → post-CTS 传播时钟。四段 Tcl 原样执行，可使用 `$corner`、`$rc_para`；是否覆盖或叠加已有 IO 延迟取决于命令选项。
+- `design.sdc` 完整文件优先于这五项；未提供完整文件且五项均为空时，现有默认行为不变。`design.clock_port` / `frequency_mhz` 仍供其他工具作为主时钟元数据，应与设计一致；这里不代表每个工具都已支持多时钟优化。
+- 仅主时钟的周期可由 ECC 直接计算；有派生时钟 Tcl 时，脚本用 `get_attribute` 和 `foreach_in_collection` 查询各时钟实际周期。**当前测试的 iSTA 不提供这两个命令，派生时钟模式尚不能据此宣称原生全流程通过**；不要用主时钟周期代替派生时钟周期。用户 Tcl 使用的其他命令也须由具体工具支持。
+- 修改项目 `ecc.toml` 后，使用新 workspace 读取新配置；已有 workspace 使用自己的 `home/params.toml`。可以用 `ecc param set sdc.io_constraint_txt 'set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]' --project "$PROJECT_DIR" --workspace "$WORKSPACE"` 修改已有 workspace 并刷新配置。单纯 `--resume` 不会重新导入项目 TOML 的五项输入。
+
 ## 2. 公共配置：db_ecc.json
 
 所有 ecc 工具步骤共用。每个步骤启动时先用它把 LEF/DEF/网表/LIB 载入内存数据库（subflow 的 "load data" 阶段）。`INPUT.def_path/verilog_path` 与 `OUTPUT.output_dir_path` 三个字段**每步运行前被重写**，实现步骤间文件链。

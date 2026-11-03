@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from chipcompiler.utility import json_read
 
 from .sdc import is_generated_sdc, signoff_sdc_path
+from .sdc_inputs import SdcInputs
 
 if TYPE_CHECKING:
     from . import Workspace
@@ -58,6 +59,9 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
     scenarios = timing_scenarios(workspace)
     if not scenarios:
         raise ValueError("Generated timing constraints require configured STA scenarios")
+    inputs = SdcInputs.from_parameters(workspace.parameters.data)
+    for corner in dict.fromkeys(scenario.corner for scenario in scenarios):
+        inputs.clocks(workspace.parameters.data, corner)
     for post_cts in (False, True):
         for scenario in scenarios:
             signoff_sdc_path(

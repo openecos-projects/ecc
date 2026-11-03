@@ -41,14 +41,36 @@ proc record {args} {
 foreach cmd {
     set_load set_timing_derate set_clock_uncertainty
     set_max_transition set_max_fanout set_propagated_clock
-    set_input_delay set_output_delay set_multicycle_path
+    set_input_delay set_output_delay set_multicycle_path set_false_path set_clock_groups
 } {
     proc $cmd {args} [format {record %s {*}$args} $cmd]
 }
 set clocks {}
+set explicit_ports [lindex $argv 1]
 proc create_clock {args} {
-    lappend ::clocks [lindex $args 1]
+    set name [lindex $args [expr {[lsearch -exact $args -name] + 1}]]
+    set period [lindex $args [expr {[lsearch -exact $args -period] + 1}]]
+    lappend ::clocks $name
+    set ::periods($name) $period
+    if {[llength $args] == 5} {
+        set ::source_clock([lindex $args end]) $name
+    }
     record create_clock {*}$args
+}
+proc create_generated_clock {args} {
+    set name [lindex $args [expr {[lsearch -exact $args -name] + 1}]]
+    set source [lindex $args [expr {[lsearch -exact $args -source] + 1}]]
+    set divide [lindex $args [expr {[lsearch -exact $args -divide_by] + 1}]]
+    lappend ::clocks $name
+    set ::periods($name) [expr {$::periods($::source_clock($source)) * $divide}]
+    record create_generated_clock {*}$args
+}
+proc get_attribute {clock attribute} {
+    if {$attribute ne "period"} {error "unhandled clock attribute"}
+    return $::periods($clock)
+}
+proc foreach_in_collection {variable objects body} {
+    uplevel 1 [list foreach $variable $objects $body]
 }
 proc get_ports {args} {
     if {[lsearch -exact $args -filter] >= 0} {
@@ -56,9 +78,23 @@ proc get_ports {args} {
         if {[lindex $args 2] == "direction == out"} {return [all_outputs]}
         error "unhandled port filter"
     }
-    return [lindex $args 0]
+    set patterns [lindex $args end]
+    if {![llength $::explicit_ports]} {return $patterns}
+    set matches {}
+    foreach pattern $patterns {
+        foreach port $::explicit_ports {
+            if {$pattern eq $port || [string match $pattern $port]} {lappend matches $port}
+        }
+    }
+    return [lsort -unique $matches]
 }
-proc all_inputs {} {return [list $::clk_port_name data]}
+proc get_pins {name} {return $name}
+proc all_inputs {} {
+    if {[llength $::explicit_ports]} {
+        return [remove_from_collection $::explicit_ports [all_outputs]]
+    }
+    return [list $::clk_port_name data]
+}
 proc remove_from_collection {collection objects} {
     set result {}
     foreach item $collection {
@@ -81,9 +117,9 @@ if {[info exists ::injected]} {error "input executed as Tcl"}
 
     command = [executable, str(harness)]
 
-    def trace(path: Path) -> list[tuple[str | float, ...]]:
+    def trace(path: Path, *, ports: tuple[str, ...] = ()) -> list[tuple[str | float, ...]]:
         result = subprocess.run(
-            [*command, str(path)],
+            [*command, str(path), " ".join(ports)],
             check=True,
             capture_output=True,
             text=True,
@@ -319,3 +355,211 @@ def test_unknown_io_requires_preparation_before_tcl_execution(workspace, sdc_tra
         10.0,
         "clk",
     )
+
+
+@pytest.mark.parametrize("corner,period", [("TYP", 10.0), ("MAX", 20.0)])
+@pytest.mark.parametrize("has_io_cells", [True, False])
+@pytest.mark.parametrize("post_cts", [True, False])
+@pytest.mark.parametrize("generated", [True, False])
+def test_user_inputs_execute_in_order_with_per_clock_golden_limits(
+    workspace, sdc_trace, corner, period, has_io_cells, post_cts, generated
+):
+    first_group = "CLK_clk CLK_div2" if generated else "CLK_clk"
+    workspace.parameters.data["sdc"] = {
+        "clock_list": "clk TYP:100 MAX:50\naux TYP:25 MAX:25\nu_pll/Q TYP:200 MAX:200",
+        "generated_clock_txt": "create_generated_clock -name CLK_div2 -divide_by 2 \\\n"
+        "    -source [get_ports clk] [get_pins u_div/Q]",
+        "clk_group_txt": (
+            f"set_clock_groups -asynchronous -group {{{first_group}}} -group {{CLK_aux}}"
+        ),
+        "io_constraint_txt": "set_input_delay 0.7 -max -clock CLK_clk [get_ports data]",
+        "timing_exception_txt": "set_false_path -from [get_ports reset_n]",
+    }
+    if not generated:
+        workspace.parameters.data["sdc"]["generated_clock_txt"] = ""
+    target = workspace.directory / "constraints.tcl"
+    signoff_sdc_path(
+        workspace,
+        target,
+        post_cts=post_cts,
+        corner=corner,
+        rc_para="Cworst",
+        has_io_cells=has_io_cells,
+    )
+    expected = []
+    periods = {}
+    for name, clock_period, source in (
+        ("CLK_clk", period, "clk"),
+        ("CLK_aux", 40.0, "aux"),
+        ("CLK_u_pll_Q", 5.0, "u_pll/Q"),
+    ):
+        expected.append(("create_clock", "-name", name, "-period", clock_period, source))
+        periods[name] = clock_period
+        if not has_io_cells and "/" not in source:
+            expected.append(("create_clock", "-name", f"V{name}", "-period", clock_period))
+            periods[f"V{name}"] = clock_period
+    if generated:
+        expected.append(
+            (
+                "create_generated_clock",
+                "-name",
+                "CLK_div2",
+                "-divide_by",
+                2.0,
+                "-source",
+                "clk",
+                "u_div/Q",
+            )
+        )
+        periods["CLK_div2"] = period * 2
+    expected.append(
+        ("set_clock_groups", "-asynchronous", "-group", first_group, "-group", "CLK_aux")
+    )
+    if has_io_cells:
+        expected.append(("set_load", 8.0 if corner == "MAX" else 7.0, "out"))
+    else:
+        for name, clock_period in (("VCLK_clk", period), ("VCLK_aux", 40.0)):
+            for command, objects in (
+                ("set_input_delay", "data reset_n"),
+                ("set_output_delay", "out"),
+            ):
+                for bound, fraction in (("-max", 0.6), ("-min", 0.3)):
+                    expected.append(
+                        (
+                            command,
+                            clock_period * fraction,
+                            bound,
+                            "-clock",
+                            name,
+                            "-add_delay",
+                            objects,
+                        )
+                    )
+            expected.extend(
+                [
+                    (
+                        "set_multicycle_path",
+                        4.0,
+                        "-setup",
+                        "-end",
+                        "-from",
+                        "clk aux data reset_n",
+                        "-to",
+                        "out",
+                    ),
+                    (
+                        "set_multicycle_path",
+                        3.0,
+                        "-hold",
+                        "-end",
+                        "-from",
+                        "clk aux data reset_n",
+                        "-to",
+                        "out",
+                    ),
+                ]
+            )
+        expected.extend([("set_load", "-max", 0.2, "out"), ("set_load", "-min", 0.1, "out")])
+    expected.extend(
+        [
+            ("set_input_delay", 0.7, "-max", "-clock", "CLK_clk", "data"),
+            ("set_false_path", "-from", "reset_n"),
+        ]
+    )
+    if corner == "MAX":
+        expected.extend(
+            (
+                "set_timing_derate",
+                f"-{delay}_delay",
+                f"-{path}",
+                f"-{bound}",
+                0.95 if (path, bound) == ("clock", "early") else 1.0,
+            )
+            for delay in ("cell", "net")
+            for path in ("clock", "data")
+            for bound in ("late", "early")
+        )
+    else:
+        expected.extend(
+            [("set_timing_derate", "-late", 1.0), ("set_timing_derate", "-early", 0.95)]
+        )
+    for name in periods:
+        expected.extend(
+            [
+                ("set_clock_uncertainty", "-setup", 0.2, name),
+                ("set_clock_uncertainty", "-hold", 0.1, name),
+            ]
+        )
+    for name, clock_period in periods.items():
+        expected.extend(
+            [
+                ("set_max_transition", clock_period * 0.17, "-clock_path", name),
+                ("set_max_transition", clock_period * 0.34, "-data_path", name),
+            ]
+        )
+    expected.append(("set_max_fanout", 32.0, "chip"))
+    if post_cts:
+        expected.append(("set_propagated_clock", " ".join(periods)))
+    assert sdc_trace(target, ports=("clk", "aux", "data", "reset_n", "out")) == expected
+
+
+def test_generated_clock_uses_default_primary_and_its_own_frequency_band(workspace, sdc_trace):
+    workspace.parameters.data["frequency_max"] = 20000
+    workspace.parameters.data["sdc"] = {
+        "generated_clock_txt": "create_generated_clock -name CLK_div2 -divide_by 2 "
+        "-source [get_ports clk] [get_pins u_div/Q]",
+    }
+    generate_timing_scripts(workspace, has_io_cells=True)
+    calls = sdc_trace(workspace.pdk.sdc, ports=("clk", "data", "out"))
+    assert [call for call in calls if call[0] == "set_clock_uncertainty"] == [
+        ("set_clock_uncertainty", "-setup", 0.2, "CLK_div2"),
+        ("set_clock_uncertainty", "-hold", 0.1, "CLK_div2"),
+    ]
+    assert [call for call in calls if call[0] == "set_max_transition"] == [
+        ("set_max_transition", 0.05 * 0.17, "-clock_path", "CLK_clk"),
+        ("set_max_transition", 0.05 * 0.34, "-data_path", "CLK_clk"),
+        ("set_max_transition", 0.1 * 0.17, "-clock_path", "CLK_div2"),
+        ("set_max_transition", 0.1 * 0.34, "-data_path", "CLK_div2"),
+    ]
+
+
+def test_invalid_user_corner_does_not_partially_replace_scenario_files(workspace):
+    generate_timing_scripts(workspace, has_io_cells=True)
+    previous = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
+    workspace.parameters.data["sdc"] = {"clock_list": "clk MAX:50"}
+    with pytest.raises(ValueError, match="no frequency for corner"):
+        generate_timing_scripts(workspace, has_io_cells=False)
+    assert {path: path.read_bytes() for path in previous} == previous
+
+
+def test_full_custom_constraints_bypass_user_input_parsing(workspace):
+    custom = workspace.directory / "full.tcl"
+    custom.write_text("# User-owned complete Tcl\nset custom 1\n")
+    workspace.pdk.sdc = custom
+    workspace.parameters.data["sdc"] = {"clock_list": "invalid clock list"}
+    generate_timing_scripts(workspace, has_io_cells=False)
+    assert (
+        signoff_sdc_path(
+            workspace,
+            workspace.directory / "ignored.tcl",
+            post_cts=True,
+            corner="TYP",
+            rc_para="TYPICAL",
+        )
+        == custom
+    )
+    assert custom.read_text() == "# User-owned complete Tcl\nset custom 1\n"
+
+
+def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace):
+    generate_timing_scripts(workspace, has_io_cells=False)
+    expected = sdc_trace(workspace.pdk.sdc)
+    workspace.parameters.data["sdc"] = {
+        "clock_list": "# clk MAX:50 TYP:100",
+        "generated_clock_txt": "# create_generated_clock -name CLK_unused ...\n",
+        "clk_group_txt": "# set_clock_groups -asynchronous ...\n",
+        "io_constraint_txt": "# set_input_delay 999 -clock CLK_unused ...\n",
+        "timing_exception_txt": "# set_false_path -from ...\n",
+    }
+    generate_timing_scripts(workspace, has_io_cells=False)
+    assert sdc_trace(workspace.pdk.sdc) == expected
