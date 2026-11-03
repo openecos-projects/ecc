@@ -644,11 +644,11 @@ def test_run_cts_captures_clock_graph_before_saving_geometry(tmp_path, monkeypat
             path=tmp_path / "home" / "params.toml",
             data={"geometry": {"clock_tree": True}},
         ),
-        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+        config={SkippableStepEnum.CTS.value: tmp_path / "config" / "cts.json"},
     )
     step = build_step(
         workspace=workspace,
-        step_name=StepEnum.CTS.value,
+        step_name=SkippableStepEnum.CTS.value,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
     )
@@ -1380,7 +1380,7 @@ def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
             data={"geometry": {"clock_tree": True}},
         ),
     )
-    step = build_step(workspace, StepEnum.CTS.value, None, None)
+    step = build_step(workspace, SkippableStepEnum.CTS.value, None, None)
     module: Any = SnapshotSaveEccModule(write_snapshot=True)
     graph = {"timing_source": "cts_fast_sta", "clocks": []}
 
