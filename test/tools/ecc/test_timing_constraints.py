@@ -7,7 +7,6 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, SkippableStepEnum, StepEnum, Workspace
-from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
