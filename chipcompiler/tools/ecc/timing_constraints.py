@@ -5,9 +5,9 @@ from pathlib import Path
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
 from chipcompiler.data.workspace.sdc import is_generated_sdc
 from chipcompiler.data.workspace.timing_constraints import (
+    generate_timing_scripts,
     scenario_tcl_path,
     timing_scenarios,
-    write_timing_io_context,
 )
 from chipcompiler.rtl2gds import build_rtl2gds_flow
 from chipcompiler.utility import json_read
@@ -41,7 +41,7 @@ def step_tcl_path(
 def prepare_timing_context(
     workspace: Workspace, step: WorkspaceStep, ecc_module: ECCToolsModule | None = None
 ) -> None:
-    """Select IO policy from fresh iDB data without regenerating constraint files."""
+    """Resolve the generated IO rules from fresh iDB data before timing runs."""
     if not is_generated_sdc(workspace.pdk.sdc):
         return
     if step.data.dir is None:
@@ -59,7 +59,7 @@ def prepare_timing_context(
         if not ecc_module.feature_sammry(json_path=context_path):
             raise RuntimeError(f"Cannot export current iDB IO-cell count for {step.name}")
         has_io_cells = json_read(context_path)["Instances"]["iopads"]["num"] > 0
-        write_timing_io_context(workspace, has_io_cells=has_io_cells)
+        generate_timing_scripts(workspace, has_io_cells=has_io_cells)
     finally:
         if owns_module:
             ecc_module.close()

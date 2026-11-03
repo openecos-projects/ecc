@@ -230,7 +230,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 则只复制、不重新生成。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的约束，参数变化时刷新这些文件。
 
-生成的 Tcl 按 `design.clock_port` 和 `design.frequency_mhz` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。IO 约束分支由运行时 iDB 中是否存在 IO cell 决定；未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
+生成的 Tcl 按 `design.clock_port` 和 `design.frequency_mhz` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
 
 ## 2. 公共配置：db_ecc.json
 

@@ -74,8 +74,9 @@ def signoff_sdc_path(
     post_cts: bool,
     corner: str,
     rc_para: str,
+    has_io_cells: bool | None = None,
 ) -> Path:
-    """Write a pre/post-CTS scenario; actual IO mode is supplied by the loaded design."""
+    """Write a standalone scenario with IO rules selected from the loaded design."""
     source = workspace.pdk.sdc
     if source is not None and not is_generated_sdc(source):
         return source
@@ -89,19 +90,10 @@ def signoff_sdc_path(
             *_section("4. IO interface constraints - golden branch selected from iDB"),
         ]
     )
-    context = workspace.directory / "home" / "timing_io.tcl"
-    lines.append(f"source {_tcl_word(str(context))}")
-    lines.append("if {$has_io_cells} {")
-    lines.extend(
-        "    " + line if line else ""
-        for line in _io_constraints(workspace, corner, has_io_cells=True)
-    )
-    lines.append("} else {")
-    lines.extend(
-        "    " + line if line else ""
-        for line in _io_constraints(workspace, corner, has_io_cells=False)
-    )
-    lines.append("}")
+    if has_io_cells is None:
+        lines.append('error "ECC must load the design before selecting timing IO constraints"')
+    else:
+        lines.extend(_io_constraints(workspace, corner, has_io_cells=has_io_cells))
 
     clock = workspace.parameters.data.get("clock", "")
     lines.extend(_section("5. OCV derate - first matching golden rule"))

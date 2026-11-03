@@ -51,7 +51,7 @@ def native_module():
 
 
 @pytest.mark.parametrize("io_cells", [0, 2])
-def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_workspace, io_cells):
+def test_stage_selection_reuses_resolved_constraints(timing_workspace, io_cells):
     workspace = timing_workspace
     module = Mock(spec=ECCToolsModule)
 
@@ -60,6 +60,7 @@ def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_works
         return True
 
     module.feature_sammry.side_effect = export
+    generate_timing_scripts(workspace, has_io_cells=io_cells > 0)
     files = {
         path: (path.read_bytes(), path.stat().st_mtime_ns)
         for path in (workspace.directory / "origin").rglob("*.tcl")
@@ -80,10 +81,26 @@ def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_works
             == workspace.directory / "origin" / phase_dir / "TYP_25_TYPICAL.tcl"
         )
     assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in files} == files
-    assert (
-        workspace.directory / "home/timing_io.tcl"
-    ).read_text() == f"set has_io_cells {int(io_cells > 0)}\n"
     module.close.assert_not_called()
+
+
+@pytest.mark.parametrize("io_cells", [0, 2])
+def test_native_preparation_resolves_current_io_branch(timing_workspace, io_cells):
+    workspace = timing_workspace
+    module = Mock(spec=ECCToolsModule)
+
+    def export(json_path):
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": io_cells}}}))
+        return True
+
+    module.feature_sammry.side_effect = export
+    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    build_step_space(step)
+    generate_timing_scripts(workspace, has_io_cells=not bool(io_cells))
+    prepare_timing_context(workspace, step, module)
+    actual = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
+    generate_timing_scripts(workspace, has_io_cells=bool(io_cells))
+    assert actual == {path: path.read_bytes() for path in actual}
 
 
 def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
