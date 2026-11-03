@@ -450,9 +450,10 @@ status_for() {
       fi
       ;;
     drc)
-      local drc_gate
+      local drc_gate drc_present
       drc_gate="$(awk -F, 'NR==2 {print $6; exit}' "${file}")"
-      if [[ "${drc_gate}" == pass ]]; then
+      drc_present="$(awk -F, 'NR==2 {print $8; exit}' "${file}")"
+      if [[ "${drc_gate}" == pass && "${drc_present}" == true ]]; then
         printf 'pass'
       else
         printf 'fail'

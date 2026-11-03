@@ -7,6 +7,7 @@ on:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
       - '.github/scripts/signoff-csv-notify.js'
+      - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
   push:
@@ -16,6 +17,7 @@ on:
       - 'nix/scripts/signoff_csv/**'
       - 'nix/scripts/signoff-csv-fixture.sh'
       - '.github/scripts/signoff-csv-notify.js'
+      - '.github/scripts/signoff-csv-test.sh'
       - 'nix/signoff.nix'
       - '.github/workflows/signoff-csv.yml'
 
@@ -48,6 +50,9 @@ jobs:
           bash nix/scripts/signoff_csv/export.sh \
             --workspace "$RUNNER_TEMP/signoff-workspace" \
             --out-dir signoff-artifacts
+
+      - name: Verify signoff CSV failure modes
+        run: bash .github/scripts/signoff-csv-test.sh
 
       - name: Upload CSV evidence
         if: always()

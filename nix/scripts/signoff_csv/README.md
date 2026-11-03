@@ -33,8 +33,9 @@ This is a collector skeleton, not a signoff gate:
 
 - CI runs `nix/scripts/signoff-csv-fixture.sh` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
+- The DRC check requires both `drc_count` presence and `qor.drc.clean == pass`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
-- Failure paths (`present=false`, DRC gate fail, LEC not `proven`, negative WNS, Harden missing artifacts) are not covered by fixture tests.
+- Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
 - LEC engine selection is strict: a result from a non-selected `postRouteLec_<engine>` directory is not used.
 - On fork PRs, the `pull_request` token is read-only, so the notification step cannot reliably post/update the PR comment.
 
@@ -83,6 +84,8 @@ from `Synthesis`, `postFloorplan`, and `Harden` outputs.
 ```bash
 nix run .#signoff-csv-fixture -- --workspace /tmp/signoff-workspace
 ```
+
+Negative-path coverage lives in `.github/scripts/signoff-csv-test.sh` and runs in CI.
 
 ## CLI
 
