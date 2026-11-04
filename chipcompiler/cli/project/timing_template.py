@@ -1,13 +1,14 @@
 """Editable timing-input section included in new ecc.toml projects."""
 
 SDC_INPUT_TEMPLATE = r"""
-# Uncomment the example lines you need and edit names/values inside the quotes.
-# Unused lines stay commented. Used in pre_CTS and post_CTS; [design].sdc overrides.
+# Edit clock_list below; uncomment optional examples inside the quotes as needed.
+# Used in pre_CTS and post_CTS. Unused optional commands stay commented.
 [params.sdc]
 
 # 1. Primary clocks: each row is <port-or-pin> <corner>:<MHz> ...
+# The first row's TYP value also drives flow metadata.
 clock_list = '''
-# clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
 '''
 
 # 2. Generated clocks: define the source, target pin, and division ratio.

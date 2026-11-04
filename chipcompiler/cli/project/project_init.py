@@ -211,11 +211,6 @@ def _default_toml(design_name: str) -> str:
 name = "{design_name}"
 top = "{design_name}"
 rtl = ["rtl/{design_name}.v"]
-# Optional complete timing file; overrides automatic generation and [params.sdc].
-# sdc = "constraints/constraints.tcl"
-# Primary-clock metadata for the flow; keep aligned with the design's main clock.
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"

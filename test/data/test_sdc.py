@@ -560,6 +560,9 @@ def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace
     paths = sorted((workspace.directory / "origin").rglob("*.tcl"))
     assert {path.parent.name for path in paths} == {"pre_CTS", "post_CTS"}
     expected = {path: sdc_trace(path) for path in paths}
-    workspace.parameters.data["sdc"] = tomllib.loads(SDC_INPUT_TEMPLATE)["params"]["sdc"]
+    inputs = tomllib.loads(SDC_INPUT_TEMPLATE)["params"]["sdc"]
+    # Only optional fields are commented examples now; the primary clock is active.
+    inputs["clock_list"] = ""
+    workspace.parameters.data["sdc"] = inputs
     generate_timing_scripts(workspace, has_io_cells=has_io_cells)
     assert {path: sdc_trace(path) for path in paths} == expected
