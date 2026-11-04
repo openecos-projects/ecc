@@ -76,6 +76,7 @@ fresh_workspace "${ws}"
 check_export "happy path passes" "${ws}" pass
 
 summary_file="${tmp}/summary.md"
+sed -i 's/^Harden,die_area,40000.0,/Harden,die_area,,/' "${ws}/out/area.csv"
 mkdir -p "${ws}/signoff-artifacts/e2e-signoff-csv-invalid"
 ln -s "${ws}/out" "${ws}/signoff-artifacts/e2e-signoff-csv-gcd"
 printf '%s\n' '{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}' \
@@ -96,14 +97,6 @@ printf -v expected_summary '%s\n' \
   '<details>' \
   '<summary>gcd</summary>' \
   '' \
-  '| Check | Status | Rows | CSV |' \
-  '| --- | --- | --- | --- |' \
-  '| `area` | `pass` | 7 | `area.csv` |' \
-  '| `drc` | `pass` | 1 | `drc.csv` |' \
-  '| `harden` | `pass` | 7 | `harden.csv` |' \
-  '| `lec` | `pass` | 1 | `lec.csv` |' \
-  '| `sta` | `pass` | 17 | `sta.csv` |' \
-  '' \
   '#### Area' \
   '' \
   '| Step | Metric | Value |' \
@@ -112,7 +105,7 @@ printf -v expected_summary '%s\n' \
   '| `postFloorplan` | `die_area` | `40000.0` um^2 |' \
   '| `postFloorplan` | `core_area` | `32000.0` um^2 |' \
   '| `postFloorplan` | `core_utilization` | `0.62` ratio |' \
-  '| `Harden` | `die_area` | `40000.0` um^2 |' \
+  '| `Harden` | `die_area` | N/A |' \
   '| `Harden` | `core_area` | `32000.0` um^2 |' \
   '| `Harden` | `core_utilization` | `0.62` ratio |' \
   '' \
@@ -223,5 +216,12 @@ ws="${tmp}/lec-non-success"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "postRouteLec") | .state) = "Incomplete"'
 check_export "postRouteLec non-success fails despite stale result" "${ws}" fail
+
+# 14. Harden area metrics are optional; final artifacts still satisfy the gate.
+ws="${tmp}/harden-optional-area"
+fresh_workspace "${ws}"
+mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
+  '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
+check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
 
 echo "all signoff CSV negative-path checks passed"

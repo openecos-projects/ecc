@@ -94,19 +94,7 @@ function normalizeManifest(raw) {
   const checks = raw.checks;
   if (!checks || typeof checks !== 'object' || Array.isArray(checks)) return null;
 
-  const normalizedChecks = Object.entries(checks)
-    .filter(([, data]) => data && typeof data === 'object' && !Array.isArray(data))
-    .map(([name, data]) => ({
-      name: sanitizeCell(name),
-      status: sanitizeCell(data.status || 'fail'),
-      rows: sanitizeCell(data.rows ?? 0),
-      file: sanitizeCell(data.file || ''),
-    }));
-
-  return {
-    gate: sanitizeCell(raw.gate || 'FAIL'),
-    checks: normalizedChecks,
-  };
+  return { gate: sanitizeCell(raw.gate) };
 }
 
 function formatValue(row) {
@@ -123,8 +111,8 @@ function findMetric(rows, metric, kind) {
 
 function findDieArea(rows) {
   return (
-    rows.find((row) => row.metric === 'die_area' && row.step === 'Harden') ||
-    findMetric(rows, 'die_area')
+    rows.find((row) => row.metric === 'die_area' && row.step === 'Harden' && row.value) ||
+    rows.find((row) => row.metric === 'die_area' && row.value)
   );
 }
 
@@ -214,16 +202,6 @@ function buildDesignDetails(report) {
     return lines;
   }
 
-  if (report.manifest) {
-    const rows = report.manifest.checks
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(
-        (check) =>
-          `| \`${check.name}\` | \`${check.status}\` | ${check.rows} | \`${check.file}\` |`
-      )
-      .join('\n');
-    lines.push('| Check | Status | Rows | CSV |', '| --- | --- | --- | --- |', rows, '');
-  }
   lines.push(...buildAreaSection(report.area), ...buildStaSection(report.sta), '</details>', '');
   return lines;
 }

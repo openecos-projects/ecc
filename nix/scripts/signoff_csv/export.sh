@@ -478,6 +478,17 @@ status_for() {
         printf 'fail'
       fi
       ;;
+    harden)
+      # Area metrics are report-only; only final artifact evidence is mandatory.
+      if awk -F, '
+        NR > 1 && ($1 == "artifact" || $2 == "harden_artifact_missing_count") && $6 != "true" { f = 1 }
+        END { exit f ? 0 : 1 }
+      ' "${file}" >/dev/null; then
+        printf 'fail'
+      else
+        printf 'pass'
+      fi
+      ;;
     *)
       if awk -F, -v p="$present_field" 'NR>1 && $p != "true" {f=1} END {exit f ? 0 : 1}' "${file}" >/dev/null; then
         printf 'fail'

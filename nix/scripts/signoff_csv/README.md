@@ -35,7 +35,8 @@ This is a collector skeleton, not a signoff gate:
   the integrated CI summary reads CSV products from the packaged E2E workspaces.
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
 - The DRC check requires both `drc_count` presence and `qor.drc.clean == pass`.
-- The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
+- The Harden gate requires the missing-count metric and final GDS/LEF/LIB artifacts. Optional Harden area
+  metrics do not affect the gate, and `harden_artifact_missing_count == 0` is not enforced.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
 - LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
 - Each packaged E2E job uploads its design's CSV products as `e2e-signoff-csv-<design>`. After the matrix,
