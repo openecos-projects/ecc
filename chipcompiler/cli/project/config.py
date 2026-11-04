@@ -59,6 +59,7 @@ class ProjectConfig:
     _skip_steps_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
+    _timing_input_error: str | None = field(default=None, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _flow_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     # Parse provenance: dotted "<section>.<key>" names of every design/pdk/
@@ -159,7 +160,32 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         if param_errors:
             cfg._param_errors = param_errors
 
+    resolve_clock_list_metadata(cfg)
     return cfg
+
+
+def resolve_clock_list_metadata(cfg: ProjectConfig) -> None:
+    """Derive legacy single-clock tool inputs from the first declared TYP clock."""
+    cfg._timing_input_error = None
+    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
+        return
+
+    from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+
+    try:
+        clocks = SdcInputs.from_parameters(
+            {"sdc": {"clock_list": cfg.params_overrides["sdc.clock_list"]}}
+        ).clocks({}, "TYP")
+        if not clocks:
+            if {"design.clock_port", "design.frequency_mhz"} <= cfg._explicit_keys:
+                return
+            raise ValueError("params.sdc.clock_list requires an uncommented primary-clock row")
+    except ValueError as exc:
+        cfg._timing_input_error = str(exc)
+        return
+
+    cfg.design_clock_port = clocks[0].target
+    cfg.design_frequency_mhz = clocks[0].frequency_mhz
 
 
 def resolve_project_dir(project: str | None) -> str:
@@ -224,10 +250,13 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    if not cfg.design_clock_port:
-        errors.append("design.clock_port is required")
-    if cfg.design_frequency_mhz <= 0:
-        errors.append("design.frequency_mhz must be greater than 0")
+    if cfg._timing_input_error:
+        errors.append(cfg._timing_input_error)
+    else:
+        if not cfg.design_clock_port:
+            errors.append("design.clock_port is required")
+        if cfg.design_frequency_mhz <= 0:
+            errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:

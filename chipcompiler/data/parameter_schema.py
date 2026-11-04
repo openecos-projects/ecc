@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
 from chipcompiler.data.config_params.common import ParamSchema
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
+from chipcompiler.data.config_params.sdc import SCHEMAS as SDC_SCHEMAS
 
 _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ParamSchema(
@@ -197,7 +198,7 @@ _LEGACY_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ),
 )
 
-PARAM_REGISTRY = _LEGACY_PARAM_REGISTRY + CONFIG_PARAM_SCHEMAS + MACRO_SCHEMAS
+PARAM_REGISTRY = _LEGACY_PARAM_REGISTRY + CONFIG_PARAM_SCHEMAS + MACRO_SCHEMAS + SDC_SCHEMAS
 _REGISTRY_INDEX = {schema.param: schema for schema in PARAM_REGISTRY}
 _REQUIRED_FIELDS = ("param", "group", "name", "type", "default", "applies", "description")
 

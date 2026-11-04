@@ -1089,7 +1089,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "corner": "MIN_m40/Cbest",
         },
     ]
-    assert sdc.read_bytes() == original_sdc
     if generated_sdc:
         assert [
             [
@@ -1109,9 +1108,22 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
                 "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
                 f'set corner "{corner}"',
                 f'set rc_para "{rc}"',
+                *(
+                    [
+                        'set virtual_clk_name "VCLK_clk"',
+                        "set data_inputs [remove_from_collection "
+                        "[get_ports -quiet -filter {direction == in} *] "
+                        "[get_ports $clk_port_name]]",
+                        "set data_outputs [get_ports -quiet -filter {direction == out} *]",
+                    ]
+                    if io_cell_count == 0
+                    else []
+                ),
             ]
             for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
         ]
+    else:
+        assert sdc.read_bytes() == original_sdc
 
 
 def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypatch):

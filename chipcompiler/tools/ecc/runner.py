@@ -14,7 +14,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
     capture_filler_clock_tree,
@@ -1192,7 +1192,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
         raise RuntimeError("Cannot export current iDB IO-cell count for signoff SDC")
     has_io_cells = json_read(step.feature.db or "")["Instances"]["iopads"]["num"] > 0
-    write_timing_io_context(workspace, has_io_cells=has_io_cells)
+    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
 
     for signoff_item in signoff_items:
         corner_name = signoff_item["corner"]
