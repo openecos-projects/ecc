@@ -36,8 +36,9 @@ def test_toml_timing_inputs_survive_cli_creation_reload_and_refresh(
         (project / "constraints/full.tcl").write_text(
             "# custom\ncreate_clock -period 8 [get_ports clk]\n"
         )
+    defaults = tomllib.loads(text)["params"]["sdc"]
     for key, value in values.items():
-        text = text.replace(f"{key} = '''\n'''", f"{key} = '''\n{value}'''")
+        text = text.replace(f"{key} = '''\n{defaults[key]}'''", f"{key} = '''\n{value}'''")
     config.write_text(text)
     assert tomllib.loads(text)["params"]["sdc"] == values
 

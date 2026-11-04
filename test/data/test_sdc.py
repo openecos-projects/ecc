@@ -1,10 +1,12 @@
 import json
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data.parameter import Parameters
 from chipcompiler.data.pdk import PDK
 from chipcompiler.data.workspace import OriginDesign, Workspace
@@ -551,15 +553,13 @@ def test_full_custom_constraints_bypass_user_input_parsing(workspace):
     assert custom.read_text() == "# User-owned complete Tcl\nset custom 1\n"
 
 
-def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace):
-    generate_timing_scripts(workspace, has_io_cells=False)
-    expected = sdc_trace(workspace.pdk.sdc)
-    workspace.parameters.data["sdc"] = {
-        "clock_list": "# clk MAX:50 TYP:100",
-        "generated_clock_txt": "# create_generated_clock -name CLK_unused ...\n",
-        "clk_group_txt": "# set_clock_groups -asynchronous ...\n",
-        "io_constraint_txt": "# set_input_delay 999 -clock CLK_unused ...\n",
-        "timing_exception_txt": "# set_false_path -from ...\n",
-    }
-    generate_timing_scripts(workspace, has_io_cells=False)
-    assert sdc_trace(workspace.pdk.sdc) == expected
+@pytest.mark.parametrize("has_io_cells", [False, True])
+def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace, has_io_cells):
+    workspace.parameters.data.update({"clock": "ref_clk", "frequency_max": 80})
+    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
+    paths = sorted((workspace.directory / "origin").rglob("*.tcl"))
+    assert {path.parent.name for path in paths} == {"pre_CTS", "post_CTS"}
+    expected = {path: sdc_trace(path) for path in paths}
+    workspace.parameters.data["sdc"] = tomllib.loads(SDC_INPUT_TEMPLATE)["params"]["sdc"]
+    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
+    assert {path: sdc_trace(path) for path in paths} == expected
