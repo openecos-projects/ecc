@@ -452,6 +452,18 @@ status_for() {
   local check="$1"
   local file="$2"
   local present_field="${3:-}"
+  local step=""
+  case "$check" in
+    sta) step=sta ;;
+    drc) step=drc ;;
+    harden) step=Harden ;;
+  esac
+  if [[ -n "${step}" && -f "${flow_file}" ]] && ! jq -e \
+    --arg name "${step}" '.steps[]? | select(.name == $name)' "${flow_file}" >/dev/null 2>&1; then
+    printf 'skipped'
+    return 0
+  fi
+
   local row_count
   row_count=$(($(wc -l < "${file}") - 1))
   if (( row_count <= 0 )); then
@@ -508,10 +520,10 @@ if [[ "${area_selected}" == 1 ]]; then area_status="$(status_for area "${out_dir
 gate=PASS
 for check in "${check_array[@]}"; do
   case "$check" in
-    sta) [[ "$sta_status" == pass ]] || gate=FAIL ;;
-    drc) [[ "$drc_status" == pass ]] || gate=FAIL ;;
-    lec) [[ "$lec_status" == pass ]] || gate=FAIL ;;
-    harden) [[ "$harden_status" == pass ]] || gate=FAIL ;;
+    sta) [[ "$sta_status" != fail ]] || gate=FAIL ;;
+    drc) [[ "$drc_status" != fail ]] || gate=FAIL ;;
+    lec) [[ "$lec_status" != fail ]] || gate=FAIL ;;
+    harden) [[ "$harden_status" != fail ]] || gate=FAIL ;;
   esac
 done
 

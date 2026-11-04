@@ -224,4 +224,16 @@ mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
 check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
 
+# 15. Partial flows skip checks whose steps are absent from the ledger.
+ws="${tmp}/partial-flow"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/flow.json" '.steps = [.steps[] | select(.name == "Synthesis")]'
+check_export "partial flow skips absent signoff steps" "${ws}" pass
+jq -e '
+  .checks.sta.status == "skipped" and
+  .checks.drc.status == "skipped" and
+  .checks.harden.status == "skipped"
+' "${ws}/out/signoff_csv_manifest.json" >/dev/null
+pass "partial flow records absent checks as skipped"
+
 echo "all signoff CSV negative-path checks passed"
