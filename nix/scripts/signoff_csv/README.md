@@ -38,8 +38,6 @@ This is a collector skeleton, not a signoff gate:
 - The Harden gate requires the missing-count metric and final GDS/LEF/LIB artifacts. Optional Harden area
   metrics do not affect the gate, and `harden_artifact_missing_count == 0` is not enforced.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
-- STA, DRC, and Harden checks are `skipped` when their steps are absent from the flow ledger; checks for
-  included steps still gate normally.
 - LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
 - Each packaged E2E job uploads its design's CSV products as `e2e-signoff-csv-<design>`. After the matrix,
   `Signoff CSV collector` downloads all available reports, writes one integrated GitHub Actions job summary,
