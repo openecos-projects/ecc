@@ -93,9 +93,10 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
 
       - name: List revision.toml
         id: resolve
@@ -832,9 +833,10 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
 
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
@@ -1025,9 +1027,10 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
           extra-conf: |
             extra-substituters = https://cache.ani.llc
             extra-trusted-public-keys = cache.ani.llc:8nINs8lCCU0Yoed1KMjLj6fCHpMmrY+sFuhGTdxLB88=
