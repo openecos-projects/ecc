@@ -1112,9 +1112,8 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
                     [
                         'set virtual_clk_name "VCLK_clk"',
                         "set data_inputs [remove_from_collection "
-                        "[get_ports -quiet -filter {direction == in} *] "
-                        "[get_ports $clk_port_name]]",
-                        "set data_outputs [get_ports -quiet -filter {direction == out} *]",
+                        "[all_inputs] [get_ports $clk_port_name]]",
+                        "set data_outputs [all_outputs]",
                     ]
                     if io_cell_count == 0
                     else []
