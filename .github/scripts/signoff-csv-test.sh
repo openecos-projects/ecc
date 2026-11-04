@@ -136,6 +136,20 @@ if ! diff -u <(printf '%s' "${expected_missing}") "${missing_summary}"; then
 fi
 pass "job summary reports a missing manifest"
 
+invalid_summary="${tmp}/invalid-summary.md"
+mkdir -p "${tmp}/invalid/signoff-artifacts"
+cat > "${tmp}/invalid/signoff-artifacts/signoff_csv_manifest.json" <<'JSON'
+{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}
+JSON
+(
+  cd "${tmp}/invalid"
+  GITHUB_STEP_SUMMARY="${invalid_summary}" node "${summary_js}"
+)
+if ! diff -u <(printf '%s' "${expected_missing}") "${invalid_summary}"; then
+  fail "job summary rejects an invalid manifest"
+fi
+pass "job summary rejects an invalid manifest"
+
 # 2. LEC: no selected-engine result -> mandatory gate fails.
 ws="${tmp}/lec-missing"
 fresh_workspace "${ws}"

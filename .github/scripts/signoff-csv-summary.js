@@ -79,6 +79,10 @@ function loadManifest() {
 
 function normalizeManifest(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (raw.schema_version !== 1) return null;
+  if (raw.kind !== 'signoff_csv_manifest') return null;
+  if (!['PASS', 'FAIL', 'ERROR'].includes(raw.gate)) return null;
+
   const checks = raw.checks;
   if (!checks || typeof checks !== 'object' || Array.isArray(checks)) return null;
 
