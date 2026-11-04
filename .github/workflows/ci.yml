@@ -865,6 +865,14 @@ jobs:
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
+      - name: Export signoff product CSVs
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
+          bash nix/scripts/signoff_csv/export.sh \
+            --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
+            --out-dir "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
+
       - name: Export signoff package
         shell: bash
         run: |
@@ -891,6 +899,16 @@ jobs:
             "${nixpkgs}#jq" \
             -c bash nix/scripts/signoff-lit.sh designs --filter "${{ matrix.design }}"
 
+      - name: Upload signoff product CSVs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-signoff-csv-${{ matrix.design }}
+          path: ${{ runner.temp }}/e2e-product-csv/${{ matrix.design }}/
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Upload e2e workspaces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -902,7 +920,7 @@ jobs:
 
   signoff-csv:
     name: Signoff CSV collector
-    needs: e2e-packaged-flow
+    needs: [e2e-packaged-flow, e2e-designs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -910,21 +928,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate deterministic workspace
-        run: |
-          bash nix/scripts/signoff-csv-fixture.sh \
-            --workspace "$RUNNER_TEMP/signoff-workspace"
-
-      - name: Export signoff product CSVs
-        id: export
-        run: |
-          mkdir -p signoff-artifacts
-          bash nix/scripts/signoff_csv/export.sh \
-            --workspace "$RUNNER_TEMP/signoff-workspace" \
-            --out-dir signoff-artifacts
-
       - name: Verify signoff CSV failure modes
         run: bash .github/scripts/signoff-csv-test.sh
+
+      - name: Download E2E signoff CSV artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: e2e-signoff-csv-*
+          path: signoff-artifacts
 
       - name: Link previous successful summary
         if: always()
@@ -964,6 +977,8 @@ jobs:
 
       - name: Publish signoff CSV job summary
         if: always()
+        env:
+          EXPECTED_DESIGNS: ${{ needs.e2e-designs.outputs.designs }}
         run: node .github/scripts/signoff-csv-summary.js
 
       - name: Upload CSV evidence
@@ -971,7 +986,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: '${{ github.run_id }}'
+          name: ecc-signoff-csv
           path: signoff-artifacts/
           if-no-files-found: ignore
           retention-days: 90

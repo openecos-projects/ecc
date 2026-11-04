@@ -1,7 +1,7 @@
 const fs = require('fs');
 
-const artifactDir = 'signoff-artifacts';
-const manifestPath = `${artifactDir}/signoff_csv_manifest.json`;
+const artifactRoot = 'signoff-artifacts';
+const artifactPrefix = 'e2e-signoff-csv-';
 
 function sanitizeCell(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -11,6 +11,13 @@ function sanitizeCell(value) {
     .replace(/`/g, "'")
     .replace(/\|/g, '/')
     .slice(0, 200);
+}
+
+function sanitizeHtml(value) {
+  return sanitizeCell(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 function parseCsv(text) {
@@ -53,8 +60,8 @@ function parseCsv(text) {
   return rows;
 }
 
-function readCsv(file) {
-  const path = `${artifactDir}/${file}`;
+function readCsv(directory, file) {
+  const path = `${directory}/${file}`;
   if (!fs.existsSync(path)) return [];
   try {
     const [headers = [], ...records] = parseCsv(fs.readFileSync(path, 'utf8'));
@@ -68,10 +75,11 @@ function readCsv(file) {
   }
 }
 
-function loadManifest() {
-  if (!fs.existsSync(manifestPath)) return null;
+function loadManifest(directory) {
+  const path = `${directory}/signoff_csv_manifest.json`;
+  if (!fs.existsSync(path)) return null;
   try {
-    return JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    return JSON.parse(fs.readFileSync(path, 'utf8'));
   } catch {
     return null;
   }
@@ -96,22 +104,32 @@ function normalizeManifest(raw) {
     }));
 
   return {
-    design: sanitizeCell(raw.design || 'unknown'),
     gate: sanitizeCell(raw.gate || 'FAIL'),
     checks: normalizedChecks,
   };
 }
 
 function formatValue(row) {
+  if (!row) return 'N/A';
   const value = sanitizeCell(row.value);
   if (!value) return 'N/A';
   const unit = sanitizeCell(row.unit);
   return `\`${value}\`${unit ? ` ${unit}` : ''}`;
 }
 
-function buildAreaSection() {
-  const rows = readCsv('area.csv');
-  const lines = ['### Area', ''];
+function findMetric(rows, metric, kind) {
+  return rows.find((row) => row.metric === metric && (!kind || row.kind === kind));
+}
+
+function findDieArea(rows) {
+  return (
+    rows.find((row) => row.metric === 'die_area' && row.step === 'Harden') ||
+    findMetric(rows, 'die_area')
+  );
+}
+
+function buildAreaSection(rows) {
+  const lines = ['#### Area', ''];
   if (!rows.length) {
     lines.push('No area data available.', '');
     return lines;
@@ -128,21 +146,11 @@ function buildAreaSection() {
   return lines;
 }
 
-function buildDrcSection() {
-  const row = readCsv('drc.csv').find((record) => record.metric === 'drc_count');
-  return [
-    '### DRC',
-    '',
-    row ? `- **DRC count**: ${formatValue(row)}` : 'No DRC data available.',
-    '',
-  ];
-}
-
-function buildStaSection() {
+function buildStaSection(rows) {
   const selectedMetrics = new Set(['setup_wns', 'setup_tns', 'hold_wns', 'hold_tns']);
   const corners = new Map();
 
-  for (const row of readCsv('sta.csv')) {
+  for (const row of rows) {
     if (row.kind !== 'qor_metrics' && row.kind !== 'corner_summary') continue;
     const metric = row.kind === 'qor_metrics' ? row.metric.replace(/^sta_/, '') : row.metric;
     if (!selectedMetrics.has(metric)) continue;
@@ -156,7 +164,7 @@ function buildStaSection() {
     corners.get(key).values[metric] = formatValue(row);
   }
 
-  const lines = ['### STA', ''];
+  const lines = ['#### STA', ''];
   if (!corners.size) {
     lines.push('No STA WNS/TNS data available.', '');
     return lines;
@@ -175,30 +183,78 @@ function buildStaSection() {
   return lines;
 }
 
-function buildBody(manifest) {
-  if (!manifest) {
-    return '## Signoff CSV Report\n\nExport step failed before producing a manifest.\n';
+function loadReport(design) {
+  const directory = `${artifactRoot}/${artifactPrefix}${design}`;
+  return {
+    design,
+    manifest: normalizeManifest(loadManifest(directory)),
+    area: readCsv(directory, 'area.csv'),
+    drc: readCsv(directory, 'drc.csv'),
+    sta: readCsv(directory, 'sta.csv'),
+  };
+}
+
+function buildOverviewRow(report) {
+  const gate = report.manifest ? `\`${report.manifest.gate}\`` : '`Unavailable`';
+  return (
+    `| \`${sanitizeCell(report.design)}\` | ${gate} | ` +
+    `${formatValue(findMetric(report.drc, 'drc_count'))} | ${formatValue(findDieArea(report.area))} | ` +
+    `${formatValue(findMetric(report.sta, 'sta_setup_wns', 'qor_metrics'))} | ` +
+    `${formatValue(findMetric(report.sta, 'sta_setup_tns', 'qor_metrics'))} | ` +
+    `${formatValue(findMetric(report.sta, 'sta_hold_wns', 'qor_metrics'))} | ` +
+    `${formatValue(findMetric(report.sta, 'sta_hold_tns', 'qor_metrics'))} |`
+  );
+}
+
+function buildDesignDetails(report) {
+  const lines = ['<details>', `<summary>${sanitizeHtml(report.design)}</summary>`, ''];
+  const hasData = report.manifest || report.area.length || report.drc.length || report.sta.length;
+  if (!hasData) {
+    lines.push('No CSV artifact was produced by this E2E job.', '', '</details>', '');
+    return lines;
   }
 
-  const rows = manifest.checks
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((check) => `| \`${check.name}\` | \`${check.status}\` | ${check.rows} | \`${check.file}\` |`)
-    .join('\n');
+  if (report.manifest) {
+    const rows = report.manifest.checks
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(
+        (check) =>
+          `| \`${check.name}\` | \`${check.status}\` | ${check.rows} | \`${check.file}\` |`
+      )
+      .join('\n');
+    lines.push('| Check | Status | Rows | CSV |', '| --- | --- | --- | --- |', rows, '');
+  }
+  lines.push(...buildAreaSection(report.area), ...buildStaSection(report.sta), '</details>', '');
+  return lines;
+}
+
+function buildBody(reports) {
+  if (!reports.length) {
+    return '## Signoff CSV Report\n\nNo E2E design results were available.\n';
+  }
 
   return [
     '## Signoff CSV Report',
     '',
-    `- **Design**: \`${manifest.design}\``,
-    `- **Gate**: \`${manifest.gate}\``,
+    '| Design | Gate | DRC | Die area | Setup WNS | Setup TNS | Hold WNS | Hold TNS |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...reports.map(buildOverviewRow),
     '',
-    '| Check | Status | Rows | CSV |',
-    '| --- | --- | --- | --- |',
-    rows,
-    '',
-    ...buildAreaSection(),
-    ...buildDrcSection(),
-    ...buildStaSection(),
+    ...reports.flatMap(buildDesignDetails),
   ].join('\n');
+}
+
+function expectedDesigns() {
+  const raw = process.env.EXPECTED_DESIGNS;
+  if (!raw) throw new Error('EXPECTED_DESIGNS is not set');
+  const designs = JSON.parse(raw);
+  if (
+    !Array.isArray(designs) ||
+    designs.some((design) => typeof design !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(design))
+  ) {
+    throw new Error('EXPECTED_DESIGNS must be a JSON array of valid design names');
+  }
+  return designs;
 }
 
 function main() {
@@ -207,8 +263,8 @@ function main() {
     throw new Error('GITHUB_STEP_SUMMARY is not set');
   }
 
-  const manifest = normalizeManifest(loadManifest());
-  fs.appendFileSync(summaryPath, buildBody(manifest), 'utf8');
+  const reports = expectedDesigns().map(loadReport);
+  fs.appendFileSync(summaryPath, buildBody(reports), 'utf8');
 }
 
 try {

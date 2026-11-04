@@ -76,16 +76,25 @@ fresh_workspace "${ws}"
 check_export "happy path passes" "${ws}" pass
 
 summary_file="${tmp}/summary.md"
-ln -s "${ws}/out" "${ws}/signoff-artifacts"
+mkdir -p "${ws}/signoff-artifacts/e2e-signoff-csv-invalid"
+ln -s "${ws}/out" "${ws}/signoff-artifacts/e2e-signoff-csv-gcd"
+printf '%s\n' '{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}' \
+  > "${ws}/signoff-artifacts/e2e-signoff-csv-invalid/signoff_csv_manifest.json"
 (
   cd "${ws}"
-  GITHUB_STEP_SUMMARY="${summary_file}" node "${summary_js}"
+  EXPECTED_DESIGNS='["gcd","missing","invalid"]' GITHUB_STEP_SUMMARY="${summary_file}" node "${summary_js}"
 )
 printf -v expected_summary '%s\n' \
   '## Signoff CSV Report' \
   '' \
-  '- **Design**: `gcd`' \
-  '- **Gate**: `PASS`' \
+  '| Design | Gate | DRC | Die area | Setup WNS | Setup TNS | Hold WNS | Hold TNS |' \
+  '| --- | --- | --- | --- | --- | --- | --- | --- |' \
+  '| `gcd` | `PASS` | `0` count | `40000.0` um^2 | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
+  '| `missing` | `Unavailable` | N/A | N/A | N/A | N/A | N/A | N/A |' \
+  '| `invalid` | `Unavailable` | N/A | N/A | N/A | N/A | N/A | N/A |' \
+  '' \
+  '<details>' \
+  '<summary>gcd</summary>' \
   '' \
   '| Check | Status | Rows | CSV |' \
   '| --- | --- | --- | --- |' \
@@ -95,7 +104,7 @@ printf -v expected_summary '%s\n' \
   '| `lec` | `pass` | 1 | `lec.csv` |' \
   '| `sta` | `pass` | 17 | `sta.csv` |' \
   '' \
-  '### Area' \
+  '#### Area' \
   '' \
   '| Step | Metric | Value |' \
   '| --- | --- | --- |' \
@@ -107,48 +116,32 @@ printf -v expected_summary '%s\n' \
   '| `Harden` | `core_area` | `32000.0` um^2 |' \
   '| `Harden` | `core_utilization` | `0.62` ratio |' \
   '' \
-  '### DRC' \
-  '' \
-  '- **DRC count**: `0` count' \
-  '' \
-  '### STA' \
+  '#### STA' \
   '' \
   '| Corner | RC corner | Setup WNS | Setup TNS | Hold WNS | Hold TNS |' \
   '| --- | --- | --- | --- | --- | --- |' \
   '| `Overall` | `-` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
-  '| `MAX_125` | `RCworst` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |'
-if ! diff -u <(printf '%s' "${expected_summary}") "${summary_file}"; then
-  fail "job summary contains the exported report"
-fi
-pass "job summary contains the exported report"
-
-missing_summary="${tmp}/missing-summary.md"
-(
-  cd "${tmp}"
-  GITHUB_STEP_SUMMARY="${missing_summary}" node "${summary_js}"
-)
-printf -v expected_missing '%s\n' \
-  '## Signoff CSV Report' \
+  '| `MAX_125` | `RCworst` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
   '' \
-  'Export step failed before producing a manifest.'
-if ! diff -u <(printf '%s' "${expected_missing}") "${missing_summary}"; then
-  fail "job summary reports a missing manifest"
+  '</details>' \
+  '' \
+  '<details>' \
+  '<summary>missing</summary>' \
+  '' \
+  'No CSV artifact was produced by this E2E job.' \
+  '' \
+  '</details>' \
+  '' \
+  '<details>' \
+  '<summary>invalid</summary>' \
+  '' \
+  'No CSV artifact was produced by this E2E job.' \
+  '' \
+  '</details>'
+if ! diff -u <(printf '%s' "${expected_summary}") "${summary_file}"; then
+  fail "job summary aggregates reports and handles missing or invalid artifacts"
 fi
-pass "job summary reports a missing manifest"
-
-invalid_summary="${tmp}/invalid-summary.md"
-mkdir -p "${tmp}/invalid/signoff-artifacts"
-cat > "${tmp}/invalid/signoff-artifacts/signoff_csv_manifest.json" <<'JSON'
-{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}
-JSON
-(
-  cd "${tmp}/invalid"
-  GITHUB_STEP_SUMMARY="${invalid_summary}" node "${summary_js}"
-)
-if ! diff -u <(printf '%s' "${expected_missing}") "${invalid_summary}"; then
-  fail "job summary rejects an invalid manifest"
-fi
-pass "job summary rejects an invalid manifest"
+pass "job summary aggregates reports and handles missing or invalid artifacts"
 
 # 2. LEC: no selected-engine result -> mandatory gate fails.
 ws="${tmp}/lec-missing"

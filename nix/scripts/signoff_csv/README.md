@@ -31,19 +31,19 @@ and is exposed as the `.#signoff-csv-fixture` flake package.
 
 This is a collector skeleton, not a signoff gate:
 
-- CI runs `nix/scripts/signoff-csv-fixture.sh` only; it does not run real EDA tools or real DRC/LVS/STA/LEC/Harden jobs.
+- Collector tests use the deterministic `nix/scripts/signoff-csv-fixture.sh` fixture without running real EDA tools;
+  the integrated CI summary reads CSV products from the packaged E2E workspaces.
 - The STA check currently verifies row presence only; it does not enforce `WNS >= 0` or `TNS == 0`.
 - The DRC check requires both `drc_count` presence and `qor.drc.clean == pass`.
 - The Harden check currently verifies presence only; it does not enforce `harden_artifact_missing_count == 0`.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
 - LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
-- The main CI workflow runs `Signoff CSV collector` after the packaged E2E matrix, including when E2E fails.
-  The job writes the report to its GitHub Actions job summary and uploads the CSV products as the
-  run-id artifact. The summary includes area metrics, the DRC count, and setup/hold WNS/TNS, and links to
-  the previous successful run for the same source branch when one exists. A separate `workflow_run` workflow
-  downloads that artifact and posts a validated, sanitized report as a new PR comment; it checks out only the
-  target repository's default-branch scripts and never executes code from the fork. That notification workflow
-  becomes active once its workflow file is present on the default branch.
+- Each packaged E2E job uploads its design's CSV products as `e2e-signoff-csv-<design>`. After the matrix,
+  `Signoff CSV collector` downloads all available reports, writes one integrated GitHub Actions job summary,
+  and uploads the combined `ecc-signoff-csv` artifact. The overview includes area, DRC count, and setup/hold
+  WNS/TNS for every design, with detailed metrics in per-design collapsible sections. Missing reports are
+  marked unavailable. The summary also links to the previous successful CI run for the same source branch
+  when one exists. No PR comment token or follow-up notification workflow is required.
 
 The `Signoff CSV collector` check is therefore not a substitute for reviewing the active PDK, rule deck, STA signoff criteria, or repository branch-protection required checks.
 
