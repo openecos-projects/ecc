@@ -30,7 +30,7 @@ If you need to worry about feature compatibility between different 3.xx point re
 
 - ECC-Tools tool identifier in code is `"ecc"`, not `"ecc-tools"`. Wrapper: `chipcompiler/tools/ecc/`
 - Every tool module must implement `is_eda_exist`, `build_step`, `run_step`
-- Step tool execution always runs in a one-shot subprocess worker, including frozen builds; flow state is persisted in `workspace.flow.json` and written only by the parent
+- Step tool execution always runs in a one-shot subprocess worker, including frozen builds. The parent writes the step's `req.json` (inputs and accepted upstream responses) and the flow ledger `home/flow.json`; the worker reads only its `req.json` and upstream `rsp.json` files, never the ledger, and writes only inside its step directory, including its `rsp.json`. See `chipcompiler/data/workspace/step_handshake.py`
 - File chaining: each step reads previous step's `output/`; first step uses `workspace.design.origin_verilog/origin_def`
 - `uv.lock` is source of truth for Python deps; `requirements_lock.txt` is auto-generated and gitignored
 - Make sure that class and variable names are more aligned with conventional EDA terminology.
