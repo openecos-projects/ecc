@@ -9,8 +9,8 @@ allowed to disagree on this ledger.
 from typing import Any
 
 from chipcompiler.data import OriginDesign, StateEnum, StepEnum, Workspace
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 

@@ -13,10 +13,9 @@ from agent.engine import AgentEngineFlow
 from agent.floorplan_mode import prepare_floorplan_mode
 from agent.requests import CandidateRerunRequest
 from chipcompiler.data import StateEnum, Workspace
+from chipcompiler.data.handshake import build_step_request, write_request
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.step_handshake import write_request
-from chipcompiler.engine.step_request import build_step_request
 from chipcompiler.engine.step_subprocess import run_step_worker
 
 

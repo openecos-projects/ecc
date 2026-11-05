@@ -4,8 +4,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from chipcompiler.data import EccStep, SkippableStepEnum, StateEnum, StepEnum, StepInput, Workspace
+from chipcompiler.data.handshake import load_request
 from chipcompiler.data.workspace.macro_location import macro_placements
-from chipcompiler.data.workspace.step_handshake import load_request
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.utility import json_read

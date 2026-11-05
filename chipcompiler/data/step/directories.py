@@ -1,20 +1,25 @@
-#!/usr/bin/env python
+"""Where each step of a workspace lives: directory names and their lookup.
 
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+Workspace creation names each step directory ``<step>_<tool>``, prefixed with
+the step's position in the flow for ledgers that record it
+(``07_place_dreamplace``). Checklists, signoff packages, QoR scoring and the
+design reports resolve per-step artifacts through this module instead of
+spelling directory names themselves.
+"""
+
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path, PurePath
+from types import MappingProxyType
+from typing import Protocol, cast, runtime_checkable
 
 from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
 
-# Canonical workspace step-directory names.
-#
-# Workspace creation names each step directory ``<step>_<tool>`` along the
-# canonical rtl2gds chain (``Synthesis_yosys``, ``place_dreamplace``, ...).
-# Checklists, signoff packages, QoR scoring, and the design reports all
-# resolve per-step artifacts through that naming, so the mapping lives here
-# once instead of as hand-maintained tables per consumer. Timing
-# optimization is on the canonical chain but owns no artifact directory any
-# consumer reads through these tables.
+# Legacy step-directory names along the canonical rtl2gds chain
+# (``Synthesis_yosys``, ``place_dreamplace``, ...): the names readers use for a
+# step whose ledger does not record its directory. Timing optimization is on
+# the canonical chain but owns no artifact directory any consumer reads
+# through these tables.
 STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
     SkippableStepEnum.LEC.value: "lec_kepler_formal",
@@ -93,18 +98,20 @@ def all_step_directories() -> list[str]:
     )
 
 
-def flow_step_directory(steps: list[dict] | None, step_name: str) -> str:
+def flow_step_directory(steps: Sequence[Mapping[str, object]] | None, step_name: str) -> str:
     """The directory a flow ledger records for *step_name*.
 
     A step missing from the ledger keeps its legacy ``<step>_<tool>`` name.
     """
     for step in reversed(steps or []):
-        if isinstance(step, dict) and step.get("name") == step_name:
+        if step.get("name") == step_name:
             return recorded_step_directory(step)
     return STEP_DIRECTORIES.get(step_name, step_name)
 
 
-def inactive_lec_step_directories(steps: list[dict] | None) -> frozenset:
+def inactive_lec_step_directories(
+    steps: Sequence[Mapping[str, object]] | None,
+) -> frozenset[str]:
     """LEC step directories holding stale evidence for a flow ledger.
 
     LEC steps own one directory per engine; after an engine switch the
@@ -116,7 +123,7 @@ def inactive_lec_step_directories(steps: list[dict] | None) -> frozenset:
     from chipcompiler.data.types import LEC_STEP_TOOLS
 
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
-    ledger_names = {str(step.get("name", "")) for step in steps or [] if isinstance(step, dict)}
+    ledger_names = {str(step.get("name", "")) for step in steps or []}
     active = {flow_step_directory(steps, name) for name in lec_names & ledger_names}
     return (
         frozenset(
@@ -213,50 +220,73 @@ def engine_step_directory(dual_directory: Path, engine: str) -> Path:
     return dual_directory.with_name(f"{name.removesuffix('dual')}{engine}")
 
 
-###########################################################################
-# step definition for chip design flow in json format
-# step_definition =
-# {
-#     "name" : "", # step name
-#     "tool" : "", # eda tool name
-#     "state" : "", # step state
-#     "runtime" : "", # step run time
-#     "info" : {} # step additional infomation
-# }
-###########################################################################
+@runtime_checkable
+class _HasFlowSteps(Protocol):
+    def steps(self) -> Sequence[Mapping[str, object]]: ...
 
 
-@dataclass
-class StepMetrics:
+class _HasDirectory(Protocol):
+    @property
+    def directory(self) -> Path: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StepDirectories:
+    """Step name to directory for one workspace.
+
+    A ledger step that records its directory uses it. Any other step keeps the
+    legacy name readers have always used: the engine-aware ``<step>_<tool>``
+    lookup for a ledger step, ``STEP_DIRECTORIES`` for a step not in the
+    ledger. Workspaces created before steps recorded a directory read unchanged.
     """
-    Dataclass for step metrics
-    """
 
-    path: str | Path = ""  # metrics file path
-    data: dict = field(default_factory=dict)  # metrics data
-    report: list = field(default_factory=list)  # metrics report
+    root: Path
+    by_step: Mapping[str, str]
+    #: Directory names the ledger records explicitly, in ledger order.
+    recorded: tuple[str, ...]
 
+    @classmethod
+    def from_records(cls, root: Path, records: Iterable[object]) -> "StepDirectories":
+        by_step: dict[str, str] = {}
+        recorded: list[str] = []
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            entry = cast("Mapping[str, object]", record)
+            name = entry.get("name")
+            if not isinstance(name, str):
+                continue
+            if "directory" in entry:
+                directory = recorded_step_directory(entry)
+                recorded.append(directory)
+            else:
+                tool = entry.get("tool")
+                directory = step_directory_for_tool(name, tool if isinstance(tool, str) else None)
+            by_step[name] = directory
+        return cls(Path(root), MappingProxyType(by_step), tuple(recorded))
 
-###########################################################################
-# step metrics definition in json format
-# step_metrics =
-# {
-#     "name" : "", # step name
-#     "tool" : "", # eda tool name
-# }
-###########################################################################
+    @classmethod
+    def of(cls, workspace: _HasDirectory) -> "StepDirectories":
+        """The directories *workspace*'s ledger records (none without a ledger)."""
+        flow = getattr(workspace, "flow", None)
+        steps = flow.steps() if isinstance(flow, _HasFlowSteps) else ()
+        return cls.from_records(Path(workspace.directory), steps)
 
+    @classmethod
+    def at(cls, root: Path | str) -> "StepDirectories":
+        """The directories recorded in ``home/flow.json`` under *root*."""
+        # The ledger reader lives in the workspace package, which imports this one.
+        from chipcompiler.data.workspace.flow_types import load_flow_document
 
-def load_metrics(path: str | Path) -> StepMetrics:
-    from chipcompiler.utility import json_read
+        document = load_flow_document(Path(root) / "home" / "flow.json")
+        return cls.from_records(Path(root), document.get("steps", []))
 
-    metrics = StepMetrics()
-    metrics.path = path
-    metrics.data = json_read(path)
-    return metrics
+    def name(self, step: str) -> str:
+        return self.by_step.get(step) or STEP_DIRECTORIES.get(step, step)
 
+    def path(self, step: str) -> Path:
+        return self.root / self.name(step)
 
-def save_metrics(metrics: StepMetrics) -> bool:
-    from chipcompiler.utility import json_write
-
-    return json_write(file_path=metrics.path, data=metrics.data)
+    def scan_names(self) -> list[str]:
+        """Every directory a whole-workspace scan visits, recorded ones first."""
+        return list(dict.fromkeys([*self.recorded, *all_step_directories()]))

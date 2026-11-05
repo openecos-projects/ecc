@@ -1,24 +1,25 @@
-"""The req/rsp handshake between the flow and one step.
+"""The ``req.json`` and ``rsp.json`` files in a step directory.
 
-Before a step runs, the flow writes ``req.json`` into the step directory: the
-input design files and the upstream responses the step accepts. When the step
-finishes, its worker writes ``rsp.json`` there: the status, the output design
-files, the design states they carry and the analysis data produced. Downstream
-steps read upstream ``rsp.json`` files.
-
-Steps exchange data through these two files rather than through the shared
-flow ledger. Both are validated strictly on read and replaced atomically on
-write.
+The flow writes a step's request to ``req.json`` before the step runs; the
+step's worker writes its response to ``rsp.json`` when it finishes. Steps
+exchange data through these two files rather than through the shared flow
+ledger. Both are validated strictly on read and replaced atomically on write.
 """
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 from typing import Final, cast
 
+from chipcompiler.data.handshake.messages import (
+    DesignFiles,
+    ResponseStatus,
+    StepInputs,
+    StepRequest,
+    StepResponse,
+    UpstreamResponse,
+)
 from chipcompiler.data.step import is_step_directory_name
 from chipcompiler.data.types import AnalysisData, DesignData, DesignState, flow_step_policy
 from chipcompiler.utility.file import write_text_atomic
@@ -30,71 +31,6 @@ SCHEMA_VERSION: Final = 1
 
 class HandshakeError(ValueError):
     """A ``req.json`` or ``rsp.json`` that cannot be trusted."""
-
-
-class ResponseStatus(StrEnum):
-    SUCCESS = "success"
-    FAILED = "failed"
-
-
-@dataclass(frozen=True, slots=True)
-class UpstreamResponse:
-    """An upstream step whose output a step accepts, and the run accepted.
-
-    ``attempt_id`` is None when the upstream step ran before steps wrote
-    ``rsp.json``; such an input can never be reported stale.
-    """
-
-    step_directory: str
-    attempt_id: str | None
-
-
-@dataclass(frozen=True, slots=True)
-class DesignFiles:
-    def_: Path | None = None
-    verilog: Path | None = None
-    db: Path | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class StepInputs:
-    design: DesignFiles = DesignFiles()
-    golden_verilog: Path | None = None
-    spef: tuple[Path, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class StepRequest:
-    workspace_directory: Path
-    step: str
-    tool: str
-    step_directory: str
-    attempt_id: str
-    inputs: StepInputs
-    #: The step whose output design the step reads; None for a declared design.
-    design_source: UpstreamResponse | None
-    #: The upstream step that provided each design data item the step needs.
-    upstream: Mapping[DesignData, UpstreamResponse]
-    final_step: bool
-    layout_image: bool
-
-    @property
-    def directory(self) -> Path:
-        return self.workspace_directory / self.step_directory
-
-
-@dataclass(frozen=True, slots=True)
-class StepResponse:
-    step: str
-    tool: str
-    attempt_id: str
-    status: ResponseStatus
-    design: DesignFiles
-    design_states: frozenset[DesignState]
-    outputs: Mapping[AnalysisData, tuple[Path, ...]]
-    upstream: Mapping[DesignData, UpstreamResponse]
-    #: Optional design data the step ran without (its results are degraded).
-    warnings: frozenset[DesignData]
 
 
 def write_request(request: StepRequest) -> Path:

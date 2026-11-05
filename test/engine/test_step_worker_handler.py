@@ -89,7 +89,7 @@ def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step, *, b
 
 
 def _payload_stream(tmp_path, step, result_path, *, layout_image=True, attempt_id="test-attempt"):
-    from chipcompiler.data.workspace.step_handshake import StepInputs, StepRequest, write_request
+    from chipcompiler.data.handshake import StepInputs, StepRequest, write_request
 
     request = StepRequest(
         workspace_directory=tmp_path,
@@ -377,7 +377,7 @@ def test_worker_layout_image_exception_fails_the_step(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize(("tool_ok", "status"), [(True, "success"), (False, "failed")])
 def test_worker_publishes_its_response(monkeypatch, tmp_path, tool_ok, status):
-    from chipcompiler.data.workspace.step_handshake import load_response
+    from chipcompiler.data.handshake import load_response
 
     step = _workspace_step(tmp_path)
     flow = _FakeFlow(_workspace(tmp_path))
@@ -406,7 +406,7 @@ def test_worker_refuses_a_step_whose_required_design_data_is_missing(monkeypatch
 
 
 def test_worker_publishes_a_failed_response_when_its_tool_raises(monkeypatch, tmp_path):
-    from chipcompiler.data.workspace.step_handshake import ResponseStatus, load_response
+    from chipcompiler.data.handshake import ResponseStatus, load_response
 
     step = _workspace_step(tmp_path)
 
