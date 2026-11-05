@@ -31,9 +31,9 @@ from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
+    analysis_wave_end,
     explicit_input_step,
     flow_category,
-    is_checker_batch_step,
     ledger_category,
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
@@ -546,11 +546,7 @@ class EngineFlow:
         while index < len(self.workspace_steps):
             workspace_step = self.workspace_steps[index]
             if self._can_parallelize_checker_batch(workspace_step, index, observer):
-                batch_end = index
-                while batch_end < len(self.workspace_steps) and self._is_checker_batch_step(
-                    self.workspace_steps[batch_end]
-                ):
-                    batch_end += 1
+                batch_end = self._analysis_wave_end(index)
                 states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
                 for batch_step, state in zip(
                     self.workspace_steps[index:batch_end], states, strict=True
@@ -618,19 +614,36 @@ class EngineFlow:
             return False
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
-    def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-        if flow_step is None:
-            return False
-        return is_checker_batch_step(flow_step)
-
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        return (
-            index > 0
-            and self._is_checker_batch_step(workspace_step)
-            and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
-            and observer is None
+        """Whether the analysis wave starting at *index* runs in parallel.
+
+        Runs observed for progress (the GUI) stay sequential.
+        """
+        return observer is None and self._analysis_wave_end(index) - index > 1
+
+    def _analysis_wave_end(self, index: int) -> int:
+        """The end (exclusive) of the analysis wave of created steps at *index*."""
+        records = self.workspace.flow.steps()
+        step = self.workspace_steps[index]
+        start = next(
+            (
+                position
+                for position, record in enumerate(records)
+                if record.get("name") == step.name and record.get("tool") == step.tool
+            ),
+            None,
         )
+        if start is None:
+            return index + 1
+        end = index
+        for record in records[start : analysis_wave_end(records, start)]:
+            if end >= len(self.workspace_steps):
+                break
+            created = self.workspace_steps[end]
+            if (created.name, created.tool) != (record.get("name"), record.get("tool")):
+                break
+            end += 1
+        return max(end, index + 1)
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
         available_mb = read_memory_status().available_mb
