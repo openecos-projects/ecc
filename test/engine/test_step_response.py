@@ -111,7 +111,20 @@ def test_a_response_from_another_run_of_the_upstream_step_is_not_trusted(tmp_pat
 
     response = build_step_response(request, EccStep(name="route"), succeeded=True)
 
-    assert DesignState.CLOCK_TREE in response.design_states
+    assert response.design_states == frozenset({DesignState.ROUTED})
+    assert missing_design_data(request, EccStep(name="route"), declared_spef=None) == frozenset(
+        {DesignState.LEGAL}
+    )
+
+
+def test_an_upstream_step_that_was_asked_to_run_but_never_answered_carries_nothing(tmp_path):
+    (tmp_path / "legalization_dreamplace").mkdir()
+    (tmp_path / "legalization_dreamplace" / "req.json").write_text("{}", encoding="utf-8")
+    request = _route_request(tmp_path, None)
+
+    missing = missing_design_data(request, EccStep(name="route"), declared_spef=None)
+
+    assert missing == frozenset({DesignState.LEGAL})
 
 
 def test_rcx_publishes_its_parasitics(tmp_path):
