@@ -110,6 +110,7 @@ def load_request(step_directory: Path) -> StepRequest:
 
 def write_response(step_directory: Path, response: StepResponse) -> Path:
     path = step_directory / RSP_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
     write_text_atomic(path, _dumps(_response_json(response)))
     return path
 
