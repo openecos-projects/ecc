@@ -33,6 +33,7 @@ If you need to worry about feature compatibility between different 3.xx point re
 - Step tool execution always runs in a one-shot subprocess worker, including frozen builds; flow state is persisted in `workspace.flow.json` and written only by the parent
 - File chaining: each step reads previous step's `output/`; first step uses `workspace.design.origin_verilog/origin_def`
 - `uv.lock` is source of truth for Python deps; `requirements_lock.txt` is auto-generated and gitignored
+- Make sure that class and variable names are more aligned with conventional EDA terminology.
 
 # Behavioral Guidelines
 
@@ -49,14 +50,6 @@ If you need to worry about feature compatibility between different 3.xx point re
 - No "flexibility" or "configurability" that wasn't requested.
 - No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
-
-## 3. Surgical Changes
-
-- Touch only what you must. Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken. Match existing style.
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-- Every changed line should trace directly to the user's request.
 
 ## 4. Goal-Driven Execution
 
