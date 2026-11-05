@@ -1,7 +1,9 @@
 """Turn the flow's step wiring into the ``req.json`` a step worker runs from.
 
 The flow still plans steps from its ledger. Everything the worker needs from
-that plan travels in the request, so the worker itself never reads the ledger.
+that plan travels in the request: its input files, the step whose design it
+reads, the upstream step that provided each design data item it needs, and
+whether it is the final step.
 """
 
 from collections.abc import Mapping, Sequence
@@ -10,8 +12,9 @@ from pathlib import Path
 from types import MappingProxyType
 
 from chipcompiler.data import LEC_STEP_TOOLS, EccOutput, LecInput, StepEnum, WorkspaceStep
+from chipcompiler.data.flow_check import step_provides
 from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.data.types import DesignData, DesignState, flow_step_policy
+from chipcompiler.data.types import DesignData, flow_step_policy
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 from chipcompiler.data.workspace.step_handshake import (
     DesignFiles,
@@ -46,14 +49,17 @@ def build_step_request(
         ),
         None,
     )
+    design_source: UpstreamResponse | None = None
     upstream: Mapping[DesignData, UpstreamResponse] = MappingProxyType({})
     if index is not None:
-        upstream = upstream_responses(
-            workspace_directory,
-            records,
-            index,
-            design_source=FlowInputResolver(records).input_step_name(index),
+        source_name = FlowInputResolver(records).input_step_name(index)
+        source = next(
+            (record for record in reversed(records[:index]) if record.get("name") == source_name),
+            None,
         )
+        if source is not None:
+            design_source = _link(workspace_directory, source)
+        upstream = upstream_responses(workspace_directory, records, index)
     if workspace_step.name == StepEnum.STA.value and isinstance(workspace_step.output, EccOutput):
         # STA reads the parasitics the flow wired onto it (RCX or info.spef).
         inputs = replace(inputs, spef=tuple(workspace_step.output.spef))
@@ -64,6 +70,7 @@ def build_step_request(
         step_directory=Path(directory).name,
         attempt_id=attempt_id,
         inputs=inputs,
+        design_source=design_source,
         upstream=upstream,
         final_step=bool(records) and records[-1].get("name") == workspace_step.name,
         layout_image=layout_image,
@@ -98,39 +105,32 @@ def upstream_responses(
     workspace_directory: Path,
     records: Sequence[Mapping[str, object]],
     index: int,
-    *,
-    design_source: str | None,
 ) -> Mapping[DesignData, UpstreamResponse]:
-    """The upstream step each design data item of step *index* comes from.
+    """The upstream step that provided each design data item step *index* needs.
 
-    Design states travel with the design the step reads, *design_source* (the
-    ledger name of its input step). Analysis data comes from the latest earlier
-    step that provides it. Items no earlier step supplies are declared project
-    inputs and are left out.
+    For each item the step requires or uses, the latest earlier step that
+    provides it (for ``LEGAL``, the latest legalizing step). Items no earlier
+    step provides are declared by the project and are left out.
     """
     earlier = records[:index]
-    directories = {
-        str(record.get("name", "")): recorded_step_directory(record) for record in earlier
-    }
     policy = flow_step_policy(str(records[index].get("name", "")))
     upstream: dict[DesignData, UpstreamResponse] = {}
     for item in sorted(policy.requires | policy.uses):
-        source = (
-            design_source
-            if isinstance(item, DesignState)
-            else next(
-                (
-                    str(record.get("name", ""))
-                    for record in reversed(earlier)
-                    if item in flow_step_policy(str(record.get("name", ""))).provides
-                ),
-                None,
-            )
+        provider = next(
+            (
+                record
+                for record in reversed(earlier)
+                if step_provides(str(record.get("name", "")), item)
+            ),
+            None,
         )
-        if source is None or source not in directories:
-            continue
-        response = load_response(workspace_directory / directories[source])
-        upstream[item] = UpstreamResponse(
-            directories[source], None if response is None else response.attempt_id
-        )
+        if provider is not None:
+            upstream[item] = _link(workspace_directory, provider)
     return MappingProxyType(upstream)
+
+
+def _link(workspace_directory: Path, record: Mapping[str, object]) -> UpstreamResponse:
+    """A link to the step *record*, with the attempt id of its current response."""
+    directory = recorded_step_directory(record)
+    response = load_response(workspace_directory / directory)
+    return UpstreamResponse(directory, None if response is None else response.attempt_id)

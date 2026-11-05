@@ -26,7 +26,9 @@ _LEGALIZED = frozenset(
 )
 
 
-def _request(workspace: Path, step: str, upstream) -> StepRequest:
+def _request(
+    workspace: Path, step: str, upstream, design_source: UpstreamResponse | None = None
+) -> StepRequest:
     return StepRequest(
         workspace_directory=workspace,
         step=step,
@@ -34,6 +36,7 @@ def _request(workspace: Path, step: str, upstream) -> StepRequest:
         step_directory=f"{step}_ecc",
         attempt_id=f"attempt-{step}",
         inputs=StepInputs(),
+        design_source=design_source,
         upstream=upstream,
         final_step=False,
         layout_image=False,
@@ -57,14 +60,20 @@ def _publish(workspace: Path, directory: str, states: frozenset[DesignState]) ->
     )
 
 
-def _route_upstream(attempt_id: str | None):
-    source = UpstreamResponse("legalization_dreamplace", attempt_id)
-    return {DesignState.LEGAL: source, DesignState.CLOCK_TREE: source}
+def _route_request(workspace: Path, attempt_id: str | None) -> StepRequest:
+    """Routing that reads the legalized design; no CTS step ran before it."""
+    legalization = UpstreamResponse("legalization_dreamplace", attempt_id)
+    return _request(
+        workspace,
+        StepEnum.ROUTING.value,
+        {DesignState.LEGAL: legalization},
+        design_source=legalization,
+    )
 
 
 def test_routing_without_a_clock_tree_is_published_with_a_warning(tmp_path):
     _publish(tmp_path, "legalization_dreamplace", _LEGALIZED)
-    request = _request(tmp_path, StepEnum.ROUTING.value, _route_upstream("attempt-legal"))
+    request = _route_request(tmp_path, "attempt-legal")
     routed_def = tmp_path / "route_ecc" / "output" / "gcd_route.def.gz"
     routed_def.parent.mkdir(parents=True)
     routed_def.write_text("", encoding="utf-8")
@@ -86,7 +95,7 @@ def test_routing_without_a_clock_tree_is_published_with_a_warning(tmp_path):
 
 
 def test_a_design_from_before_responses_is_trusted_to_carry_what_the_step_uses(tmp_path):
-    request = _request(tmp_path, StepEnum.ROUTING.value, _route_upstream(None))
+    request = _route_request(tmp_path, None)
 
     response = build_step_response(request, EccStep(name="route"), succeeded=True)
 
@@ -98,7 +107,7 @@ def test_a_design_from_before_responses_is_trusted_to_carry_what_the_step_uses(t
 
 def test_a_response_from_another_run_of_the_upstream_step_is_not_trusted(tmp_path):
     _publish(tmp_path, "legalization_dreamplace", _LEGALIZED)
-    request = _request(tmp_path, StepEnum.ROUTING.value, _route_upstream("attempt-older"))
+    request = _route_request(tmp_path, "attempt-older")
 
     response = build_step_response(request, EccStep(name="route"), succeeded=True)
 
@@ -142,7 +151,7 @@ def test_synthesis_publishes_the_golden_netlist(tmp_path):
 def test_routing_after_cts_without_legalization_is_missing_a_legal_placement(tmp_path):
     clock_tree = (_LEGALIZED - {DesignState.LEGAL}) | {DesignState.CLOCK_TREE}
     _publish(tmp_path, "legalization_dreamplace", clock_tree)
-    request = _request(tmp_path, StepEnum.ROUTING.value, _route_upstream("attempt-legal"))
+    request = _route_request(tmp_path, "attempt-legal")
 
     missing = missing_design_data(request, EccStep(name="route"), declared_spef=None)
 

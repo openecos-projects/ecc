@@ -1,6 +1,7 @@
 """req.json / rsp.json round-trip and are rejected when they cannot be trusted."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,7 @@ def _request(workspace: Path) -> StepRequest:
             ),
             spef=(workspace / "RCX_ecc/output/gcd_rcworst_25C.spef",),
         ),
+        design_source=UpstreamResponse("filler_ecc", "attempt-filler"),
         upstream={
             DesignState.FILLED: UpstreamResponse("filler_ecc", "attempt-filler"),
             AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", "attempt-rcx"),
@@ -112,6 +114,8 @@ def test_missing_request_is_rejected(tmp_path):
         ({"final_step": "no"}, "true or false"),
         ({"upstream": {"timing": {"step_directory": "sta_ecc", "attempt_id": "a"}}}, "unknown"),
         ({"attempt_id": ""}, "non-empty string"),
+        ({"design_source": {"step_directory": "../filler_ecc", "attempt_id": None}}, "single"),
+        ({"design_source": {"step_directory": "filler_ecc", "attempt_id": 3}}, "string or null"),
     ],
 )
 def test_untrusted_request_is_rejected(tmp_path, changes, message):
@@ -147,3 +151,11 @@ def test_corrupt_file_is_rejected(tmp_path):
         load_response(tmp_path)
     with pytest.raises(HandshakeError, match="JSON object"):
         load_request(tmp_path)
+
+
+def test_a_declared_design_has_no_design_source(tmp_path):
+    request = replace(_request(tmp_path), design_source=None)
+
+    write_request(request)
+
+    assert load_request(tmp_path / "sta_ecc").design_source is None
