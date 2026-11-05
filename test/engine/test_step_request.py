@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import EccOutput, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import AnalysisData, DesignState
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.data.workspace.step_handshake import (
@@ -20,7 +19,7 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.step_request import build_step_request
 
 
-def _wired_flow(tmp_path, *, indexed: bool = False) -> EngineFlow:
+def _wired_flow(tmp_path, *, legacy: bool = False) -> EngineFlow:
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(
@@ -34,9 +33,10 @@ def _wired_flow(tmp_path, *, indexed: bool = False) -> EngineFlow:
     ledger = build_dynamic_flow_data(
         {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": []}
     )
-    if indexed:
-        for index, record in enumerate(ledger.get("steps", []), start=1):
-            record["directory"] = new_step_directory(record["name"], record["tool"], index=index)
+    if legacy:
+        # Ledgers written before steps recorded their directory.
+        for record in ledger.get("steps", []):
+            record.pop("directory", None)
     flow.workspace.flow.data = ledger
     flow.create_step_workspaces(executable_steps=set(), initialize_config=False)
     return flow
@@ -54,11 +54,11 @@ def _request(flow: EngineFlow, name: str):
     )
 
 
-@pytest.mark.parametrize("indexed", [False, True])
-def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, indexed):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, legacy):
     import chipcompiler.tools as tools
 
-    flow = _wired_flow(tmp_path, indexed=indexed)
+    flow = _wired_flow(tmp_path, legacy=legacy)
     real_create_step = tools.create_step
     # The parent built optional tools path-only; rebuild them the same way.
     monkeypatch.setattr(
@@ -80,7 +80,7 @@ def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, indexed):
 def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
     flow = _wired_flow(tmp_path)
     write_response(
-        tmp_path / "RCX_ecc",
+        tmp_path / "18_RCX_ecc",
         StepResponse(
             step="RCX",
             tool="ecc",
@@ -98,11 +98,11 @@ def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
 
     # The design comes from filler; each design data item from the step that
     # provided it.
-    assert request.design_source == UpstreamResponse("filler_ecc", None)
+    assert request.design_source == UpstreamResponse("13_filler_ecc", None)
     assert dict(request.upstream) == {
-        DesignState.FILLED: UpstreamResponse("filler_ecc", None),
-        DesignState.CLOCK_TREE: UpstreamResponse("CTS_ecc", None),
-        AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", "attempt-rcx"),
+        DesignState.FILLED: UpstreamResponse("13_filler_ecc", None),
+        DesignState.CLOCK_TREE: UpstreamResponse("09_CTS_ecc", None),
+        AnalysisData.PARASITICS: UpstreamResponse("18_RCX_ecc", "attempt-rcx"),
     }
     assert request.final_step is False
 
@@ -130,15 +130,15 @@ def test_a_step_outside_the_workspace_is_rejected(tmp_path):
         )
 
 
-def test_upstream_steps_are_named_by_their_recorded_directories(tmp_path):
-    flow = _wired_flow(tmp_path, indexed=True)
+def test_ledgers_without_recorded_directories_link_their_legacy_names(tmp_path):
+    flow = _wired_flow(tmp_path, legacy=True)
 
     _step, request = _request(flow, StepEnum.STA.value)
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.FILLED: "13_filler_ecc",
-        DesignState.CLOCK_TREE: "09_CTS_ecc",
-        AnalysisData.PARASITICS: "18_RCX_ecc",
+        DesignState.FILLED: "filler_ecc",
+        DesignState.CLOCK_TREE: "CTS_ecc",
+        AnalysisData.PARASITICS: "RCX_ecc",
     }
 
 
@@ -146,9 +146,9 @@ def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
     _step, request = _request(_wired_flow(tmp_path), StepEnum.EMIR.value)
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.FILLED: "filler_ecc",
-        DesignState.PDN: "postFloorplan_ecc",
-        AnalysisData.POWER: "powerAnalysis_ecc",
+        DesignState.FILLED: "13_filler_ecc",
+        DesignState.PDN: "05_postFloorplan_ecc",
+        AnalysisData.POWER: "20_powerAnalysis_ecc",
     }
 
 
@@ -156,6 +156,6 @@ def test_routing_links_legality_to_the_last_legalizing_step(tmp_path):
     _step, request = _request(_wired_flow(tmp_path), StepEnum.ROUTING.value)
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.LEGAL: "timing_optimization_sizer",
-        DesignState.CLOCK_TREE: "CTS_ecc",
+        DesignState.LEGAL: "11_timing_optimization_sizer",
+        DesignState.CLOCK_TREE: "09_CTS_ecc",
     }

@@ -45,16 +45,23 @@ def test_new_ledgers_record_the_directory_each_step_is_built_in(tmp_path):
     assert [record.get("directory") for record in records] == [
         _directory_name(step) for step in flow.workspace_steps
     ]
-    assert records[-1].get("directory") == "Harden_ecc"
+    assert (records[0].get("directory"), records[-1].get("directory")) == (
+        "01_Synthesis_yosys",
+        "22_Harden_ecc",
+    )
 
 
 def test_ledgers_without_directories_keep_the_names_they_were_created_with(tmp_path):
     ledger = _rtl2gds_ledger()
-    recorded = [record.pop("directory", None) for record in ledger.get("steps", [])]
+    for record in ledger.get("steps", []):
+        record.pop("directory", None)
 
     flow = _flow(tmp_path, ledger)
 
-    assert [_directory_name(step) for step in flow.workspace_steps] == recorded
+    assert [_directory_name(step) for step in flow.workspace_steps] == [
+        new_step_directory(record["name"], record["tool"]) for record in ledger.get("steps", [])
+    ]
+    assert _directory_name(flow.workspace_steps[0]) == "Synthesis_yosys"
 
 
 def test_a_recorded_directory_is_where_the_step_is_built(tmp_path):
@@ -144,3 +151,53 @@ def test_unrecorded_ledger_steps_keep_their_engine_directory(tmp_path, tool, exp
     directories = StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
 
     assert directories.name("postRouteLec") == expected
+
+
+@pytest.mark.parametrize(
+    ("directories", "expected"),
+    [
+        ([], 1),
+        (["01_Synthesis_yosys", "03_place_dreamplace"], 4),
+        (["Synthesis_yosys"], None),
+        (["01_Synthesis_yosys", None], None),
+    ],
+)
+def test_appended_steps_take_the_next_free_index(directories, expected):
+    from chipcompiler.data.step import next_step_index
+
+    records = [
+        {"name": "step", "tool": "ecc"} | ({} if directory is None else {"directory": directory})
+        for directory in directories
+    ]
+
+    assert next_step_index(records) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("07_place_dreamplace", "place_dreamplace"),
+        ("120_route_ecc", "route_ecc"),
+        ("CTS_ecc", "CTS_ecc"),
+    ],
+)
+def test_unindexed_step_directory_names(name, expected):
+    from chipcompiler.data.step import unindexed_step_directory
+
+    assert unindexed_step_directory(name) == expected
+
+
+def test_added_steps_extend_an_indexed_ledger_and_keep_a_legacy_one(tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    flow = EngineFlow(workspace)
+    flow.add_step("place", "dreamplace", "Unstart")
+    flow.add_step("CTS", "ecc", "Unstart")
+    legacy = EngineFlow(Workspace(directory=tmp_path / "legacy"))
+    legacy.workspace.flow.data = {"steps": [{"name": "place", "tool": "dreamplace", "state": "x"}]}
+    legacy.add_step("CTS", "ecc", "Unstart")
+
+    assert [record.get("directory") for record in flow.workspace.flow.steps()] == [
+        "01_place_dreamplace",
+        "02_CTS_ecc",
+    ]
+    assert legacy.workspace.flow.steps()[-1].get("directory") == "CTS_ecc"

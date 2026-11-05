@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, WorkspaceStep
+from chipcompiler.data.step import next_step_index
 from chipcompiler.engine.flow import EngineFlow
 
 
@@ -34,7 +35,10 @@ class AgentEngineFlow(EngineFlow):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")
         steps.insert(
-            filler_index, self.init_flow_step(StepEnum.DRC.value, "ecc", StateEnum.Unstart)
+            filler_index,
+            self.init_flow_step(
+                StepEnum.DRC.value, "ecc", StateEnum.Unstart, index=next_step_index(steps)
+            ),
         )
         self.save()
 
