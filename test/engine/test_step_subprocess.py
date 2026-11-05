@@ -35,12 +35,15 @@ def _no_parent_death_signal(monkeypatch):
 
 
 def _workspace_step(tmp_path, name="place", tool="ecc"):
+    from chipcompiler.data import StepInput
+
     log_file = tmp_path / "log" / "step.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     return _ns(
         name=name,
         tool=tool,
-        directory=str(tmp_path),
+        directory=str(tmp_path / f"{name}_{tool}"),
+        input=StepInput(),
         log=_ns(file=str(log_file)),
     )
 
@@ -55,7 +58,7 @@ def _workspace(tmp_path):
     )
     assert save_parameter(parameters)
     return _ns(
-        directory=str(tmp_path),
+        directory=tmp_path,
         logger=logging.getLogger("ecc-test"),
         parameters=parameters,
         flow=Flow(path=tmp_path / "home/flow.json", data={"steps": []}),
@@ -208,9 +211,11 @@ def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
 
 
 def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
+    from chipcompiler.data import EccOutput
     from chipcompiler.tools.ecc import sta_parallel
 
     step = _workspace_step(tmp_path, name="sta")
+    step.output = EccOutput()
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
         step_subprocess.worker.subprocess,
@@ -317,10 +322,15 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
+    from chipcompiler.data.workspace.step_handshake import load_request
+
     payload = json.loads(fake.stdin.getvalue())
-    assert payload["step_name"] == "place"
-    assert payload["tool"] == "ecc"
-    assert payload["layout_image"] is True
+    request = load_request(Path(step.directory))
+    assert {key: payload[key] for key in ("step_directory", "attempt_id")} == {
+        "step_directory": str(request.directory),
+        "attempt_id": "test-attempt",
+    }
+    assert (request.step, request.tool, request.layout_image) == ("place", "ecc", True)
     assert payload["result_path"].endswith(step_subprocess._RESULT_NAME)
     assert result.error is not None
     assert "code -11" in result.error

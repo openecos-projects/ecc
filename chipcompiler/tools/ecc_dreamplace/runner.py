@@ -9,6 +9,7 @@ from chipcompiler.data.workspace.macro_location import (
     manual_macro_location_ready,
     manual_placement_required,
 )
+from chipcompiler.data.workspace.step_handshake import load_request
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.utility import json_read
@@ -32,13 +33,9 @@ def _placement_backend(workspace: Workspace) -> str:
     return str(json_read(config_path).get("place_io_engine", "ieda") or "ieda").lower()
 
 
-def _is_terminal_placement(workspace: Workspace, step: EccStep) -> bool:
-    """Return whether placement is the selected flow's terminal step."""
-    steps = workspace.flow.steps()
-    if not steps:
-        return False
-    selected = [item for item in steps if item.get("name") == step.name]
-    return bool(selected) and steps[-1] is selected[-1]
+def _is_final_placement(step: EccStep) -> bool:
+    """Whether placement is the final step of the flow, as its req.json says."""
+    return step.directory is not None and load_request(Path(step.directory)).final_step
 
 
 def run_step(
@@ -237,7 +234,7 @@ def _run_placement_mode(
         return False
 
     if mode is DreamplaceRunMode.PLACEMENT and (
-        openroad_backend or (backend == "ecc" and _is_terminal_placement(workspace, step))
+        openroad_backend or (backend == "ecc" and _is_final_placement(step))
     ):
         # DreamplaceModule already saved DEF and Verilog. A terminal placement
         # must finish before native feature evaluation starts routing analysis.
