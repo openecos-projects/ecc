@@ -15,6 +15,8 @@ from agent.requests import CandidateRerunRequest
 from chipcompiler.data import StateEnum, Workspace
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.step_handshake import write_request
+from chipcompiler.engine.step_request import build_step_request
 from chipcompiler.engine.step_subprocess import run_step_worker
 
 
@@ -42,14 +44,31 @@ def _flow_path(workspace):
     return path
 
 
-def test_agent_worker_resolves_the_persisted_drc_step_list(monkeypatch, tmp_path):
+def _write_request(flow, step_name: str, attempt_id: str) -> dict:
+    """Write the step's req.json as the parent does; return the worker payload."""
+    step = flow.get_workspace_step(step_name)
+    assert step is not None
+    request = build_step_request(
+        Path(flow.workspace.directory),
+        flow.workspace.flow.steps(),
+        step,
+        attempt_id=attempt_id,
+        layout_image=False,
+    )
+    write_request(request)
+    return {"step_directory": str(request.directory), "attempt_id": attempt_id}
+
+
+def test_agent_worker_runs_the_persisted_drc_step_from_its_request(monkeypatch, tmp_path):
     root = tmp_path / ".agent" / "candidates" / "candidate-1"
     (root / "home").mkdir(parents=True)
     workspace = Workspace(directory=root, flow=Flow(path=root / "home" / "flow.json"))
     workspace.parameters = _write_parameters(root)
     parent_flow = _new_flow(workspace, ("filler", "drc"))
     parent_flow.create_step_workspaces(initialize_config=False)
-    expected = [step.name for step in parent_flow.workspace_steps]
+    payload = _write_request(parent_flow, "drc", "attempt-drc")
+    drc = parent_flow.get_workspace_step("drc")
+    assert drc is not None
     before = _flow_path(workspace).read_bytes()
     created = []
 
@@ -68,24 +87,19 @@ def test_agent_worker_resolves_the_persisted_drc_step_list(monkeypatch, tmp_path
     executed = []
 
     def tool_runner(workspace, step, ecc_module=None):
-        executed.append(step.name)
+        executed.append((step.name, step.input.def_))
         return True
 
     assert run_step_worker(
-        {
-            "workspace_directory": str(root),
-            "step_name": "drc",
-            "tool": "ecc",
-            "layout_image": False,
-        },
+        payload,
         {"events": []},
         lambda: None,
         flow_factory=flow_factory,
         tool_runner=tool_runner,
     )
 
-    assert executed == ["drc"]
-    assert [step.name for step in created[0].workspace_steps] == expected
+    # The worker builds only the requested step, wired to filler's output.
+    assert executed == [("drc", drc.input.def_)]
     assert created[0].workspace.flow.read_only is True
     assert _flow_path(workspace).read_bytes() == before
 
@@ -136,7 +150,7 @@ def _candidate_workspace(root):
         candidate_id="candidate-1",
     )
     flow.create_step_workspaces(initialize_config=False)
-    return workspace
+    return workspace, flow
 
 
 def _sitecustomize_source():
@@ -216,7 +230,7 @@ agent_tools.log_workspace_step = lambda *_args, **_kwargs: None
 @pytest.mark.real_step_worker
 def test_real_agent_worker_applies_receipts_and_writes_parameter_report(tmp_path):
     root = tmp_path / ".agent" / "candidates" / "candidate-1"
-    workspace = _candidate_workspace(root)
+    workspace, flow = _candidate_workspace(root)
     before = _flow_path(workspace).read_bytes()
     result_path = root / "worker-result.json"
     site_dir = tmp_path / "worker-startup"
@@ -226,12 +240,8 @@ def test_real_agent_worker_applies_receipts_and_writes_parameter_report(tmp_path
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join([str(site_dir), str(repository), env.get("PYTHONPATH", "")])
     payload = {
-        "schema_version": 1,
-        "workspace_directory": str(root),
-        "step_name": "Floorplan",
-        "tool": "ecc",
-        "attempt_id": "agent-worker-test",
-        "layout_image": False,
+        "schema_version": 2,
+        **_write_request(flow, "Floorplan", "agent-worker-test"),
         "result_path": str(result_path),
         "parent_pid": os.getpid(),
     }
