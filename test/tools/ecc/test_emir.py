@@ -10,7 +10,14 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     create_workspace,
 )
+from chipcompiler.data.types import AnalysisData, DesignData, DesignState
 from chipcompiler.data.workspace import refresh_workspace_config
+from chipcompiler.data.workspace.step_handshake import (
+    StepInputs,
+    StepRequest,
+    UpstreamResponse,
+    write_request,
+)
 from chipcompiler.tools.ecc import builder, runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
@@ -99,6 +106,7 @@ def emir_case(tmp_path, monkeypatch):
         input_verilog=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.v.gz",
     )
     builder.build_step_space(step)
+    write_request(_emir_request(tmp_path, power=True))
     module = Mock(spec=ECCToolsModule)
     module.init_emir.return_value = True
     module.run_emir.return_value = True
@@ -106,6 +114,28 @@ def emir_case(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(runner, "save_data", save_data)
     return workspace, step, module, save_data
+
+
+def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
+    """EMIR's req.json: the grid from postFloorplan and power from powerAnalysis."""
+    upstream: dict[DesignData, UpstreamResponse] = {
+        DesignState.FILLED: UpstreamResponse("filler_ecc", None),
+        DesignState.PDN: UpstreamResponse("postFloorplan_ecc", None),
+    }
+    if power:
+        upstream[AnalysisData.POWER] = UpstreamResponse("powerAnalysis_ecc", None)
+    return StepRequest(
+        workspace_directory=workspace_dir,
+        step=StepEnum.EMIR.value,
+        tool="ecc",
+        step_directory="emir_ecc",
+        attempt_id="attempt-emir",
+        inputs=StepInputs(),
+        design_source=UpstreamResponse("powerAnalysis_ecc", None),
+        upstream=upstream,
+        final_step=False,
+        layout_image=False,
+    )
 
 
 def write_native_emir_reports(step, *files: str) -> None:
@@ -278,3 +308,13 @@ def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
         call.run_emir(),
         call.destroy_emir(),
     ]
+
+
+def test_emir_without_an_upstream_power_analysis_fails_before_native_init(emir_case, tmp_path):
+    workspace, step, module, _save_data = emir_case
+    write_request(_emir_request(tmp_path, power=False))
+
+    with pytest.raises(ValueError, match="no upstream power analysis"):
+        runner.run_step(workspace, step, module)
+
+    module.init_emir.assert_not_called()

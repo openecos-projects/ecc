@@ -94,10 +94,13 @@ def all_step_directories() -> list[str]:
 
 
 def flow_step_directory(steps: list[dict] | None, step_name: str) -> str:
-    """Resolve a step directory from a flow ledger's (name, tool) records."""
-    for step in steps or []:
+    """The directory a flow ledger records for *step_name*.
+
+    A step missing from the ledger keeps its legacy ``<step>_<tool>`` name.
+    """
+    for step in reversed(steps or []):
         if isinstance(step, dict) and step.get("name") == step_name:
-            return step_directory_for_tool(step_name, str(step.get("tool", "")) or None)
+            return recorded_step_directory(step)
     return STEP_DIRECTORIES.get(step_name, step_name)
 
 
@@ -144,6 +147,14 @@ def new_step_directory(step_name: str, tool: str, *, index: int | None = None) -
     suffix = "dual" if tool == ToolName.LEC_DUAL else tool
     stem = f"{step_storage_name(step_name, tool)}_{suffix}"
     return stem if index is None else f"{index:02d}_{stem}"
+
+
+def unindexed_step_directory(name: str) -> str:
+    """*name* without the two-digit flow position prefix (``07_place_dreamplace``)."""
+    prefix, separator, stem = name.partition("_")
+    if separator and len(prefix) == 2 and prefix.isdigit() and stem:
+        return stem
+    return name
 
 
 def is_step_directory_name(name: str) -> bool:

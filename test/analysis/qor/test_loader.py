@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -427,3 +428,35 @@ class TestDesignResolution:
         workspace.name = ""
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.design == "gcd"
+
+
+def _index_step_directories(root: Path) -> None:
+    """Move each step directory to its indexed name and record it in the ledger."""
+    from chipcompiler.data.step import STEP_DIRECTORIES
+
+    flow_path = root / "home" / "flow.json"
+    flow = json.loads(flow_path.read_text(encoding="utf-8"))
+    for index, record in enumerate(flow["steps"], start=1):
+        legacy = STEP_DIRECTORIES[record["name"]]
+        record["directory"] = f"{index:02d}_{legacy}"
+        if (root / legacy).is_dir():
+            (root / legacy).rename(root / record["directory"])
+    flow_path.write_text(json.dumps(flow), encoding="utf-8")
+
+
+def test_indexed_step_directories_score_like_the_legacy_layout(tmp_path):
+    from chipcompiler.analysis.qor import build_qor_analysis
+    from test.analysis.qor.test_reference_gcd import _make_gcd_workspace
+
+    legacy = build_qor_analysis(_make_gcd_workspace(tmp_path / "legacy"))
+    workspace = _make_gcd_workspace(tmp_path / "indexed")
+    _index_step_directories(Path(workspace.directory))
+
+    indexed = build_qor_analysis(workspace)
+
+    assert (indexed.feasibility, indexed.qor_record, indexed.scalar_summary) == (
+        legacy.feasibility,
+        legacy.qor_record,
+        legacy.scalar_summary,
+    )
+    assert indexed.evidence == legacy.evidence

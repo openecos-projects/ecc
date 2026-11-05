@@ -19,7 +19,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
+from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.tools.ecc.lec_gates import (
     latest_pnr_output as _latest_pnr_output,
 )
@@ -126,7 +126,9 @@ def _item(
     }
 
 
-def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
+def _prefixed_evidence(
+    step_directory: str, evidence: list, step_directories: list[str]
+) -> list[dict]:
     result = []
     for entry in evidence:
         if not isinstance(entry, dict):
@@ -134,8 +136,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         item = dict(entry)
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
-            path == directory or path.startswith(directory + "/")
-            for directory in all_step_directories()
+            path == directory or path.startswith(directory + "/") for directory in step_directories
         )
         if (
             isinstance(path, str)
@@ -230,7 +231,11 @@ def _quality_gate_items_from_summary(
                     "path": _path_text(workspace, summary_path),
                     "gate_id": gate_id,
                 },
-                evidence=_prefixed_evidence(step_directory_text, gate.get("evidence", [])),
+                evidence=_prefixed_evidence(
+                    step_directory_text,
+                    gate.get("evidence", []),
+                    StepDirectories.of(workspace).scan_names(),
+                ),
             )
         )
     return result
@@ -711,11 +716,12 @@ def rebuild_home_checklist(
     # itself is recomputed fresh below.
     flow = getattr(workspace, "flow", None)
     flow_steps = flow.steps() if flow is not None else None
-    post_route_lec_dir = flow_step_directory(flow_steps, SkippableStepEnum.POST_ROUTE_LEC.value)
+    directories = StepDirectories.of(workspace)
+    post_route_lec_dir = directories.name(SkippableStepEnum.POST_ROUTE_LEC.value)
     from chipcompiler.data.step import inactive_lec_step_directories
 
     inactive_lec_dirs = inactive_lec_step_directories(flow_steps)
-    for directory in all_step_directories():
+    for directory in directories.scan_names():
         if directory == post_route_lec_dir or directory in inactive_lec_dirs:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
@@ -737,7 +743,7 @@ def rebuild_home_checklist(
             )
         )
     for step_name, gate_ids in QOR_STEP_GATE_IDS.items():
-        step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
+        step_directory = directories.path(step_name)
         if step_directory.name in loaded_step_checklists:
             continue
         items.extend(
