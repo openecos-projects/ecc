@@ -31,6 +31,7 @@ def build_step_response(
             design=DesignFiles(),
             design_states=frozenset(),
             outputs={},
+            design_source=request.design_source,
             upstream=request.upstream,
             warnings=frozenset(),
         )
@@ -49,6 +50,7 @@ def build_step_response(
         design=_existing_design_files(step),
         design_states=design_states_after(request.step, input_states),
         outputs=_analysis_outputs(request, step),
+        design_source=request.design_source,
         upstream=request.upstream,
         warnings=frozenset(item for item in policy.uses if item not in available),
     )

@@ -89,6 +89,7 @@ def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
             design=DesignFiles(),
             design_states=frozenset(),
             outputs={AnalysisData.PARASITICS: ()},
+            design_source=None,
             upstream={},
             warnings=frozenset(),
         ),

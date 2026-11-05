@@ -236,3 +236,64 @@ class TestRunStatusStates:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert records[0]["status"] == "partial"
+
+
+def _answer(run_dir, directory, attempt_id, source):
+    from pathlib import Path
+
+    from chipcompiler.data.handshake import (
+        DesignFiles,
+        ResponseStatus,
+        StepResponse,
+        UpstreamResponse,
+        write_response,
+    )
+
+    write_response(
+        Path(run_dir) / directory,
+        StepResponse(
+            step=directory.split("_", 2)[1],
+            tool="ecc",
+            attempt_id=attempt_id,
+            status=ResponseStatus.SUCCESS,
+            design=DesignFiles(),
+            design_states=frozenset(),
+            outputs={},
+            design_source=None if source is None else UpstreamResponse(*source),
+            upstream={},
+            warnings=frozenset(),
+        ),
+    )
+
+
+def test_status_reports_steps_built_on_a_rerun_upstream_step(
+    capsys, create_cli_project, create_flow_json
+):
+    project_dir = create_cli_project()
+    run_dir = os.path.join(project_dir, "default")
+    create_flow_json(
+        run_dir,
+        [
+            {"name": name, "tool": "ecc", "state": "Success", "directory": directory}
+            for name, directory in (
+                ("CTS", "01_CTS_ecc"),
+                ("route", "02_route_ecc"),
+                ("filler", "03_filler_ecc"),
+            )
+        ],
+    )
+    _answer(run_dir, "01_CTS_ecc", "cts-1", None)
+    _answer(run_dir, "02_route_ecc", "route-1", ("01_CTS_ecc", "cts-1"))
+    _answer(run_dir, "03_filler_ecc", "filler-1", ("02_route_ecc", "route-1"))
+    _answer(run_dir, "01_CTS_ecc", "cts-2", None)  # CTS reran on its own
+
+    assert cli_main.run(["status", "--json", "--project", project_dir]) == 0
+    records = json.loads(capsys.readouterr().out)
+
+    assert records[0]["rerun_cmd"].startswith("ecc run --from routing")
+    assert [
+        (record["step"], record.get("stale_from")) for record in records if "step" in record
+    ] == [("cts", None), ("routing", ["01_CTS_ecc"]), ("filler", ["02_route_ecc"])]
+
+    assert cli_main.run(["status", "--project", project_dir]) == 0
+    assert "stale from: 01_CTS_ecc" in capsys.readouterr().out

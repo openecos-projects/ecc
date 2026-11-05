@@ -98,7 +98,9 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         }
     ]
 
-    for step in _safe_steps(flow_data):
+    steps = _safe_steps(flow_data)
+    stale = _stale_steps(run_dir, steps)
+    for step in steps:
         step_token = normalize_step_name(step.get("name", ""))
         record = {
             "step": step_token,
@@ -107,6 +109,13 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
             "runtime": step.get("runtime", "") or None,
             "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
         }
+        stale_step = stale.get(str(step.get("name", "")))
+        if stale_step is not None:
+            record.update(stale=True, stale_from=_stale_sources(stale_step))
+            if "rerun_cmd" not in records[0]:
+                records[0]["rerun_cmd"] = disclosure_cmd(
+                    f"ecc run --from {step_token}", project, ctx.run_id
+                )
         if isinstance(step.get("checklist_status"), dict):
             projection = step["checklist_status"]
             record.update(
@@ -117,6 +126,28 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         records.append(record)
 
     return CommandResult.ok(records)
+
+
+def _stale_steps(run_dir: str, steps: list[dict]) -> dict:
+    """Ledger steps built from upstream runs that changed since, by step name."""
+    from pathlib import Path
+
+    from chipcompiler.data.handshake import stale_steps
+    from chipcompiler.data.step import recorded_step_directory
+
+    try:
+        directories = [recorded_step_directory(step) for step in steps]
+    except ValueError:
+        # A ledger naming an unsafe directory is reported by the commands that
+        # use it; status still shows the step states.
+        return {}
+    return {stale.step: stale for stale in stale_steps(Path(run_dir), directories)}
+
+
+def _stale_sources(stale_step) -> list[str]:
+    """The upstream step directories whose runs changed, or that are stale themselves."""
+    changed = [changed.step_directory for changed in stale_step.changed_inputs]
+    return list(dict.fromkeys([*changed, *stale_step.stale_upstream]))
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:

@@ -75,6 +75,8 @@ class StepResponse:
     design: DesignFiles
     design_states: frozenset[DesignState]
     outputs: Mapping[AnalysisData, tuple[Path, ...]]
+    #: The upstream runs the step accepted, as its request named them.
+    design_source: UpstreamResponse | None
     upstream: Mapping[DesignData, UpstreamResponse]
     #: Optional design data the step ran without (its results are degraded).
     warnings: frozenset[DesignData]

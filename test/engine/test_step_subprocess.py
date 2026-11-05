@@ -128,6 +128,7 @@ def _publish_response(result_path, *, parasitics=()):
             design=DesignFiles(),
             design_states=frozenset(),
             outputs={AnalysisData.PARASITICS: tuple(parasitics)} if parasitics else {},
+            design_source=request.design_source,
             upstream=request.upstream,
             warnings=frozenset(),
         ),

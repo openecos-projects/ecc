@@ -30,6 +30,7 @@ def test_routing_without_a_clock_tree_is_published_with_a_warning(tmp_path):
         design=DesignFiles(def_=routed_def),
         design_states=_LEGALIZED | {DesignState.ROUTED},
         outputs={},
+        design_source=request.design_source,
         upstream=request.upstream,
         warnings=frozenset({DesignState.CLOCK_TREE}),
     )

@@ -53,6 +53,7 @@ def _publish(workspace: Path, directory: str, states: frozenset[DesignState]) ->
             design=DesignFiles(),
             design_states=states,
             outputs={},
+            design_source=None,
             upstream={},
             warnings=frozenset(),
         ),
