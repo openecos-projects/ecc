@@ -5,6 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from pathlib import Path
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
@@ -21,6 +22,7 @@ from chipcompiler.data import (
     default_flow_step_category,
     log_flow,
 )
+from chipcompiler.data.step import new_step_directory, recorded_step_directory
 from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
@@ -153,6 +155,7 @@ class EngineFlow:
             "tool": tool,  # eda tool name
             "category": category_value,
             "state": state_value,  # step state
+            "directory": new_step_directory(step_value, tool),
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
             "info": info or {},  # step additional infomation
@@ -410,6 +413,7 @@ class EngineFlow:
                 input_def=input_def,
                 input_verilog=input_verilog,
                 input_db=input_db,
+                step_directory=Path(self.workspace.directory) / recorded_step_directory(step),
                 initialize_config=initialize_config,
                 check_dependency=executable_steps is None or step["name"] in executable_steps,
             )

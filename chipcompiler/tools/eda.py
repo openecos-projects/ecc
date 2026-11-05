@@ -20,6 +20,7 @@ def create_step(
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
     *,
+    step_directory: Path | None = None,
     initialize_config: bool = False,
     check_dependency: bool = True,
 ) -> WorkspaceStep | None:
@@ -41,6 +42,7 @@ def create_step(
             output_def,
             output_verilog,
             output_gds,
+            step_directory,
         )
 
     # check eda tool exist
@@ -58,6 +60,7 @@ def create_step(
         output_def=output_def,
         output_verilog=output_verilog,
         output_gds=output_gds,
+        step_directory=step_directory,
     )
 
     # build step sub workspace
@@ -79,6 +82,7 @@ def _build_deferred_step(
     output_def: Path | None,
     output_verilog: Path | None,
     output_gds: Path | None,
+    step_directory: Path | None,
 ) -> WorkspaceStep:
     """Build an unselected optional step without importing its EDA package.
 
@@ -102,6 +106,7 @@ def _build_deferred_step(
             input_db,
             output_def,
             output_verilog,
+            step_directory=step_directory,
         )
 
     return ecc_builder.build_step(
@@ -113,6 +118,7 @@ def _build_deferred_step(
         output_def=output_def,
         output_verilog=output_verilog,
         output_gds=output_gds,
+        step_directory=step_directory,
         tool=eda,
     )
 

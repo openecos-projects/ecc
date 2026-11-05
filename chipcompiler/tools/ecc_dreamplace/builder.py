@@ -253,6 +253,8 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> EccStep:
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -263,6 +265,7 @@ def build_step(
         output_def=output_def,
         output_verilog=output_verilog,
         output_gds=output_gds,
+        step_directory=step_directory,
         tool="dreamplace",
     )
 

@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace, step_storage_name
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc.timing_constraints import step_tcl_path
 from chipcompiler.utility import json_read
@@ -24,6 +25,8 @@ def step_shape(
     step_name: str,
     output_def: Path | None = None,
     output_verilog: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> tuple[Path, Path, Path]:
     """Canonical sizer step directory and default outputs.
 
@@ -31,7 +34,9 @@ def step_shape(
     callers) so deferred creation and selected creation share one shape.
     """
     safe_step_name = step_storage_name(step_name, "sizer")
-    step_directory = Path(workspace.directory) / f"{safe_step_name}_sizer"
+    step_directory = step_directory or Path(workspace.directory) / new_step_directory(
+        step_name, "sizer"
+    )
     if output_def is None:
         output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
     if output_verilog is None:
@@ -49,10 +54,12 @@ def deferred_step(
     input_db: Path | str | None,
     output_def: Path | None = None,
     output_verilog: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> EccStep:
     """Path-only sizer step for deferred creation (no config files)."""
     step_directory, output_def, output_verilog = step_shape(
-        workspace, step_name, output_def, output_verilog
+        workspace, step_name, output_def, output_verilog, step_directory=step_directory
     )
     return ecc_builder.build_step(
         workspace=workspace,
@@ -76,9 +83,11 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> EccStep:
     step_directory, output_def, output_verilog = step_shape(
-        workspace, step_name, output_def, output_verilog
+        workspace, step_name, output_def, output_verilog, step_directory=step_directory
     )
 
     step = ecc_builder.build_step(
