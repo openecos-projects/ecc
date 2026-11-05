@@ -89,7 +89,7 @@ def _power_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",
-        lambda _workspace: [{"liberty_files": [str(liberty)], "spef_file": str(spef)}],
+        lambda _workspace, _step: [{"liberty_files": [str(liberty)], "spef_file": str(spef)}],
     )
     return (
         Workspace(

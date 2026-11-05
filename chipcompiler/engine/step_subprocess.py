@@ -7,7 +7,20 @@ import time
 from functools import partial
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
+from chipcompiler.data import (
+    LEC_STEP_TOOLS,
+    EccOutput,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    is_sta_step,
+)
+from chipcompiler.data.workspace.step_handshake import (
+    REQ_FILE,
+    StepRequest,
+    load_request,
+    write_request,
+)
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
@@ -16,10 +29,11 @@ from chipcompiler.engine.step_execution import (
     _prepare_log_file,
     get_process_rss_mb,
 )
+from chipcompiler.engine.step_request import build_step_request
 
 logger = logging.getLogger(__name__)
 
-PAYLOAD_SCHEMA_VERSION = 1
+PAYLOAD_SCHEMA_VERSION = 2
 RESULT_SCHEMA_VERSION = 1
 _RESULT_NAME = "step-worker.v1.json"
 
@@ -38,13 +52,22 @@ def execute_step_subprocess(
     log_file = _prepare_log_file(workspace_step)
     result_path = Path(os.path.dirname(log_file) or ".") / _RESULT_NAME
     attempt_id = new_attempt_id()
+
+    try:
+        request = build_step_request(
+            Path(workspace.directory),
+            workspace.flow.steps(),
+            workspace_step,
+            attempt_id=attempt_id,
+            layout_image=layout_image,
+        )
+        write_request(request)
+    except (OSError, ValueError) as exc:
+        return _result(start_time, 0.0, error=f"{step_tag} {REQ_FILE} was not written: {exc}")
     payload = {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
-        "workspace_directory": str(workspace.directory),
-        "step_name": str(workspace_step.name),
-        "tool": str(workspace_step.tool),
+        "step_directory": str(request.directory),
         "attempt_id": attempt_id,
-        "layout_image": layout_image,
     }
 
     try:
@@ -266,19 +289,19 @@ def run_step_worker(
 ) -> bool:
     result["schema_version"] = RESULT_SCHEMA_VERSION
     import chipcompiler.data as data_api
+    from chipcompiler.data.workspace import Flow
 
-    workspace = data_api.load_workspace(directory=payload["workspace_directory"], read_only=True)
+    request = load_request(Path(payload["step_directory"]))
+    if request.attempt_id != payload["attempt_id"]:
+        raise RuntimeError(f"{REQ_FILE} belongs to another attempt: {request.attempt_id}")
+    workspace = data_api.load_workspace(directory=request.workspace_directory, read_only=True)
     if workspace is None:
         raise RuntimeError("load workspace failed")
-    workspace.flow.read_only = True
+    # The step runs from its request alone; the shared ledger stays detached so
+    # nothing in the worker can depend on it.
+    workspace.flow = Flow(read_only=True)
+    step = _build_requested_step(workspace, request)
     flow = flow_factory(workspace)
-    flow.create_step_workspaces(
-        executable_steps={payload["step_name"]},
-        initialize_config=False,
-    )
-    step = flow.get_workspace_step(payload["step_name"])
-    if step is None or step.tool != payload["tool"]:
-        raise RuntimeError(f"step {payload['step_name']}({payload['tool']}) missing in worker")
     workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
     flow.init_db_engine_for_step(step)
@@ -295,14 +318,38 @@ def run_step_worker(
     if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
         result["rcx_spef"] = [Path(path).name for path in step.output.spef]
     outputs_complete = ok and flow.check_step_result(workspace_step=step)
-    if outputs_complete and payload["layout_image"] and not flow._is_placement_only_step(step):
+    if outputs_complete and request.layout_image and not flow._is_placement_only_step(step):
         from chipcompiler.tools import save_layout_image
 
         if not save_layout_image(workspace=workspace, step=step):
             workspace.logger.warning("[STEP] %s layout image was not generated", step.name)
     if not ok:
-        result["error"] = f"step {payload['step_name']} reported failure"
+        result["error"] = f"step {request.step} reported failure"
     return ok
+
+
+def _build_requested_step(workspace: Workspace, request: StepRequest) -> WorkspaceStep:
+    from chipcompiler.tools import create_step
+
+    inputs = request.inputs
+    step = create_step(
+        workspace=workspace,
+        step=request.step,
+        eda=request.tool,
+        input_def=inputs.design.def_,
+        input_verilog=inputs.design.verilog,
+        input_db=inputs.golden_verilog if request.tool in LEC_STEP_TOOLS else inputs.design.db,
+        initialize_config=False,
+    )
+    if step is None:
+        raise RuntimeError(f"step {request.step}({request.tool}) could not be built in the worker")
+    if step.directory is None or Path(step.directory) != request.directory:
+        raise RuntimeError(
+            f"step {request.step} builds into {step.directory}, not {request.directory}"
+        )
+    if inputs.spef and isinstance(step.output, EccOutput):
+        step.output.spef = list(inputs.spef)
+    return step
 
 
 def main() -> int:

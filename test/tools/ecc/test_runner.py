@@ -21,6 +21,7 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.data.types import AnalysisData
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -820,8 +821,9 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
         design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
         config={"sta": sta_config, "RCX": rcx_config},
     )
+    step = _sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"})
 
-    items = ecc_runner.collect_sta_signoff_items(workspace)
+    items = ecc_runner.collect_sta_signoff_items(workspace, step)
 
     assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
 
@@ -847,14 +849,38 @@ def test_sta_entry_workspace_uses_declared_spef(tmp_path):
         config={"sta": sta_config},
     )
     workspace.pdk.spef = declared_spef
-    # An STA-entry flow has no RCX step.
-    workspace.flow.data = {
-        "steps": [{"name": StepEnum.STA.value, "tool": "ecc", "state": "Unstart"}]
-    }
+    # An STA-entry flow has no RCX step upstream.
+    step = _sta_step_with_request(tmp_path, {})
 
-    items = ecc_runner.collect_sta_signoff_items(workspace)
+    items = ecc_runner.collect_sta_signoff_items(workspace, step)
 
     assert [item["spef_file"] for item in items] == [str(declared_spef)]
+    workspace.pdk.spef = None
+    with pytest.raises(ValueError, match="no parasitics"):
+        ecc_runner.collect_sta_signoff_items(workspace, step)
+
+
+def _sta_step_with_request(workspace_dir, upstream):
+    from chipcompiler.data.workspace.step_handshake import (
+        StepInputs,
+        StepRequest,
+        UpstreamResponse,
+        write_request,
+    )
+
+    request = StepRequest(
+        workspace_directory=workspace_dir,
+        step=StepEnum.STA.value,
+        tool="ecc",
+        step_directory="sta_ecc",
+        attempt_id="attempt-sta",
+        inputs=StepInputs(),
+        upstream={item: UpstreamResponse(directory, None) for item, directory in upstream.items()},
+        final_step=False,
+        layout_image=False,
+    )
+    write_request(request)
+    return EccStep(name=StepEnum.STA.value, directory=request.directory)
 
 
 def _make_rcx_step(tmp_path):
@@ -1023,6 +1049,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     )
     step = EccStep(
         name=StepEnum.STA.value,
+        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"}).directory,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
         feature=EccFeature(
@@ -1136,7 +1163,7 @@ def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypat
     module.feature_sammry.return_value = False
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
-    monkeypatch.setattr(ecc_runner, "collect_sta_signoff_items", lambda _: [{}])
+    monkeypatch.setattr(ecc_runner, "collect_sta_signoff_items", lambda *_: [{}])
     monkeypatch.setattr(ecc_runner, "_workspace_sta_config_path", lambda _: "sta.json")
 
     with pytest.raises(RuntimeError, match="Cannot export current iDB IO-cell count"):
@@ -1178,6 +1205,7 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     )
     step = EccStep(
         name=StepEnum.STA.value,
+        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"}).directory,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
         feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),

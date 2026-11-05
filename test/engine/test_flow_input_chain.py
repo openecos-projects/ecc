@@ -244,90 +244,34 @@ def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expect
     assert sources["RCX"] == expected
 
 
-def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
-    from chipcompiler.engine import step_subprocess
+def _worker_payload(workspace, ledger, step_name) -> dict:
+    """Wire *ledger* in the parent and write the step's req.json, as run_step does."""
+    from chipcompiler.data.workspace.step_handshake import write_request
+    from chipcompiler.engine.step_request import build_step_request
 
-    workspace = _workspace(tmp_path)
-    ledger = _real_ledger()
-    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = "route"
-    flow_path = tmp_path / "home" / "flow.json"
-    workspace.flow.path = flow_path
-    flow_path.parent.mkdir()
-    flow_path.write_text(json.dumps(ledger), encoding="utf-8")
-    before = flow_path.read_bytes()
-    monkeypatch.setattr(
-        "chipcompiler.data.load_workspace",
-        lambda directory, *, read_only=False: workspace,
-    )
-
-    def initialize_db(flow, step):
-        flow.engine_db = SimpleNamespace(engine=object(), initialization_error=None)
-
-    monkeypatch.setattr(EngineFlow, "init_db_engine_for_step", initialize_db)
-    monkeypatch.setattr(
-        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
-    )
-    executed = {}
-
-    def run_step(workspace, step, ecc_module=None):
-        executed.update(name=step.name, input_def=step.input.def_)
-        return True
-
-    monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
-
-    assert step_subprocess.run_step_worker(
-        {
-            "workspace_directory": str(tmp_path),
-            "step_name": "RCX",
-            "tool": "ecc",
-            "layout_image": False,
-        },
-        {"events": []},
-        lambda: None,
-        flow_factory=EngineFlow,
-        tool_runner=run_step,
-    )
-
-    assert executed == {
-        "name": "RCX",
-        "input_def": _build(workspace, "route", "ecc").output.def_,
-    }
-    assert workspace.flow.read_only is True
-    assert flow_path.read_bytes() == before
-
-
-def test_worker_defers_unselected_optional_steps(tmp_path, monkeypatch):
-    from chipcompiler.engine import step_subprocess
-
-    workspace = _workspace(tmp_path)
     flow = EngineFlow(workspace)
-    flow.workspace.flow.data = {
-        "steps": [
-            flow.init_flow_step("preFloorplan", "ecc", "Unstart"),
-            flow.init_flow_step("place", "dreamplace", "Unstart"),
-            flow.init_flow_step("CTS", "ecc", "Unstart"),
-        ]
-    }
-    flow_path = tmp_path / "home" / "flow.json"
-    workspace.flow.path = flow_path
-    flow_path.parent.mkdir()
-    assert flow.save()
-    before = flow_path.read_bytes()
+    flow.workspace.flow.data = ledger
+    flow.create_step_workspaces(initialize_config=False)
+    step = flow.get_workspace_step(step_name)
+    assert step is not None
+    request = build_step_request(
+        workspace.directory,
+        ledger.get("steps", []),
+        step,
+        attempt_id=f"attempt-{step_name}",
+        layout_image=False,
+    )
+    write_request(request)
+    return {"step_directory": str(request.directory), "attempt_id": request.attempt_id}
+
+
+def _run_worker(monkeypatch, workspace, payload, run_step):
+    from chipcompiler.engine import step_subprocess
+
     monkeypatch.setattr(
         "chipcompiler.data.load_workspace",
         lambda directory, *, read_only=False: workspace,
     )
-
-    import chipcompiler.tools as tools
-
-    real_create_step = tools.create_step
-
-    def create_step(*args, **kwargs):
-        if kwargs["eda"] == "dreamplace" and kwargs["check_dependency"]:
-            return None
-        return real_create_step(*args, **kwargs)
-
-    monkeypatch.setattr(tools, "create_step", create_step)
 
     def initialize_db(flow, step):
         flow.engine_db = SimpleNamespace(engine=object(), initialization_error=None)
@@ -337,27 +281,69 @@ def test_worker_defers_unselected_optional_steps(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
     )
+    return step_subprocess.run_step_worker(
+        payload, {"events": []}, lambda: None, flow_factory=EngineFlow, tool_runner=run_step
+    )
+
+
+def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
+    workspace = _workspace(tmp_path)
+    ledger = _real_ledger()
+    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = "route"
+    payload = _worker_payload(workspace, ledger, "RCX")
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(exist_ok=True)
+    flow_path.write_text(json.dumps({"steps": []}), encoding="utf-8")
+    workspace.flow.path = flow_path
+    executed = {}
+
+    def run_step(workspace, step, ecc_module=None):
+        executed.update(name=step.name, input_def=step.input.def_)
+        return True
+
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
+
+    # The worker took its input from req.json: the ledger it would have read
+    # is empty, and the worker's ledger stays detached.
+    assert executed == {
+        "name": "RCX",
+        "input_def": _build(workspace, "route", "ecc").output.def_,
+    }
+    assert workspace.flow.path is None
+    assert flow_path.read_text(encoding="utf-8") == json.dumps({"steps": []})
+
+
+def test_worker_builds_only_its_requested_step(tmp_path, monkeypatch):
+    import chipcompiler.tools as tools
+
+    workspace = _workspace(tmp_path)
+    flow = EngineFlow(workspace)
+    ledger: FlowDocument = {
+        "steps": [
+            flow.init_flow_step("preFloorplan", "ecc", "Unstart"),
+            flow.init_flow_step("place", "dreamplace", "Unstart"),
+            flow.init_flow_step("CTS", "ecc", "Unstart"),
+        ]
+    }
+    payload = _worker_payload(workspace, ledger, "preFloorplan")
+    real_create_step = tools.create_step
+    built = []
+
+    def create_step(*args, **kwargs):
+        built.append(kwargs["eda"])
+        return real_create_step(*args, **kwargs)
+
+    monkeypatch.setattr(tools, "create_step", create_step)
     executed = []
 
     def run_step(workspace, step, ecc_module=None):
         executed.append(step.name)
         return True
 
-    assert step_subprocess.run_step_worker(
-        {
-            "workspace_directory": str(tmp_path),
-            "step_name": "preFloorplan",
-            "tool": "ecc",
-            "layout_image": False,
-        },
-        {"events": []},
-        lambda: None,
-        flow_factory=EngineFlow,
-        tool_runner=run_step,
-    )
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
 
-    assert executed == ["preFloorplan"]
-    assert flow_path.read_bytes() == before
+    # Unselected DreamPlace is never built, so its package is never imported.
+    assert (built, executed) == (["ecc"], ["preFloorplan"])
 
 
 @pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])

@@ -302,7 +302,7 @@ def test_failed_validation_clears_stale_corner_and_aggregate(tmp_path, monkeypat
         (directory / "qor_summary.json").write_text("old")
     step.analysis.dir.mkdir()
     (step.analysis.dir / "qor_metrics.json").write_text("old")
-    monkeypatch.setattr(sta.runner, "collect_sta_signoff_items", lambda _: [item])
+    monkeypatch.setattr(sta.runner, "collect_sta_signoff_items", lambda *_: [item])
     monkeypatch.setattr(sta.runner, "get_eda_instance", lambda *_: object())
     monkeypatch.setattr(sta.runner, "run_sta", lambda *_: False)
     assert sta.run_parallel_sta(workspace, step, None, 2) is False

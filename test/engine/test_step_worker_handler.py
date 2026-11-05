@@ -28,7 +28,8 @@ def _workspace_step(tmp_path, name="place", tool="ecc"):
     return _ns(
         name=name,
         tool=tool,
-        directory=str(tmp_path),
+        directory=tmp_path / f"{name}_{tool}",
+        output=_ns(),
         log=_ns(file=str(log_file)),
     )
 
@@ -58,14 +59,6 @@ class _FakeFlow:
     def __init__(self, workspace):
         self.workspace = workspace
         self.initialized_for = None
-        self.executable_steps = None
-
-    def create_step_workspaces(self, *, executable_steps=None, initialize_config=True):
-        assert initialize_config is False
-        self.executable_steps = executable_steps
-
-    def get_workspace_step(self, name):
-        return self._step if name == self._step.name else None
 
     def init_db_engine_for_step(self, step):
         self.initialized_for = step
@@ -78,25 +71,41 @@ class _FakeFlow:
         return self.placement_only
 
 
-def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step):
+def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step, *, built=None):
     def load_workspace(directory, *, read_only=False):
         assert read_only is True
         return _workspace(tmp_path)
 
+    def create_step(**kwargs):
+        assert kwargs["initialize_config"] is False
+        return step if built is None else built
+
     monkeypatch.setattr("chipcompiler.data.load_workspace", load_workspace)
     monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda workspace: flow)
+    monkeypatch.setattr("chipcompiler.tools.create_step", create_step)
     monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
     monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **_kwargs: True)
 
 
-def _payload_stream(tmp_path, step, result_path, *, layout_image=True):
+def _payload_stream(tmp_path, step, result_path, *, layout_image=True, attempt_id="test-attempt"):
+    from chipcompiler.data.workspace.step_handshake import StepInputs, StepRequest, write_request
+
+    request = StepRequest(
+        workspace_directory=tmp_path,
+        step=step.name,
+        tool=step.tool,
+        step_directory=f"{step.name}_{step.tool}",
+        attempt_id="test-attempt",
+        inputs=StepInputs(),
+        upstream={},
+        final_step=False,
+        layout_image=layout_image,
+    )
+    write_request(request)
     payload = {
-        "schema_version": 1,
-        "workspace_directory": str(tmp_path),
-        "step_name": step.name,
-        "tool": step.tool,
-        "attempt_id": "test-attempt",
-        "layout_image": layout_image,
+        "schema_version": 2,
+        "step_directory": str(request.directory),
+        "attempt_id": attempt_id,
         "result_path": str(result_path),
         "parent_pid": os.getpid(),
     }
@@ -156,7 +165,6 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
     ]
     assert events == ["ran"]
     assert flow.initialized_for is step
-    assert flow.executable_steps == {step.name}
 
 
 def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
@@ -169,15 +177,17 @@ def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
     workspace = _workspace(tmp_path)
     flow = _FakeFlow(workspace)
     flow._step = step
-    assert workspace.flow.path is not None
-    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-    before = workspace.flow.path.read_bytes()
+    ledger_path = workspace.flow.path
+    assert ledger_path is not None
+    ledger_path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    before = ledger_path.read_bytes()
 
     monkeypatch.setattr(
         "chipcompiler.data.load_workspace",
         lambda directory, *, read_only=False: workspace,
     )
     monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda _workspace: flow)
+    monkeypatch.setattr("chipcompiler.tools.create_step", lambda **_kwargs: step)
     monkeypatch.setattr(
         "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
     )
@@ -194,8 +204,9 @@ def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
     assert result["done"] is True
     assert result["ok"] is False
     assert "read-only" in result["error"]
-    assert workspace.flow.read_only is True
-    assert workspace.flow.path.read_bytes() == before
+    # The worker's ledger is detached: read-only and pointing at no file.
+    assert (workspace.flow.read_only, workspace.flow.path) == (True, None)
+    assert ledger_path.read_bytes() == before
 
 
 def test_worker_main_records_step_failure(monkeypatch, tmp_path):
@@ -214,19 +225,41 @@ def test_worker_main_records_step_failure(monkeypatch, tmp_path):
     assert "reported failure" in result["error"]
 
 
-def test_worker_main_records_missing_step(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("built", "message"),
+    [
+        (None, "could not be built"),
+        (_ns(name="place", tool="ecc", directory="/elsewhere/place_ecc"), "builds into"),
+    ],
+)
+def test_worker_main_records_a_step_it_cannot_build(monkeypatch, tmp_path, built, message):
     step = _workspace_step(tmp_path)
     result_path = tmp_path / "out" / "result.json"
     flow = _FakeFlow(_workspace(tmp_path))
-    flow._step = _ns(name="other", tool="ecc")
 
     _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, lambda *a, **k: True)
+    monkeypatch.setattr("chipcompiler.tools.create_step", lambda **_kwargs: built)
     monkeypatch.setattr(sys, "stdin", _payload_stream(tmp_path, step, result_path))
 
     assert step_subprocess.main() == 1
     result = json.loads(result_path.read_text(encoding="utf-8"))
     assert result["done"] is True
-    assert "missing in worker" in result["error"]
+    assert message in result["error"]
+
+
+def test_worker_main_rejects_a_request_from_another_attempt(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = tmp_path / "out" / "result.json"
+    _patch_worker_dependencies(
+        monkeypatch, tmp_path, step, _FakeFlow(_workspace(tmp_path)), lambda *a, **k: True
+    )
+    monkeypatch.setattr(
+        sys, "stdin", _payload_stream(tmp_path, step, result_path, attempt_id="stale")
+    )
+
+    assert step_subprocess.main() == 1
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert "belongs to another attempt" in result["error"]
 
 
 def test_worker_main_records_exceptions(monkeypatch, tmp_path):

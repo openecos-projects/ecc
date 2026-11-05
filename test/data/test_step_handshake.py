@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data.types import AnalysisData, DesignState
-from chipcompiler.engine.step_handshake import (
+from chipcompiler.data.workspace.step_handshake import (
     REQ_FILE,
     RSP_FILE,
     DesignFiles,

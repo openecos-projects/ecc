@@ -38,10 +38,14 @@ class ResponseStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class UpstreamResponse:
-    """The upstream step a design data item came from, and the run accepted."""
+    """The upstream step a design data item came from, and the run accepted.
+
+    ``attempt_id`` is None when the upstream step ran before steps wrote
+    ``rsp.json``; such an input can never be reported stale.
+    """
 
     step_directory: str
-    attempt_id: str
+    attempt_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,9 +293,11 @@ def _upstream(value: object) -> Mapping[DesignData, UpstreamResponse]:
     upstream: dict[DesignData, UpstreamResponse] = {}
     for name, source in _table(value, "upstream").items():
         source_data = _table(source, f"upstream.{name}")
+        attempt_id = _field(source_data, "attempt_id")
+        if attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id):
+            raise HandshakeError(f"'upstream.{name}.attempt_id' must be a non-empty string or null")
         upstream[_design_data(name)] = UpstreamResponse(
-            step_directory=_step_directory(source_data),
-            attempt_id=_text(source_data, "attempt_id"),
+            step_directory=_step_directory(source_data), attempt_id=attempt_id
         )
     return MappingProxyType(upstream)
 
