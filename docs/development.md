@@ -139,6 +139,13 @@ uv run pytest test/ --cov=chipcompiler --cov-report=term-missing
 uv run pytest test/formal/ -v
 ```
 
+Yosys synthesis inserts one tie cell per constant load bit, including top-level
+output ports. Existing PDK-configured tie cells in mapped-netlist inputs are first
+converted back to constants; undefined bits are resolved to zero before mapping.
+This is a synthesis-output policy, not a backend placement or fanout-repair step.
+The executable regression in `test/tools/yosys/test_tie_cells.py` checks literal
+constants, imported ties, and repeated synthesis for the built-in PDK tie models.
+
 ### Formal Verification
 
 z3-based formal verification. See [test/formal/README.md](../test/formal/README.md)
