@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from chipcompiler.data import OutputPaths
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import step_subprocess
 
@@ -29,7 +30,7 @@ def _workspace_step(tmp_path, name="place", tool="ecc"):
         name=name,
         tool=tool,
         directory=tmp_path / f"{name}_{tool}",
-        output=_ns(),
+        output=OutputPaths(),
         log=_ns(file=str(log_file)),
     )
 
@@ -372,3 +373,17 @@ def test_worker_layout_image_exception_fails_the_step(monkeypatch, tmp_path):
     assert result["done"] is True
     assert result["ok"] is False
     assert "render failed" in result["error"]
+
+
+@pytest.mark.parametrize(("tool_ok", "status"), [(True, "success"), (False, "failed")])
+def test_worker_publishes_its_response(monkeypatch, tmp_path, tool_ok, status):
+    from chipcompiler.data.workspace.step_handshake import load_response
+
+    step = _workspace_step(tmp_path)
+    flow = _FakeFlow(_workspace(tmp_path))
+
+    _run_main(monkeypatch, tmp_path, step, flow, lambda *_args, **_kwargs: tool_ok)
+
+    response = load_response(step.directory)
+    assert response is not None
+    assert (response.attempt_id, response.status) == ("test-attempt", status)

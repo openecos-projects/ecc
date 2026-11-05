@@ -15,11 +15,18 @@ from chipcompiler.data import (
     WorkspaceStep,
     is_sta_step,
 )
+from chipcompiler.data.types import AnalysisData
 from chipcompiler.data.workspace.step_handshake import (
     REQ_FILE,
+    RSP_FILE,
+    HandshakeError,
+    ResponseStatus,
     StepRequest,
+    clear_response,
     load_request,
+    load_response,
     write_request,
+    write_response,
 )
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
@@ -30,6 +37,7 @@ from chipcompiler.engine.step_execution import (
     get_process_rss_mb,
 )
 from chipcompiler.engine.step_request import build_step_request
+from chipcompiler.engine.step_response import build_step_response
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +70,7 @@ def execute_step_subprocess(
             layout_image=layout_image,
         )
         write_request(request)
+        clear_response(request.directory)
     except (OSError, ValueError) as exc:
         return _result(start_time, 0.0, error=f"{step_tag} {REQ_FILE} was not written: {exc}")
     payload = {
@@ -154,16 +163,28 @@ def execute_step_subprocess(
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
         elif returncode != 0:
             step_error = f"{step_tag} worker exited with code {returncode}."
+    response = None
+    if isinstance(result, dict) and result.get("attempt_id") == attempt_id:
+        try:
+            response = load_response(request.directory)
+        except HandshakeError as exc:
+            step_error = step_error or f"{step_tag} {exc}"
+        if response is not None and response.attempt_id != attempt_id:
+            response = None
+    if step_error is None and response is None:
+        step_error = f"{step_tag} worker did not publish {RSP_FILE} for this attempt."
     if (
-        isinstance(result, dict)
-        and result.get("attempt_id") == attempt_id
+        response is not None
+        and response.status is ResponseStatus.SUCCESS
+        and result is not None
         and result.get("done") is True
         and workspace_step.name == StepEnum.RCX.value
-        and "rcx_spef" in result
         and cancel_error is None
         and (step_error is None or result.get("ok") is False)
     ):
-        rcx_error = _restore_rcx_outputs(workspace_step, result)
+        rcx_error = _restore_rcx_outputs(
+            workspace_step, response.outputs.get(AnalysisData.PARASITICS, ())
+        )
         if rcx_error is not None:
             step_error = rcx_error
     if (
@@ -209,22 +230,17 @@ def _reload_subflow_state(step: WorkspaceStep, result: dict | None, attempt_id: 
         step.subflow.steps = steps
 
 
-def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
+def _restore_rcx_outputs(step: WorkspaceStep, spef: tuple[Path, ...]) -> str | None:
     output = step.output
-    names = result.get("rcx_spef")
     if (
         not isinstance(output, EccOutput)
         or output.dir is None
-        or not isinstance(names, list)
-        or not names
-        or any(
-            not isinstance(name, str) or Path(name).name != name or not name.endswith(".spef")
-            for name in names
-        )
-        or len(set(names)) != len(names)
+        or not spef
+        or any(path.parent != Path(output.dir) or path.suffix != ".spef" for path in spef)
+        or len(set(spef)) != len(spef)
     ):
         return "RCX worker did not return a valid published SPEF set"
-    output.spef[:] = [Path(output.dir) / name for name in names]
+    output.spef[:] = list(spef)
     return None
 
 
@@ -315,9 +331,12 @@ def run_step_worker(
 
     with capture_stdio_to_file(step.log.file):
         ok = tool_runner(workspace=workspace, step=step, ecc_module=flow.engine_db.engine) is True
-    if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
-        result["rcx_spef"] = [Path(path).name for path in step.output.spef]
     outputs_complete = ok and flow.check_step_result(workspace_step=step)
+    # rsp.json describes the step's design data; the layout thumbnail below is
+    # not part of it, so the response is published before rendering.
+    write_response(
+        request.directory, build_step_response(request, step, succeeded=outputs_complete)
+    )
     if outputs_complete and request.layout_image and not flow._is_placement_only_step(step):
         from chipcompiler.tools import save_layout_image
 

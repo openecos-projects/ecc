@@ -105,9 +105,40 @@ class _FakePopen:
         return self.returncode
 
 
-def _spawn_with_result(result_path, result, *, returncode=0):
+def _publish_response(result_path, *, parasitics=()):
+    """Write the rsp.json the worker publishes for the request the parent wrote."""
+    from chipcompiler.data.types import AnalysisData
+    from chipcompiler.data.workspace.step_handshake import (
+        DesignFiles,
+        ResponseStatus,
+        StepResponse,
+        load_request,
+        write_response,
+    )
+
+    (request_path,) = result_path.parent.parent.glob("*/req.json")
+    request = load_request(request_path.parent)
+    write_response(
+        request.directory,
+        StepResponse(
+            step=request.step,
+            tool=request.tool,
+            attempt_id=request.attempt_id,
+            status=ResponseStatus.SUCCESS,
+            design=DesignFiles(),
+            design_states=frozenset(),
+            outputs={AnalysisData.PARASITICS: tuple(parasitics)} if parasitics else {},
+            upstream=request.upstream,
+            warnings=frozenset(),
+        ),
+    )
+
+
+def _spawn_with_result(result_path, result, *, returncode=0, parasitics=()):
     def spawn(*_args, **_kwargs):
         result_path.write_text(json.dumps({"attempt_id": "test-attempt", **result}))
+        if result.get("done"):
+            _publish_response(result_path, parasitics=parasitics)
         return _FakePopen(poll_script=[returncode])
 
     return spawn
@@ -129,8 +160,8 @@ def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, 
                 "done": True,
                 "ok": True,
                 "events": [],
-                "rcx_spef": ["sample_TYPICAL_25C.spef"],
             },
+            parasitics=(tmp_path / "output/sample_TYPICAL_25C.spef",),
         ),
     )
 
@@ -157,9 +188,9 @@ def test_rcx_outputs_are_restored_when_worker_image_fails(monkeypatch, tmp_path)
                 "ok": False,
                 "error": "render failed",
                 "events": [],
-                "rcx_spef": ["sample_TYPICAL_25C.spef"],
             },
             returncode=1,
+            parasitics=(tmp_path / "output/sample_TYPICAL_25C.spef",),
         ),
     )
 
@@ -185,9 +216,9 @@ def test_rcx_success_result_with_nonzero_exit_does_not_restore(monkeypatch, tmp_
                 "done": True,
                 "ok": True,
                 "events": [],
-                "rcx_spef": ["sample_TYPICAL_25C.spef"],
             },
             returncode=-11,
+            parasitics=(tmp_path / "output/sample_TYPICAL_25C.spef",),
         ),
     )
 
@@ -199,14 +230,15 @@ def test_rcx_success_result_with_nonzero_exit_does_not_restore(monkeypatch, tmp_
 
 
 @pytest.mark.parametrize(
-    "names", [[], ["../escape.spef"], ["/tmp/escape.spef"], ["dup.spef", "dup.spef"], [False]]
+    "names", [[], ["../escape.spef"], ["/tmp/escape.spef"], ["dup.spef", "dup.spef"], ["x.txt"]]
 )
 def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
     from chipcompiler.data import EccOutput
 
     step = _workspace_step(tmp_path, name="RCX")
     step.output = EccOutput(dir=tmp_path / "output")
-    assert step_subprocess._restore_rcx_outputs(step, {"rcx_spef": names})
+    spef = tuple(tmp_path / "output" / name for name in names)
+    assert step_subprocess._restore_rcx_outputs(step, spef)
     assert step.output.spef == []
 
 
@@ -253,6 +285,7 @@ def test_worker_parameter_updates_are_visible_before_terminal_snapshot(
                 }
             )
         )
+        _publish_response(result_path)
         return _FakePopen(poll_script=[0])
 
     monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
@@ -271,6 +304,7 @@ def test_worker_corrupt_parameters_prevent_success(monkeypatch, tmp_path):
     def spawn(*_args, **_kwargs):
         workspace.parameters.path.write_text("{broken")
         result_path.write_text(json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True}))
+        _publish_response(result_path)
         return _FakePopen(poll_script=[0])
 
     monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
@@ -451,6 +485,7 @@ def test_sequential_attempts_accept_only_their_own_results(monkeypatch, tmp_path
         result_path.write_text(
             json.dumps({"attempt_id": attempt_id, "done": True, "ok": True, "events": []})
         )
+        _publish_response(result_path)
         return process
 
     monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn)
@@ -655,3 +690,24 @@ def test_resource_finalization_failure_still_terminates_worker(monkeypatch, tmp_
         step_subprocess.execute_step_subprocess(_workspace(tmp_path), step)
 
     assert terminated == [fake]
+
+
+def test_a_response_left_by_an_earlier_attempt_is_not_accepted(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    monkeypatch.setattr(
+        step_subprocess.worker.subprocess,
+        "Popen",
+        _spawn_with_result(result_path, {"done": True, "ok": True, "events": []}),
+    )
+    assert execute_tool_step(_workspace(tmp_path), step, None).error is None
+
+    def spawn_without_response(*_args, **_kwargs):
+        result_path.write_text(json.dumps({"attempt_id": "test-attempt", "done": True, "ok": True}))
+        return _FakePopen(poll_script=[0])
+
+    monkeypatch.setattr(step_subprocess.worker.subprocess, "Popen", spawn_without_response)
+    result = execute_tool_step(_workspace(tmp_path), step, None)
+
+    assert result.error is not None
+    assert "did not publish rsp.json" in result.error

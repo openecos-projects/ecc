@@ -42,12 +42,28 @@ def check_flow(
             violations.append(FlowViolation(step, Severity.ERROR, missing))
         if missing_optional := policy.uses - present:
             violations.append(FlowViolation(step, Severity.WARNING, missing_optional))
-        present |= policy.provides
-        match policy.legality:
-            case PlacementLegality.LEGALIZED:
-                present.add(DesignState.LEGAL)
-            case PlacementLegality.NEEDS_LEGALIZATION:
-                present.discard(DesignState.LEGAL)
-            case PlacementLegality.UNCHANGED:
-                pass
+        _advance(step, present)
     return tuple(violations)
+
+
+def design_states_after(step: str, states: Iterable[DesignState]) -> frozenset[DesignState]:
+    """The design states the output design of *step* carries.
+
+    *states* are the states of the design the step read. An unknown step name
+    raises ``ValueError``.
+    """
+    present: set[DesignData] = set(states)
+    _advance(step, present)
+    return frozenset(item for item in present if isinstance(item, DesignState))
+
+
+def _advance(step: str, present: set[DesignData]) -> None:
+    policy = flow_step_policy(step)
+    present |= policy.provides
+    match policy.legality:
+        case PlacementLegality.LEGALIZED:
+            present.add(DesignState.LEGAL)
+        case PlacementLegality.NEEDS_LEGALIZATION:
+            present.discard(DesignState.LEGAL)
+        case PlacementLegality.UNCHANGED:
+            pass
