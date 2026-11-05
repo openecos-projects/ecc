@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from copy import deepcopy
+from pathlib import Path
 from threading import RLock
 
 from chipcompiler.data import (
@@ -22,6 +23,7 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.step import new_step_directory, recorded_step_directory
 from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
@@ -154,6 +156,7 @@ class EngineFlow:
             "tool": tool,  # eda tool name
             "category": category_value,
             "state": state_value,  # step state
+            "directory": new_step_directory(step_value, tool),
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
             "info": info or {},  # step additional infomation
@@ -415,6 +418,7 @@ class EngineFlow:
                 input_def=input_def,
                 input_verilog=input_verilog,
                 input_db=input_db,
+                step_directory=Path(self.workspace.directory) / recorded_step_directory(step),
                 initialize_config=initialize_config,
                 check_dependency=executable_steps is None or step["name"] in executable_steps,
             )

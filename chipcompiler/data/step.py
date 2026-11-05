@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePath
 
 from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
 
@@ -131,6 +132,50 @@ def step_storage_name(step_name: str, tool_name: str) -> str:
     if tool_name.lower() == ToolName.SIZER:
         return "_".join(step_name.split()).lower()
     return step_name
+
+
+def new_step_directory(step_name: str, tool: str, *, index: int | None = None) -> str:
+    """The directory name a step gets when it is added to a flow.
+
+    ``<step>_<tool>`` (``Synthesis_yosys``; the dual LEC step uses
+    ``<step>_dual``), prefixed with the step's two-digit position in the flow
+    when *index* is given (``01_Synthesis_yosys``).
+    """
+    suffix = "dual" if tool == ToolName.LEC_DUAL else tool
+    stem = f"{step_storage_name(step_name, tool)}_{suffix}"
+    return stem if index is None else f"{index:02d}_{stem}"
+
+
+def is_step_directory_name(name: str) -> bool:
+    """Whether *name* is a single directory name directly under the workspace."""
+    return bool(name) and name not in {".", ".."} and PurePath(name).name == name
+
+
+def recorded_step_directory(record: Mapping[str, object]) -> str:
+    """The directory name a flow ledger step records.
+
+    Ledgers written before steps recorded their directory fall back to the
+    ``<step>_<tool>`` name those workspaces were created with. A recorded name
+    that is not a single directory name raises ``ValueError``.
+    """
+    directory = record.get("directory")
+    if directory is None:
+        return new_step_directory(str(record.get("name", "")), str(record.get("tool", "")))
+    if not isinstance(directory, str) or not is_step_directory_name(directory):
+        raise ValueError(f"flow step directory must be a single directory name: {directory!r}")
+    return directory
+
+
+def engine_step_directory(dual_directory: Path, engine: str) -> Path:
+    """The directory of one engine of a dual LEC step.
+
+    Engines run in siblings of the dual step's directory that keep its prefix:
+    ``03_lec_dual`` runs kepler-formal in ``03_lec_kepler_formal``.
+    """
+    name = dual_directory.name
+    if not name.endswith("_dual"):
+        raise ValueError(f"not a dual LEC step directory: {dual_directory}")
+    return dual_directory.with_name(f"{name.removesuffix('dual')}{engine}")
 
 
 ###########################################################################

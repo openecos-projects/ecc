@@ -22,6 +22,7 @@ from chipcompiler.data import (
     YosysReport,
     YosysStep,
 )
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.utility import json_read
 from chipcompiler.utility.path import require_path
 
@@ -244,6 +245,8 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> YosysStep:
     """
     Build the synthesis step in the specified workspace.
@@ -252,7 +255,7 @@ def build_step(
     Synthesis doesn't produce DEF; output_def points to verilog for flow compatibility.
     """
     design = workspace.design.name
-    directory = Path(workspace.directory) / f"{step_name}_yosys"
+    directory = step_directory or Path(workspace.directory) / new_step_directory(step_name, "yosys")
     output_dir = directory / "output"
     data_dir = directory / "data"
 

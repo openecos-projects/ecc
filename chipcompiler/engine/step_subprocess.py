@@ -374,6 +374,7 @@ def _build_requested_step(workspace: Workspace, request: StepRequest) -> Workspa
         input_def=inputs.design.def_,
         input_verilog=inputs.design.verilog,
         input_db=inputs.golden_verilog if request.tool in LEC_STEP_TOOLS else inputs.design.db,
+        step_directory=request.directory,
         initialize_config=False,
     )
     if step is None:

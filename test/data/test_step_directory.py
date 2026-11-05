@@ -1,0 +1,98 @@
+"""Flow ledger steps record the directory their step is built in."""
+
+from pathlib import Path
+
+import pytest
+
+from chipcompiler.data import LecDualStep, OriginDesign, Workspace, WorkspaceStep
+from chipcompiler.data.step import (
+    engine_step_directory,
+    new_step_directory,
+    recorded_step_directory,
+)
+from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+from chipcompiler.engine.flow import EngineFlow
+
+
+def _flow(tmp_path, ledger) -> EngineFlow:
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd", origin_verilog=tmp_path / "gcd.v"),
+    )
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = ledger
+    flow.create_step_workspaces(executable_steps=set(), initialize_config=False)
+    return flow
+
+
+def _rtl2gds_ledger():
+    return build_dynamic_flow_data(
+        {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": [], "lec_engine": "dual"}
+    )
+
+
+def _directory_name(step: WorkspaceStep) -> str:
+    assert step.directory is not None
+    return step.directory.name
+
+
+def test_new_ledgers_record_the_directory_each_step_is_built_in(tmp_path):
+    ledger = _rtl2gds_ledger()
+
+    flow = _flow(tmp_path, ledger)
+
+    records = ledger.get("steps", [])
+    assert [record.get("directory") for record in records] == [
+        _directory_name(step) for step in flow.workspace_steps
+    ]
+    assert records[-1].get("directory") == "Harden_ecc"
+
+
+def test_ledgers_without_directories_keep_the_names_they_were_created_with(tmp_path):
+    ledger = _rtl2gds_ledger()
+    recorded = [record.pop("directory", None) for record in ledger.get("steps", [])]
+
+    flow = _flow(tmp_path, ledger)
+
+    assert [_directory_name(step) for step in flow.workspace_steps] == recorded
+
+
+def test_a_recorded_directory_is_where_the_step_is_built(tmp_path):
+    ledger = _rtl2gds_ledger()
+    for index, record in enumerate(ledger.get("steps", []), start=1):
+        record["directory"] = new_step_directory(record["name"], record["tool"], index=index)
+
+    flow = _flow(tmp_path, ledger)
+
+    place = flow.get_workspace_step("place")
+    lec = flow.get_workspace_step("lec")
+    assert place is not None and isinstance(lec, LecDualStep)
+    assert (_directory_name(place), _directory_name(lec)) == ("07_place_dreamplace", "02_lec_dual")
+    assert {name: _directory_name(step) for name, step in lec.engine_steps.items()} == {
+        "yosys_lec": "02_lec_yosys_lec",
+        "kepler_formal": "02_lec_kepler_formal",
+    }
+
+
+@pytest.mark.parametrize(
+    ("step", "tool", "index", "expected"),
+    [
+        ("Synthesis", "yosys", None, "Synthesis_yosys"),
+        ("Timing optimization", "sizer", 11, "11_timing_optimization_sizer"),
+        ("postRouteLec", "lec_dual", 18, "18_postRouteLec_dual"),
+        ("place", "ecc", 7, "07_place_ecc"),
+    ],
+)
+def test_new_step_directory_names(step, tool, index, expected):
+    assert new_step_directory(step, tool, index=index) == expected
+
+
+@pytest.mark.parametrize("directory", ["../place_dreamplace", "a/b", "..", "", 7])
+def test_a_recorded_directory_must_be_a_single_name(directory):
+    with pytest.raises(ValueError, match="single directory name"):
+        recorded_step_directory({"name": "place", "tool": "dreamplace", "directory": directory})
+
+
+def test_engine_directories_of_a_non_dual_step_are_rejected():
+    with pytest.raises(ValueError, match="not a dual LEC step directory"):
+        engine_step_directory(Path("/ws/02_lec_kepler_formal"), "yosys_lec")

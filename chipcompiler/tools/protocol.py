@@ -40,6 +40,8 @@ class ToolModule(Protocol[StepT]):
         output_def: Path | None = None,
         output_verilog: Path | None = None,
         output_gds: Path | None = None,
+        *,
+        step_directory: Path | None = None,
     ) -> StepT: ...
 
     @staticmethod

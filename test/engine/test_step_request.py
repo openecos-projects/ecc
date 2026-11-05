@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import EccOutput, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import AnalysisData, DesignState
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.data.workspace.step_handshake import (
@@ -19,7 +20,7 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.step_request import build_step_request
 
 
-def _wired_flow(tmp_path) -> EngineFlow:
+def _wired_flow(tmp_path, *, indexed: bool = False) -> EngineFlow:
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(
@@ -30,9 +31,13 @@ def _wired_flow(tmp_path) -> EngineFlow:
         ),
     )
     flow = EngineFlow(workspace)
-    flow.workspace.flow.data = build_dynamic_flow_data(
+    ledger = build_dynamic_flow_data(
         {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": []}
     )
+    if indexed:
+        for index, record in enumerate(ledger.get("steps", []), start=1):
+            record["directory"] = new_step_directory(record["name"], record["tool"], index=index)
+    flow.workspace.flow.data = ledger
     flow.create_step_workspaces(executable_steps=set(), initialize_config=False)
     return flow
 
@@ -49,10 +54,11 @@ def _request(flow: EngineFlow, name: str):
     )
 
 
-def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch):
+@pytest.mark.parametrize("indexed", [False, True])
+def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, indexed):
     import chipcompiler.tools as tools
 
-    flow = _wired_flow(tmp_path)
+    flow = _wired_flow(tmp_path, indexed=indexed)
     real_create_step = tools.create_step
     # The parent built optional tools path-only; rebuild them the same way.
     monkeypatch.setattr(
@@ -119,3 +125,15 @@ def test_a_step_outside_the_workspace_is_rejected(tmp_path):
             attempt_id="attempt",
             layout_image=True,
         )
+
+
+def test_upstream_steps_are_named_by_their_recorded_directories(tmp_path):
+    flow = _wired_flow(tmp_path, indexed=True)
+
+    _step, request = _request(flow, StepEnum.STA.value)
+
+    assert {item: source.step_directory for item, source in request.upstream.items()} == {
+        DesignState.FILLED: "13_filler_ecc",
+        DesignState.CLOCK_TREE: "13_filler_ecc",
+        AnalysisData.PARASITICS: "18_RCX_ecc",
+    }

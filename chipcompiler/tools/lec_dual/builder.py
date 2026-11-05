@@ -12,8 +12,10 @@ from chipcompiler.data import (
     SubflowState,
     Workspace,
 )
+from chipcompiler.data.step import engine_step_directory, new_step_directory
 from chipcompiler.tools.lec_dual.engines import lec_engine_module
 from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
+from chipcompiler.utility.path import require_path
 
 
 def build_engine_steps(workspace: Workspace, step: LecDualStep) -> dict:
@@ -29,6 +31,9 @@ def build_engine_steps(workspace: Workspace, step: LecDualStep) -> dict:
             input_def=None,
             input_verilog=step.input.gate_verilog,
             input_db=step.input.golden_verilog,
+            step_directory=engine_step_directory(
+                require_path(step.directory, "dual LEC step directory"), engine.value
+            ),
         )
         for engine in LECEngineEnum.DUAL.spawn_engines
     }
@@ -43,13 +48,17 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> LecDualStep:
     """The aggregate step plus both engine step objects, in memory only.
 
     Path-only: no directories or configs are written here;
     build_step_space/build_step_config own the filesystem side effects.
     """
-    directory = Path(workspace.directory) / f"{step_name}_dual"
+    directory = step_directory or Path(workspace.directory) / new_step_directory(
+        step_name, "lec_dual"
+    )
     output_dir = directory / "output"
     gate_verilog = optional_path(input_verilog)
     golden_verilog = optional_path(input_db) or derive_golden_path(gate_verilog)
