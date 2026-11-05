@@ -143,6 +143,16 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
         )
     cfg = ctx.config if ctx.config is not None else load_run_config(ctx.project_dir)
     root, source = _resolve_root_source(cfg, ctx.project_dir)
+    if source == "repo-default" and not os.path.isdir(root):
+        return CommandResult.err(
+            [
+                error_record(
+                    "pdk_root_unavailable",
+                    reason="no PDK root is configured and the repository default is unavailable",
+                    set_root="ecc pdk set-root <path>",
+                )
+            ]
+        )
 
     pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
     records: list[dict[str, object]] = [
