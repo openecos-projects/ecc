@@ -12,11 +12,13 @@ from agent.engine import AgentEngineFlow
 from agent.operations import RuntimeOperationManager
 from agent.requests import CandidateRerunRequest, CandidateResumeRequest
 from chipcompiler.data import StateEnum, Workspace
+from chipcompiler.data.handshake import load_response
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow, load_workspace
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.step_execution import StepExecutionResult
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from test.data.handshake.helpers import answer
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 
@@ -425,6 +427,8 @@ def test_sigkill_step_worker_fails_candidate_with_evidence(monkeypatch, tmp_path
             )
         )
     )
+    # A success response from an earlier place run, copied into the candidate.
+    answer(tmp_path / "source", "place_dreamplace", "place-earlier")
     worker_pid_path = tmp_path / "step-worker.pid"
     _configure_worker_test(
         monkeypatch,
@@ -445,6 +449,9 @@ def test_sigkill_step_worker_fails_candidate_with_evidence(monkeypatch, tmp_path
     )
     assert json.loads(candidate_flow.read_text())["steps"][1]["state"] == "Incomplete"
     assert api.ecc_api.operations.operation_status(operation_id) == terminal
+    # The killed worker never answered, and the earlier response the candidate
+    # copied for place was removed before the worker was spawned.
+    assert load_response(candidate_flow.parent.parent / "place_dreamplace") is None
 
 
 @pytest.mark.real_step_worker
