@@ -8,6 +8,7 @@ import copy
 import json
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.step.results import results_digest
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.rtl2gds import build_flow_range
 
@@ -61,7 +62,11 @@ def test_flow_document_round_trip_preserves_unknown_fields(tmp_path):
     assert flow.load() is True
     assert flow.workspace.flow.data == document
     assert flow.save()
-    assert json.loads(flow_path.read_text(encoding="utf-8")) == document
+    # Saving stamps the digest of the step results the ledger was generated from.
+    assert json.loads(flow_path.read_text(encoding="utf-8")) == {
+        **document,
+        "step_results_digest": results_digest(document["steps"]),
+    }
 
 
 def test_non_list_steps_load_as_empty_without_rewriting_the_document(tmp_path):
