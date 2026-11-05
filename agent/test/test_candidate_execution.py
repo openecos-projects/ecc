@@ -312,6 +312,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent import tools as agent_tools
+from chipcompiler.engine import step_subprocess
 from chipcompiler.engine.flow import EngineFlow
 
 
@@ -320,6 +321,9 @@ def initialize_db(flow, step):
     return True
 
 EngineFlow.init_db_engine_for_step = initialize_db
+# The toy chain (place straight to Harden) carries none of the design data the
+# fake tools stand in for; step readiness is covered by its own tests.
+step_subprocess.missing_design_data = lambda *_args, **_kwargs: frozenset()
 
 
 def write_outputs(step):
