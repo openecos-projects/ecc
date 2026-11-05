@@ -2,7 +2,7 @@ from typing import Any, TypedDict
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
 from chipcompiler.data.checklist import workspace_checklist_path
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.step import STEP_DIRECTORIES, unindexed_step_directory
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
     read_bounded_json_object,
@@ -167,6 +167,9 @@ def _group_for(item: dict) -> str:
     category = str(item.get("category", ""))
     source = item.get("source", {})
     path = source.get("path", "") if isinstance(source, dict) else ""
+    # Step directories group by their unindexed name (19_sta_ecc -> sta_ecc).
+    head, separator, rest = str(path).partition("/")
+    path = f"{unindexed_step_directory(head)}{separator}{rest}"
     if category == "configuration" or path.startswith("config/"):
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):

@@ -430,3 +430,37 @@ class TestCollectWorkspaceReport:
         assert workspace is not None
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace
+
+
+def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
+    steps = [
+        {"name": name, "tool": tool, "state": "Success", "directory": directory}
+        for (name, tool), directory in directories.items()
+    ]
+    _write_json(root / "home" / "flow.json", {"steps": steps})
+    _write_json(root / "home" / "parameters.json", {"Design": "gcd", "PDK": "ics55"})
+    harden = directories[("Harden", "ecc")]
+    drc = directories[("drc", "ecc")]
+    _write_json(
+        root / harden / "analysis" / "qor_metrics.json",
+        {"metrics": [{"id": "Design Layout.die_area", "value": 0.42}]},
+    )
+    _write_json(root / drc / "analysis" / "qor_metrics.json", {"drc_count": 2})
+    return SimpleNamespace(
+        directory=str(root), name="gcd", flow=SimpleNamespace(data={}), config={}
+    )
+
+
+def test_indexed_step_directories_report_like_the_legacy_layout(tmp_path):
+    names = {("Synthesis", "yosys"): "Synthesis_yosys", ("drc", "ecc"): "drc_ecc"}
+    names[("Harden", "ecc")] = "Harden_ecc"
+    indexed = {key: f"{index:02d}_{name}" for index, (key, name) in enumerate(names.items(), 1)}
+
+    legacy_data = collect_workspace_report(_make_flow_workspace(tmp_path / "legacy", names))
+    indexed_data = collect_workspace_report(_make_flow_workspace(tmp_path / "indexed", indexed))
+
+    assert (indexed_data.physical, indexed_data.verification) == (
+        legacy_data.physical,
+        legacy_data.verification,
+    )
+    assert indexed_data.physical.die_area_um2 == 420000.0

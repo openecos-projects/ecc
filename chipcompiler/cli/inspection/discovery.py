@@ -8,6 +8,7 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.data.step import recorded_step_directory, unindexed_step_directory
 
 
 def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
@@ -85,7 +86,7 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     flow_dir_tokens = {}
     if isinstance(flow_data, dict):
         flow_dir_tokens = {
-            f"{step['name']}_{step['tool']}": normalize_step_name(step["name"])
+            recorded_step_directory(step): normalize_step_name(step["name"])
             for step in _safe_steps(flow_data)
             if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
         }
@@ -105,14 +106,14 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
 
 
 def step_dir_step_name(step_path: str) -> str | None:
-    entry = os.path.basename(step_path)
+    entry = unindexed_step_directory(os.path.basename(step_path))
     if "_" not in entry:
         return None
     return entry.rpartition("_")[0]
 
 
 def step_dir_tool(step_path: str) -> str | None:
-    entry = os.path.basename(step_path)
+    entry = unindexed_step_directory(os.path.basename(step_path))
     if "_" not in entry:
         return None
     return entry.rpartition("_")[2]

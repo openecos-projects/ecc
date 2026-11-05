@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_POWER_REPORT_FILENAME,
     STA_POWER_SUMMARY_FILENAME,
@@ -29,39 +28,30 @@ def power_step_path(feature_dir: str | Path) -> Path:
     return Path(feature_dir) / "powerAnalysis.step.json"
 
 
-def workspace_power_report_path(workspace_dir: str | Path) -> Path:
-    """Return the canonical native iPW report path for a workspace."""
-    return power_report_path(
-        Path(workspace_dir) / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value] / "data" / "pw"
-    )
+def native_power_report_path(power_step_directory: str | Path) -> Path:
+    """Return the native iPW report of a powerAnalysis step."""
+    return power_report_path(Path(power_step_directory) / "data" / "pw")
 
 
-def workspace_power_published_report_path(workspace_dir: str | Path) -> Path:
-    """Return the report published by the powerAnalysis step for a workspace."""
-    return (
-        Path(workspace_dir)
-        / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value]
-        / "report"
-        / f"{StepEnum.POWER_ANALYSIS.value}.rpt"
-    )
+def published_power_report_path(power_step_directory: str | Path) -> Path:
+    """Return the report a powerAnalysis step publishes."""
+    return Path(power_step_directory) / "report" / f"{StepEnum.POWER_ANALYSIS.value}.rpt"
 
 
-def workspace_power_report_source_path(workspace_dir: str | Path) -> Path:
+def power_report_source_path(power_step_directory: str | Path) -> Path:
     """Return the current power report, falling back to legacy iPW workspaces."""
-    published = workspace_power_published_report_path(workspace_dir)
-    return published if published.is_file() else workspace_power_report_path(workspace_dir)
+    published = published_power_report_path(power_step_directory)
+    return published if published.is_file() else native_power_report_path(power_step_directory)
 
 
-def workspace_power_summary_path(workspace_dir: str | Path) -> Path:
-    """Return the canonical ECC power-summary path for a workspace."""
-    return power_summary_path(
-        Path(workspace_dir) / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value] / "feature"
-    )
+def step_power_summary_path(power_step_directory: str | Path) -> Path:
+    """Return the ECC power summary of a powerAnalysis step."""
+    return power_summary_path(Path(power_step_directory) / "feature")
 
 
-def workspace_instance_power_path(workspace_dir: str | Path) -> Path:
+def instance_power_path(power_step_directory: str | Path) -> Path:
     """Return iPW's per-instance power TSV consumed by iEMIR."""
-    return workspace_power_report_path(workspace_dir).with_name("instance_power.tsv")
+    return native_power_report_path(power_step_directory).with_name("instance_power.tsv")
 
 
 def discard_power_artifacts(

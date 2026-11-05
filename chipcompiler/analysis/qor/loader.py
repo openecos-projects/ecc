@@ -12,8 +12,8 @@ from pathlib import Path
 
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.tools.ecc.power_artifacts import power_step_path, workspace_power_summary_path
+from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.tools.ecc.power_artifacts import power_step_path, step_power_summary_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
@@ -25,8 +25,6 @@ from chipcompiler.tools.ecc.sta_qor import (
 from chipcompiler.utility.json import JsonObject, json_read
 
 _ROLE_PRIORITY = {"final": 0, "gate": 1, "trend": 2, "none": 3}
-
-_STA_FEATURE_DIR = STEP_DIRECTORIES[StepEnum.STA.value] + "/feature"
 
 
 @dataclasses.dataclass
@@ -88,7 +86,7 @@ class QorInputs:
         return self.flow_states.get(step_value)
 
 
-def _flow_states(workspace, workspace_root: Path) -> dict:
+def _flow_records(workspace, workspace_root: Path) -> list[dict]:
     flow = getattr(workspace, "flow", None)
     data = getattr(flow, "data", None)
     if not isinstance(data, dict) or not data:
@@ -96,12 +94,16 @@ def _flow_states(workspace, workspace_root: Path) -> dict:
         # source of truth (same fallback the signoff collector uses).
         data = json_read(workspace_root / "home" / "flow.json")
     steps = data.get("steps") if isinstance(data, dict) else None
+    if not isinstance(steps, list):
+        return []
+    return [raw for raw in steps if isinstance(raw, dict) and isinstance(raw.get("name"), str)]
+
+
+def _flow_states(records: list[dict]) -> dict:
     states = {}
-    if isinstance(steps, list):
-        for raw in steps:
-            if isinstance(raw, dict) and isinstance(raw.get("name"), str):
-                state = raw.get("state")
-                states[raw["name"]] = state if isinstance(state, str) else ""
+    for raw in records:
+        state = raw.get("state")
+        states[raw["name"]] = state if isinstance(state, str) else ""
     return states
 
 
@@ -163,11 +165,11 @@ def _select_metrics(step_payloads: list) -> dict:
     return {metric_id: rank_record[1] for metric_id, rank_record in selected.items()}
 
 
-def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[list, bool]:
+def _corner_slack(workspace, directories: StepDirectories, flow_states: dict) -> tuple[list, bool]:
     if flow_states.get(StepEnum.STA.value) != StateEnum.Success.value:
         return [], False
     corners = []
-    feature_root = workspace_root / _STA_FEATURE_DIR
+    feature_root = directories.path(StepEnum.STA.value) / "feature"
     if not feature_root.is_dir():
         return corners, False
 
@@ -199,11 +201,12 @@ def _corner_slack(workspace, workspace_root: Path, flow_states: dict) -> tuple[l
     return corners, setup_only
 
 
-def _power_summary(workspace, workspace_root: Path, flow_states: dict):
+def _power_summary(workspace, directories: StepDirectories, flow_states: dict):
     """Select signoff power from the current step artifact, with fallbacks."""
     power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
     if power_state == StateEnum.Success.value:
-        feature_dir = workspace_root / STEP_DIRECTORIES[StepEnum.POWER_ANALYSIS.value] / "feature"
+        power_directory = directories.path(StepEnum.POWER_ANALYSIS.value)
+        feature_dir = power_directory / "feature"
         path = power_step_path(feature_dir)
         summary = read_power_step_summary_json(path)
         if summary is not None:
@@ -215,7 +218,7 @@ def _power_summary(workspace, workspace_root: Path, flow_states: dict):
             )
 
         # Keep pre-step-artifact workspaces readable while they are migrated.
-        path = workspace_power_summary_path(workspace_root)
+        path = step_power_summary_path(power_directory)
         summary = read_sta_power_summary_json(path)
         if summary is not None:
             return (
@@ -232,7 +235,7 @@ def _power_summary(workspace, workspace_root: Path, flow_states: dict):
         StepEnum.POWER_ANALYSIS.value not in flow_states
         and flow_states.get(StepEnum.STA.value) == StateEnum.Success.value
     ):
-        feature_root = workspace_root / _STA_FEATURE_DIR
+        feature_root = directories.path(StepEnum.STA.value) / "feature"
         totals = []
         configured = configured_sta_artifact_directories(workspace, feature_root)
         if configured:
@@ -259,8 +262,7 @@ def _power_summary(workspace, workspace_root: Path, flow_states: dict):
 
     if flow_states.get(StepEnum.SYNTHESIS.value) == StateEnum.Success.value:
         path = (
-            workspace_root
-            / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+            directories.path(StepEnum.SYNTHESIS.value)
             / "feature"
             / POST_SYNTHESIS_STA_CORNER
             / STA_POWER_SUMMARY_FILENAME
@@ -315,7 +317,9 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
     warnings: list = []
     parameters = _parameters(workspace, workspace_root)
     tclk_ns, profile, power_budget_uw = _resolve_parameters(parameters, warnings)
-    flow_states = _flow_states(workspace, workspace_root)
+    records = _flow_records(workspace, workspace_root)
+    flow_states = _flow_states(records)
+    directories = StepDirectories.from_records(workspace_root, records)
 
     step_payloads: list = []
     analyzed_steps: list = []
@@ -324,8 +328,7 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
     for step_value in SCORED_STEP_VALUES:
         if flow_states.get(step_value) != StateEnum.Success.value:
             continue
-        directory = STEP_DIRECTORIES[step_value]
-        payload = json_read(workspace_root / directory / "analysis" / "qor_metrics.json")
+        payload = json_read(directories.path(step_value) / "analysis" / "qor_metrics.json")
         records = _payload_metrics(payload)
         if payload is None or not records:
             parse_failures += 1
@@ -344,9 +347,9 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
         return record.value if record is not None else None
 
     power_total_uw, power_source, power_source_kind, power_corner = _power_summary(
-        workspace, workspace_root, flow_states
+        workspace, directories, flow_states
     )
-    corners, sta_setup_only = _corner_slack(workspace, workspace_root, flow_states)
+    corners, sta_setup_only = _corner_slack(workspace, directories, flow_states)
 
     return QorInputs(
         design=design,
