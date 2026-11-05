@@ -22,7 +22,11 @@ from chipcompiler.data import (
     default_flow_step_category,
     log_flow,
 )
-from chipcompiler.data.step import new_step_directory, recorded_step_directory
+from chipcompiler.data.step import (
+    new_step_directory,
+    next_step_index,
+    recorded_step_directory,
+)
 from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
@@ -116,7 +120,8 @@ class EngineFlow:
         from chipcompiler.rtl2gds import build_rtl2gds_flow
 
         steps = [
-            self.init_flow_step(step, tool, state) for step, tool, state in build_rtl2gds_flow()
+            self.init_flow_step(step, tool, state, index=index)
+            for index, (step, tool, state) in enumerate(build_rtl2gds_flow(), start=1)
         ]
         # Persist the golden netlist on the LEC step so reloads do not have
         # to guess roles from the golden_* filename convention.
@@ -141,7 +146,10 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
+        *,
+        index: int | None = None,
     ) -> FlowStepEntry:
+        """A new ledger record; *index* prefixes its step directory when given."""
         step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         if (
@@ -155,7 +163,7 @@ class EngineFlow:
             "tool": tool,  # eda tool name
             "category": category_value,
             "state": state_value,  # step state
-            "directory": new_step_directory(step_value, tool),
+            "directory": new_step_directory(step_value, tool, index=index),
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
             "info": info or {},  # step additional infomation
@@ -176,7 +184,13 @@ class EngineFlow:
         steps = self.workspace.flow.data.get("steps", [])
         steps.append(
             self.init_flow_step(
-                step, tool, state, info=info, category=category, input_step=input_step
+                step,
+                tool,
+                state,
+                info=info,
+                category=category,
+                input_step=input_step,
+                index=next_step_index(steps),
             )
         )
 

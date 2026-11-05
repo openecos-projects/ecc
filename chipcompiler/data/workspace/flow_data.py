@@ -103,8 +103,9 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
                 name.value if isinstance(name, StepBaseEnum) else str(name),
                 str(tool),
                 state.value if isinstance(state, StateEnum) else str(state),
+                index=index,
             )
-            for name, tool, state in selected
+            for index, (name, tool, state) in enumerate(selected, start=1)
         ],
     }
 
@@ -146,13 +147,13 @@ def _normalize_flow_step_name(value) -> str:
     return normalize_flow_step(value)
 
 
-def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
+def _flow_step_template(name: str, tool: str, state: str, *, index: int | None) -> FlowStepEntry:
     return {
         "name": name,
         "tool": tool,
         "category": default_flow_step_category(name).value,
         "state": state,
-        "directory": new_step_directory(name, tool),
+        "directory": new_step_directory(name, tool, index=index),
         "runtime": "",
         "peak memory (mb)": 0,
         "info": {},

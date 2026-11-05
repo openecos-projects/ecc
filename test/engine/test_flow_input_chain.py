@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.data.workspace.flow_types import FlowDocument
 from chipcompiler.engine.flow import EngineFlow
@@ -51,7 +52,16 @@ def _legacy_ledger() -> FlowDocument:
     return data
 
 
-def _build(workspace, step_name, tool, input_def=None, input_verilog=None, input_db=None):
+def _build(
+    workspace,
+    step_name,
+    tool,
+    input_def=None,
+    input_verilog=None,
+    input_db=None,
+    *,
+    step_directory=None,
+):
     builder = build_kepler_step if tool in {"kepler_formal", "yosys_lec"} else build_ecc_step
     return builder(
         workspace=workspace,
@@ -59,15 +69,23 @@ def _build(workspace, step_name, tool, input_def=None, input_verilog=None, input
         input_def=input_def,
         input_verilog=input_verilog,
         input_db=input_db,
+        step_directory=step_directory,
+    )
+
+
+def _built(workspace, record):
+    """The step *record* builds, in the directory the ledger records for it."""
+    return _build(
+        workspace,
+        record["name"],
+        record["tool"],
+        step_directory=workspace.directory / recorded_step_directory(record),
     )
 
 
 def _output_paths(workspace, ledger) -> dict[str, tuple[object, object]]:
     return {
-        step["name"]: (
-            _build(workspace, step["name"], step["tool"]).output.def_,
-            _build(workspace, step["name"], step["tool"]).output.verilog,
-        )
+        step["name"]: (_built(workspace, step).output.def_, _built(workspace, step).output.verilog)
         for step in ledger.get("steps", [])
     }
 
@@ -95,7 +113,15 @@ def _recorded_sources(workspace, ledger, monkeypatch):
 
     def create_step(workspace, step, eda, input_def, input_verilog, input_db=None, **kwargs):
         recorded[step] = (input_def, input_verilog)
-        return _build(workspace, step, eda, input_def, input_verilog, input_db)
+        return _build(
+            workspace,
+            step,
+            eda,
+            input_def,
+            input_verilog,
+            input_db,
+            step_directory=kwargs.get("step_directory"),
+        )
 
     monkeypatch.setattr(tools, "create_step", create_step)
     flow = EngineFlow(workspace=workspace)
@@ -306,10 +332,8 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
 
     # The worker took its input from req.json: the ledger it reads is empty,
     # stays read-only and is never written.
-    assert executed == {
-        "name": "RCX",
-        "input_def": _build(workspace, "route", "ecc").output.def_,
-    }
+    route = next(record for record in ledger.get("steps", []) if record["name"] == "route")
+    assert executed == {"name": "RCX", "input_def": _built(workspace, route).output.def_}
     assert workspace.flow.read_only is True
     assert flow_path.read_text(encoding="utf-8") == json.dumps({"steps": []})
 
