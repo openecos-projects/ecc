@@ -13,7 +13,7 @@ from chipcompiler.data.workspace.step_handshake import (
     UpstreamResponse,
     write_response,
 )
-from chipcompiler.engine.step_response import build_step_response
+from chipcompiler.engine.step_response import build_step_response, missing_design_data
 
 _LEGALIZED = frozenset(
     {
@@ -137,3 +137,40 @@ def test_synthesis_publishes_the_golden_netlist(tmp_path):
     response = build_step_response(request, step, succeeded=True)
 
     assert response.outputs == {AnalysisData.GOLDEN_NETLIST: (golden,)}
+
+
+def test_routing_after_cts_without_legalization_is_missing_a_legal_placement(tmp_path):
+    clock_tree = (_LEGALIZED - {DesignState.LEGAL}) | {DesignState.CLOCK_TREE}
+    _publish(tmp_path, "legalization_dreamplace", clock_tree)
+    request = _request(tmp_path, StepEnum.ROUTING.value, _route_upstream("attempt-legal"))
+
+    missing = missing_design_data(request, EccStep(name="route"), declared_spef=None)
+
+    assert missing == frozenset({DesignState.LEGAL})
+
+
+def test_parasitics_come_from_rcx_or_a_declared_spef(tmp_path):
+    filled = {DesignState.FILLED: UpstreamResponse("filler_ecc", None)}
+    without_rcx = _request(tmp_path, StepEnum.STA.value, filled)
+    with_rcx = _request(
+        tmp_path,
+        StepEnum.STA.value,
+        {**filled, AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+    )
+    step = EccStep(name="sta")
+
+    assert [
+        missing_design_data(without_rcx, step, declared_spef=None),
+        missing_design_data(without_rcx, step, declared_spef=tmp_path / "gcd.spef"),
+        missing_design_data(with_rcx, step, declared_spef=None),
+    ] == [frozenset({AnalysisData.PARASITICS}), frozenset(), frozenset()]
+
+
+def test_emir_needs_power_from_an_upstream_step(tmp_path):
+    request = _request(
+        tmp_path, StepEnum.EMIR.value, {DesignState.FILLED: UpstreamResponse("filler_ecc", None)}
+    )
+
+    missing = missing_design_data(request, EccStep(name="emir"), declared_spef=None)
+
+    assert missing == frozenset({AnalysisData.POWER})
