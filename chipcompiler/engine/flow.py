@@ -3,6 +3,7 @@
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from pathlib import Path
 from threading import RLock
@@ -32,6 +33,7 @@ from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
+    analysis_wave_end,
     explicit_input_step,
     flow_category,
     ledger_category,
@@ -547,14 +549,11 @@ class EngineFlow:
         while index < len(self.workspace_steps):
             workspace_step = self.workspace_steps[index]
             if self._can_parallelize_checker_batch(workspace_step, index, observer):
-                batch_end = index
-                while batch_end < len(self.workspace_steps) and self._is_checker_batch_step(
-                    self.workspace_steps[batch_end]
+                batch_end = self._analysis_wave_end(index)
+                states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
+                for batch_step, state in zip(
+                    self.workspace_steps[index:batch_end], states, strict=True
                 ):
-                    batch_end += 1
-                batch_steps = self.workspace_steps[index:batch_end]
-                states = self._run_checker_batch(batch_steps, rerun=rerun, observer=observer)
-                for batch_step, state in zip(batch_steps, states, strict=True):
                     log_flow(workspace=self.workspace)
                     if state not in {StateEnum.Success, StateEnum.Skipped} and not (
                         batch_step.name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
@@ -620,18 +619,36 @@ class EngineFlow:
             return False
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
-    def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
-        try:
-            return self._is_checker_step(workspace_step)
-        except ValueError:
-            return False
-
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        return (
-            index > 0
-            and self._is_checker_batch_step(workspace_step)
-            and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
+        """Whether the analysis wave starting at *index* runs in parallel.
+
+        Runs observed for progress (the GUI) stay sequential.
+        """
+        return observer is None and self._analysis_wave_end(index) - index > 1
+
+    def _analysis_wave_end(self, index: int) -> int:
+        """The end (exclusive) of the analysis wave of created steps at *index*."""
+        records = self.workspace.flow.steps()
+        step = self.workspace_steps[index]
+        start = next(
+            (
+                position
+                for position, record in enumerate(records)
+                if record.get("name") == step.name and record.get("tool") == step.tool
+            ),
+            None,
         )
+        if start is None:
+            return index + 1
+        end = index
+        for record in records[start : analysis_wave_end(records, start)]:
+            if end >= len(self.workspace_steps):
+                break
+            created = self.workspace_steps[end]
+            if (created.name, created.tool) != (record.get("name"), record.get("tool")):
+                break
+            end += 1
+        return max(end, index + 1)
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
         available_mb = read_memory_status().available_mb
@@ -713,11 +730,7 @@ class EngineFlow:
                 return str(prerequisite.get("name") or "previous step")
         return None
 
-    def _run_checker_batch(
-        self, steps: list[WorkspaceStep], *, rerun: bool, observer=None
-    ) -> list[StateEnum]:
-        from chipcompiler.engine.checker_schedule import run_checker_dag
-
+    def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
         workers = self._checker_parallelism(steps)
         self.workspace.logger.info(
             "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
@@ -725,13 +738,11 @@ class EngineFlow:
             workers,
             read_memory_status().available_mb,
         )
-        return run_checker_dag(
-            self,
-            steps,
-            rerun=rerun,
-            observer=observer,
-            workers=workers,
-        )
+        if workers == 1:
+            return [self.run_step(step, rerun=rerun) for step in steps]
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="checker") as executor:
+            futures = [executor.submit(self.run_step, step, rerun=rerun) for step in steps]
+            return [future.result() for future in futures]
 
     def run_step(
         self,

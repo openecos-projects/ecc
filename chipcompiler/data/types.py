@@ -145,8 +145,7 @@ class FlowStepPolicy:
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
     ``input_source`` declares the default edge; an explicit ledger
-    ``input_step`` still overrides it. ``depends_on`` adds artifact-producing
-    predecessors that must finish before a concurrent checker starts.
+    ``input_step`` still overrides it.
 
     ``requires`` must be present for the step to run; without an item of
     ``uses`` the step still runs but its results are degraded (for example
@@ -157,7 +156,6 @@ class FlowStepPolicy:
     category: FlowStepCategory
     input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
-    depends_on: tuple[str, ...] = ()
     _: KW_ONLY
     requires: frozenset[DesignData] = frozenset()
     uses: frozenset[DesignData] = frozenset()
@@ -279,7 +277,6 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         FlowInputSource.FILLER,
         requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
         uses=_data(DesignState.CLOCK_TREE),
-        depends_on=(StepEnum.RCX.value,),
     ),
     StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(
         FlowStepCategory.CHECKER,
@@ -287,13 +284,11 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
         uses=_data(DesignState.CLOCK_TREE),
         provides=_data(AnalysisData.POWER),
-        depends_on=(StepEnum.RCX.value,),
     ),
     StepEnum.EMIR.value: FlowStepPolicy(
         FlowStepCategory.CHECKER,
         FlowInputSource.FILLER,
         advisory=True,
-        depends_on=(StepEnum.POWER_ANALYSIS.value,),
         requires=_data(DesignState.FILLED, DesignState.PDN, AnalysisData.POWER),
         uses=_data(AnalysisData.PARASITICS),
     ),
