@@ -30,6 +30,29 @@ def _initialize_worker_db(workspace, workspace_step):
     return flow.engine_db
 
 
+def _write_request(workspace, workspace_step, attempt_id, layout_image):
+    """Write req.json as the real launcher does; None for test steps outside a workspace."""
+    from pathlib import Path
+
+    from chipcompiler.data.workspace.step_handshake import clear_response, write_request
+    from chipcompiler.engine.step_request import build_step_request
+
+    flow = getattr(workspace, "flow", None)
+    try:
+        request = build_step_request(
+            Path(workspace.directory),
+            flow.steps() if flow is not None else [],
+            workspace_step,
+            attempt_id=attempt_id,
+            layout_image=layout_image,
+        )
+    except (AttributeError, TypeError, ValueError):
+        return None
+    write_request(request)
+    clear_response(request.directory)
+    return request
+
+
 def execute_in_process(
     workspace,
     workspace_step,
@@ -44,9 +67,11 @@ def execute_in_process(
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
     log_file = _prepare_log_file(workspace_step)
     pid = os.getpid()
+    attempt_id = new_attempt_id()
+    request = _write_request(workspace, workspace_step, attempt_id, layout_image)
     resources = start_observation(
         pid,
-        attempt_id=new_attempt_id(),
+        attempt_id=attempt_id,
         isolated=False,
         step=workspace_step.name,
         tool=workspace_step.tool,
@@ -83,6 +108,14 @@ def execute_in_process(
                 else:
                     from chipcompiler.tools import run_step
 
+                if request is not None:
+                    from chipcompiler.engine.step_response import missing_design_data
+
+                    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
+                    if missing := missing_design_data(
+                        request, workspace_step, declared_spef=declared_spef
+                    ):
+                        raise RuntimeError(f"{step_tag} cannot run: missing {sorted(missing)}")
                 if engine_db is None:
                     engine_db = _initialize_worker_db(workspace, workspace_step)
                 if engine_db is None:
@@ -98,6 +131,14 @@ def execute_in_process(
                 workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
                 if result is not True:
                     step_error = f"{step_tag} reported failure (run_step returned {result!r})."
+                if request is not None:
+                    from chipcompiler.data.workspace.step_handshake import write_response
+                    from chipcompiler.engine.step_response import build_step_response
+
+                    write_response(
+                        request.directory,
+                        build_step_response(request, workspace_step, succeeded=step_error is None),
+                    )
             except (Exception, SystemExit) as exc:
                 step_error = record_tool_failure(workspace.logger, step_tag, exc)
     except (Exception, SystemExit) as exc:
