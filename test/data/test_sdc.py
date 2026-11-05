@@ -76,9 +76,18 @@ proc foreach_in_collection {variable objects body} {
 }
 proc get_ports {args} {
     if {[lsearch -exact $args -filter] >= 0} {
-        if {[lindex $args 2] == "direction == in"} {return [all_inputs]}
-        if {[lindex $args 2] == "direction == out"} {return [all_outputs]}
-        error "unhandled port filter"
+        # Mirror OpenSTA: the direction property is input/output/tristate/
+        # bidirect/internal/ground/power/well, and an unknown value matches
+        # nothing. Aliasing Cadence-style in/out here would hide the bug.
+        set expr [lindex $args 2]
+        set matches {}
+        foreach port [all_inputs] {
+            if {$expr eq "direction == input"} {lappend matches $port}
+        }
+        foreach port [all_outputs] {
+            if {$expr eq "direction == output"} {lappend matches $port}
+        }
+        return $matches
     }
     set patterns [lindex $args end]
     if {![llength $::explicit_ports]} {return $patterns}

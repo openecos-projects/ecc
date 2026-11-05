@@ -295,9 +295,12 @@ def _core_delays(clock_ports: str) -> list[str]:
     return [
         "",
         "# 4.2 IO delay budget",
-        "set data_inputs [remove_from_collection \\",
-        f"    [get_ports -quiet -filter {{direction == in}} *] {clock_ports}]",
-        "set data_outputs [get_ports -quiet -filter {direction == out} *]",
+        # OpenSTA spells the `direction` property input/output/tristate/bidirect/...;
+        # Cadence-style `in`/`out` matches nothing, and an empty filter result is
+        # silent, so every IO delay below was applied to an empty collection.
+        # all_inputs/all_outputs also keep the multicycle budget on the same ports.
+        f"set data_inputs [remove_from_collection [all_inputs] {clock_ports}]",
+        "set data_outputs [all_outputs]",
         "",
         "if {[llength $data_inputs]} {",
         "    set_input_delay [expr {$clk_period * 0.6}] -max \\",
