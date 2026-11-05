@@ -353,6 +353,44 @@ class TestRunOnly:
         assert not stale_place.exists()
         assert keep_cts.read_text(encoding="utf-8") == "old"
 
+    @pytest.mark.parametrize(
+        ("selected", "expected"),
+        [
+            # sta read RCX's parasitics; Harden ran before steps answered.
+            ("RCX", ["Success", "Success", "Success", "Unstart", "Unstart"]),
+            # Nothing that answered was built on drc.
+            ("drc", ["Success", "Success", "Success", "Success", "Unstart"]),
+        ],
+    )
+    def test_force_invalidates_only_later_steps_built_on_the_selected_step(
+        self, monkeypatch, tmp_path, selected, expected
+    ):
+        from chipcompiler.data.handshake import load_response
+        from chipcompiler.data.types import AnalysisData
+        from test.data.handshake.helpers import answer
+
+        names = ("filler", "drc", "RCX", "sta", "Harden")
+        flow = _make_run_flow(tmp_path, [(name, "Success") for name in names])
+        filler = ("filler_ecc", "filler-1")
+        answer(tmp_path, "filler_ecc", "filler-1")
+        answer(tmp_path, "drc_ecc", "drc-1", filler)
+        answer(tmp_path, "RCX_ecc", "rcx-1", filler)
+        answer(
+            tmp_path,
+            "sta_ecc",
+            "sta-1",
+            filler,
+            upstream={AnalysisData.PARASITICS: ("RCX_ecc", "rcx-1")},
+        )
+        _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_only(flow, selected, force=True)
+
+        assert result.executed == (selected,)
+        assert _flow_states(flow) == expected
+        # The rerun step's previous response was removed before it ran.
+        assert load_response(tmp_path / f"{selected}_ecc") is None
+
     def test_alias_runs_persisted_canonical_step(self, monkeypatch, tmp_path):
         flow = _make_run_flow(tmp_path, [("Synthesis", "Success")])
         calls = _fake_execution(flow, monkeypatch)
