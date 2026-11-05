@@ -305,7 +305,6 @@ def run_step_worker(
 ) -> bool:
     result["schema_version"] = RESULT_SCHEMA_VERSION
     import chipcompiler.data as data_api
-    from chipcompiler.data.workspace import Flow
 
     request = load_request(Path(payload["step_directory"]))
     if request.attempt_id != payload["attempt_id"]:
@@ -313,9 +312,10 @@ def run_step_worker(
     workspace = data_api.load_workspace(directory=request.workspace_directory, read_only=True)
     if workspace is None:
         raise RuntimeError("load workspace failed")
-    # The step runs from its request alone; the shared ledger stays detached so
-    # nothing in the worker can depend on it.
-    workspace.flow = Flow(read_only=True)
+    # The step's inputs, upstream steps and position in the flow come only from
+    # req.json. The ledger stays loaded read-only for the checklist and QoR
+    # evidence code, which still reads step states from it.
+    workspace.flow.read_only = True
     step = _build_requested_step(workspace, request)
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
     if missing := missing_design_data(request, step, declared_spef=declared_spef):

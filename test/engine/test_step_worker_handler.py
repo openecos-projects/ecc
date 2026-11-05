@@ -205,8 +205,7 @@ def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
     assert result["done"] is True
     assert result["ok"] is False
     assert "read-only" in result["error"]
-    # The worker's ledger is detached: read-only and pointing at no file.
-    assert (workspace.flow.read_only, workspace.flow.path) == (True, None)
+    assert workspace.flow.read_only is True
     assert ledger_path.read_bytes() == before
 
 
