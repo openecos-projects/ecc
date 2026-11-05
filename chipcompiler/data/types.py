@@ -4,7 +4,7 @@ Zero IO and zero chipcompiler-internal imports: this module is the
 dependency-free root of the data layer's type vocabulary.
 """
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from enum import StrEnum
 from typing import Final
 
@@ -88,19 +88,85 @@ class FlowInputSource(StrEnum):
     FILLER = "filler"
 
 
+class DesignState(StrEnum):
+    """A milestone the design database has reached.
+
+    Design states travel with the design: a step that changes the design passes
+    on every state it received and adds the ones it provides.
+    """
+
+    RTL = "rtl"
+    NETLIST = "netlist"
+    FLOORPLAN = "floorplan"
+    MACROS_PLACED = "macros_placed"
+    PDN = "pdn"
+    PLACED = "placed"
+    CLOCK_TREE = "clock_tree"
+    #: Owned by :class:`PlacementLegality`; never listed in ``provides``.
+    LEGAL = "legal"
+    ROUTED = "routed"
+    FILLED = "filled"
+
+
+class AnalysisData(StrEnum):
+    """Data a step produces beside the design database.
+
+    Once produced, it stays available to every later step in the flow.
+    """
+
+    GOLDEN_NETLIST = "golden_netlist"
+    PARASITICS = "parasitics"
+    POWER = "power"
+
+
+DesignData = DesignState | AnalysisData
+
+
+class PlacementLegality(StrEnum):
+    """What a step does to the legality of the standard-cell placement."""
+
+    #: Does not move, resize or insert placed cells.
+    UNCHANGED = "unchanged"
+    #: Moves, resizes or inserts cells without legalizing them; a legalizing
+    #: step must run before routing.
+    NEEDS_LEGALIZATION = "needs_legalization"
+    #: Leaves a legal placement.
+    LEGALIZED = "legalized"
+
+
+def _data(*items: DesignData) -> frozenset[DesignData]:
+    return frozenset(items)
+
+
 @dataclass(frozen=True)
 class FlowStepPolicy:
-    """The flow's knowledge about one step: category and input source.
+    """The flow's knowledge about one step: category, inputs and design data.
 
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
     ``input_source`` declares the default edge; an explicit ledger
     ``input_step`` still overrides it.
+
+    ``requires`` must be present for the step to run; without an item of
+    ``uses`` the step still runs but its results are degraded (for example
+    routing without a clock tree). ``provides`` is what the step adds, and
+    ``legality`` alone decides whether the placement is legal afterwards.
     """
 
     category: FlowStepCategory
     input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
+    _: KW_ONLY
+    requires: frozenset[DesignData] = frozenset()
+    uses: frozenset[DesignData] = frozenset()
+    provides: frozenset[DesignData] = frozenset()
+    legality: PlacementLegality = PlacementLegality.UNCHANGED
+
+    def __post_init__(self) -> None:
+        if DesignState.LEGAL in self.provides:
+            raise ValueError("placement legality is declared by `legality`, not `provides`")
+        if overlap := self.requires & self.uses:
+            raise ValueError(f"design data both required and optional: {sorted(overlap)}")
 
 
 # Every flow step is declared here; a step missing from this table fails the
@@ -108,40 +174,142 @@ class FlowStepPolicy:
 FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.RTL2GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.INIT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.SYNTHESIS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SYNTHESIS.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.RTL),
+        provides=_data(DesignState.NETLIST, AnalysisData.GOLDEN_NETLIST),
+    ),
     StepEnum.FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
-    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
+    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.NETLIST),
+        provides=_data(DesignState.FLOORPLAN),
+    ),
+    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        provides=_data(DesignState.MACROS_PLACED),
+    ),
+    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        uses=_data(DesignState.MACROS_PLACED),
+        provides=_data(DesignState.PDN),
+    ),
+    StepEnum.PREPLACE.value: FlowStepPolicy(
+        FlowStepCategory.PNR, requires=_data(DesignState.FLOORPLAN)
+    ),
+    StepEnum.PLACEMENT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        provides=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    # Legacy spelling of diff_opt; both finish with a legalizing placement pass.
+    StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    StepEnum.DIFF_SIZING.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    # Inserted clock buffers are left for the legalization step.
+    StepEnum.CTS.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        provides=_data(DesignState.CLOCK_TREE),
+        legality=PlacementLegality.NEEDS_LEGALIZATION,
+    ),
+    StepEnum.LEGALIZATION.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    # Routing without a clock tree runs on ideal clocks.
+    StepEnum.ROUTING.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.LEGAL),
+        uses=_data(DesignState.CLOCK_TREE),
+        provides=_data(DesignState.ROUTED),
+    ),
+    StepEnum.FILLER.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.ROUTED),
+        provides=_data(DesignState.FILLED),
+    ),
+    StepEnum.LVS.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.CHECKER_BATCH,
+        requires=_data(DesignState.FILLED),
+    ),
+    StepEnum.DRC.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.CHECKER_BATCH,
+        requires=_data(DesignState.FILLED),
+    ),
     StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        advisory=True,
+        requires=_data(DesignState.FILLED),
     ),
     SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.GOLDEN_NETLIST),
     ),
-    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.RCX.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED),
+        provides=_data(AnalysisData.PARASITICS),
+    ),
+    StepEnum.STA.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+    ),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+        provides=_data(AnalysisData.POWER),
+    ),
     StepEnum.EMIR.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        advisory=True,
+        requires=_data(DesignState.FILLED, DesignState.PDN, AnalysisData.POWER),
     ),
-    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR, FlowInputSource.FILLER),
+    StepEnum.HARDEN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+    ),
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.LEC.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.LEC.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.NETLIST, AnalysisData.GOLDEN_NETLIST),
+    ),
+    # Sizing legalizes its own changes before it finishes.
+    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
     StepEnum.DEFVIEW.value: FlowStepPolicy(FlowStepCategory.PNR),
 }
 
