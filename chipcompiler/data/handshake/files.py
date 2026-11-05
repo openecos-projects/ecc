@@ -105,6 +105,10 @@ def _link_json(source: UpstreamResponse) -> dict[str, object]:
     return {"step_directory": source.step_directory, "attempt_id": source.attempt_id}
 
 
+def _optional_link_json(source: UpstreamResponse | None) -> dict[str, object] | None:
+    return None if source is None else _link_json(source)
+
+
 def _upstream_json(upstream: Mapping[DesignData, UpstreamResponse]) -> dict[str, object]:
     return {str(item): _link_json(source) for item, source in sorted(upstream.items())}
 
@@ -122,9 +126,7 @@ def _request_json(request: StepRequest) -> dict[str, object]:
             "golden_verilog": _path_json(request.inputs.golden_verilog),
             "spef": [str(path) for path in request.inputs.spef],
         },
-        "design_source": (
-            None if request.design_source is None else _link_json(request.design_source)
-        ),
+        "design_source": _optional_link_json(request.design_source),
         "upstream": _upstream_json(request.upstream),
         "final_step": request.final_step,
         "layout_image": request.layout_image,
@@ -144,6 +146,7 @@ def _response_json(response: StepResponse) -> dict[str, object]:
             str(item): [str(path) for path in paths]
             for item, paths in sorted(response.outputs.items())
         },
+        "design_source": _optional_link_json(response.design_source),
         "upstream": _upstream_json(response.upstream),
         "warnings": sorted(str(item) for item in response.warnings),
     }
@@ -242,6 +245,11 @@ def _link(value: object, key: str) -> UpstreamResponse:
     return UpstreamResponse(step_directory=_step_directory(data), attempt_id=attempt_id)
 
 
+def _optional_link(data: Mapping[str, object], key: str) -> UpstreamResponse | None:
+    value = _field(data, key)
+    return None if value is None else _link(value, key)
+
+
 def _upstream(value: object) -> Mapping[DesignData, UpstreamResponse]:
     upstream = {
         _design_data(name): _link(source, f"upstream.{name}")
@@ -266,11 +274,7 @@ def _request_from_json(data: Mapping[str, object]) -> StepRequest:
             golden_verilog=_optional_path(inputs, "golden_verilog"),
             spef=tuple(Path(path) for path in _strings(_field(inputs, "spef"), "spef")),
         ),
-        design_source=(
-            None
-            if (design_source := _field(data, "design_source")) is None
-            else _link(design_source, "design_source")
-        ),
+        design_source=_optional_link(data, "design_source"),
         upstream=_upstream(_field(data, "upstream")),
         final_step=_flag(data, "final_step"),
         layout_image=_flag(data, "layout_image"),
@@ -302,6 +306,7 @@ def _response_from_json(data: Mapping[str, object]) -> StepResponse:
         design=_design_files(_field(data, "design")),
         design_states=frozenset(states),
         outputs=MappingProxyType(outputs),
+        design_source=_optional_link(data, "design_source"),
         upstream=_upstream(_field(data, "upstream")),
         warnings=frozenset(
             _design_data(name) for name in _strings(_field(data, "warnings"), "warnings")

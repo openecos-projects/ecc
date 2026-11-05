@@ -59,6 +59,7 @@ def _response(workspace: Path) -> StepResponse:
         design=DesignFiles(def_=workspace / "RCX_ecc/output/gcd_RCX.def.gz"),
         design_states=frozenset({DesignState.ROUTED, DesignState.FILLED}),
         outputs={AnalysisData.PARASITICS: (workspace / "RCX_ecc/output/gcd_rcworst_25C.spef",)},
+        design_source=UpstreamResponse("filler_ecc", "attempt-filler"),
         upstream={DesignState.FILLED: UpstreamResponse("filler_ecc", "attempt-filler")},
         warnings=frozenset({DesignState.CLOCK_TREE}),
     )
