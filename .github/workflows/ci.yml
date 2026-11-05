@@ -771,7 +771,7 @@ jobs:
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
 
   e2e-packaged-flow:
-    name: E2E Packaged Flow (${{ matrix.design }})
+    name: E2E (${{ matrix.design }})
     needs: [verify-e2e-deps, e2e-designs]
     strategy:
       fail-fast: false
