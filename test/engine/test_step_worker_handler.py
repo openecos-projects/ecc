@@ -387,3 +387,19 @@ def test_worker_publishes_its_response(monkeypatch, tmp_path, tool_ok, status):
     response = load_response(step.directory)
     assert response is not None
     assert (response.attempt_id, response.status) == ("test-attempt", status)
+
+
+def test_worker_refuses_a_step_whose_required_design_data_is_missing(monkeypatch, tmp_path):
+    step = _workspace_step(tmp_path, name="emir")
+    ran = []
+
+    exit_code, result = _run_main(
+        monkeypatch,
+        tmp_path,
+        step,
+        _FakeFlow(_workspace(tmp_path)),
+        lambda *_args, **_kwargs: ran.append("tool") or True,
+    )
+
+    assert (exit_code, ran) == (1, [])
+    assert "emir cannot run: missing power" in result["error"]

@@ -1,4 +1,4 @@
-"""Build the ``rsp.json`` a step worker publishes when its step finishes."""
+"""What a step worker checks before its step runs and publishes when it finishes."""
 
 from pathlib import Path
 
@@ -52,6 +52,39 @@ def build_step_response(
         upstream=request.upstream,
         warnings=frozenset(item for item in policy.uses if item not in available),
     )
+
+
+def missing_design_data(
+    request: StepRequest, step: WorkspaceStep, *, declared_spef: Path | None
+) -> frozenset[DesignData]:
+    """Required design data the step has neither from upstream nor declared.
+
+    Design states must be carried by the design the step reads. Analysis data
+    must come from an upstream step or from a project declaration: parasitics
+    from ``design.spef`` (or a SPEF wired onto the step), the golden netlist
+    from the step's own golden input.
+    """
+    input_states = input_design_states(request)
+    missing: set[DesignData] = set()
+    for item in flow_step_policy(request.step).requires:
+        if isinstance(item, DesignState):
+            if item not in input_states:
+                missing.add(item)
+        elif item not in request.upstream and not _declared(item, request, step, declared_spef):
+            missing.add(item)
+    return frozenset(missing)
+
+
+def _declared(
+    item: AnalysisData, request: StepRequest, step: WorkspaceStep, declared_spef: Path | None
+) -> bool:
+    match item:
+        case AnalysisData.PARASITICS:
+            return bool(request.inputs.spef) or declared_spef is not None
+        case AnalysisData.GOLDEN_NETLIST:
+            return getattr(step.input, "golden_verilog", None) is not None
+        case AnalysisData.POWER:
+            return False
 
 
 def input_design_states(request: StepRequest) -> frozenset[DesignState]:
