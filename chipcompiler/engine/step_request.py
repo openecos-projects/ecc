@@ -10,7 +10,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from chipcompiler.data import LEC_STEP_TOOLS, EccOutput, LecInput, StepEnum, WorkspaceStep
-from chipcompiler.data.step import step_directory_for_tool
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.data.types import DesignData, DesignState, flow_step_policy
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 from chipcompiler.data.workspace.step_handshake import (
@@ -110,10 +110,7 @@ def upstream_responses(
     """
     earlier = records[:index]
     directories = {
-        str(record.get("name", "")): step_directory_for_tool(
-            str(record.get("name", "")), str(record.get("tool", "")) or None
-        )
-        for record in earlier
+        str(record.get("name", "")): recorded_step_directory(record) for record in earlier
     }
     policy = flow_step_policy(str(records[index].get("name", "")))
     upstream: dict[DesignData, UpstreamResponse] = {}

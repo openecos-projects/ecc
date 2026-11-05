@@ -23,6 +23,7 @@ FlowStepEntry = TypedDict(
         "name": Required[str],
         "tool": Required[str],
         "state": Required[str],
+        "directory": NotRequired[str],
         "category": NotRequired[str],
         "input_step": NotRequired[str],
         "info": NotRequired[dict],

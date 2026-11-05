@@ -15,10 +15,11 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path, PurePath
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final, cast
 
+from chipcompiler.data.step import is_step_directory_name
 from chipcompiler.data.types import AnalysisData, DesignData, DesignState, flow_step_policy
 from chipcompiler.utility.file import write_text_atomic
 
@@ -265,7 +266,7 @@ def _step(data: Mapping[str, object]) -> str:
 
 def _step_directory(data: Mapping[str, object]) -> str:
     name = _text(data, "step_directory")
-    if PurePath(name).name != name or name in {".", ".."}:
+    if not is_step_directory_name(name):
         raise HandshakeError(f"'step_directory' must be a single directory name: {name!r}")
     return name
 

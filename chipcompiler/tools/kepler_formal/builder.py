@@ -16,6 +16,7 @@ from chipcompiler.data import (
     SubflowState,
     Workspace,
 )
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
 from chipcompiler.utility.path import require_path
 
@@ -29,8 +30,12 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> KeplerFormalStep:
-    directory = Path(workspace.directory) / f"{step_name}_kepler_formal"
+    directory = step_directory or Path(workspace.directory) / new_step_directory(
+        step_name, "kepler_formal"
+    )
     output_dir = directory / "output"
     data_dir = directory / "data"
     report_dir = directory / "report"

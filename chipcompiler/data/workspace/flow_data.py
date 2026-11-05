@@ -6,6 +6,7 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import (
     FlowStepCategory,
     StateEnum,
@@ -151,6 +152,7 @@ def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
         "tool": tool,
         "category": default_flow_step_category(name).value,
         "state": state,
+        "directory": new_step_directory(name, tool),
         "runtime": "",
         "peak memory (mb)": 0,
         "info": {},
