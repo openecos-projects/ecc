@@ -455,6 +455,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         # holds the step even though the target names kepler_formal.
         import copy
 
+        from chipcompiler.data.step import next_step_index
         from chipcompiler.data.workspace import _flow_step_template
 
         context["flow_data_original"] = copy.deepcopy(flow_data)
@@ -463,7 +464,7 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         for (name, tool), normalized_entry in zip(target, _normalized_entries(target), strict=True):
             if normalized_entry in present:
                 continue
-            steps.append(_flow_step_template(name, tool, "Unstart"))
+            steps.append(_flow_step_template(name, tool, "Unstart", index=next_step_index(steps)))
             appended.append(name)
         if not json_write(workspace_dir / "home" / "flow.json", flow_data):
             return ReconcileResult(

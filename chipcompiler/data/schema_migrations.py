@@ -39,7 +39,9 @@ WORKSPACE_CONFIGS = "workspace-configs"
 #: derive it from their registered migrations.
 SUPPORTED_SCHEMA_VERSIONS: dict[str, int] = {
     PARAMS_TOML: 2,
-    FLOW_JSON: 1,
+    # 2: steps record their directory, indexed by flow position; an older ECC
+    # would look for <step>_<tool> directories that indexed ledgers never have.
+    FLOW_JSON: 2,
     ENGINEERING_SNAPSHOT: 6,
 }
 

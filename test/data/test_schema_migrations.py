@@ -280,7 +280,7 @@ def test_new_flow_json_carries_schema_version(tmp_path, minimal_ics55_pdk_factor
     assert created is not None
 
     flow_data = json.loads((workspace_dir / "home" / "flow.json").read_text())
-    assert flow_data["schema_version"] == 1
+    assert flow_data["schema_version"] == 2
 
     # The versioned ledger still loads: a leading version-0 file is legal.
     flow_path = workspace_dir / "home" / "flow.json"

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.data.step import unindexed_step_directory
 from chipcompiler.engine.workspace_spec import (
     describe_workspace_spec,
     validate_workspace_spec,
@@ -648,6 +649,14 @@ def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
     assert retained_second["workspaceRevision"] == after["workspaceRevision"]
 
 
+def _assert_step_directories(target, legacy_names):
+    """Each step has exactly one directory, indexed, whose unindexed name is *legacy_names*."""
+    created = [path.name for path in target.iterdir() if path.is_dir()]
+    for legacy in legacy_names:
+        matches = [name for name in created if unindexed_step_directory(name) == legacy]
+        assert len(matches) == 1 and matches[0] != legacy, (legacy, created)
+
+
 def test_workspace_spec_create_and_update_materialize_step_directories(
     tmp_path, minimal_ics55_pdk_factory
 ):
@@ -668,8 +677,7 @@ def test_workspace_spec_create_and_update_materialize_step_directories(
         "route_ecc",
         "Harden_ecc",
     ]
-    for directory in expected_directories:
-        assert (target / directory).is_dir(), directory
+    _assert_step_directories(target, expected_directories)
 
     updated_spec = deepcopy(payload["workspaceSpec"])
     updated_spec["parameters"]["design.frequency_mhz"] = 250.0
@@ -679,8 +687,7 @@ def test_workspace_spec_create_and_update_materialize_step_directories(
         updated_spec,
         bindings,
     )
-    for directory in expected_directories:
-        assert (target / directory).is_dir(), directory
+    _assert_step_directories(target, expected_directories)
 
 
 def test_workspace_spec_update_without_retain_backup_keeps_no_backup(

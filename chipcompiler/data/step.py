@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePath
 
@@ -149,12 +149,36 @@ def new_step_directory(step_name: str, tool: str, *, index: int | None = None) -
     return stem if index is None else f"{index:02d}_{stem}"
 
 
-def unindexed_step_directory(name: str) -> str:
-    """*name* without the two-digit flow position prefix (``07_place_dreamplace``)."""
+def step_directory_index(name: str) -> int | None:
+    """The index prefix of a step directory name (7 for ``07_place_dreamplace``)."""
     prefix, separator, stem = name.partition("_")
-    if separator and len(prefix) == 2 and prefix.isdigit() and stem:
-        return stem
-    return name
+    if separator and len(prefix) >= 2 and prefix.isdigit() and stem:
+        return int(prefix)
+    return None
+
+
+def unindexed_step_directory(name: str) -> str:
+    """*name* without its index prefix (``07_place_dreamplace`` -> ``place_dreamplace``)."""
+    if step_directory_index(name) is None:
+        return name
+    return name.partition("_")[2]
+
+
+def next_step_index(records: Iterable[Mapping[str, object]]) -> int | None:
+    """The index for a step appended to a flow ledger.
+
+    Indices are append-only: one past the highest recorded index, so existing
+    directories never move. A ledger created before steps recorded indexed
+    directories keeps unindexed names for appended steps (None).
+    """
+    indices: list[int] = []
+    for record in records:
+        directory = record.get("directory")
+        index = step_directory_index(directory) if isinstance(directory, str) else None
+        if index is None:
+            return None
+        indices.append(index)
+    return max(indices, default=0) + 1
 
 
 def is_step_directory_name(name: str) -> bool:

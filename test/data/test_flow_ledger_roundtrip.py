@@ -42,12 +42,13 @@ def test_flow_document_round_trip_preserves_unknown_fields(tmp_path):
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
     document = {
-        "schema_version": 1,
+        "schema_version": 2,
         "steps": [
             {
                 "name": "route",
                 "tool": "ecc",
                 "state": "Unstart",
+                "directory": "12_route_ecc",
                 "future_step_field": {"nested": [1, 2]},
             }
         ],

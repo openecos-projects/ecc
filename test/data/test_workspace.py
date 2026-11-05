@@ -26,6 +26,7 @@ from chipcompiler.data.workspace import (
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
+from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
@@ -553,7 +554,8 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
 
     build_flow_for_workspace(workspace)
 
-    step_dir = workspace_dir / "CTS_ecc"
+    step_dir = StepDirectories.at(workspace_dir).path("CTS")
+    assert step_dir.name == "01_CTS_ecc"
     step_subflow = json_read(step_dir / "subflow.json")
     step_checklist = json_read(step_dir / "checklist.json")
     home_checklist = json_read(workspace_dir / "home" / "checklist.json")
