@@ -62,7 +62,7 @@ def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
 
 
 @pytest.mark.parametrize("suffix", [".sdc", ".tcl"])
-def test_workspace_with_custom_full_constraints_does_not_generate_default_sets(
+def test_workspace_with_custom_full_constraints_generates_only_phase_wrappers(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, suffix
 ):
     custom = tmp_path / f"constraints{suffix}"
@@ -83,6 +83,8 @@ def test_workspace_with_custom_full_constraints_does_not_generate_default_sets(
     assert {path for path in (workspace.directory / "origin").rglob("*") if path.is_file()} == {
         workspace.design.origin_verilog,
         workspace.pdk.sdc,
+        workspace.directory / "origin/pre_CTS" / f"{custom.name}.ecc.tcl",
+        workspace.directory / "origin/post_CTS" / f"{custom.name}.ecc.tcl",
     }
     loaded = load_workspace(workspace.directory)
     assert loaded.pdk.sdc == workspace.pdk.sdc
@@ -146,6 +148,12 @@ def test_copied_workspace_uses_its_own_timing_input(
     assert save_parameter(loaded.parameters)
     refresh_workspace_config(loaded)
     assert workspace.pdk.sdc.read_bytes() == original
+    if custom_suffix is not None:
+        assert loaded.pdk.sdc is not None
+        for phase in ("pre_CTS", "post_CTS"):
+            wrapper = loaded.directory / "origin" / phase / f"{loaded.pdk.sdc.name}.ecc.tcl"
+            assert str(loaded.pdk.sdc) in wrapper.read_text()
+            assert str(workspace.directory) not in wrapper.read_text()
 
 
 @pytest.mark.parametrize("override_keys", [("liberty",), ("signoff",), ("liberty", "signoff")])

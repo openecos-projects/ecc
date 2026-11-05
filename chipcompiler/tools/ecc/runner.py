@@ -809,7 +809,7 @@ def run_filler(
 def run_pre_floorplan(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    """Run the simple floorplan with automatic macro placement enabled."""
+    """Run the simple floorplan without loading macro locations."""
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -831,7 +831,7 @@ def run_pre_floorplan(
             floorplan_path.with_stem(f"{floorplan_path.stem}_simple")
         )
         simple_floorplan = json_read(floorplan_config)
-        simple_floorplan["macro_placer"]["mode"] = "auto"
+        simple_floorplan["macro_placer"].pop("mode", None)
         simple_floorplan["macro_placer"]["file_path"] = ""
         json_write(simple_floorplan_config, simple_floorplan)
 
@@ -865,7 +865,7 @@ def run_post_floorplan(
 
         floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         floorplan = json_read(floorplan_config)
-        floorplan["macro_placer"]["mode"] = "file"
+        floorplan["macro_placer"].pop("mode", None)
         floorplan["macro_placer"]["file_path"] = os.fspath(
             workspace.config.get("macro_location", "")
         )

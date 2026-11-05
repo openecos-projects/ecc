@@ -389,7 +389,11 @@ class EngineFlow:
                 elif input_source is None and self.workspace.design.golden_verilog is not None:
                     input_db = self.workspace.design.golden_verilog
                 elif step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value:
-                    input_db = synthesis_gate_verilog or self.workspace.design.origin_verilog
+                    input_db = (
+                        self.workspace.design.golden_verilog
+                        or synthesis_gate_verilog
+                        or self.workspace.design.origin_verilog
+                    )
                 elif input_source is not None and input_source.name == StepEnum.SYNTHESIS.value:
                     input_db = synthesis_golden_verilog or None
 

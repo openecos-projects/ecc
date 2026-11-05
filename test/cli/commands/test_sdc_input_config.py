@@ -60,7 +60,11 @@ def test_toml_timing_inputs_survive_cli_creation_reload_and_refresh(
     if custom:
         assert loaded.pdk.sdc is not None
         assert loaded.pdk.sdc.read_text() == (project / "constraints/full.tcl").read_text()
-        assert not (loaded.directory / "origin/pre_CTS").exists()
+        assert set((loaded.directory / "origin").rglob("*.tcl")) == {
+            loaded.pdk.sdc,
+            loaded.directory / "origin/pre_CTS/full.tcl.ecc.tcl",
+            loaded.directory / "origin/post_CTS/full.tcl.ecc.tcl",
+        }
         return
     assert {key: loaded.parameters.data[key] for key in ("clock", "frequency_max")} == {
         "clock": "ref_clk",

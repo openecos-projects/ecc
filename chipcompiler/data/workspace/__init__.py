@@ -514,27 +514,27 @@ def _has_new_floorplan_schema(config: dict) -> bool:
         and isinstance(die_builder, dict)
         and all(key in die_builder for key in ("mode", "margin", "die_util", "die_size"))
         and isinstance(macro_placer, dict)
-        and all(key in macro_placer for key in ("mode", "file_path"))
+        and "file_path" in macro_placer
         and isinstance(io_placer, dict)
         and all(key in io_placer for key in ("mode", "file_path"))
     )
 
 
 def _refresh_sta_config(workspace: Workspace) -> None:
-    import os
-
     from chipcompiler.utility import json_read_strict, json_write
 
     sta_path = workspace.config[f"{StepEnum.STA.value}"]
     sta = json_read_strict(sta_path)
     if not isinstance(sta, dict):
         raise TypeError(f"STA config must be a JSON object: {sta_path}")
-    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
     for liberty in sta.get("liberty", []):
+        # /IP/... is the legacy PDK-relative spelling in STA templates.
+        # Preserve other absolute paths, including external macro libraries.
         liberty["path"] = [
-            path
-            if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
-            else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
+            str(
+                (workspace.pdk.root or Path(""))
+                / (path.lstrip("/") if path.startswith("/IP/") else path)
+            )
             for path in liberty.get("path", [])
         ]
     errors = invalid_io_liberty_errors(
@@ -557,6 +557,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     floorplan = json_read(config_path) if Path(config_path).exists() else {}
     if not _has_new_floorplan_schema(floorplan):
         floorplan = default_floorplan
+    floorplan["macro_placer"].pop("mode", None)
 
     ifp = floorplan.setdefault("ifp", {})
     default_ifp = default_floorplan.get("ifp", {})

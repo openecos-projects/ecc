@@ -1,7 +1,7 @@
 """Generate pre/post-CTS golden timing-constraint Tcl.
 
 The two scenario sets share golden rules; only post-CTS propagates clocks.
-Custom full constraint files remain authoritative and are never supplemented.
+Custom files retain their design constraints; the flow sets clock propagation.
 """
 
 import re
@@ -98,6 +98,22 @@ def is_generated_sdc(path: Path | None) -> bool:
         return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
 
 
+def custom_step_sdc_path(source: Path, directory: Path, *, post_cts: bool) -> Path:
+    """Source user Tcl unchanged, then apply the flow's final clock state."""
+    phase = "post_CTS" if post_cts else "pre_CTS"
+    target = directory / "origin" / phase / f"{source.name}.ecc.tcl"
+    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
+    text = (
+        f"# ECC {phase} entry for user timing constraints\n"
+        f"source {_tcl_word(str(source.absolute()))}\n"
+        f"{command} [all_clocks]\n"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists() or target.read_text(encoding="utf-8") != text:
+        write_text_atomic(target, text)
+    return target
+
+
 def signoff_sdc_path(
     workspace: "Workspace",
     output_path: Path,
@@ -110,7 +126,7 @@ def signoff_sdc_path(
     """Write a standalone scenario with IO rules selected from the loaded design."""
     source = workspace.pdk.sdc
     if source is not None and not is_generated_sdc(source):
-        return source
+        return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
 
     inputs = SdcInputs.from_parameters(workspace.parameters.data)
     clocks = inputs.clocks(workspace.parameters.data, corner) if inputs.has_clock_inputs else None

@@ -337,7 +337,7 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path):
         "lib": [pdk_root / "cells.lib"],
         "def": tmp_path / "input.def",
         "verilog": tmp_path / "input.v",
-        "sdc": tmp_path / "gcd.sdc",
+        "sdc": workspace.directory / "origin/pre_CTS/gcd.sdc.ecc.tcl",
         "rc_tcl": rc_tcl,
     }
 

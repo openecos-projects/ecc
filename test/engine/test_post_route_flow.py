@@ -5,14 +5,17 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.rtl2gds import build_flow_range
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
+from chipcompiler.tools.yosys.builder import build_step as build_yosys_step
 from chipcompiler.tools.yosys_lec.builder import build_step as build_yosys_lec_step
 from chipcompiler.utility import json_write
 
 
 @pytest.mark.parametrize("lec_engine", ["kepler_formal", "yosys_lec"])
 @pytest.mark.parametrize("skip", [(), ("postRouteLec",)])
+@pytest.mark.parametrize("golden_source", ["default", "design", "step"])
+@pytest.mark.parametrize("with_synthesis", [False, True])
 def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
-    tmp_path, monkeypatch, lec_engine, skip
+    tmp_path, monkeypatch, lec_engine, skip, golden_source, with_synthesis
 ):
     import chipcompiler.tools as tools
 
@@ -34,6 +37,16 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         ]
     }
     workspace.flow.path = tmp_path / "flow.json"
+    if with_synthesis:
+        workspace.flow.data["steps"].insert(
+            0, {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"}
+        )
+    if golden_source != "default":
+        workspace.design.golden_verilog = tmp_path / "design_golden.v"
+    if golden_source == "step":
+        for entry in workspace.flow.data["steps"]:
+            if entry["name"] == "postRouteLec":
+                entry["info"] = {"golden_verilog": str(tmp_path / "step_golden.v")}
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
 
@@ -42,6 +55,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
             "ecc": build_ecc_step,
             "kepler_formal": build_kepler_step,
             "yosys_lec": build_yosys_lec_step,
+            "yosys": build_yosys_step,
         }
         result = builders[eda](
             workspace=workspace,
@@ -94,9 +108,19 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     if not skip:
         lec = steps["postRouteLec"]
         assert lec is not None
+        default_golden = (
+            steps[StepEnum.SYNTHESIS.value].output.verilog
+            if with_synthesis
+            else workspace.design.origin_verilog
+        )
+        expected_golden = {
+            "default": default_golden,
+            "design": workspace.design.golden_verilog,
+            "step": tmp_path / "step_golden.v",
+        }[golden_source]
         assert (lec.input.gate_verilog, lec.input.golden_verilog) == (
             filler.output.verilog,
-            workspace.design.origin_verilog,
+            expected_golden,
         )
 
 

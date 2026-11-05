@@ -18,8 +18,9 @@ from ._sizer_helpers import _sizer_runtime, _workspace
         (SkippableStepEnum.TIMING_OPT.value, "post_CTS"),
     ],
 )
+@pytest.mark.parametrize("custom", [False, True])
 def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
-    tmp_path, monkeypatch, step_name, phase_dir
+    tmp_path, monkeypatch, step_name, phase_dir, custom
 ):
     runtime = _sizer_runtime(tmp_path)
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime))
@@ -27,6 +28,11 @@ def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
     origin = workspace.directory / "origin"
     origin.mkdir(parents=True)
     workspace.pdk.sdc = None
+    filename = "TYP_25_TYPICAL.tcl"
+    if custom:
+        workspace.pdk.sdc = origin / "user.sdc"
+        workspace.pdk.sdc.write_text("create_clock -period 10 [get_ports clk]\n")
+        filename = "user.sdc.ecc.tcl"
     generate_timing_scripts(workspace)
     template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
     config = json.loads(template.read_text())
@@ -47,6 +53,6 @@ def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
         for line in path.read_text().splitlines()
         if line.startswith("-sdc ")
     ] == [
-        f"-sdc {origin / phase_dir / 'TYP_25_TYPICAL.tcl'}",
-        f"-sdc {origin / phase_dir / 'TYP_25_TYPICAL.tcl'}",
+        f"-sdc {origin / phase_dir / filename}",
+        f"-sdc {origin / phase_dir / filename}",
     ]

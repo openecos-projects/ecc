@@ -121,8 +121,18 @@ def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
 
 
 @pytest.mark.parametrize("suffix", [".sdc", ".tcl"])
-def test_custom_constraints_are_used_unchanged_without_native_probe(
-    timing_workspace, native_module, suffix
+@pytest.mark.parametrize(
+    ("step_name", "phase"),
+    [
+        (StepEnum.PREPLACE, "pre_CTS"),
+        (StepEnum.CTS, "pre_CTS"),
+        (StepEnum.ROUTING, "post_CTS"),
+        (StepEnum.STA, "post_CTS"),
+        (StepEnum.POWER_ANALYSIS, "post_CTS"),
+    ],
+)
+def test_custom_constraints_select_phase_without_native_probe(
+    timing_workspace, native_module, suffix, step_name, phase
 ):
     workspace = timing_workspace
     custom = workspace.directory / f"custom{suffix}"
@@ -130,11 +140,13 @@ def test_custom_constraints_are_used_unchanged_without_native_probe(
     custom.write_bytes(contents)
     workspace.pdk.sdc = custom
     workspace.config.clear()
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
     files = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
     generate_timing_scripts(workspace)
     prepare_timing_context(workspace, step, native_module)
-    assert step_tcl_path(workspace, step) == custom
+    expected = workspace.directory / "origin" / phase / f"{custom.name}.ecc.tcl"
+    assert step_tcl_path(workspace, step) == expected
+    assert expected.is_file()
     assert custom.read_bytes() == contents
     assert {path: path.read_bytes() for path in files} == files
     assert native_module.mock_calls == []
@@ -185,8 +197,16 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     assert config_path.read_bytes() == config_before
 
 
-def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_module, monkeypatch):
+@pytest.mark.parametrize("custom", [False, True])
+def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monkeypatch, custom):
     workspace = timing_workspace
+    filename = "TYP_25_TYPICAL.tcl"
+    if custom:
+        workspace.pdk.sdc = workspace.directory / "user.sdc"
+        workspace.pdk.sdc.write_text(
+            "create_clock -period 10 [get_ports clk]\nset_propagated_clock [all_clocks]\n"
+        )
+        filename = "user.sdc.ecc.tcl"
     step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False
@@ -196,7 +216,7 @@ def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_modul
         db_config="",
         output_dir=step.data.dir,
         lib_paths=workspace.pdk.libs,
-        sdc_path=workspace.directory / "origin/pre_CTS/TYP_25_TYPICAL.tcl",
+        sdc_path=workspace.directory / "origin/pre_CTS" / filename,
     )
 
 
