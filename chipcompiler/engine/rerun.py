@@ -18,6 +18,14 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.handshake import (
+    HandshakeError,
+    ResponseStatus,
+    clear_response,
+    load_response,
+)
+from chipcompiler.data.step import recorded_step_directory
+from chipcompiler.data.workspace.flow_ledger import reset_step_record
 from chipcompiler.data.workspace.flow_policy import is_skipped_record
 from chipcompiler.utility.path import path_is_within
 
@@ -130,10 +138,10 @@ def run_from(
     if not suffix:
         return StepRunResult(ok=True, executed=())
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    # A bounded rerun executes only the requested interval, but all later
-    # states become stale because their input chain changed. Their outputs are
-    # deliberately retained until the user chooses to run them.
-    _invalidate_suffix(flow, index, preserve_skipped=preserve_skipped)
+    # A bounded rerun executes only the requested interval; later steps built
+    # on it are invalidated too. Their outputs are deliberately retained until
+    # the user chooses to run them.
+    _invalidate_selection(flow, index, last_index, preserve_skipped=preserve_skipped)
     return _run_selected(
         flow,
         list(zip(suffix, output_dirs, strict=True)),
@@ -177,7 +185,7 @@ def run_only(
     if workspace_step is None:
         raise RuntimeError(f"step {steps[index]['name']!r} has no workspace step")
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
-    _invalidate_suffix(flow, index)
+    _invalidate_selection(flow, index, index)
     return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
 
 
@@ -239,13 +247,56 @@ def _invalidate_suffix(
     for step in steps[index:end]:
         if preserve_skipped and is_skipped_record(step):
             continue
-        step["state"] = StateEnum.Unstart.value
-        step["runtime"] = ""
-        step["peak memory (mb)"] = 0
-        step.pop("resource_observation", None)
-        step.pop("checklist_waiver", None)
+        reset_step_record(step)
     if not flow.save():
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+
+
+def _invalidate_selection(
+    flow: "EngineFlow", first: int, last: int, *, preserve_skipped: bool = False
+) -> None:
+    """Mark steps *first*..*last* Unstart, and every later step built on them.
+
+    With *preserve_skipped*, deliberately Skipped steps keep their state and
+    response: they are not rerun, and nothing reads their outputs.
+
+    A later step keeps its results only when its rsp.json shows that nothing it
+    read came from an invalidated step; a step without a readable response is
+    invalidated, as positional invalidation always did. Once the invalidation
+    is persisted, the selected steps' responses are removed before any of
+    their outputs are deleted.
+    """
+    steps = flow.workspace.flow.data.get("steps", [])
+    root = Path(flow.workspace.directory)
+    invalidated: set[str] = set()
+    for index in range(first, len(steps)):
+        if preserve_skipped and is_skipped_record(steps[index]):
+            continue
+        directory = recorded_step_directory(steps[index])
+        if index > last and not _built_on(root / directory, invalidated):
+            continue
+        reset_step_record(steps[index])
+        invalidated.add(directory)
+    if not flow.save():
+        raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+    for step in steps[first : last + 1]:
+        if preserve_skipped and is_skipped_record(step):
+            continue
+        clear_response(root / recorded_step_directory(step))
+
+
+def _built_on(step_directory: Path, invalidated: set[str]) -> bool:
+    """Whether the step may have read anything from the *invalidated* step directories."""
+    try:
+        response = load_response(step_directory)
+    except HandshakeError:
+        return True
+    if response is None or response.status is not ResponseStatus.SUCCESS:
+        return True
+    links = list(response.upstream.values())
+    if response.design_source is not None:
+        links.append(response.design_source)
+    return any(link.step_directory in invalidated for link in links)
 
 
 def _run_selected(
