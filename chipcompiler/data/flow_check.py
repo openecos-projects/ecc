@@ -46,6 +46,14 @@ def check_flow(
     return tuple(violations)
 
 
+def step_provides(step: str, item: DesignData) -> bool:
+    """Whether running *step* makes *item* present; ``LEGAL`` follows its legality."""
+    policy = flow_step_policy(step)
+    if item is DesignState.LEGAL:
+        return policy.legality is PlacementLegality.LEGALIZED
+    return item in policy.provides
+
+
 def design_states_after(step: str, states: Iterable[DesignState]) -> frozenset[DesignState]:
     """The design states the output design of *step* carries.
 

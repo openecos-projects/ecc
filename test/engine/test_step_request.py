@@ -96,9 +96,12 @@ def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
 
     _step, request = _request(flow, StepEnum.STA.value)
 
+    # The design comes from filler; each design data item from the step that
+    # provided it.
+    assert request.design_source == UpstreamResponse("filler_ecc", None)
     assert dict(request.upstream) == {
         DesignState.FILLED: UpstreamResponse("filler_ecc", None),
-        DesignState.CLOCK_TREE: UpstreamResponse("filler_ecc", None),
+        DesignState.CLOCK_TREE: UpstreamResponse("CTS_ecc", None),
         AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", "attempt-rcx"),
     }
     assert request.final_step is False
@@ -134,6 +137,25 @@ def test_upstream_steps_are_named_by_their_recorded_directories(tmp_path):
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
         DesignState.FILLED: "13_filler_ecc",
-        DesignState.CLOCK_TREE: "13_filler_ecc",
+        DesignState.CLOCK_TREE: "09_CTS_ecc",
         AnalysisData.PARASITICS: "18_RCX_ecc",
+    }
+
+
+def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
+    _step, request = _request(_wired_flow(tmp_path), StepEnum.EMIR.value)
+
+    assert {item: source.step_directory for item, source in request.upstream.items()} == {
+        DesignState.FILLED: "filler_ecc",
+        DesignState.PDN: "postFloorplan_ecc",
+        AnalysisData.POWER: "powerAnalysis_ecc",
+    }
+
+
+def test_routing_links_legality_to_the_last_legalizing_step(tmp_path):
+    _step, request = _request(_wired_flow(tmp_path), StepEnum.ROUTING.value)
+
+    assert {item: source.step_directory for item, source in request.upstream.items()} == {
+        DesignState.LEGAL: "timing_optimization_sizer",
+        DesignState.CLOCK_TREE: "CTS_ecc",
     }

@@ -98,6 +98,7 @@ def _payload_stream(tmp_path, step, result_path, *, layout_image=True, attempt_i
         step_directory=f"{step.name}_{step.tool}",
         attempt_id="test-attempt",
         inputs=StepInputs(),
+        design_source=None,
         upstream={},
         final_step=False,
         layout_image=layout_image,

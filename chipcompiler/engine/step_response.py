@@ -90,14 +90,11 @@ def _declared(
 def input_design_states(request: StepRequest) -> frozenset[DesignState]:
     """The design states of the design the step read.
 
-    They come from the upstream response that supplied the design. A design
+    They come from the response of the step that supplied the design. A design
     declared by the project, or supplied by a step that ran before responses
     existed, is trusted to carry every design state the step requires or uses.
     """
-    source = next(
-        (upstream for item, upstream in request.upstream.items() if isinstance(item, DesignState)),
-        None,
-    )
+    source = request.design_source
     if source is not None and source.attempt_id is not None:
         response = load_response(request.workspace_directory / source.step_directory)
         if response is not None and response.attempt_id == source.attempt_id:
