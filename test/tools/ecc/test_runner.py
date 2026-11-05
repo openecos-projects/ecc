@@ -875,6 +875,7 @@ def _sta_step_with_request(workspace_dir, upstream):
         step_directory="sta_ecc",
         attempt_id="attempt-sta",
         inputs=StepInputs(),
+        design_source=None,
         upstream={item: UpstreamResponse(directory, None) for item, directory in upstream.items()},
         final_step=False,
         layout_image=False,

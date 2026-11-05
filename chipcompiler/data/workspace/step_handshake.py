@@ -39,7 +39,7 @@ class ResponseStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class UpstreamResponse:
-    """The upstream step a design data item came from, and the run accepted.
+    """An upstream step whose output a step accepts, and the run accepted.
 
     ``attempt_id`` is None when the upstream step ran before steps wrote
     ``rsp.json``; such an input can never be reported stale.
@@ -71,6 +71,9 @@ class StepRequest:
     step_directory: str
     attempt_id: str
     inputs: StepInputs
+    #: The step whose output design the step reads; None for a declared design.
+    design_source: UpstreamResponse | None
+    #: The upstream step that provided each design data item the step needs.
     upstream: Mapping[DesignData, UpstreamResponse]
     final_step: bool
     layout_image: bool
@@ -162,11 +165,12 @@ def _design_json(design: DesignFiles) -> dict[str, object]:
     }
 
 
+def _link_json(source: UpstreamResponse) -> dict[str, object]:
+    return {"step_directory": source.step_directory, "attempt_id": source.attempt_id}
+
+
 def _upstream_json(upstream: Mapping[DesignData, UpstreamResponse]) -> dict[str, object]:
-    return {
-        str(item): {"step_directory": source.step_directory, "attempt_id": source.attempt_id}
-        for item, source in sorted(upstream.items())
-    }
+    return {str(item): _link_json(source) for item, source in sorted(upstream.items())}
 
 
 def _request_json(request: StepRequest) -> dict[str, object]:
@@ -182,6 +186,9 @@ def _request_json(request: StepRequest) -> dict[str, object]:
             "golden_verilog": _path_json(request.inputs.golden_verilog),
             "spef": [str(path) for path in request.inputs.spef],
         },
+        "design_source": (
+            None if request.design_source is None else _link_json(request.design_source)
+        ),
         "upstream": _upstream_json(request.upstream),
         "final_step": request.final_step,
         "layout_image": request.layout_image,
@@ -291,16 +298,19 @@ def _design_files(value: object) -> DesignFiles:
     )
 
 
+def _link(value: object, key: str) -> UpstreamResponse:
+    data = _table(value, key)
+    attempt_id = _field(data, "attempt_id")
+    if attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id):
+        raise HandshakeError(f"'{key}.attempt_id' must be a non-empty string or null")
+    return UpstreamResponse(step_directory=_step_directory(data), attempt_id=attempt_id)
+
+
 def _upstream(value: object) -> Mapping[DesignData, UpstreamResponse]:
-    upstream: dict[DesignData, UpstreamResponse] = {}
-    for name, source in _table(value, "upstream").items():
-        source_data = _table(source, f"upstream.{name}")
-        attempt_id = _field(source_data, "attempt_id")
-        if attempt_id is not None and (not isinstance(attempt_id, str) or not attempt_id):
-            raise HandshakeError(f"'upstream.{name}.attempt_id' must be a non-empty string or null")
-        upstream[_design_data(name)] = UpstreamResponse(
-            step_directory=_step_directory(source_data), attempt_id=attempt_id
-        )
+    upstream = {
+        _design_data(name): _link(source, f"upstream.{name}")
+        for name, source in _table(value, "upstream").items()
+    }
     return MappingProxyType(upstream)
 
 
@@ -319,6 +329,11 @@ def _request_from_json(data: Mapping[str, object]) -> StepRequest:
             design=_design_files(_field(inputs, "design")),
             golden_verilog=_optional_path(inputs, "golden_verilog"),
             spef=tuple(Path(path) for path in _strings(_field(inputs, "spef"), "spef")),
+        ),
+        design_source=(
+            None
+            if (design_source := _field(data, "design_source")) is None
+            else _link(design_source, "design_source")
         ),
         upstream=_upstream(_field(data, "upstream")),
         final_step=_flag(data, "final_step"),
