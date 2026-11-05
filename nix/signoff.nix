@@ -5,11 +5,13 @@
 { pkgs, ... }:
 
 let
-  inherit (pkgs) lit jq writeShellApplication symlinkJoin;
+  inherit (pkgs) lit jq writeShellApplication symlinkJoin coreutils findutils gawk gnused;
 
   filecheck = pkgs.llvmPackages_21.libllvm;
 
   exportCsvSh = ./scripts/export-signoff-csv.sh;
+  signoffCsvExportSh = ./scripts/signoff_csv/export.sh;
+  signoffCsvFixtureSh = ./scripts/signoff-csv-fixture.sh;
   signoffLitSh = ./scripts/signoff-lit.sh;
 
   signoff-lit = writeShellApplication {
@@ -32,12 +34,41 @@ let
     '';
   };
 
+  signoff-csv = writeShellApplication {
+    name = "signoff-csv";
+    runtimeInputs = [
+      jq
+      coreutils
+      findutils
+      gawk
+      gnused
+    ];
+    text = ''
+      root="''${ECC_REPO_ROOT:-$PWD}"
+      export ECC_REPO_ROOT="$root"
+      exec bash ${signoffCsvExportSh} "$@"
+    '';
+  };
+
+  signoff-csv-fixture = writeShellApplication {
+    name = "signoff-csv-fixture";
+    runtimeInputs = [
+      coreutils
+      gawk
+      gnused
+    ];
+    text = ''
+      exec bash ${signoffCsvFixtureSh} "$@"
+    '';
+  };
+
   signoff-tools = symlinkJoin {
     name = "ecc-signoff-tools";
     paths = [
       lit
       filecheck
       signoff-lit
+      signoff-csv
       jq
     ];
     meta.description = "lit + FileCheck (llvmPackages_21); run via signoff-lit";
@@ -45,11 +76,16 @@ let
 in
 {
   packages = {
-    inherit filecheck lit signoff-lit signoff-tools;
+    inherit filecheck lit signoff-csv signoff-csv-fixture signoff-lit signoff-tools;
   };
 
   apps.signoff-lit = {
     type = "app";
     program = "${signoff-lit}/bin/signoff-lit";
+  };
+
+  apps.signoff-csv = {
+    type = "app";
+    program = "${signoff-csv}/bin/signoff-csv";
   };
 }
