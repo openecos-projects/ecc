@@ -15,19 +15,22 @@ from chipcompiler.data import (
     WorkspaceStep,
     is_sta_step,
 )
-from chipcompiler.data.types import AnalysisData
-from chipcompiler.data.workspace.step_handshake import (
+from chipcompiler.data.handshake import (
     REQ_FILE,
     RSP_FILE,
     HandshakeError,
     ResponseStatus,
     StepRequest,
+    build_step_request,
+    build_step_response,
     clear_response,
     load_request,
     load_response,
+    missing_design_data,
     write_request,
     write_response,
 )
+from chipcompiler.data.types import AnalysisData
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
@@ -36,8 +39,6 @@ from chipcompiler.engine.step_execution import (
     _prepare_log_file,
     get_process_rss_mb,
 )
-from chipcompiler.engine.step_request import build_step_request
-from chipcompiler.engine.step_response import build_step_response, missing_design_data
 
 logger = logging.getLogger(__name__)
 

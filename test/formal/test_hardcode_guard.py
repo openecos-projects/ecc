@@ -74,7 +74,7 @@ _ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
 
 _TOOL_NAMES = frozenset(member.value for member in ToolName)
 
-# Directory literals: the table in data/step.py owns them; the design-report
+# Directory literals: the table in data/step/directories.py owns them; the design-report
 # display table is a contract vocabulary, not directory resolution.
 _STEP_DIR_ALLOWLIST = {
     "engine/signoff/report_data.py": "design-report display-name canonicalization table",
@@ -158,7 +158,7 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 value = node.value
-                if relative not in {"data/step.py", *_STEP_DIR_ALLOWLIST}:
+                if relative not in {"data/step/directories.py", *_STEP_DIR_ALLOWLIST}:
                     for name in _STEP_DIRECTORY_LITERALS:
                         # A bare tool spelling (`lec_dual`) belongs to the tool
                         # vocabulary; its directory form is still controlled.
@@ -204,7 +204,7 @@ def test_guard_rejects_a_directory_literal_outside_the_owner(tmp_path):
 
 
 def test_guard_accepts_the_same_literal_in_the_owner_table(tmp_path):
-    _write(tmp_path, "data/step.py", 'DIR = "Harden_ecc"\n')
+    _write(tmp_path, "data/step/directories.py", 'DIR = "Harden_ecc"\n')
 
     assert scan(tmp_path) == []
 

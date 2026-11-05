@@ -12,7 +12,7 @@ from pathlib import Path
 
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
-from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.tools.ecc.power_artifacts import power_step_path, step_power_summary_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,

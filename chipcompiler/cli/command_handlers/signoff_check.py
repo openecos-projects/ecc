@@ -12,7 +12,7 @@ from chipcompiler.cli.inspection.discovery import (
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
 from chipcompiler.data import SkippableStepEnum, StepEnum
-from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.utility import JsonObject
 
 _PROFILES = {

@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data.types import AnalysisData, DesignState
-from chipcompiler.data.workspace.step_handshake import (
+from chipcompiler.data.handshake import (
     REQ_FILE,
     RSP_FILE,
     DesignFiles,
@@ -23,6 +22,7 @@ from chipcompiler.data.workspace.step_handshake import (
     write_request,
     write_response,
 )
+from chipcompiler.data.types import AnalysisData, DesignState
 
 
 def _request(workspace: Path) -> StepRequest:

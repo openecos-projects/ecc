@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
-from chipcompiler.data.workspace.step_directories import StepDirectories
 
 
 class CollectorDiscoveryMixin:

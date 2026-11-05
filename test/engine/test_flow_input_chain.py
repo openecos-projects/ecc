@@ -272,8 +272,7 @@ def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expect
 
 def _worker_payload(workspace, ledger, step_name) -> dict:
     """Wire *ledger* in the parent and write the step's req.json, as run_step does."""
-    from chipcompiler.data.workspace.step_handshake import write_request
-    from chipcompiler.engine.step_request import build_step_request
+    from chipcompiler.data.handshake import build_step_request, write_request
 
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = ledger

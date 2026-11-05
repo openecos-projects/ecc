@@ -17,8 +17,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.step import StepDirectories, recorded_step_directory
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,

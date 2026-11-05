@@ -13,8 +13,8 @@ from chipcompiler.data import (
     WorkspaceStep,
     workspace_config_key_path,
 )
+from chipcompiler.data.handshake import load_request
 from chipcompiler.data.types import AnalysisData
-from chipcompiler.data.workspace.step_handshake import load_request
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (

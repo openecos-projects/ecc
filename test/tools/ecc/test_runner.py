@@ -861,7 +861,7 @@ def test_sta_entry_workspace_uses_declared_spef(tmp_path):
 
 
 def _sta_step_with_request(workspace_dir, upstream):
-    from chipcompiler.data.workspace.step_handshake import (
+    from chipcompiler.data.handshake import (
         StepInputs,
         StepRequest,
         UpstreamResponse,

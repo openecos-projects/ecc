@@ -3,9 +3,9 @@
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
+from chipcompiler.data.handshake import load_request
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import AnalysisData, DesignState
-from chipcompiler.data.workspace.step_directories import StepDirectories
-from chipcompiler.data.workspace.step_handshake import load_request
 from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import instance_power_path

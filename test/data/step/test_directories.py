@@ -106,7 +106,7 @@ def test_engine_directories_of_a_non_dual_step_are_rejected():
 
 
 def test_step_directories_follow_recorded_names_and_keep_legacy_ones(tmp_path):
-    from chipcompiler.data.workspace.step_directories import StepDirectories
+    from chipcompiler.data.step import StepDirectories
 
     records = [
         {"name": "place", "tool": "dreamplace", "directory": "07_place_dreamplace"},
@@ -126,7 +126,7 @@ def test_step_directories_follow_recorded_names_and_keep_legacy_ones(tmp_path):
 def test_step_directories_read_the_persisted_ledger(tmp_path):
     import json
 
-    from chipcompiler.data.workspace.step_directories import StepDirectories
+    from chipcompiler.data.step import StepDirectories
 
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text(
@@ -146,7 +146,7 @@ def test_step_directories_read_the_persisted_ledger(tmp_path):
     ],
 )
 def test_unrecorded_ledger_steps_keep_their_engine_directory(tmp_path, tool, expected):
-    from chipcompiler.data.workspace.step_directories import StepDirectories
+    from chipcompiler.data.step import StepDirectories
 
     directories = StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
 

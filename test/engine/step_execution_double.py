@@ -34,8 +34,7 @@ def _write_request(workspace, workspace_step, attempt_id, layout_image):
     """Write req.json as the real launcher does; None for test steps outside a workspace."""
     from pathlib import Path
 
-    from chipcompiler.data.workspace.step_handshake import clear_response, write_request
-    from chipcompiler.engine.step_request import build_step_request
+    from chipcompiler.data.handshake import build_step_request, clear_response, write_request
 
     flow = getattr(workspace, "flow", None)
     try:
@@ -109,7 +108,7 @@ def execute_in_process(
                     from chipcompiler.tools import run_step
 
                 if request is not None:
-                    from chipcompiler.engine.step_response import missing_design_data
+                    from chipcompiler.data.handshake import missing_design_data
 
                     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
                     if missing := missing_design_data(
@@ -132,8 +131,7 @@ def execute_in_process(
                 if result is not True:
                     step_error = f"{step_tag} reported failure (run_step returned {result!r})."
                 if request is not None:
-                    from chipcompiler.data.workspace.step_handshake import write_response
-                    from chipcompiler.engine.step_response import build_step_response
+                    from chipcompiler.data.handshake import build_step_response, write_response
 
                     write_response(
                         request.directory,
