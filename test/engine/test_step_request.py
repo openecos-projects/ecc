@@ -149,6 +149,7 @@ def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
         DesignState.FILLED: "filler_ecc",
         DesignState.PDN: "postFloorplan_ecc",
         AnalysisData.POWER: "powerAnalysis_ecc",
+        AnalysisData.PARASITICS: "RCX_ecc",
     }
 
 

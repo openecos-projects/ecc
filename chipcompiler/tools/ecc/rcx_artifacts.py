@@ -15,10 +15,11 @@ from chipcompiler.data import EccStep, StepEnum, ToolName, Workspace
 from chipcompiler.data.step import STEP_DIRECTORIES
 
 
-def _workspace_rcx_dir(path_text: str, workspace_dir: Path) -> Path:
+def _workspace_rcx_dir(path_text: str, workspace_dir: Path, step_directory: str) -> Path:
     if path_text.startswith("/"):
         relative_path = path_text[1:]
         workspace_names = {
+            step_directory,
             STEP_DIRECTORIES[StepEnum.RCX.value],
             f"{StepEnum.RCX.value.lower()}_{ToolName.ECC.value}",
         }
@@ -36,9 +37,10 @@ def resolve_rcx_dirs(workspace: Workspace, step: EccStep) -> tuple[Path | None, 
     if not data_dir_text or not output_dir_text:
         return None, None
 
+    step_directory = Path(step.directory).name if step.directory else ""
     return (
-        _workspace_rcx_dir(data_dir_text, workspace_dir),
-        _workspace_rcx_dir(output_dir_text, workspace_dir),
+        _workspace_rcx_dir(data_dir_text, workspace_dir, step_directory),
+        _workspace_rcx_dir(output_dir_text, workspace_dir, step_directory),
     )
 
 

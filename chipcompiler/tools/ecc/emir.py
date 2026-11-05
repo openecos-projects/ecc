@@ -1,10 +1,14 @@
 """Run iEMIR on the routed database using iPW's per-instance power output."""
 
+from pathlib import Path
+
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.types import AnalysisData, DesignState
+from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.workspace.step_handshake import load_request
 from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
 from chipcompiler.tools.ecc.module import ECCToolsModule
-from chipcompiler.tools.ecc.power_artifacts import workspace_instance_power_path
+from chipcompiler.tools.ecc.power_artifacts import instance_power_path
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.utility import json_read
 
@@ -31,25 +35,17 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
         return False
     sub_flow.update_step(EccSubFlowEnum.load_data.value, StateEnum.Success)
 
-    signoff_items = runner.collect_sta_signoff_items(workspace)
-    power_item = runner.typical_signoff_item(signoff_items)
-    spef_path = power_item["spef_file"] if power_item is not None else ""
+    spef_path = _typical_spef_path(workspace, step, runner)
 
     sub_flow.update_step(EccSubFlowEnum.run_emir.value, StateEnum.Ongoing)
     initialized = False
     try:
+        pdn_directory, power_directory = _upstream_directories(workspace, step)
         initialized = ecc_module.init_emir(
             output_dir=step.data.steps[StepEnum.EMIR.value],
-            instance_power_file_path=workspace_instance_power_path(workspace.directory),
+            instance_power_file_path=instance_power_path(power_directory),
             technology_file_path=technology_file,
-            ploc_file_path=(
-                workspace.directory
-                / STEP_DIRECTORIES[StepEnum.POST_FLOORPLAN.value]
-                / "data"
-                / "fp"
-                / "pdn_generator"
-                / "power.ploc"
-            ),
+            ploc_file_path=pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
             spef_path=spef_path,
         )
         if not initialized:
@@ -86,3 +82,36 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             workspace.logger.warning("Failed to publish EMIR reports: %s", error)
     sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Success)
     return True
+
+
+def _typical_spef_path(workspace: Workspace, step: EccStep, runner) -> str:
+    """The typical corner's SPEF, or "" when no RCX ran and none is declared."""
+    if step.directory is None:
+        raise ValueError(f"{step.name} step directory is not configured")
+    upstream = load_request(Path(step.directory)).upstream
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
+    if AnalysisData.PARASITICS not in upstream and not declared_spef:
+        return ""
+    item = runner.typical_signoff_item(runner.collect_sta_signoff_items(workspace, step))
+    return item["spef_file"] if item is not None else ""
+
+
+def _upstream_directories(workspace: Workspace, step: EccStep) -> tuple[Path, Path]:
+    """The steps that built the power grid and analyzed power, from req.json.
+
+    A grid the project declares instead of building has no upstream step; it
+    is read from the postFloorplan directory the ledger records.
+    """
+    if step.directory is None:
+        raise ValueError(f"{step.name} step directory is not configured")
+    upstream = load_request(Path(step.directory)).upstream
+    power = upstream.get(AnalysisData.POWER)
+    if power is None:
+        raise ValueError(f"{step.name} has no upstream power analysis")
+    pdn = upstream.get(DesignState.PDN)
+    pdn_directory = (
+        Path(workspace.directory) / pdn.step_directory
+        if pdn is not None
+        else StepDirectories.of(workspace).path(StepEnum.POST_FLOORPLAN.value)
+    )
+    return pdn_directory, Path(workspace.directory) / power.step_directory

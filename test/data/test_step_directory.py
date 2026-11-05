@@ -96,3 +96,51 @@ def test_a_recorded_directory_must_be_a_single_name(directory):
 def test_engine_directories_of_a_non_dual_step_are_rejected():
     with pytest.raises(ValueError, match="not a dual LEC step directory"):
         engine_step_directory(Path("/ws/02_lec_kepler_formal"), "yosys_lec")
+
+
+def test_step_directories_follow_recorded_names_and_keep_legacy_ones(tmp_path):
+    from chipcompiler.data.workspace.step_directories import StepDirectories
+
+    records = [
+        {"name": "place", "tool": "dreamplace", "directory": "07_place_dreamplace"},
+        {"name": "sta", "tool": "ecc"},
+    ]
+
+    directories = StepDirectories.from_records(tmp_path, records)
+
+    assert [directories.path("place"), directories.path("sta"), directories.path("drc")] == [
+        tmp_path / "07_place_dreamplace",
+        tmp_path / "sta_ecc",
+        tmp_path / "drc_ecc",
+    ]
+    assert directories.scan_names()[:2] == ["07_place_dreamplace", "Synthesis_yosys"]
+
+
+def test_step_directories_read_the_persisted_ledger(tmp_path):
+    import json
+
+    from chipcompiler.data.workspace.step_directories import StepDirectories
+
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "RCX", "tool": "ecc", "directory": "18_RCX_ecc"}]}),
+        encoding="utf-8",
+    )
+
+    assert StepDirectories.at(tmp_path).name("RCX") == "18_RCX_ecc"
+
+
+@pytest.mark.parametrize(
+    ("tool", "expected"),
+    [
+        ("yosys_lec", "postRouteLec_yosys_lec"),
+        ("lec_dual", "postRouteLec_dual"),
+        ("kepler_formal", "postRouteLec_kepler_formal"),
+    ],
+)
+def test_unrecorded_ledger_steps_keep_their_engine_directory(tmp_path, tool, expected):
+    from chipcompiler.data.workspace.step_directories import StepDirectories
+
+    directories = StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
+
+    assert directories.name("postRouteLec") == expected

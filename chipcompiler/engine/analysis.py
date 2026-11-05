@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import Any, TypeGuard
 
 from chipcompiler.data import LEC_STEP_TOOLS
-from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_storage_name
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.engine.qor import collect_metric_records
 from chipcompiler.tools.ecc.power_artifacts import (
-    workspace_power_report_source_path,
-    workspace_power_summary_path,
+    power_report_source_path,
+    step_power_summary_path,
 )
 from chipcompiler.tools.ecc.sta_qor import STA_REPORT_FILENAMES
 from chipcompiler.utility import JsonReadError, json_read_strict
@@ -58,12 +58,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         identity = "".join(character for character in step_id.casefold() if character.isalnum())
         if identity == "fixfanout":
             continue
-        if tool_id in LEC_STEP_TOOLS:
-            step_dir = root / flow_step_directory(raw_steps, step_id)
-        else:
-            step_dir = root / STEP_DIRECTORIES.get(
-                step_id, f"{step_storage_name(step_id, tool_id)}_{tool_id}"
-            )
+        step_dir = root / recorded_step_directory(raw_step)
         analysis_dir = step_dir / "analysis"
         for kind, filename, required in _ANALYSIS_FILES:
             artifacts.append(
@@ -207,8 +202,8 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         if step_id == "powerAnalysis":
             timing_files.extend(
                 (
-                    ("power_report", workspace_power_report_source_path(root)),
-                    ("power_summary", workspace_power_summary_path(root)),
+                    ("power_report", power_report_source_path(step_dir)),
+                    ("power_summary", step_power_summary_path(step_dir)),
                 )
             )
         for kind, path in timing_files:

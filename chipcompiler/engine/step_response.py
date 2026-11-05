@@ -128,9 +128,9 @@ def _analysis_outputs(
                 golden = getattr(step.output, "golden_verilog", None)
                 outputs[item] = (Path(golden),) if golden else ()
             case AnalysisData.POWER:
-                from chipcompiler.tools.ecc.power_artifacts import workspace_instance_power_path
+                from chipcompiler.tools.ecc.power_artifacts import instance_power_path
 
-                outputs[item] = (workspace_instance_power_path(request.workspace_directory),)
+                outputs[item] = (instance_power_path(request.directory),)
             case _:
                 pass
     return outputs

@@ -295,6 +295,7 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         advisory=True,
         depends_on=(StepEnum.POWER_ANALYSIS.value,),
         requires=_data(DesignState.FILLED, DesignState.PDN, AnalysisData.POWER),
+        uses=_data(AnalysisData.PARASITICS),
     ),
     StepEnum.HARDEN.value: FlowStepPolicy(
         FlowStepCategory.PNR,

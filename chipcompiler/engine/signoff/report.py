@@ -32,7 +32,6 @@ from chipcompiler.engine.signoff.report_data import (  # noqa: F401
     canonicalize_stage_name,
 )
 from chipcompiler.engine.signoff.report_extract import (  # noqa: F401
-    STEP_DIRS,
     StepMetricStore,
     _find_metric_in_record,
     _first_str,

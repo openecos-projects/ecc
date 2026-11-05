@@ -4,7 +4,7 @@ from pathlib import Path
 from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from chipcompiler.cli.core.output import normalize_state
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
-from chipcompiler.data.step import STEP_DIRECTORIES, step_directory_for_tool
+from chipcompiler.data.step import STEP_DIRECTORIES, recorded_step_directory
 from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
 
 _VIOLATION_METRICS = {
@@ -26,15 +26,15 @@ def checker_evidence(root: Path, step: dict, design: str) -> dict:
     if normalize_state(step["state"]) != "success":
         return record
     name, tool = step["name"], step["tool"]
-    directory = step_directory_for_tool(name, tool)
+    # Checker evidence is only read for the tool each step canonically runs.
     if (
         name in STEP_DIRECTORIES
         and name not in {"lec", "postRouteLec"}
-        and not directory.endswith(f"_{tool}")
+        and not STEP_DIRECTORIES[name].endswith(f"_{tool}")
     ):
         record["availability"] = "unsupported_tool"
         return record
-    step_root = root / directory
+    step_root = root / recorded_step_directory(step)
     metric_ids = _VIOLATION_METRICS.get(name)
     if metric_ids is None:
         if name in {"lec", "postRouteLec"}:

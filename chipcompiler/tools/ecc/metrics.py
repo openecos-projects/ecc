@@ -14,11 +14,11 @@ from chipcompiler.data import (
     StateEnum,
     StepEnum,
     StepMetrics,
-    ToolName,
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.step import step_directory_for_tool
+from chipcompiler.data.step import recorded_step_directory
+from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -2561,12 +2561,7 @@ def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
 
 
 def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
-    summary_path = (
-        workspace.directory
-        / step_directory_for_tool(source_step, ToolName.ECC)
-        / "analysis"
-        / "qor_summary.json"
-    )
+    summary_path = StepDirectories.of(workspace).path(source_step) / "analysis" / "qor_summary.json"
     summary = json_read(summary_path)
     available = is_supported_summary(summary) and summary_quality_status(summary) is not None
     hard_gates = summary_gates(summary) if available else []
@@ -3025,11 +3020,11 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
 
     flow_step = candidates[-1]
     step_name = str(flow_step.get("name"))
-    tool = str(flow_step.get("tool") or "ecc")
-    workspace_directory = workspace.directory
-
     feature_path = (
-        Path(workspace_directory) / f"{step_name}_{tool}" / "feature" / (f"{step_name}.db.json")
+        Path(workspace.directory)
+        / recorded_step_directory(flow_step)
+        / "feature"
+        / f"{step_name}.db.json"
     )
     relative_path = _relative_workspace_path(workspace, feature_path)
     source = {
