@@ -295,6 +295,7 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
     flow_path.parent.mkdir(exist_ok=True)
     flow_path.write_text(json.dumps({"steps": []}), encoding="utf-8")
     workspace.flow.path = flow_path
+    workspace.flow.data = {}
     executed = {}
 
     def run_step(workspace, step, ecc_module=None):
@@ -303,14 +304,35 @@ def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
 
     assert _run_worker(monkeypatch, workspace, payload, run_step)
 
-    # The worker took its input from req.json: the ledger it would have read
-    # is empty, and the worker's ledger stays detached.
+    # The worker took its input from req.json: the ledger it reads is empty,
+    # stays read-only and is never written.
     assert executed == {
         "name": "RCX",
         "input_def": _build(workspace, "route", "ecc").output.def_,
     }
-    assert workspace.flow.path is None
+    assert workspace.flow.read_only is True
     assert flow_path.read_text(encoding="utf-8") == json.dumps({"steps": []})
+
+
+def test_worker_evidence_code_reads_the_persisted_ledger(tmp_path, monkeypatch):
+    workspace = _workspace(tmp_path)
+    ledger = _real_ledger()
+    payload = _worker_payload(workspace, ledger, "RCX")
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(exist_ok=True)
+    flow_path.write_text(json.dumps(ledger), encoding="utf-8")
+    workspace.flow.path = flow_path
+    workspace.flow.data = {}
+    seen = []
+
+    def run_step(workspace, step, ecc_module=None):
+        # Checklist and QoR evidence code reads step states from the ledger.
+        seen.extend(record["name"] for record in workspace.flow.steps())
+        return True
+
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
+
+    assert seen == [record["name"] for record in ledger.get("steps", [])]
 
 
 def test_worker_builds_only_its_requested_step(tmp_path, monkeypatch):
