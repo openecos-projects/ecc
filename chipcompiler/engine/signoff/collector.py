@@ -23,9 +23,13 @@ from chipcompiler.data import (
     Workspace,
     workspace_checklist_path,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, engine_step_directory, flow_step_directory
+from chipcompiler.data.step import (
+    STEP_DIRECTORIES,
+    StepDirectories,
+    engine_step_directory,
+    flow_step_directory,
+)
 from chipcompiler.data.workspace.flow_policy import FlowInputStepError
-from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (

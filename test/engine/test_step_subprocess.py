@@ -107,14 +107,14 @@ class _FakePopen:
 
 def _publish_response(result_path, *, parasitics=()):
     """Write the rsp.json the worker publishes for the request the parent wrote."""
-    from chipcompiler.data.types import AnalysisData
-    from chipcompiler.data.workspace.step_handshake import (
+    from chipcompiler.data.handshake import (
         DesignFiles,
         ResponseStatus,
         StepResponse,
         load_request,
         write_response,
     )
+    from chipcompiler.data.types import AnalysisData
 
     (request_path,) = result_path.parent.parent.glob("*/req.json")
     request = load_request(request_path.parent)
@@ -356,7 +356,7 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
     step = _workspace_step(tmp_path)
     result = execute_tool_step(_workspace(tmp_path), step, None)
 
-    from chipcompiler.data.workspace.step_handshake import load_request
+    from chipcompiler.data.handshake import load_request
 
     payload = json.loads(fake.stdin.getvalue())
     request = load_request(Path(step.directory))

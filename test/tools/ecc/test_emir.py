@@ -10,14 +10,14 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     create_workspace,
 )
-from chipcompiler.data.types import AnalysisData, DesignData, DesignState
-from chipcompiler.data.workspace import refresh_workspace_config
-from chipcompiler.data.workspace.step_handshake import (
+from chipcompiler.data.handshake import (
     StepInputs,
     StepRequest,
     UpstreamResponse,
     write_request,
 )
+from chipcompiler.data.types import AnalysisData, DesignData, DesignState
+from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.tools.ecc import builder, runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write

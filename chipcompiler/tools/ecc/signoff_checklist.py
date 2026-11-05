@@ -19,7 +19,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.tools.ecc.lec_gates import (
     latest_pnr_output as _latest_pnr_output,
 )

@@ -5,8 +5,7 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import unindexed_step_directory
-from chipcompiler.data.workspace.step_directories import StepDirectories
+from chipcompiler.data.step import StepDirectories, unindexed_step_directory
 from chipcompiler.engine.signoff.report_data import (
     DesignReportData,
     EvidenceProvenanceRecord,

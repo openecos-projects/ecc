@@ -5,18 +5,18 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import EccOutput, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.types import AnalysisData, DesignState
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.data.workspace.step_handshake import (
+from chipcompiler.data.handshake import (
     DesignFiles,
     ResponseStatus,
     StepResponse,
     UpstreamResponse,
+    build_step_request,
     write_response,
 )
+from chipcompiler.data.types import AnalysisData, DesignState
+from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine import step_subprocess
 from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.step_request import build_step_request
 
 
 def _wired_flow(tmp_path, *, legacy: bool = False) -> EngineFlow:

@@ -14,6 +14,7 @@ from chipcompiler.data import (
     create_workspace,
     load_workspace,
 )
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace import (
     Flow,
     Workspace,
@@ -26,7 +27,6 @@ from chipcompiler.data.workspace import (
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
-from chipcompiler.data.workspace.step_directories import StepDirectories
 from chipcompiler.utility import json_read, json_write
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
@@ -909,7 +909,7 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
         for step, tool in workspace_data._STEP_CONFIG_KEYS
     )
 
-    step_source = Path("chipcompiler/data/step.py").read_text()
+    step_source = "".join(path.read_text() for path in Path("chipcompiler/data/step").glob("*.py"))
     assert "STEP_CONFIG" not in step_source
     assert "WORKSPACE_CONFIG" not in step_source
 
