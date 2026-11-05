@@ -226,7 +226,7 @@ class _ParallelTiming(ECCToolsModule):
 
 
 def run_parallel_sta(workspace, step, ecc_module, workers):
-    items = runner.collect_sta_signoff_items(workspace)
+    items = runner.collect_sta_signoff_items(workspace, step)
     destinations = []
     for item in items:
         for root in (step.report.dir, step.feature.dir):
