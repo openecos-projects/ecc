@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from chipcompiler.data.checklist import workspace_checklist_path
+from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
     ENGINEERING_SNAPSHOT_MAX_BYTES,
@@ -307,6 +308,11 @@ def invalidate_engineering_snapshot(
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
             step.pop("resource_observation", None)
+    if isinstance(flow, dict) and STEP_RESULTS_DIGEST_FIELD in flow:
+        # The copy describes the invalidated ledger, digest included.
+        from chipcompiler.data.step.results import results_digest
+
+        flow[STEP_RESULTS_DIGEST_FIELD] = results_digest(steps)
     stale_path = _stale_snapshot_path(workspace)
     if not stale_path.is_file():
         _write_snapshot(stale_path, current)

@@ -2,7 +2,10 @@
 
 Every first-party write path goes through :func:`save_ledger`: it stamps the
 schema version, serializes under a per-path re-entrant lock, and reports
-failure instead of raising, so callers can restore their in-memory state.
+failure instead of raising, so callers can restore their in-memory state. For
+a workspace ledger it also resets steps built from upstream runs that changed,
+writes each step's results into its step directory and stamps the digest of
+those results (see ``chipcompiler.data.step.results``).
 Recovery paths that deliberately do not load a Workspace (reconcile,
 interrupted runs, filesystem migration) keep a low-level writer and are listed
 in the regression guard's allowlist.
@@ -12,10 +15,16 @@ import logging
 import threading
 from contextlib import contextmanager
 from copy import deepcopy
+from typing import cast
 
 from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
 from chipcompiler.data.types import StateEnum
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
+from chipcompiler.data.workspace.flow_types import (
+    STEP_RESULTS_DIGEST_FIELD,
+    FlowStepEntry,
+    ledger_workspace_directory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,28 +80,96 @@ def save_ledger(flow) -> bool:
 
     The in-process lock is shared by every writer of the same path, so two
     flows over one workspace serialize their writes the way one EngineFlow's
-    instance lock used to.
+    instance lock used to. Each step's ``state.json`` is written before
+    ``flow.json``; a failure restores both the files and memory.
     """
     if getattr(flow, "read_only", False):
         raise RuntimeError("flow ledger is read-only")
 
+    from chipcompiler.data.step.results import (
+        persist_step_results,
+        restore_step_results,
+        results_digest,
+    )
     from chipcompiler.utility import json_write
 
     path = flow.path
     if path is None:
         return False
     with _lock_for(path):
-        has_version = SCHEMA_VERSION_FIELD in flow.data
-        previous_version = flow.data.get(SCHEMA_VERSION_FIELD)
+        previous_document = {
+            field: flow.data[field]
+            for field in (SCHEMA_VERSION_FIELD, STEP_RESULTS_DIGEST_FIELD)
+            if field in flow.data
+        }
+        steps = flow.data.get("steps", [])
+        # A malformed ledger may hold non-object steps; they carry no results.
+        records = cast("list[FlowStepEntry]", [step for step in steps if isinstance(step, dict)])
+        workspace_directory = ledger_workspace_directory(path)
+        reset = (
+            [] if workspace_directory is None else _reset_stale_steps(workspace_directory, records)
+        )
         flow.data[SCHEMA_VERSION_FIELD] = FLOW_JSON_SCHEMA_VERSION
-        if json_write(path, deepcopy(flow.data)):
-            return True
+        written: list = []
+        try:
+            if workspace_directory is not None:
+                written = persist_step_results(workspace_directory, records)
+                flow.data[STEP_RESULTS_DIGEST_FIELD] = results_digest(records)
+            if json_write(path, deepcopy(flow.data)):
+                return True
+        except OSError:
+            logger.exception("Failed to write the step results of %s", path)
         # Keep memory and disk describing the same document.
-        if has_version and previous_version is not None:
-            flow.data[SCHEMA_VERSION_FIELD] = previous_version
-        else:
-            flow.data.pop(SCHEMA_VERSION_FIELD, None)
+        restore_step_results(written)
+        for field in (SCHEMA_VERSION_FIELD, STEP_RESULTS_DIGEST_FIELD):
+            if field in previous_document:
+                flow.data[field] = previous_document[field]
+            else:
+                flow.data.pop(field, None)
+        for record, previous in reset:
+            steps[next(index for index, step in enumerate(steps) if step is record)] = previous
         return False
+
+
+def reset_step_record(record: FlowStepEntry) -> None:
+    """Mark one ledger step Unstart, clearing the results of its last run."""
+    record["state"] = StateEnum.Unstart.value
+    record["runtime"] = ""
+    record["peak memory (mb)"] = 0
+    record.pop("resource_observation", None)
+
+
+def _reset_stale_steps(
+    workspace_directory, records: list[FlowStepEntry]
+) -> list[tuple[FlowStepEntry, FlowStepEntry]]:
+    """Reset Success steps built from upstream runs that changed since.
+
+    Returns each reset record with its previous content.
+    """
+    from chipcompiler.data.handshake.stale import stale_steps
+    from chipcompiler.data.step import recorded_step_directory
+
+    directories: dict[str, FlowStepEntry] = {}
+    for record in records:
+        try:
+            directories[recorded_step_directory(record)] = record
+        except ValueError:
+            continue
+    reset = []
+    for stale in stale_steps(workspace_directory, list(directories)):
+        record = directories[stale.step_directory]
+        if record.get("state") == StateEnum.Success.value:
+            reset.append((record, deepcopy(record)))
+            reset_step_record(record)
+            logger.info(
+                "[FLOW] %s is stale: built from changed upstream runs in %s",
+                record.get("name"),
+                ", ".join(
+                    [changed.step_directory for changed in stale.changed_inputs]
+                    + list(stale.stale_upstream)
+                ),
+            )
+    return reset
 
 
 def validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
@@ -170,10 +247,7 @@ def clear_flow_states(flow, *, persist=None) -> bool:
     with ledger_lock(flow):
         previous_data = deepcopy(flow.data)
         for step in flow.data.get("steps", []):
-            step["state"] = StateEnum.Unstart.value
-            step["runtime"] = ""
-            step["peak memory (mb)"] = 0
-            step.pop("resource_observation", None)
+            reset_step_record(step)
         if write():
             return True
         flow.data = previous_data

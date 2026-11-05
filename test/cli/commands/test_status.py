@@ -1,7 +1,9 @@
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
+from test.data.handshake.helpers import answer
 
 
 class TestStatus:
@@ -238,34 +240,6 @@ class TestRunStatusStates:
         assert records[0]["status"] == "partial"
 
 
-def _answer(run_dir, directory, attempt_id, source):
-    from pathlib import Path
-
-    from chipcompiler.data.handshake import (
-        DesignFiles,
-        ResponseStatus,
-        StepResponse,
-        UpstreamResponse,
-        write_response,
-    )
-
-    write_response(
-        Path(run_dir) / directory,
-        StepResponse(
-            step=directory.split("_", 2)[1],
-            tool="ecc",
-            attempt_id=attempt_id,
-            status=ResponseStatus.SUCCESS,
-            design=DesignFiles(),
-            design_states=frozenset(),
-            outputs={},
-            design_source=None if source is None else UpstreamResponse(*source),
-            upstream={},
-            warnings=frozenset(),
-        ),
-    )
-
-
 def test_status_reports_steps_built_on_a_rerun_upstream_step(
     capsys, create_cli_project, create_flow_json
 ):
@@ -282,10 +256,11 @@ def test_status_reports_steps_built_on_a_rerun_upstream_step(
             )
         ],
     )
-    _answer(run_dir, "01_CTS_ecc", "cts-1", None)
-    _answer(run_dir, "02_route_ecc", "route-1", ("01_CTS_ecc", "cts-1"))
-    _answer(run_dir, "03_filler_ecc", "filler-1", ("02_route_ecc", "route-1"))
-    _answer(run_dir, "01_CTS_ecc", "cts-2", None)  # CTS reran on its own
+    root = Path(run_dir)
+    answer(root, "01_CTS_ecc", "cts-1")
+    answer(root, "02_route_ecc", "route-1", ("01_CTS_ecc", "cts-1"))
+    answer(root, "03_filler_ecc", "filler-1", ("02_route_ecc", "route-1"))
+    answer(root, "01_CTS_ecc", "cts-2")  # CTS reran on its own
 
     assert cli_main.run(["status", "--json", "--project", project_dir]) == 0
     records = json.loads(capsys.readouterr().out)
