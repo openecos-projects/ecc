@@ -73,21 +73,21 @@ def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
         "global_place_flag": 0,
         "legalize_flag": 1,
         "detailed_place_flag": detailed_place_flag,
-        "cell_padding_x": 0,
+        "cell_padding_x": 300,
         "post_legalization_adaptive_padding_flag": 0,
     }
 
 
 @pytest.mark.parametrize(
-    ("owner", "site_width", "expected_padding"),
+    ("owner", "site_width"),
     [
-        (StepEnum.LEGALIZATION.value, 200, 0),
-        (StepEnum.LEGALIZATION.value, 420, 0),
-        (SkippableStepEnum.TIMING_OPT.value, 200, 0),
+        (StepEnum.LEGALIZATION.value, 200),
+        (StepEnum.LEGALIZATION.value, 420),
+        (SkippableStepEnum.TIMING_OPT.value, 200),
     ],
 )
-def test_geometry_legalization_clears_inherited_padding(
-    tmp_path, monkeypatch, owner, site_width, expected_padding
+def test_geometry_legalization_preserves_configured_padding(
+    tmp_path, monkeypatch, owner, site_width
 ):
     import dreamplace.Params as params_module
     import dreamplace.Placer as placer_module
@@ -121,7 +121,7 @@ def test_geometry_legalization_clears_inherited_padding(
     monkeypatch.setattr(placer_module, "PlacementEngine", FakeEngine)
 
     assert module.run_legalization() is True
-    assert seen == [(0, expected_padding)]
+    assert seen == [(0, 999)]
 
 
 def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
