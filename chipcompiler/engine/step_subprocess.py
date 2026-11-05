@@ -37,7 +37,7 @@ from chipcompiler.engine.step_execution import (
     get_process_rss_mb,
 )
 from chipcompiler.engine.step_request import build_step_request
-from chipcompiler.engine.step_response import build_step_response
+from chipcompiler.engine.step_response import build_step_response, missing_design_data
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +317,12 @@ def run_step_worker(
     # nothing in the worker can depend on it.
     workspace.flow = Flow(read_only=True)
     step = _build_requested_step(workspace, request)
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
+    if missing := missing_design_data(request, step, declared_spef=declared_spef):
+        raise RuntimeError(
+            f"{request.step} cannot run: missing {', '.join(sorted(missing))} "
+            "(no upstream step provides it and the project does not declare it)"
+        )
     flow = flow_factory(workspace)
     workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
