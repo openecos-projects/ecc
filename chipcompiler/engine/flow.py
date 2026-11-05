@@ -19,6 +19,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     default_flow_step_category,
+    is_finished_step_state,
     log_flow,
 )
 from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories

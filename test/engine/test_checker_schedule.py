@@ -9,6 +9,7 @@ from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.data.workspace import Workspace
 from chipcompiler.engine.checker_schedule import checker_dependencies, run_checker_dag
 from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.memory import MemoryStatus
 
 CHECKER_NAMES = (
     "lvs",
@@ -126,8 +127,8 @@ def test_checker_parallelism_uses_every_slot_when_memory_allows(monkeypatch, tmp
     steps = [_step(name) for name in CHECKER_NAMES]
     monkeypatch.setattr(flow, "_step_memory_estimate_mb", lambda _step: 4096.0)
 
-    monkeypatch.setattr(flow_module, "_available_memory_mb", lambda: 128 * 1024)
+    monkeypatch.setattr(flow_module, "read_memory_status", lambda: MemoryStatus(0.0, 128 * 1024))
     assert flow._checker_parallelism(cast(list[WorkspaceStep], steps)) == len(steps)
 
-    monkeypatch.setattr(flow_module, "_available_memory_mb", lambda: 12 * 1024)
+    monkeypatch.setattr(flow_module, "read_memory_status", lambda: MemoryStatus(0.0, 12 * 1024))
     assert flow._checker_parallelism(cast(list[WorkspaceStep], steps)) == 2
