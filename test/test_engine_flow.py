@@ -439,6 +439,8 @@ def test_engine_flow_refreshes_home_checklist_after_harden_success(monkeypatch, 
         "steps": [{"name": StepEnum.HARDEN.value, "tool": "ecc", "state": StateEnum.Unstart.value}]
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    # A Harden-entry workspace declares its parasitics instead of running RCX.
+    workspace.pdk.spef = tmp_path / "gcd.spef"
     lef = tmp_path / "gcd.lef"
     lib = tmp_path / "gcd.lib"
     lef.write_text("")
