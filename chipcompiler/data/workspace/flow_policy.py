@@ -15,6 +15,7 @@ read ``filler`` directly, and the parallel checker batch immediately after
 
 from collections.abc import Mapping, Sequence
 
+from chipcompiler.data.flow_check import step_provides
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
@@ -211,3 +212,36 @@ class FlowInputResolver:
         """
         name, _explicit = self._resolve(index, require_created=True)
         return None if name is None else self._created[name]
+
+
+def analysis_wave_end(records: Sequence[Mapping[str, object]], start: int) -> int:
+    """The end (exclusive) of the analysis wave that starts at ledger step *start*.
+
+    An analysis wave is a run of consecutive CHECKER steps none of which needs
+    another step of the run: none requires or uses design data another
+    provides, names another as its explicit input, or reads another as its
+    input source. The steps of a wave can run in parallel. A step that is not a
+    CHECKER step is a wave of its own.
+    """
+    resolver = FlowInputResolver(records)
+    members: list[str] = []
+    end = start
+    while end < len(records):
+        record = records[end]
+        try:
+            if ledger_category(record) != FlowStepCategory.CHECKER:
+                break
+            policy = flow_step_policy(step_name(record))
+            source = resolver.input_step_name(end)
+        except (ValueError, FlowInputStepError):
+            break
+        needs = policy.requires | policy.uses
+        if (
+            any(step_provides(member, item) for member in members for item in needs)
+            or source in members
+            or explicit_input_step(record) in members
+        ):
+            break
+        members.append(step_name(record))
+        end += 1
+    return max(end, start + 1)

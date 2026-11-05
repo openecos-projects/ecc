@@ -1587,3 +1587,39 @@ def test_unregistered_checker_step_fails_the_classification(tmp_path):
 
     with pytest.raises(ValueError, match="no flow policy registered"):
         flow._is_checker_step(EccStep(name="custom", tool="one"))
+
+
+def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
+    from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+
+    workspace: Any = Workspace(directory=tmp_path)
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = build_dynamic_flow_data(
+        {"start_step": "filler", "end_step": "Harden", "skip_steps": []}
+    )
+    flow.workspace_steps = [
+        SimpleNamespace(name=record["name"], tool=record["tool"])
+        for record in flow.workspace.flow.steps()
+    ]
+    dispatched = []
+    monkeypatch.setattr(
+        flow,
+        "run_step",
+        lambda step, **_kwargs: dispatched.append([step.name]) or StateEnum.Success,
+    )
+
+    def run_batch(steps, **_kwargs):
+        dispatched.append([step.name for step in steps])
+        return [StateEnum.Success for _ in steps]
+
+    monkeypatch.setattr(flow, "_run_checker_batch", run_batch)
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
+
+    assert flow.run_steps() is True
+    assert dispatched == [
+        ["filler"],
+        ["lvs", "drc", "antennaCheck", "postRouteLec", "RCX"],
+        ["sta", "powerAnalysis"],
+        ["emir"],
+        ["Harden"],
+    ]

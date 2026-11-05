@@ -404,7 +404,7 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         monkeypatch.setattr(
             flow, "_can_parallelize_checker_batch", lambda step, *_: step.name == advisory
         )
-        monkeypatch.setattr(flow, "_is_checker_batch_step", lambda step: step.name == advisory)
+        monkeypatch.setattr(flow, "_analysis_wave_end", lambda index: index + 1)
         monkeypatch.setattr(
             flow, "_run_checker_batch", lambda steps, **kw: [run_step(step) for step in steps]
         )
