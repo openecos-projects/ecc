@@ -403,3 +403,21 @@ def test_worker_refuses_a_step_whose_required_design_data_is_missing(monkeypatch
 
     assert (exit_code, ran) == (1, [])
     assert "emir cannot run: missing power" in result["error"]
+
+
+def test_worker_publishes_a_failed_response_when_its_tool_raises(monkeypatch, tmp_path):
+    from chipcompiler.data.workspace.step_handshake import ResponseStatus, load_response
+
+    step = _workspace_step(tmp_path)
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("SDC contains invalid constraints")
+
+    exit_code, result = _run_main(
+        monkeypatch, tmp_path, step, _FakeFlow(_workspace(tmp_path)), explode
+    )
+
+    response = load_response(step.directory)
+    assert (exit_code, "SDC contains invalid constraints" in result["error"]) == (1, True)
+    assert response is not None
+    assert (response.attempt_id, response.status) == ("test-attempt", ResponseStatus.FAILED)

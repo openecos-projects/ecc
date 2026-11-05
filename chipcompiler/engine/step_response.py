@@ -6,6 +6,7 @@ from chipcompiler.data import EccOutput, WorkspaceStep
 from chipcompiler.data.flow_check import design_states_after
 from chipcompiler.data.types import AnalysisData, DesignData, DesignState, flow_step_policy
 from chipcompiler.data.workspace.step_handshake import (
+    REQ_FILE,
     DesignFiles,
     ResponseStatus,
     StepRequest,
@@ -93,12 +94,17 @@ def input_design_states(request: StepRequest) -> frozenset[DesignState]:
     They come from the response of the step that supplied the design. A design
     declared by the project, or supplied by a step that ran before responses
     existed, is trusted to carry every design state the step requires or uses.
+    A source that was asked to run (it has a req.json) but has no matching
+    response carries none.
     """
     source = request.design_source
-    if source is not None and source.attempt_id is not None:
-        response = load_response(request.workspace_directory / source.step_directory)
-        if response is not None and response.attempt_id == source.attempt_id:
-            return response.design_states
+    if source is not None:
+        source_directory = request.workspace_directory / source.step_directory
+        response = load_response(source_directory)
+        if source.attempt_id is not None or (source_directory / REQ_FILE).is_file():
+            if response is not None and response.attempt_id == source.attempt_id:
+                return response.design_states
+            return frozenset()
     policy = flow_step_policy(request.step)
     return frozenset(
         item for item in policy.requires | policy.uses if isinstance(item, DesignState)

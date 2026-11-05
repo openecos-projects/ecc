@@ -317,27 +317,33 @@ def run_step_worker(
     # evidence code, which still reads step states from it.
     workspace.flow.read_only = True
     step = _build_requested_step(workspace, request)
-    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
-    if missing := missing_design_data(request, step, declared_spef=declared_spef):
-        raise RuntimeError(
-            f"{request.step} cannot run: missing {', '.join(sorted(missing))} "
-            "(no upstream step provides it and the project does not declare it)"
-        )
-    flow = flow_factory(workspace)
-    workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
+    try:
+        declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
+        if missing := missing_design_data(request, step, declared_spef=declared_spef):
+            raise RuntimeError(
+                f"{request.step} cannot run: missing {', '.join(sorted(missing))} "
+                "(no upstream step provides it and the project does not declare it)"
+            )
+        flow = flow_factory(workspace)
+        workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
-    flow.init_db_engine_for_step(step)
-    if flow.engine_db is None:
-        raise RuntimeError("ECC engine was not initialized")
-    initialization_error = getattr(flow.engine_db, "initialization_error", None)
-    if initialization_error is not None:
-        raise initialization_error
+        flow.init_db_engine_for_step(step)
+        if flow.engine_db is None:
+            raise RuntimeError("ECC engine was not initialized")
+        initialization_error = getattr(flow.engine_db, "initialization_error", None)
+        if initialization_error is not None:
+            raise initialization_error
 
-    from chipcompiler.utility.log import capture_stdio_to_file
+        from chipcompiler.utility.log import capture_stdio_to_file
 
-    with capture_stdio_to_file(step.log.file):
-        ok = tool_runner(workspace=workspace, step=step, ecc_module=flow.engine_db.engine) is True
-    outputs_complete = ok and flow.check_step_result(workspace_step=step)
+        with capture_stdio_to_file(step.log.file):
+            engine = flow.engine_db.engine
+            ok = tool_runner(workspace=workspace, step=step, ecc_module=engine) is True
+        outputs_complete = ok and flow.check_step_result(workspace_step=step)
+    except (Exception, SystemExit):
+        # Downstream steps must see this attempt failed, not a missing answer.
+        write_response(request.directory, build_step_response(request, step, succeeded=False))
+        raise
     # rsp.json describes the step's design data; the layout thumbnail below is
     # not part of it, so the response is published before rendering.
     write_response(
