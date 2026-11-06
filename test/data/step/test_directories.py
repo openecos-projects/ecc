@@ -47,7 +47,7 @@ def test_new_ledgers_record_the_directory_each_step_is_built_in(tmp_path):
     ]
     assert (records[0].get("directory"), records[-1].get("directory")) == (
         "01_Synthesis_yosys",
-        "22_Harden_ecc",
+        "23_Harden_ecc",
     )
 
 
