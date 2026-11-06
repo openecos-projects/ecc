@@ -80,7 +80,7 @@ def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, legacy):
 def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
     flow = _wired_flow(tmp_path)
     write_response(
-        tmp_path / "18_RCX_ecc",
+        tmp_path / "19_RCX_ecc",
         StepResponse(
             step="RCX",
             tool="ecc",
@@ -99,11 +99,11 @@ def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
 
     # The design comes from filler; each design data item from the step that
     # provided it.
-    assert request.design_source == UpstreamResponse("13_filler_ecc", None)
+    assert request.design_source == UpstreamResponse("14_filler_ecc", None)
     assert dict(request.upstream) == {
-        DesignState.FILLED: UpstreamResponse("13_filler_ecc", None),
-        DesignState.CLOCK_TREE: UpstreamResponse("09_CTS_ecc", None),
-        AnalysisData.PARASITICS: UpstreamResponse("18_RCX_ecc", "attempt-rcx"),
+        DesignState.FILLED: UpstreamResponse("14_filler_ecc", None),
+        DesignState.CLOCK_TREE: UpstreamResponse("10_CTS_ecc", None),
+        AnalysisData.PARASITICS: UpstreamResponse("19_RCX_ecc", "attempt-rcx"),
     }
     assert request.final_step is False
 
@@ -147,9 +147,9 @@ def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
     _step, request = _request(_wired_flow(tmp_path), StepEnum.EMIR.value)
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.FILLED: "13_filler_ecc",
+        DesignState.FILLED: "14_filler_ecc",
         DesignState.PDN: "05_postFloorplan_ecc",
-        AnalysisData.POWER: "20_powerAnalysis_ecc",
+        AnalysisData.POWER: "21_powerAnalysis_ecc",
     }
 
 
@@ -157,6 +157,6 @@ def test_routing_links_legality_to_the_last_legalizing_step(tmp_path):
     _step, request = _request(_wired_flow(tmp_path), StepEnum.ROUTING.value)
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.LEGAL: "11_timing_optimization_sizer",
-        DesignState.CLOCK_TREE: "09_CTS_ecc",
+        DesignState.LEGAL: "12_timing_optimization_sizer",
+        DesignState.CLOCK_TREE: "10_CTS_ecc",
     }
