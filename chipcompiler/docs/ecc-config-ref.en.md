@@ -223,6 +223,8 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 
 Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
+Set `macro.manual_placement true` (parameter id `macro.manual_placement`, exposed under Floorplan in Studio; for example `ecc param set macro.manual_placement true --workspace default`) to make `macroPlacement` a hard manual-placement gate. With the flag enabled, the step stops as incomplete unless `macro.placements` is non-empty and the generated `config/macro_location.tcl` contains parseable placements. Complete the layout in Chip Viewer or run an `ecc macro` command, then rerun the step. The gate applies even to a design without hard macros, so leave it off unless hand placement is required.
+
 The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
 
 ### 1.6 Auto-generated SDC

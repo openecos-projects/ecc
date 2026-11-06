@@ -1,5 +1,6 @@
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.data.parameter import Parameters
+from chipcompiler.data.workspace.macro_location import render_macro_location_tcl
 from chipcompiler.tools.ecc_dreamplace import runner as dreamplace_runner
 
 
@@ -162,6 +163,118 @@ def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch
         "macro placement",
         "save data",
     ]
+    assert [update["state"] for update in subflow.updates] == [
+        StateEnum.Success,
+        StateEnum.Success,
+        StateEnum.Success,
+    ]
+
+
+def test_manual_macro_placement_gate_requires_configured_tcl(monkeypatch, tmp_path, caplog):
+    calls = []
+    subflow = FakeSubFlow()
+    placements = [{"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}]
+    macro_location = tmp_path / "macro_location.tcl"
+    workspace = Workspace(
+        directory=tmp_path,
+        config={"macro_location": macro_location},
+        parameters=Parameters(data={"macro": {"manual_placement": True, "placements": placements}}),
+    )
+    step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
+
+    class FakeEccModule:
+        pass
+
+    monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "get_eda_instance",
+        lambda **_kwargs: FakeEccModule(),
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "save_data",
+        lambda **kwargs: calls.append(("save", kwargs["step"].name)) or True,
+    )
+
+    assert dreamplace_runner.run_macro_placement(workspace, step) is False
+    assert calls == []
+    assert [update["step_name"] for update in subflow.updates] == [
+        "load data",
+        "macro placement",
+    ]
+    assert subflow.updates[-1]["state"] is StateEnum.Imcomplete
+    assert "Manual macro placement is required" in caplog.text
+
+
+def test_manual_macro_placement_gate_requires_placements(monkeypatch, tmp_path, caplog):
+    calls = []
+    subflow = FakeSubFlow()
+    macro_location = tmp_path / "macro_location.tcl"
+    macro_location.write_text(render_macro_location_tcl([]))
+    workspace = Workspace(
+        directory=tmp_path,
+        config={"macro_location": macro_location},
+        parameters=Parameters(data={"macro": {"manual_placement": True}}),
+    )
+    step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
+
+    class FakeEccModule:
+        pass
+
+    monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "get_eda_instance",
+        lambda **_kwargs: FakeEccModule(),
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "save_data",
+        lambda **kwargs: calls.append(("save", kwargs["step"].name)) or True,
+    )
+
+    assert dreamplace_runner.run_macro_placement(workspace, step) is False
+    assert calls == []
+    assert subflow.updates[-1]["state"] is StateEnum.Imcomplete
+    assert "Manual macro placement is required" in caplog.text
+
+
+def test_manual_macro_placement_gate_continues_with_configured_handoff(monkeypatch, tmp_path):
+    calls = []
+    subflow = FakeSubFlow()
+    placements = [{"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}]
+    macro_location = tmp_path / "macro_location.tcl"
+    macro_location.write_text(render_macro_location_tcl(placements))
+    workspace = Workspace(
+        directory=tmp_path,
+        config={"macro_location": macro_location},
+        parameters=Parameters(data={"macro": {"manual_placement": True, "placements": placements}}),
+    )
+    step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
+
+    class FakeDreamplaceModule:
+        def __init__(self, **_kwargs):
+            calls.append("init")
+
+    class FakeEccModule:
+        pass
+
+    monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "get_eda_instance",
+        lambda **_kwargs: FakeEccModule(),
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "save_data",
+        lambda **kwargs: calls.append(("save", kwargs["step"].name)) or True,
+    )
+    monkeypatch.setattr(dreamplace_runner, "DreamplaceModule", FakeDreamplaceModule)
+
+    assert dreamplace_runner.run_macro_placement(workspace, step) is True
+    assert calls == [("save", StepEnum.MACRO_PLACEMENT.value)]
     assert [update["state"] for update in subflow.updates] == [
         StateEnum.Success,
         StateEnum.Success,
