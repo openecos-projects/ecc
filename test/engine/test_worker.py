@@ -9,6 +9,7 @@ import time
 from contextlib import suppress
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -313,6 +314,25 @@ def test_worker_dies_when_parent_is_killed_after_arming(tmp_path, mode):
         if child_pid is not None:
             with suppress(ProcessLookupError):
                 os.kill(child_pid, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux procfs process states required")
+def test_process_group_liveness_ignores_zombies(tmp_path, monkeypatch):
+    def write_stat(pid, state, pgid, *, comm="worker"):
+        directory = tmp_path / str(pid)
+        directory.mkdir()
+        (directory / "stat").write_text(f"{pid} ({comm}) {state} 1 {pgid} 0", encoding="utf-8")
+
+    monkeypatch.setattr(worker, "_PROC_ROOT", tmp_path)
+    monkeypatch.setattr(worker.os, "killpg", lambda *_args: None)
+    process = cast(subprocess.Popen, SimpleNamespace(pid=42))
+    write_stat(42, "Z", 42)
+    write_stat(99, "R", 99)
+
+    assert not worker._process_group_exists(process)
+
+    write_stat(43, "S", 42, comm="worker) cleanup")
+    assert worker._process_group_exists(process)
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Linux process groups required")

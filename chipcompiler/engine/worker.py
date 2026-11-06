@@ -14,6 +14,7 @@ from chipcompiler.utility.file import write_text_atomic
 
 _POLL_SECONDS = 1.0
 _TERMINATE_TIMEOUT_SECONDS = 5.0
+_PROC_ROOT = Path("/proc")
 
 
 def worker_command(module: str) -> list[str]:
@@ -46,6 +47,37 @@ def _signal_process_group(process: subprocess.Popen, sig: int) -> None:
             process.kill()
 
 
+def _linux_process_group_has_live_members(pgid: int) -> bool:
+    """Whether /proc reports a non-zombie member of *pgid*."""
+    try:
+        for entry in _PROC_ROOT.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                stat = (entry / "stat").read_text(encoding="utf-8")
+            except OSError:
+                continue
+            # comm is parenthesized and may itself contain ')' or spaces.
+            _prefix, separator, fields = stat.rpartition(")")
+            if not separator:
+                continue
+            columns = fields.split()
+            if len(columns) < 3:
+                continue
+            state = columns[0]
+            try:
+                member_pgid = int(columns[2])
+            except ValueError:
+                continue
+            if member_pgid == pgid and state != "Z":
+                return True
+    except OSError:
+        # killpg already established that the group exists. If procfs cannot
+        # be read, preserve the conservative wait-and-kill behavior.
+        return True
+    return False
+
+
 def _process_group_exists(process: subprocess.Popen) -> bool:
     if os.name != "posix" or not process.pid:
         return process.poll() is None
@@ -53,6 +85,10 @@ def _process_group_exists(process: subprocess.Popen) -> bool:
         os.killpg(process.pid, 0)
     except ProcessLookupError:
         return False
+    if sys.platform == "linux":
+        # A zombie still answers killpg(..., 0), but needs no SIGKILL and must
+        # not consume the grace period after its SIGTERM handler has exited.
+        return _linux_process_group_has_live_members(process.pid)
     return True
 
 
