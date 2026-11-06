@@ -6,6 +6,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.engine import StepRunResult
+from test.flow_fixture import step_fields
 
 
 class TestRun:
@@ -28,7 +29,7 @@ class TestRun:
         project_dir = create_cli_project()
         workspace = SimpleNamespace(
             directory=os.path.join(project_dir, "ws_0001"),
-            flow=SimpleNamespace(data={"steps": []}),
+            flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
         )
         captured = {}
 
@@ -308,10 +309,18 @@ class TestWorkspaceRun:
             (step.value if hasattr(step, "value") else str(step), str(tool))
             for step, tool, _state in build_rtl2gds_flow()
         ]
-        steps = [{"name": name, "tool": tool, "state": "Success"} for name, tool in chain]
+        steps = [
+            {
+                "name": name,
+                "tool": tool,
+                "state": "Success",
+                **step_fields(name, tool),
+            }
+            for name, tool in chain
+        ]
         steps[-1]["state"] = "Unstart"  # something left to resume
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": steps}, f)
+            json.dump({"schema_version": 2, "steps": steps}, f)
         assert save_workspace_config(
             run_dir,
             {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
@@ -671,9 +680,17 @@ class TestWorkspaceNoOp:
             (step.value if hasattr(step, "value") else str(step), str(tool))
             for step, tool, _state in build_rtl2gds_flow()
         ]
-        steps = [{"name": name, "tool": tool, "state": "Success"} for name, tool in chain]
+        steps = [
+            {
+                "name": name,
+                "tool": tool,
+                "state": "Success",
+                **step_fields(name, tool),
+            }
+            for name, tool in chain
+        ]
         with open(os.path.join(home, "flow.json"), "w") as f:
-            _json.dump({"steps": steps}, f)
+            _json.dump({"schema_version": 2, "steps": steps}, f)
         assert save_workspace_config(
             workspace,
             {

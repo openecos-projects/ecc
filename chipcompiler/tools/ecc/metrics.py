@@ -14,11 +14,10 @@ from chipcompiler.data import (
     StateEnum,
     StepEnum,
     StepMetrics,
-    ToolName,
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.step import step_directory_for_tool
+from chipcompiler.data.step import StepDirectories, recorded_step_directory
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -2561,12 +2560,7 @@ def _workspace_step_completed(workspace: Workspace, step_name: str) -> bool:
 
 
 def _harden_signoff_source(workspace: Workspace, source_step: str) -> dict:
-    summary_path = (
-        workspace.directory
-        / step_directory_for_tool(source_step, ToolName.ECC)
-        / "analysis"
-        / "qor_summary.json"
-    )
+    summary_path = StepDirectories.of(workspace).path(source_step) / "analysis" / "qor_summary.json"
     summary = json_read(summary_path)
     available = is_supported_summary(summary) and summary_quality_status(summary) is not None
     hard_gates = summary_gates(summary) if available else []
@@ -3025,11 +3019,11 @@ def _last_successful_mpc_area_source(workspace: Workspace) -> tuple[float | None
 
     flow_step = candidates[-1]
     step_name = str(flow_step.get("name"))
-    tool = str(flow_step.get("tool") or "ecc")
-    workspace_directory = workspace.directory
-
     feature_path = (
-        Path(workspace_directory) / f"{step_name}_{tool}" / "feature" / (f"{step_name}.db.json")
+        Path(workspace.directory)
+        / recorded_step_directory(flow_step)
+        / "feature"
+        / f"{step_name}.db.json"
     )
     relative_path = _relative_workspace_path(workspace, feature_path)
     source = {
@@ -3521,30 +3515,12 @@ def save_qor_hotspots(workspace: Workspace, step: WorkspaceStep, step_metrics: S
     )
 
 
-def _remove_legacy_step_metric_artifacts(step: WorkspaceStep) -> bool:
-    analysis_dir = step.analysis.dir
-    if analysis_dir is None or analysis_dir == "":
-        return True
-
-    legacy_prefix = f"{step.name}_metrics"
-    try:
-        for suffix in (".json", ".png"):
-            legacy_path = Path(analysis_dir) / f"{legacy_prefix}{suffix}"
-            if legacy_path.is_file():
-                legacy_path.unlink()
-    except OSError:
-        return False
-    return True
-
-
 def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: StepMetrics) -> bool:
     if not save_qor_metrics(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
     if not save_qor_summary(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
-    if not save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics):
-        return False
-    return _remove_legacy_step_metric_artifacts(step)
+    return save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics)
 
 
 def build_step_metrics(

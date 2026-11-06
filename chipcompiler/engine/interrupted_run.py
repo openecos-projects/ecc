@@ -28,7 +28,7 @@ def recover_interrupted_run(
         raw_info = step.get("info")
         info = raw_info if isinstance(raw_info, dict) else {}
         execution = info.get("execution")
-        legacy = info.get("runtime_operation")
+        runtime_operation = info.get("runtime_operation")
         eligible = False
         if isinstance(execution, dict):
             marker_run_id = execution.get("run_id")
@@ -38,8 +38,8 @@ def recover_interrupted_run(
                 and bool(marker_run_id)
                 and (run_id is None or marker_run_id == run_id)
             )
-        elif isinstance(legacy, dict):
-            marker_id = legacy.get("operation_id")
+        elif isinstance(runtime_operation, dict):
+            marker_id = runtime_operation.get("operation_id")
             eligible = run_id is None or marker_id == run_id
         elif allow_markerless:
             eligible = True

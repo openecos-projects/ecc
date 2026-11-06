@@ -2,6 +2,7 @@ import json
 import os
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 FLOORPLAN_STEP_JSON = {
     "run": {"state": "Success", "runtime_seconds": 1.757, "peak_memory_mb": 143.227},
@@ -152,6 +153,7 @@ FLOW_STEPS = [
         "state": "Success",
         "runtime": "0:0:1",
         "peak memory (mb)": 143.227,
+        **step_fields("Floorplan", "ecc"),
     },
     {
         "name": "Timing optimization",
@@ -159,6 +161,7 @@ FLOW_STEPS = [
         "state": "Success",
         "runtime": "0:0:9",
         "peak memory (mb)": 2.305,
+        **step_fields("Timing optimization", "sizer"),
     },
 ]
 
@@ -172,7 +175,7 @@ def _write(path, payload):
 def create_step_workspace(tmp_path, *, with_drc=True, with_home_checklist=False):
     """Minimal completed-workspace fixture shaped like a real run output."""
     ws = str(tmp_path / "ws")
-    _write(os.path.join(ws, "home", "flow.json"), {"steps": FLOW_STEPS})
+    _write(os.path.join(ws, "home", "flow.json"), {"schema_version": 2, "steps": FLOW_STEPS})
 
     floorplan_dir = os.path.join(ws, "Floorplan_ecc")
     _write(os.path.join(floorplan_dir, "feature", "Floorplan.step.json"), FLOORPLAN_STEP_JSON)
@@ -261,10 +264,16 @@ class TestStepOverview:
         _write(
             os.path.join(ws, "home", "flow.json"),
             {
+                "schema_version": 2,
                 "steps": [
-                    {"name": step.value, "tool": tool, "state": state.value}
+                    {
+                        "name": step.value,
+                        "tool": tool,
+                        "state": state.value,
+                        **step_fields(step.value, tool),
+                    }
                     for step, tool, state in build_rtl2gds_flow(skip=DEFAULT_SKIP_STEPS)
-                ]
+                ],
             },
         )
 

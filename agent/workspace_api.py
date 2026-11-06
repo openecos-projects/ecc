@@ -9,7 +9,6 @@ import chipcompiler
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
-from .candidate_worker import run_candidate_steps_isolated
 from .data import (
     FoundationExtractor,
     bind_candidate_input,
@@ -44,9 +43,6 @@ from .requests import (
 from .runtime_env import preflight_sizer_runtime
 from .runtime_support import (
     AgentApplicationError as RuntimeApiError,
-)
-from .runtime_support import (
-    init_db_engine_for_workspace_step as _init_db_engine_for_workspace_step,
 )
 from .runtime_support import (
     state_value as _state_value,
@@ -184,7 +180,7 @@ class FlowAgentRuntimeApi:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
-            run_candidate_steps_isolated(flow, steps, observer=observer)
+            _run_candidate_steps(flow, steps, observer)
             if candidate_root_ref is None or parent is None:
                 raise RuntimeApiError("command_failed", "candidate rerun identity is unavailable")
             return _candidate_rerun_result(
@@ -470,14 +466,12 @@ def _workspace_state_sha256(root: Path) -> str:
     relative_files = (
         FLOORPLAN_MODE_REF,
         "home/flow.json",
-        "home/parameters.json",
+        "home/params.toml",
         "config/floorplan_ecc.json",
         "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )
-    if (root / FLOORPLAN_MODE_REF).is_file():
-        relative_files += ("home/params.toml",)
     hashes = {
         relative: _required_file_sha256(root / relative, relative)
         for relative in relative_files
@@ -1065,8 +1059,15 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
     directory.mkdir(parents=True, exist_ok=True)
 
 
+def _run_candidate_steps(flow, steps, observer) -> None:
+    for step in steps:
+        callback = getattr(observer, "raise_if_cancelled", None)
+        if callable(callback):
+            callback()
+        _run_candidate_step(flow, step, observer=observer)
+
+
 def _run_candidate_step(flow, step, *, observer) -> None:
-    _init_db_engine_for_workspace_step(flow, step)
     state = flow.run_step(step, rerun=True, observer=observer)
     if _state_value(state) != "Success":
         raise RuntimeApiError(

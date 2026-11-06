@@ -3,6 +3,7 @@ import json
 from chipcompiler.data import Workspace
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.snapshot import create_engineering_snapshot
+from test.flow_fixture import step_fields
 
 
 def test_flow_save_keeps_snapshot_and_persisted_ledger_identical(tmp_path):
@@ -10,7 +11,17 @@ def test_flow_save_keeps_snapshot_and_persisted_ledger_identical(tmp_path):
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
-    workspace.flow.data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Unstart",
+                **step_fields("Synthesis", "yosys"),
+            }
+        ],
+    }
     original_steps = workspace.flow.data["steps"]
 
     assert flow.save() is True
@@ -32,7 +43,17 @@ def test_failed_ledger_write_rolls_back_the_step_state(tmp_path, monkeypatch):
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
-    workspace.flow.data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Unstart",
+                **step_fields("Synthesis", "yosys"),
+            }
+        ],
+    }
     assert flow.save() is True
 
     monkeypatch.setattr(flow_ledger, "save_ledger", lambda _flow: False)
@@ -49,10 +70,21 @@ def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Success",
+                **step_fields("Synthesis", "yosys"),
+            },
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Floorplan", "ecc"),
+            },
+        ],
     }
     assert flow.save() is True
     assert workspace.flow.path is not None
@@ -64,18 +96,17 @@ def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
     assert workspace.flow.data == before
 
 
-def test_failed_ledger_write_does_not_leave_a_schema_version(tmp_path, monkeypatch):
-    import chipcompiler.data.workspace.flow_ledger as flow_ledger
-    from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
+def test_failed_ledger_write_preserves_the_existing_schema_version(tmp_path, monkeypatch):
+    from chipcompiler.data.workspace.flow_ledger import save_ledger
 
     workspace = Workspace(directory=tmp_path)
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
-    workspace.flow.data = {"steps": []}
-    monkeypatch.setattr("chipcompiler.utility.json_write", lambda *args, **kwargs: False)
+    workspace.flow.data = {"schema_version": 2, "steps": []}
+    monkeypatch.setattr("chipcompiler.utility.json_write", lambda *_args, **_kwargs: False)
 
-    assert flow_ledger.save_ledger(workspace.flow) is False
-    assert SCHEMA_VERSION_FIELD not in workspace.flow.data
+    assert not save_ledger(workspace.flow)
+    assert workspace.flow.data["schema_version"] == 2
 
 
 def test_state_transaction_holds_the_ledger_lock(tmp_path):
@@ -85,7 +116,17 @@ def test_state_transaction_holds_the_ledger_lock(tmp_path):
     workspace = Workspace(directory=tmp_path)
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
-    workspace.flow.data = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Unstart",
+                **step_fields("Synthesis", "yosys"),
+            }
+        ],
+    }
     observed = []
 
     def persist():

@@ -22,6 +22,7 @@ from chipcompiler.analysis.qor import (
 from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
 from chipcompiler.analysis.qor.models import PowerObservation
 from chipcompiler.analysis.qor.schema import validate_report
+from test.flow_fixture import step_fields
 
 SUCCESS = "Success"
 
@@ -37,6 +38,9 @@ _FLOW_STEPS = {
     "sta": SUCCESS,
     "Harden": SUCCESS,
 }
+
+
+_STEP_TOOLS = {"Synthesis": "yosys", "place": "dreamplace"}
 
 
 def _write(path, payload):
@@ -76,15 +80,21 @@ def _make_gcd_workspace(tmp_path):
     _write(
         os.path.join(root, "home", "flow.json"),
         {
+            "schema_version": 2,
             "steps": [
-                {"name": name, "tool": "ecc", "state": state} for name, state in _FLOW_STEPS.items()
-            ]
+                {
+                    "name": name,
+                    "tool": _STEP_TOOLS.get(name, "ecc"),
+                    "state": state,
+                    **step_fields(name, _STEP_TOOLS.get(name, "ecc")),
+                }
+                for name, state in _FLOW_STEPS.items()
+            ],
         },
     )
-    _write(
-        os.path.join(root, "home", "parameters.json"),
-        {"Design": "gcd", "frequency_max": 50.0},
-    )
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
 
     directory_by_step = {
         "Synthesis": "Synthesis_yosys",

@@ -959,8 +959,8 @@ budget disk space and copying time.
 synthesis/early-stage execution.**
 
 The source must be managed and have an Engineering Snapshot. Do not forcibly copy
-an old workspace or manufacture a missing snapshot. Use public compatibility/migration
-procedures or a fresh range entry below. Derivation does not prove prefix validity;
+an old workspace or manufacture a missing snapshot. Create a current workspace
+or use a fresh range entry below. Derivation does not prove prefix validity;
 verify inputs, parameters, successful states, and complete artifacts.
 
 ### 17.2 Stage boundaries and useful variables

@@ -5,6 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from pathlib import Path
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
@@ -19,25 +20,25 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     default_flow_step_category,
-    is_finished_step_state,
     log_flow,
 )
-from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
+from chipcompiler.data.step import (
+    new_step_directory,
+    next_step_index,
+    recorded_step_directory,
+)
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
+    analysis_wave_end,
     explicit_input_step,
     flow_category,
-    is_checker_batch_step,
     ledger_category,
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
-)
-from chipcompiler.engine.flow_completion import (
-    normalize_legacy_terminal_state as _normalize_legacy_terminal_state,
 )
 from chipcompiler.engine.flow_completion import (
     notify_flow_observer as _notify_flow_observer,
@@ -51,13 +52,21 @@ from chipcompiler.engine.flow_completion import (
 from chipcompiler.engine.flow_completion import (
     refresh_signoff_checklist as _refresh_signoff_checklist,
 )
+from chipcompiler.engine.flow_completion import (
+    reset_unfinished_terminal_state as _reset_unfinished_terminal_state,
+)
 from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
+from chipcompiler.engine.memory import read_memory_status
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.engine.step_execution import execute_tool_step, record_tool_failure
+from chipcompiler.engine.step_execution import (
+    STEP_WORKER_MODULE,
+    execute_tool_step,
+    record_tool_failure,
+)
 from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
@@ -79,7 +88,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
-        StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
@@ -94,6 +102,8 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 
 
 class EngineFlow:
+    step_worker_module = STEP_WORKER_MODULE
+
     def __init__(self, workspace: Workspace, engine_db: EngineDB | None = None):
         self.workspace = workspace
         self.workspace_steps = []
@@ -108,7 +118,8 @@ class EngineFlow:
         from chipcompiler.rtl2gds import build_rtl2gds_flow
 
         steps = [
-            self.init_flow_step(step, tool, state) for step, tool, state in build_rtl2gds_flow()
+            self.init_flow_step(step, tool, state, index=index)
+            for index, (step, tool, state) in enumerate(build_rtl2gds_flow(), start=1)
         ]
         # Persist the golden netlist on the LEC step so reloads do not have
         # to guess roles from the golden_* filename convention.
@@ -133,7 +144,10 @@ class EngineFlow:
         info: dict | None = None,
         category: str | FlowStepCategory = FlowStepCategory.PNR,
         input_step: str | None = None,
+        *,
+        index: int | None = None,
     ) -> FlowStepEntry:
+        """A new ledger record; *index* prefixes its step directory when given."""
         step_value = step.value if isinstance(step, StepBaseEnum) else step
         state_value = state.value if isinstance(state, StateEnum) else state
         if (
@@ -147,6 +161,7 @@ class EngineFlow:
             "tool": tool,  # eda tool name
             "category": category_value,
             "state": state_value,  # step state
+            "directory": new_step_directory(step_value, tool, index=index),
             "runtime": "",  # step run time
             "peak memory (mb)": 0,  # step peak memory
             "info": info or {},  # step additional infomation
@@ -167,7 +182,13 @@ class EngineFlow:
         steps = self.workspace.flow.data.get("steps", [])
         steps.append(
             self.init_flow_step(
-                step, tool, state, info=info, category=category, input_step=input_step
+                step,
+                tool,
+                state,
+                info=info,
+                category=category,
+                input_step=input_step,
+                index=next_step_index(steps),
             )
         )
 
@@ -184,8 +205,6 @@ class EngineFlow:
             return False
         flow_data = load_flow_document(self.workspace.flow.path)
         self.workspace.flow.data = flow_data
-        if normalize_flow_step_categories(flow_data):
-            self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
     def save(self) -> bool:
@@ -267,6 +286,9 @@ class EngineFlow:
             )
         )
 
+    def _should_save_layout_image(self) -> bool:
+        return True
+
     def check_step_result(self, workspace_step: WorkspaceStep):
         """
         check step output exist
@@ -319,7 +341,6 @@ class EngineFlow:
                 SkippableStepEnum.TIMING_OPT.value
                 | SkippableStepEnum.DIFF_OPT.value
                 | StepEnum.PREPLACE.value
-                | StepEnum.DIFF_BUFFERING.value
                 | StepEnum.DIFF_SIZING.value
             ):
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
@@ -401,6 +422,7 @@ class EngineFlow:
                 input_def=input_def,
                 input_verilog=input_verilog,
                 input_db=input_db,
+                step_directory=Path(self.workspace.directory) / recorded_step_directory(step),
                 initialize_config=initialize_config,
                 check_dependency=executable_steps is None or step["name"] in executable_steps,
             )
@@ -431,40 +453,6 @@ class EngineFlow:
                     step.get("tool", "?"),
                 )
                 break
-
-    def init_db_engine(self) -> bool:
-        if len(self.workspace_steps) <= 0:
-            return False
-
-        # check ecc is initialized by last step, if exist and success,
-        # use it to init db engine directly.
-        if self.engine_db is None:
-            self.engine_db = EngineDB(workspace=self.workspace)
-        else:
-            if self.engine_db.has_init():
-                return True
-
-        # init engine step by last workpsace step data if all steps finished
-        workspace_step: WorkspaceStep | None = None
-        for ws_step in self.workspace_steps:
-            step = self.get_step(name=ws_step.name, tool=ws_step.tool)
-            state = step.get("state") if step is not None else None
-            if not is_finished_step_state(state):
-                # use the first unfinished step to setup db engine
-                workspace_step = ws_step
-                break
-
-        # LEC is a netlist comparison step and does not expose an ECC DB
-        # input. Keep any existing DB alive, but do not try to initialize one
-        # from the LEC workspace.
-        if workspace_step is not None and workspace_step.tool in LEC_STEP_TOOLS:
-            return True
-        if workspace_step is not None and self._uses_openroad_placement_db(workspace_step):
-            return True
-
-        if workspace_step is None:
-            return self.engine_db.ecc_module is not None
-        return self.engine_db.create_db_engine(step=workspace_step)
 
     def _uses_openroad_placement_db(self, workspace_step: WorkspaceStep) -> bool:
         if (
@@ -545,17 +533,11 @@ class EngineFlow:
         to a range narrower than the persisted ledger pass False.
         """
 
-        from chipcompiler.engine import step_subprocess
-
         index = 0
         while index < len(self.workspace_steps):
             workspace_step = self.workspace_steps[index]
             if self._can_parallelize_checker_batch(workspace_step, index, observer):
-                batch_end = index
-                while batch_end < len(self.workspace_steps) and self._is_checker_batch_step(
-                    self.workspace_steps[batch_end]
-                ):
-                    batch_end += 1
+                batch_end = self._analysis_wave_end(index)
                 states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
                 for batch_step, state in zip(
                     self.workspace_steps[index:batch_end], states, strict=True
@@ -572,8 +554,6 @@ class EngineFlow:
             self.workspace.logger.log_section(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
-            if not step_subprocess.is_enabled():
-                self.init_db_engine()
             state = (
                 self.run_step(workspace_step, rerun=rerun)
                 if observer is None
@@ -625,25 +605,39 @@ class EngineFlow:
             return False
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
-    def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-        if flow_step is None:
-            return False
-        return is_checker_batch_step(flow_step)
-
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        from chipcompiler.engine import step_subprocess
+        """Whether the analysis wave starting at *index* runs in parallel.
 
-        return (
-            index > 0
-            and self._is_checker_batch_step(workspace_step)
-            and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
-            and observer is None
-            and step_subprocess.is_enabled()
+        Runs observed for progress (the GUI) stay sequential.
+        """
+        return observer is None and self._analysis_wave_end(index) - index > 1
+
+    def _analysis_wave_end(self, index: int) -> int:
+        """The end (exclusive) of the analysis wave of created steps at *index*."""
+        records = self.workspace.flow.steps()
+        step = self.workspace_steps[index]
+        start = next(
+            (
+                position
+                for position, record in enumerate(records)
+                if record.get("name") == step.name and record.get("tool") == step.tool
+            ),
+            None,
         )
+        if start is None:
+            return index + 1
+        end = index
+        for record in records[start : analysis_wave_end(records, start)]:
+            if end >= len(self.workspace_steps):
+                break
+            created = self.workspace_steps[end]
+            if (created.name, created.tool) != (record.get("name"), record.get("tool")):
+                break
+            end += 1
+        return max(end, index + 1)
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
-        available_mb = _available_memory_mb()
+        available_mb = read_memory_status().available_mb
         if available_mb <= 0:
             return 1
         estimates = [self._step_memory_estimate_mb(step) for step in steps]
@@ -724,7 +718,7 @@ class EngineFlow:
             "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
             len(steps),
             workers,
-            _available_memory_mb(),
+            read_memory_status().available_mb,
         )
         if workers == 1:
             return [self.run_step(step, rerun=rerun) for step in steps]
@@ -756,7 +750,7 @@ class EngineFlow:
             _refresh_qor_report(self.workspace, step_tag)
             return StateEnum.Success
 
-        _normalize_legacy_terminal_state(self, workspace_step, step_tag)
+        _reset_unfinished_terminal_state(self, workspace_step, step_tag)
 
         # set state ongoing
         start_time = time.time()
@@ -808,6 +802,8 @@ class EngineFlow:
                 self.engine_db,
                 observer=observer,
                 started_at=start_time,
+                worker_module=self.step_worker_module,
+                layout_image=self._should_save_layout_image(),
             )
             step_error = execution.error
             elapsed = execution.elapsed_seconds
@@ -842,15 +838,6 @@ class EngineFlow:
                     runtime,
                     peak_memory_mb,
                 )
-
-            # Run fallible post-success work BEFORE the terminal commit: a
-            # failure here must still transition Ongoing -> a terminal failure
-            # state; after a persisted Success the transition table forbids
-            # the rollback and the ledger would claim a failed step succeeded.
-            if state == StateEnum.Success and not placement_only:
-                from chipcompiler.tools import save_layout_image
-
-                save_layout_image(workspace=self.workspace, step=workspace_step)
 
             if flow_step is not None and not self.set_state(
                 name=workspace_step.name,
@@ -968,14 +955,3 @@ class EngineFlow:
             return True
 
         return self.engine_db.create_db_engine(step=workspace_step)
-
-
-def _available_memory_mb() -> float:
-    try:
-        with open("/proc/meminfo", encoding="utf-8") as meminfo:
-            for line in meminfo:
-                if line.startswith("MemAvailable:"):
-                    return float(line.split()[1]) / 1024
-    except (OSError, ValueError, IndexError):
-        return 0.0
-    return 0.0

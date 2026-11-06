@@ -7,6 +7,8 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
+from chipcompiler.data.handshake import StepInputs, StepRequest, UpstreamResponse, write_request
+from chipcompiler.data.types import AnalysisData
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -161,12 +163,28 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     config_before = config_path.read_bytes()
     generate_timing_scripts(workspace)
 
-    items = runner.collect_sta_signoff_items(workspace)
+    step = build_step(workspace, StepEnum.STA.value, input_def=None, input_verilog=None)
+    assert step.directory is not None
+    # STA reads its parasitics from the RCX step its req.json names.
+    write_request(
+        StepRequest(
+            workspace_directory=workspace.directory,
+            step=StepEnum.STA.value,
+            tool="ecc",
+            step_directory=step.directory.name,
+            attempt_id="attempt-sta",
+            inputs=StepInputs(),
+            design_source=None,
+            upstream={AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+            final_step=False,
+            layout_image=False,
+        )
+    )
+    items = runner.collect_sta_signoff_items(workspace, step)
     assert [(item["corner"], item["temperature"], item["rcx_corner"]) for item in items] == [
         ("MAX", 85, "Cworst"),
         ("MAX", 85, "RCbest"),
     ]
-    step = build_step(workspace, StepEnum.STA.value, input_def=None, input_verilog=None)
     paths = [
         step_tcl_path(workspace, step, corner=item["corner"], rc=item["rcx_corner"])
         for item in items

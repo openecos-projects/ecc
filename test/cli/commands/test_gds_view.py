@@ -5,6 +5,7 @@ from chipcompiler.cli.command_handlers import gds_view
 from chipcompiler.cli.core.inputs import GdsViewInput, OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.tools.klayout_tool.viewer import KlayoutUnavailableError
+from test.flow_fixture import step_fields
 
 
 def _context(workspace: Path) -> CommandContext:
@@ -27,7 +28,19 @@ def _workspace(tmp_path: Path, *, gds: bool = True, multiple: bool = False) -> P
             (output / "gcd_Harden_extra.gds").write_bytes(b"GDS")
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "Harden", "tool": "ecc", "state": "Success"}]}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "Harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("Harden", "ecc"),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     return workspace
@@ -69,7 +82,9 @@ def test_gds_view_opens_the_selected_step_gds(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     opened = []
-    monkeypatch.setattr(gds_view, "view_gds", lambda path: opened.append(path))
+    monkeypatch.setattr(
+        "chipcompiler.tools.klayout_tool.viewer.view_gds", lambda path: opened.append(path)
+    )
 
     result = gds_view.gds_view(_input(), _context(workspace))
 
@@ -82,8 +97,7 @@ def test_gds_view_reports_missing_klayout_gui(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setattr(
-        gds_view,
-        "view_gds",
+        "chipcompiler.tools.klayout_tool.viewer.view_gds",
         lambda path: (_ for _ in ()).throw(
             KlayoutUnavailableError("KLayout GUI executable was not found")
         ),

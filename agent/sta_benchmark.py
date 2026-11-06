@@ -120,8 +120,6 @@ def _run_workspace(root, workers):
     _prepare_candidate_rerun(
         workspace, flow, [flow.get_workspace_step(stage) for stage in ("sta", "Harden")]
     )
-    if not flow.init_db_engine():
-        raise RuntimeError("cannot initialize routed benchmark database")
     elapsed = {}
     for stage in ("sta", "Harden"):
         step = flow.get_workspace_step(stage)

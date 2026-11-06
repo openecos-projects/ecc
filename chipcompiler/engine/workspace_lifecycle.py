@@ -502,8 +502,6 @@ def _config_override_parameter_ids(parameters: object) -> set[str]:
     if not isinstance(parameters, dict):
         return set()
     overrides = parameters.get(CONFIG_OVERRIDES_KEY)
-    if overrides is None:
-        overrides = parameters.get("Config Overrides")
     if not isinstance(overrides, dict):
         return set()
 

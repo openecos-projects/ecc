@@ -19,6 +19,7 @@ from agent.data.foundation.parsers.route_native_demand_capacity import (
 )
 from agent.data.foundation.table_contract import TABLE_SPECS, write_tables
 from agent.data.foundation.writers import write_parquet
+from test.flow_fixture import step_fields
 
 
 def _read_jsonl(path: Path) -> list[dict]:
@@ -164,36 +165,68 @@ def _make_workspace(
     _write_json(
         ws / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Floorplan", "tool": "ecc", "state": "Success", "info": {}},
-                {"name": "place", "tool": "dreamplace", "state": "Success"},
-                {"name": "CTS", "tool": "ecc", "state": "Success"},
-                {"name": "route", "tool": "ecc", "state": "Success"},
-                {"name": "drc", "tool": "ecc", "state": "Success"},
-            ]
+                {
+                    "name": "Floorplan",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "info": {},
+                    **step_fields("Floorplan", "ecc"),
+                },
+                {
+                    "name": "place",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    **step_fields("place", "dreamplace"),
+                },
+                {
+                    "name": "CTS",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("CTS", "ecc"),
+                },
+                {
+                    "name": "route",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("route", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+            ],
         },
     )
-    _write_json(
-        ws / "home" / "parameters.json",
-        {
-            "PDK": "ics55",
-            "Design": "gcd",
-            "Die": {"Size": [], "Area": 0},
-            "Core": {
-                "Size": [],
-                "Area": 0,
-                "Utilitization": 0.5,
-                "Margin": [2, 2],
-                "Aspect ratio": 1,
-            },
-            "Max fanout": 20,
-            "Target density": 0.3,
-            "Target overflow": 0.1,
-            "Cell padding x": 600,
-            "Routability opt flag": 1,
-            "Bottom layer": "MET2",
-            "Top layer": "MET5",
-        },
+    from chipcompiler.data.parameter_keys import normalize_parameter_dict
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(
+        ws,
+        normalize_parameter_dict(
+            {
+                "PDK": "ics55",
+                "Design": "gcd",
+                "Die": {"Size": [], "Area": 0},
+                "Core": {
+                    "Size": [],
+                    "Area": 0,
+                    "Utilitization": 0.5,
+                    "Margin": [2, 2],
+                    "Aspect ratio": 1,
+                },
+                "Max fanout": 20,
+                "Target density": 0.3,
+                "Target overflow": 0.1,
+                "Cell padding x": 600,
+                "Routability opt flag": 1,
+                "Bottom layer": "MET2",
+                "Top layer": "MET5",
+            }
+        ),
     )
     for stage_dir, stage_name in [
         ("Floorplan_ecc", "Floorplan"),
@@ -896,7 +929,14 @@ def test_iccd_full_v1_extractor_parses_drc_final_artifacts(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     flow_path = ws / "home" / "flow.json"
     flow = json.loads(flow_path.read_text(encoding="utf-8"))
-    flow["steps"].append({"name": "drc_final", "tool": "ecc", "state": "Success"})
+    flow["steps"].append(
+        {
+            "name": "drc_final",
+            "tool": "ecc",
+            "state": "Success",
+            **step_fields("drc_final", "ecc"),
+        }
+    )
     _write_json(flow_path, flow)
     _write_json(
         ws / "drc_final_ecc" / "data" / "drc_final" / "violation_map.json",
@@ -1813,7 +1853,7 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
     extractor = FoundationExtractor(ws, profile="iccd_full_v1")
     extractor.extract(export_legacy_debug=True)
     flow = extractor._read_json(ws / "home" / "flow.json")
-    parameters = extractor._read_json(ws / "home" / "parameters.json")
+    parameters = extractor._read_workspace_parameters()
     stages = extractor._stage_infos(flow)
     canonical_grid = json.loads(
         (extractor.foundation_dir / "canonical_grid.json").read_text(encoding="utf-8")
@@ -2606,11 +2646,13 @@ def test_iccd_full_v1_variant_delta_requires_static_tables_in_base_manifest(tmp_
 def test_iccd_full_v1_design_id_is_stable_across_variant_parameters(tmp_path: Path):
     ws_a = _make_workspace(tmp_path / "a")
     ws_b = _make_workspace(tmp_path / "b")
-    params_b = json.loads((ws_b / "home" / "parameters.json").read_text(encoding="utf-8"))
-    params_b["Target density"] = 0.66
-    params_b["Target overflow"] = 0.06
-    params_b["Cell padding x"] = 800
-    (ws_b / "home" / "parameters.json").write_text(json.dumps(params_b), encoding="utf-8")
+    from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+
+    params_b = load_workspace_config(ws_b)
+    params_b["target_density"] = 0.66
+    params_b["target_overflow"] = 0.06
+    params_b["cell_padding_x"] = 800
+    assert save_workspace_config(ws_b, params_b)
     flow_b = json.loads((ws_b / "home" / "flow.json").read_text(encoding="utf-8"))
     flow_b["steps"][1]["runtime"] = "0:0:42"
     (ws_b / "home" / "flow.json").write_text(json.dumps(flow_b), encoding="utf-8")
@@ -4348,14 +4390,19 @@ def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribu
     tmp_path: Path,
 ):
     ws = _make_workspace(tmp_path)
-    _write_json(
-        ws / "home" / "parameters.json",
-        {
-            "PDK": "unit-test",
-            "PDK Root": str(ws / "pdk"),
-            "Design": "gcd",
-            "Core": {"Utilitization": 0.5},
-        },
+    from chipcompiler.data.parameter_keys import normalize_parameter_dict
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(
+        ws,
+        normalize_parameter_dict(
+            {
+                "PDK": "unit-test",
+                "PDK Root": str(ws / "pdk"),
+                "Design": "gcd",
+                "Core": {"Utilitization": 0.5},
+            }
+        ),
     )
     _write_text(
         ws / "pdk" / "unit.lef",
@@ -5596,30 +5643,12 @@ def test_engineer_settable_parameters_projects_canonical_vocabulary():
     }
 
 
-def test_engineer_settable_parameters_normalizes_legacy_vocabulary():
-    from agent.data.foundation.extractor import FoundationExtractor
-
-    projected = FoundationExtractor._engineer_settable_parameters(
-        {
-            "PDK Root": "/abs/pdk",
-            "Die": {"Area": 1},
-            "Core": {"Utilitization": 0.6, "Margin": [2, 2], "Internal": 1},
-        }
-    )
-
-    assert projected == {"core": {"utilitization": 0.6, "margin": [2, 2]}}
-
-
-def test_workspace_config_path_prefers_params_toml(tmp_path: Path):
+def test_workspace_config_path_is_params_toml(tmp_path: Path):
     from agent.data.foundation.extractor import FoundationExtractor
 
     ws = tmp_path / "ws"
     home = ws / "home"
     home.mkdir(parents=True)
-    (home / "params.toml").write_text('[params]\ndesign = "gcd"\n')
-    (home / "parameters.json").write_text('{"Design": "gcd"}')
+    (home / "params.toml").write_text('schema_version = 2\n[params]\ndesign = "gcd"\n')
 
     assert FoundationExtractor(ws)._workspace_config_path() == home / "params.toml"
-
-    (home / "params.toml").unlink()
-    assert FoundationExtractor(ws)._workspace_config_path() == home / "parameters.json"

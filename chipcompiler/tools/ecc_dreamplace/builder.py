@@ -93,11 +93,6 @@ def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-opt workdir")
             / "dreamplace_diff_opt.json"
         )
-    if step.name == StepEnum.DIFF_BUFFERING.value:
-        return (
-            require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
-            / "dreamplace_diff_buffering.json"
-        )
     if step.name == StepEnum.DIFF_SIZING.value:
         return (
             require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
@@ -253,6 +248,8 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> EccStep:
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -263,6 +260,7 @@ def build_step(
         output_def=output_def,
         output_verilog=output_verilog,
         output_gds=output_gds,
+        step_directory=step_directory,
         tool="dreamplace",
     )
 
@@ -297,11 +295,6 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     elif step.name == StepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
-    elif step.name == StepEnum.DIFF_BUFFERING.value:
-        # Legacy workspaces retain the old step name, but execute the
-        # placement-parasitic diff_opt controller and its canonical tuple
-        # configuration.  Keep the old fields as aliases for migration.
-        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
 
     from dreamplace.flows.flow_config import resolve_flow_config
 
@@ -316,8 +309,6 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
-    elif step.name == StepEnum.DIFF_BUFFERING.value:
-        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)

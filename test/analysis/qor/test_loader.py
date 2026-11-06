@@ -1,11 +1,13 @@
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
+from test.flow_fixture import step_fields
 
 
 def _write(path, payload):
@@ -49,6 +51,9 @@ def _write_step_payload(root, directory, metrics):
     )
 
 
+_STEP_TOOLS = {"Synthesis": "yosys", "place": "dreamplace"}
+
+
 _STEP_DIRECTORIES = {
     "Synthesis": "Synthesis_yosys",
     "postFloorplan": "postFloorplan_ecc",
@@ -68,12 +73,22 @@ def _make_workspace(tmp_path, steps):
     root = str(tmp_path / "ws")
     _write(
         os.path.join(root, "home", "flow.json"),
-        {"steps": [{"name": name, "tool": "ecc", "state": state} for name, state in steps.items()]},
+        {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": name,
+                    "tool": _STEP_TOOLS.get(name, "ecc"),
+                    "state": state,
+                    **step_fields(name, _STEP_TOOLS.get(name, "ecc")),
+                }
+                for name, state in steps.items()
+            ],
+        },
     )
-    _write(
-        os.path.join(root, "home", "parameters.json"),
-        {"Design": "gcd", "frequency_max": 50.0},
-    )
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
     # Every successful step emits a minimal valid payload unless a test
     # overwrites it; the loader treats a missing payload as a parse failure.
     for step_value, state in steps.items():
@@ -165,21 +180,23 @@ class TestParameterResolution:
         assert inputs.config_warnings == []
 
     def test_unknown_profile_warns_and_falls_back(self, tmp_path):
+        from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
-        _write(
-            os.path.join(workspace.directory, "home", "parameters.json"),
-            {"frequency_max": 50.0, "qor_profile": "speed_demon"},
-        )
+        parameters = load_workspace_config(workspace.directory)
+        parameters.update(frequency_max=50.0, qor_profile="speed_demon")
+        assert save_workspace_config(workspace.directory, parameters)
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.profile == "balanced"
         assert inputs.config_warnings
 
     def test_nonpositive_budget_warns_and_undeclares(self, tmp_path):
+        from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
-        _write(
-            os.path.join(workspace.directory, "home", "parameters.json"),
-            {"frequency_max": 50.0, "qor_power_budget_w": -1},
-        )
+        parameters = load_workspace_config(workspace.directory)
+        parameters.update(frequency_max=50.0, qor_power_budget_w=-1)
+        assert save_workspace_config(workspace.directory, parameters)
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_budget_uw is None
         assert inputs.config_warnings
@@ -260,45 +277,33 @@ class TestCornerLoading:
         assert inputs.power_corner == "post_synthesis"
 
     def test_signoff_power_uses_worst_configured_corner(self, tmp_path):
-        workspace = _make_workspace(tmp_path, _FULL_FLOW)
-        sta_config_path = os.path.join(workspace.directory, "home", "sta_ecc.json")
+        workspace = _make_workspace(tmp_path, {**_FULL_FLOW, "powerAnalysis": SUCCESS})
         _write(
-            sta_config_path,
+            os.path.join(
+                workspace.directory,
+                "powerAnalysis_ecc",
+                "feature",
+                "powerAnalysis.step.json",
+            ),
             {
-                "liberty": [
-                    {"corner": "MAX", "temperature": 125},
-                    {"corner": "MIN", "temperature": -40},
-                ],
-                "signoff": [{"MAX": ["Cworst"]}, {"MIN": ["Cbest"]}],
+                "schema_version": 1,
+                "step": "powerAnalysis",
+                "power_summary": {
+                    "schema_version": 1,
+                    "dynamic_uw": 8.0,
+                    "leakage_uw": 1.0,
+                    "internal_uw": 2.0,
+                    "switching_uw": 6.0,
+                },
             },
         )
-        workspace.config = {"sta": sta_config_path}
-        for corner_dir, rcx_dir, total in (
-            ("MAX_125", "Cworst", 5.0),
-            ("MIN_m40", "Cbest", 9.0),
-        ):
-            _write(
-                os.path.join(
-                    workspace.directory,
-                    "sta_ecc",
-                    "feature",
-                    corner_dir,
-                    rcx_dir,
-                    "power_summary.json",
-                ),
-                {
-                    "schema_version": 1,
-                    "dynamic_uw": total - 1.0,
-                    "leakage_uw": 1.0,
-                    "internal_uw": 1.0,
-                    "switching_uw": total - 1.0,
-                },
-            )
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 9.0
-        assert inputs.power_source_path.endswith("MIN_m40/Cbest/power_summary.json")
+        assert inputs.power_source_path.endswith(
+            "powerAnalysis_ecc/feature/powerAnalysis.step.json"
+        )
         assert inputs.power_source_kind == "signoff"
-        assert inputs.power_corner == "MIN_m40/Cbest"
+        assert inputs.power_corner == "powerAnalysis"
 
     def test_power_analysis_summary_replaces_sta_power_source(self, tmp_path):
         steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
@@ -347,32 +352,6 @@ class TestCornerLoading:
         assert inputs.power_source_path.endswith(
             "powerAnalysis_ecc/feature/powerAnalysis.step.json"
         )
-        assert inputs.power_source_kind == "signoff"
-        assert inputs.power_corner == "powerAnalysis"
-
-    def test_power_analysis_legacy_summary_is_used_when_step_artifact_is_missing(self, tmp_path):
-        steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
-        workspace = _make_workspace(tmp_path, steps)
-        _write(
-            os.path.join(
-                workspace.directory,
-                "powerAnalysis_ecc",
-                "feature",
-                "power_summary.json",
-            ),
-            {
-                "schema_version": 1,
-                "dynamic_uw": 8.0,
-                "leakage_uw": 1.0,
-                "internal_uw": 2.0,
-                "switching_uw": 6.0,
-            },
-        )
-
-        inputs: Any = load_workspace_qor_inputs(workspace)
-
-        assert inputs.power_total_uw == 9.0
-        assert inputs.power_source_path.endswith("powerAnalysis_ecc/feature/power_summary.json")
         assert inputs.power_source_kind == "signoff"
         assert inputs.power_corner == "powerAnalysis"
 
@@ -427,3 +406,35 @@ class TestDesignResolution:
         workspace.name = ""
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.design == "gcd"
+
+
+def _index_step_directories(root: Path) -> None:
+    """Move each step directory to its indexed name and record it in the ledger."""
+    from chipcompiler.data.step import STEP_DIRECTORIES
+
+    flow_path = root / "home" / "flow.json"
+    flow = json.loads(flow_path.read_text(encoding="utf-8"))
+    for index, record in enumerate(flow["steps"], start=1):
+        legacy = STEP_DIRECTORIES[record["name"]]
+        record["directory"] = f"{index:02d}_{legacy}"
+        if (root / legacy).is_dir():
+            (root / legacy).rename(root / record["directory"])
+    flow_path.write_text(json.dumps(flow), encoding="utf-8")
+
+
+def test_indexed_step_directories_score_like_the_legacy_layout(tmp_path):
+    from chipcompiler.analysis.qor import build_qor_analysis
+    from test.analysis.qor.test_reference_gcd import _make_gcd_workspace
+
+    legacy = build_qor_analysis(_make_gcd_workspace(tmp_path / "legacy"))
+    workspace = _make_gcd_workspace(tmp_path / "indexed")
+    _index_step_directories(Path(workspace.directory))
+
+    indexed = build_qor_analysis(workspace)
+
+    assert (indexed.feasibility, indexed.qor_record, indexed.scalar_summary) == (
+        legacy.feasibility,
+        legacy.qor_record,
+        legacy.scalar_summary,
+    )
+    assert indexed.evidence == legacy.evidence

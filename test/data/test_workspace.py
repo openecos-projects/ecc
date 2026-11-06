@@ -14,6 +14,7 @@ from chipcompiler.data import (
     create_workspace,
     load_workspace,
 )
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace import (
     Flow,
     Workspace,
@@ -27,6 +28,7 @@ from chipcompiler.data.workspace import (
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
+from test.flow_fixture import step_fields
 
 EXPECTED_WORKSPACE_CONFIG_FILENAMES = {
     "db": "db_ecc.json",
@@ -53,10 +55,20 @@ ROUTABILITY_FLAG_STRING_CASES = (
 
 def test_flow_has_step_uses_cached_data_and_path(tmp_path):
     steps: list[FlowStepEntry] = [
-        {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"},
-        {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": "Unstart"},
+        {
+            "name": StepEnum.SYNTHESIS.value,
+            "tool": "yosys",
+            "state": "Unstart",
+            **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+        },
+        {
+            "name": StepEnum.FLOORPLAN.value,
+            "tool": "ecc",
+            "state": "Unstart",
+            **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+        },
     ]
-    flow = Flow(data={"steps": steps})
+    flow = Flow(data={"schema_version": 2, "steps": steps})
     assert flow.has_step(StepEnum.SYNTHESIS)
     assert flow.has_step("Synthesis", "yosys")
     assert not flow.has_step(StepEnum.SYNTHESIS, "ecc")
@@ -67,7 +79,19 @@ def test_flow_has_step_uses_cached_data_and_path(tmp_path):
 
     path = tmp_path / "flow.json"
     path.write_text(
-        json.dumps({"steps": [{"name": StepEnum.FLOORPLAN.value, "tool": "ecc"}]}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": StepEnum.FLOORPLAN.value,
+                        "tool": "ecc",
+                        "state": "Unstart",
+                        **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     loaded = Flow(path=path)
@@ -162,7 +186,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     workspace_dir = tmp_path / "workspace"
     (workspace_dir / "home").mkdir(parents=True)
-    (workspace_dir / "home" / "parameters.json").write_text("{}")
+    (workspace_dir / "home" / "params.toml").write_text("schema_version = 2\n")
 
     workspace = create_workspace(
         directory=workspace_dir,
@@ -192,6 +216,7 @@ def test_create_workspace_persists_dynamic_flow_steps(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
+            "schema_version": 2,
             "start_step": "Placement",
             "end_step": "DRC",
             "steps": ["Placement", "CTS", "legal", "Route", "DRC"],
@@ -333,7 +358,7 @@ def test_create_workspace_non_contiguous_flow_seeds_both_stores_contiguous(
             pdk="ics55",
             parameters=default_ics55_parameters,
             pdk_root=pdk_root,
-            flow_config={"steps": ["Synth", "Place", "CTS"]},
+            flow_config={"schema_version": 2, "steps": ["Synth", "Place", "CTS"]},
         )
     assert workspace is not None
 
@@ -426,6 +451,7 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
+            "schema_version": 2,
             "start_step": "lvs",
             "end_step": steps[-1],
             "steps": steps,
@@ -553,7 +579,8 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
 
     build_flow_for_workspace(workspace)
 
-    step_dir = workspace_dir / "CTS_ecc"
+    step_dir = StepDirectories.at(workspace_dir).path("CTS")
+    assert step_dir.name == "01_CTS_ecc"
     step_subflow = json_read(step_dir / "subflow.json")
     step_checklist = json_read(step_dir / "checklist.json")
     home_checklist = json_read(workspace_dir / "home" / "checklist.json")
@@ -604,26 +631,6 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
     assert loaded.parameters.path == workspace_dir.resolve() / "home" / "params.toml"
     assert all(isinstance(path, Path) for path in loaded.config.values())
-
-
-def test_writable_load_removes_legacy_home_files_but_read_only_load_preserves_them(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    workspace_dir, _workspace = _create_loaded_ics55_workspace(
-        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
-    )
-    home_json = workspace_dir / "home" / "home.json"
-    home_lock = workspace_dir / "home" / "home.json.lock"
-    home_json.write_text("{}", encoding="utf-8")
-    home_lock.write_text("", encoding="utf-8")
-
-    assert load_workspace(workspace_dir, read_only=True) is not None
-    assert home_json.is_file()
-    assert home_lock.is_file()
-
-    assert load_workspace(workspace_dir) is not None
-    assert not home_json.exists()
-    assert not home_lock.exists()
 
 
 def test_worker_can_hydrate_while_parent_owns_workspace_lock(
@@ -684,69 +691,6 @@ def test_derived_snapshot_inputs_bind_to_final_workspace(
         assert Path(path).is_file()
     assert ".staging-" not in json.dumps(snapshot)
     assert (source / "home/engineering-snapshot.json").read_bytes() == original
-
-
-def test_writable_load_unlinks_legacy_home_symlink_without_following_target(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    workspace_dir, _workspace = _create_loaded_ics55_workspace(
-        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
-    )
-    external = tmp_path / "external-home.json"
-    external.write_text('{"keep": true}', encoding="utf-8")
-    legacy_link = workspace_dir / "home" / "home.json"
-    legacy_link.symlink_to(external)
-
-    assert load_workspace(workspace_dir) is not None
-    assert not legacy_link.exists()
-    assert external.read_text(encoding="utf-8") == '{"keep": true}'
-
-
-@pytest.mark.parametrize("legacy_name", ["home.json", "home.json.lock"])
-def test_writable_load_refuses_legacy_home_directory(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, legacy_name
-):
-    workspace_dir, _workspace = _create_loaded_ics55_workspace(
-        tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
-    )
-    (workspace_dir / "home" / legacy_name).mkdir()
-
-    with pytest.raises(OSError, match="Legacy home state path is a directory"):
-        load_workspace(workspace_dir)
-
-
-def test_load_workspace_migrates_legacy_config_filenames(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-    workspace_dir = tmp_path / "workspace"
-    workspace = create_workspace(
-        directory=workspace_dir,
-        origin_def="",
-        origin_verilog=rtl_path,
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=pdk_root,
-    )
-    assert workspace is not None
-
-    config_dir = workspace_dir / "config"
-    legacy_filenames = workspace_data._LEGACY_WORKSPACE_CONFIG_FILENAMES
-    for config_key, legacy_filename in legacy_filenames.items():
-        workspace.config[config_key].rename(config_dir / legacy_filename)
-
-    loaded = load_workspace(workspace_dir)
-    assert loaded is not None
-
-    assert loaded is not None
-    for config_key, legacy_filename in legacy_filenames.items():
-        assert not (config_dir / legacy_filename).exists()
-        assert loaded.config[config_key] == (
-            config_dir / EXPECTED_WORKSPACE_CONFIG_FILENAMES[config_key]
-        )
-        assert loaded.config[config_key].is_file()
 
 
 def test_build_workspace_config_paths_returns_path_objects(tmp_path):
@@ -907,7 +851,7 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
         for step, tool in workspace_data._STEP_CONFIG_KEYS
     )
 
-    step_source = Path("chipcompiler/data/step.py").read_text()
+    step_source = "".join(path.read_text() for path in Path("chipcompiler/data/step").glob("*.py"))
     assert "STEP_CONFIG" not in step_source
     assert "WORKSPACE_CONFIG" not in step_source
 
@@ -1145,7 +1089,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     }
 
 
-def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
+def test_refresh_workspace_config_restores_missing_floorplan_fields(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
     _, workspace = _create_loaded_ics55_workspace(
@@ -1158,7 +1102,6 @@ def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
     floorplan = json_read(config_path)
     floorplan["macro_placer"].pop("mode")
     floorplan["macro_placer"].pop("file_path")
-    floorplan["macro_placer"]["macro_location_path"] = "macro_locations.txt"
     floorplan["io_placer"].pop("mode")
     floorplan["io_placer"].pop("file_path")
     json_write(config_path, floorplan)
@@ -1299,7 +1242,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         pdk="ics55",
         parameters={
             **default_ics55_parameters,
-            "Config Overrides": {
+            "config_overrides": {
                 "CTS": {"skew_bound": "0.05", "buffer_type": []},
                 "dreamplace": {"num_threads": 12},
             },
@@ -1350,7 +1293,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
         pdk="ics55",
         parameters={
             **default_ics55_parameters,
-            "Config Overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
+            "config_overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
         },
         pdk_root=str(pdk_root),
     )
@@ -1389,7 +1332,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
         pdk="ics55",
         parameters={
             **default_ics55_parameters,
-            "Config Overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
+            "config_overrides": {"sta": {"liberty": deepcopy(relative_liberty)}},
         },
         pdk_root=str(pdk_root),
     )
@@ -1430,7 +1373,7 @@ def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
             pdk="ics55",
             parameters={
                 **default_ics55_parameters,
-                "Config Overrides": {"sta": {"liberty": liberty}},
+                "config_overrides": {"sta": {"liberty": liberty}},
             },
             pdk_root=str(pdk_root),
         )
@@ -1633,15 +1576,11 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
     (step_dir / "output" / "gcd_floorplan.png").write_text("old layout")
     (step_dir / "feature" / "floorplan.db.inst_dist.png").write_text("old metric")
     (step_dir / "log" / "floorplan.log").write_text("old log")
-    legacy_home = workspace_dir / "home" / "home.json"
-    legacy_home_lock = workspace_dir / "home" / "home.json.lock"
-    legacy_home.write_text("{}", encoding="utf-8")
-    legacy_home_lock.write_text("", encoding="utf-8")
-
     flow_path = workspace_dir / "home" / "flow.json"
     json_write(
         flow_path,
         {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "Floorplan",
@@ -1650,8 +1589,9 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
                     "runtime": "0:03",
                     "peak memory (mb)": 99,
                     "info": {"kept": "yes"},
+                    **step_fields("Floorplan", "ecc"),
                 }
-            ]
+            ],
         },
     )
 
@@ -1659,6 +1599,8 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
     json_write(
         checklist_path,
         {
+            "schema_version": 3,
+            "kind": "signoff_checklist",
             "path": str(checklist_path),
             "checklist": [
                 {
@@ -1703,8 +1645,6 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
     assert not (step_dir / "output" / "gcd_floorplan.png").exists()
     assert not (step_dir / "feature" / "floorplan.db.inst_dist.png").exists()
     assert not (step_dir / "log" / "floorplan.log").exists()
-    assert not legacy_home.exists()
-    assert not legacy_home_lock.exists()
     assert (workspace_dir / "config" / "filler_ecc.json").read_text() == config_before
     assert (workspace_dir / "origin" / "gcd.v").read_text() == origin_before
     assert (workspace_dir / "log").exists()
@@ -1734,10 +1674,10 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
     assert reset_flow["steps"][0]["runtime"] == ""
     assert reset_flow["steps"][0]["peak memory (mb)"] == 0
 
-    assert json_read(checklist_path) == {
-        "path": str(checklist_path),
-        "checklist": [],
-    }
+    reset_checklist = json_read(checklist_path)
+    assert reset_checklist["schema_version"] == 3
+    assert reset_checklist["kind"] == "signoff_checklist"
+    assert reset_checklist["checklist"] == []
     assert engine_flow.engine_db is None
     assert engine_flow.clear_calls == 1
     assert engine_flow.create_calls == 1

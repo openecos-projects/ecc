@@ -1,31 +1,40 @@
-"""Run a single flow step's tool execution in an isolated worker process.
-
-The worker rebuilds the workspace from disk, initializes the native DB engine
-for the one step, and invokes ``chipcompiler.tools.run_step`` with its stdio
-captured to the step log. The parent process keeps ownership of the flow
-ledger (flow.json) and all observer notifications; the worker only reports
-subflow stage events and its final outcome through a result file.
-
-Motivation mirrors ``agent/candidate_worker.py``: the native EDA tools keep
-process-global state (config singletons, native log redirect), so running
-every step in one process lets them pollute each other and the parent's
-stdio (``utility/log.py`` dup2 capture).
-"""
-
-from __future__ import annotations
+"""Run one flow step's native tool execution in a one-shot worker process."""
 
 import json
 import logging
 import os
-import signal
-import subprocess
-import sys
 import time
+from functools import partial
 from pathlib import Path
 
-from chipcompiler.data import EccOutput, StepEnum, Workspace, WorkspaceStep, is_sta_step
-from chipcompiler.engine.resource_observation import start_observation
+from chipcompiler.data import (
+    LEC_STEP_TOOLS,
+    EccOutput,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    is_sta_step,
+)
+from chipcompiler.data.handshake import (
+    REQ_FILE,
+    RSP_FILE,
+    HandshakeError,
+    ResponseStatus,
+    StepRequest,
+    build_step_request,
+    build_step_response,
+    clear_response,
+    load_request,
+    load_response,
+    missing_design_data,
+    write_request,
+    write_response,
+)
+from chipcompiler.data.types import AnalysisData
+from chipcompiler.engine import worker
+from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
+    STEP_WORKER_MODULE,
     StepExecutionResult,
     _prepare_log_file,
     get_process_rss_mb,
@@ -33,31 +42,9 @@ from chipcompiler.engine.step_execution import (
 
 logger = logging.getLogger(__name__)
 
-PAYLOAD_SCHEMA_VERSION = 1
+PAYLOAD_SCHEMA_VERSION = 2
 RESULT_SCHEMA_VERSION = 1
 _RESULT_NAME = "step-worker.v1.json"
-_POLL_SECONDS = 1.0
-_TERMINATE_TIMEOUT_SECONDS = 5.0
-
-_ENABLED_ENV = "ECC_STEP_SUBPROCESS"
-
-
-def is_enabled() -> bool:
-    """Subprocess execution is the default; ECC_STEP_SUBPROCESS=0 opts out.
-
-    Frozen builds have no interpreter to spawn for ``python -m`` and fall
-    back to in-process execution.
-    """
-    if os.environ.get(_ENABLED_ENV, "1") == "0":
-        return False
-    if getattr(sys, "frozen", False):
-        logger.warning(
-            "step subprocess execution is not available in frozen builds; "
-            "running this step in process (set %s=0 to silence this warning)",
-            _ENABLED_ENV,
-        )
-        return False
-    return True
 
 
 def execute_step_subprocess(
@@ -66,78 +53,146 @@ def execute_step_subprocess(
     *,
     observer=None,
     started_at: float | None = None,
+    worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
 ) -> StepExecutionResult:
-    """Run one step's tool in a worker process and report its outcome.
-
-    Never raises: failures are returned as ``StepExecutionResult.error`` so
-    the surrounding ledger logic sees the same shape as in-process execution.
-    """
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
     log_file = _prepare_log_file(workspace_step)
     result_path = Path(os.path.dirname(log_file) or ".") / _RESULT_NAME
+    attempt_id = new_attempt_id()
+
+    try:
+        request = build_step_request(
+            Path(workspace.directory),
+            workspace.flow.steps(),
+            workspace_step,
+            attempt_id=attempt_id,
+            layout_image=layout_image,
+        )
+        write_request(request)
+        clear_response(request.directory)
+    except (OSError, ValueError) as exc:
+        return _result(start_time, 0.0, error=f"{step_tag} {REQ_FILE} was not written: {exc}")
     payload = {
         "schema_version": PAYLOAD_SCHEMA_VERSION,
-        "workspace_directory": str(workspace.directory),
-        "step_name": str(workspace_step.name),
-        "tool": str(workspace_step.tool),
-        "result_path": str(result_path),
-        "parent_pid": os.getpid(),
+        "step_directory": str(request.directory),
+        "attempt_id": attempt_id,
     }
 
     try:
         if log_file:
             with open(log_file, "ab") as log_handle:
-                process = _spawn_worker(log_handle)
+                process = worker.spawn(
+                    worker_module, payload, result_path=result_path, stdout=log_handle
+                )
         else:
-            process = _spawn_worker(None)
-    except OSError as exc:
+            process = worker.spawn(worker_module, payload, result_path=result_path, stdout=None)
+    except (OSError, RuntimeError) as exc:
         return _result(start_time, 0.0, error=f"{step_tag} worker failed to start: {exc}")
 
-    workspace.logger.info("[STEP] %s pid=%s worker started", step_tag, process.pid)
-    worker_stdin = process.stdin
-    if worker_stdin is None:
-        process.kill()
-        return _result(start_time, 0.0, error=f"{step_tag} worker stdin is unavailable")
-    worker_stdin.write(json.dumps(payload).encode("utf-8"))
-    worker_stdin.close()
-
-    memory_reader = get_process_rss_mb
-    if is_sta_step(workspace_step):
-        from chipcompiler.tools.ecc.sta_parallel import get_sta_process_rss_mb
-
-        memory_reader = get_sta_process_rss_mb
-    start_memory_mb = memory_reader(process.pid)
-    peak_memory_mb = start_memory_mb
+    resource_observation = None
+    resources = None
+    start_memory_mb = 0.0
+    peak_memory_mb = 0.0
     step_error = None
+    cancel_error = None
     emitted = 0
-    resources = start_observation(
-        process.pid, isolated=True, step=workspace_step.name, tool=workspace_step.tool
-    )
+    returncode = None
     try:
-        while process.poll() is None:
-            cancel_error = _cancel_error(observer)
-            if cancel_error is not None:
-                step_error = f"{step_tag} cancelled: {cancel_error}"
-                break
-            peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
-            emitted = _replay_events(result_path, workspace_step, observer, emitted)
-            time.sleep(_POLL_SECONDS)
-        peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
-        emitted = _replay_events(result_path, workspace_step, observer, emitted)
-    finally:
-        resource_observation = resources.finish()
-        _terminate_worker(process)
+        workspace.logger.info("[STEP] %s pid=%s worker started", step_tag, process.pid)
+        memory_reader = get_process_rss_mb
+        if is_sta_step(workspace_step):
+            from chipcompiler.tools.ecc.sta_parallel import get_sta_process_rss_mb
 
-    result = _read_result(result_path)
+            memory_reader = get_sta_process_rss_mb
+        start_memory_mb = memory_reader(process.pid)
+        peak_memory_mb = start_memory_mb
+        resources = start_observation(
+            process.pid,
+            attempt_id=attempt_id,
+            isolated=True,
+            step=workspace_step.name,
+            tool=workspace_step.tool,
+        )
+
+        def on_poll(result: dict | None) -> None:
+            nonlocal emitted, peak_memory_mb
+            peak_memory_mb = max(peak_memory_mb, memory_reader(process.pid))
+            emitted = _replay_events(result, workspace_step, observer, emitted, attempt_id)
+
+        def cancel() -> None:
+            nonlocal cancel_error
+            callback = getattr(observer, "raise_if_cancelled", None)
+            if not callable(callback):
+                return
+            try:
+                callback()
+            except (Exception, SystemExit) as exc:
+                cancel_error = exc
+                raise
+
+        try:
+            returncode = worker.poll_until_exit(
+                process, result_path=result_path, on_poll=on_poll, cancel=cancel
+            )
+        except (Exception, SystemExit) as exc:
+            if cancel_error is not exc:
+                raise
+            on_poll(worker.read_result(result_path))
+            step_error = f"{step_tag} cancelled: {str(exc) or type(exc).__name__}"
+    finally:
+        try:
+            if resources is not None:
+                resource_observation = resources.finish()
+        finally:
+            worker.terminate_process_group(process)
+
+    result = worker.read_result(result_path)
+    _reload_subflow_state(workspace_step, result, attempt_id)
     if step_error is None:
-        if not isinstance(result, dict) or result.get("done") is not True:
-            step_error = f"{step_tag} worker exited with code {process.returncode}."
+        if not isinstance(result, dict):
+            step_error = f"{step_tag} worker exited with code {returncode}."
+        elif result.get("attempt_id") != attempt_id:
+            if returncode != 0:
+                step_error = f"{step_tag} worker exited with code {returncode}."
+            else:
+                step_error = f"{step_tag} worker result has a mismatched attempt id."
+        elif result.get("done") is not True:
+            step_error = f"{step_tag} worker exited with code {returncode}."
         elif result.get("ok") is not True:
             step_error = f"{step_tag} worker reported failure: {result.get('error')}"
-        elif workspace_step.name == StepEnum.RCX.value:
-            step_error = _restore_rcx_outputs(workspace_step, result)
-    if isinstance(result, dict) and result.get("done") is True:
+        elif returncode != 0:
+            step_error = f"{step_tag} worker exited with code {returncode}."
+    response = None
+    if isinstance(result, dict) and result.get("attempt_id") == attempt_id:
+        try:
+            response = load_response(request.directory)
+        except HandshakeError as exc:
+            step_error = step_error or f"{step_tag} {exc}"
+        if response is not None and response.attempt_id != attempt_id:
+            response = None
+    if step_error is None and response is None:
+        step_error = f"{step_tag} worker did not publish {RSP_FILE} for this attempt."
+    if (
+        response is not None
+        and response.status is ResponseStatus.SUCCESS
+        and result is not None
+        and result.get("done") is True
+        and workspace_step.name == StepEnum.RCX.value
+        and cancel_error is None
+        and (step_error is None or result.get("ok") is False)
+    ):
+        rcx_error = _restore_rcx_outputs(
+            workspace_step, response.outputs.get(AnalysisData.PARASITICS, ())
+        )
+        if rcx_error is not None:
+            step_error = rcx_error
+    if (
+        isinstance(result, dict)
+        and result.get("attempt_id") == attempt_id
+        and result.get("done") is True
+    ):
         try:
             from chipcompiler.data.parameter import load_parameter, parameters_have_chip_identity
 
@@ -158,33 +213,36 @@ def execute_step_subprocess(
     )
 
 
-def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
+def _reload_subflow_state(step: WorkspaceStep, result: dict | None, attempt_id: str) -> None:
+    if isinstance(result, dict) and result.get("attempt_id") != attempt_id:
+        return
+    subflow = getattr(step, "subflow", None)
+    path = getattr(subflow, "path", None)
+    if not path:
+        return
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict):
+        return
+    steps = data.get("steps")
+    if isinstance(steps, list) and all(isinstance(item, dict) for item in steps):
+        step.subflow.steps = steps
+
+
+def _restore_rcx_outputs(step: WorkspaceStep, spef: tuple[Path, ...]) -> str | None:
     output = step.output
-    names = result.get("rcx_spef")
     if (
         not isinstance(output, EccOutput)
         or output.dir is None
-        or not isinstance(names, list)
-        or not names
-        or any(
-            not isinstance(name, str) or Path(name).name != name or not name.endswith(".spef")
-            for name in names
-        )
-        or len(set(names)) != len(names)
+        or not spef
+        or any(path.parent != Path(output.dir) or path.suffix != ".spef" for path in spef)
+        or len(set(spef)) != len(spef)
     ):
         return "RCX worker did not return a valid published SPEF set"
-    output.spef[:] = [Path(output.dir) / name for name in names]
+    output.spef[:] = list(spef)
     return None
-
-
-def _spawn_worker(log_handle) -> subprocess.Popen:
-    return subprocess.Popen(
-        [sys.executable, "-m", "chipcompiler.engine.step_subprocess"],
-        stdin=subprocess.PIPE,
-        stdout=log_handle,
-        stderr=subprocess.STDOUT,
-        start_new_session=(os.name == "posix"),
-    )
 
 
 def _result(
@@ -205,46 +263,19 @@ def _result(
     )
 
 
-def _cancel_error(observer) -> str | None:
-    callback = getattr(observer, "raise_if_cancelled", None)
-    if not callable(callback):
-        return None
-    try:
-        callback()
-    except (Exception, SystemExit) as exc:
-        return str(exc) or type(exc).__name__
-    return None
-
-
-def _terminate_worker(process: subprocess.Popen) -> None:
-    """Reap a worker left running by cancellation or an observer failure."""
-    if process.poll() is not None:
-        return
-    if os.name == "posix" and process.pid:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            process.terminate()
-    else:
-        process.terminate()
-    try:
-        process.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        if os.name == "posix" and process.pid:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                process.kill()
-        else:
-            process.kill()
-        process.wait()
-
-
-def _replay_events(result_path: Path, workspace_step: WorkspaceStep, observer, emitted: int) -> int:
-    """Deliver worker-side subflow stage events to the parent observer."""
+def _replay_events(
+    result: dict | None,
+    workspace_step: WorkspaceStep,
+    observer,
+    emitted: int,
+    attempt_id: str,
+) -> int:
     callback = getattr(observer, "on_subflow_stage", None)
-    result = _read_result(result_path)
-    if not callable(callback) or not isinstance(result, dict):
+    if (
+        not callable(callback)
+        or not isinstance(result, dict)
+        or result.get("attempt_id") != attempt_id
+    ):
         return emitted
     events = result.get("events")
     if not isinstance(events, list):
@@ -255,16 +286,7 @@ def _replay_events(result_path: Path, workspace_step: WorkspaceStep, observer, e
     return len(events)
 
 
-def _read_result(result_path: Path):
-    try:
-        return json.loads(result_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-
-
 class _ResultFileObserver:
-    """Persist subflow stage events from tool code into the worker result."""
-
     def __init__(self, result: dict, flush):
         self._result = result
         self._flush = flush
@@ -274,51 +296,36 @@ class _ResultFileObserver:
         self._flush()
 
 
-def _arm_parent_death_signal(parent_pid: int) -> None:
-    import ctypes
+def run_step_worker(
+    payload: dict,
+    result: dict,
+    flush,
+    *,
+    flow_factory,
+    tool_runner,
+) -> bool:
+    result["schema_version"] = RESULT_SCHEMA_VERSION
+    import chipcompiler.data as data_api
 
-    # A caller can be killed without running its Python cleanup.
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0:  # PR_SET_PDEATHSIG
-        error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error))
-    if os.getppid() != parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
-
-
-def main() -> int:
-    payload = json.loads(sys.stdin.read())
-    if sys.platform == "linux":
-        _arm_parent_death_signal(payload["parent_pid"])
-    result_path = Path(payload["result_path"])
-    result = {
-        "schema_version": RESULT_SCHEMA_VERSION,
-        "ok": False,
-        "done": False,
-        "error": None,
-        "events": [],
-    }
-
-    def flush() -> None:
-        result_path.parent.mkdir(parents=True, exist_ok=True)
-        result_path.write_text(json.dumps(result), encoding="utf-8")
-
+    request = load_request(Path(payload["step_directory"]))
+    if request.attempt_id != payload["attempt_id"]:
+        raise RuntimeError(f"{REQ_FILE} belongs to another attempt: {request.attempt_id}")
+    workspace = data_api.load_workspace(directory=request.workspace_directory, read_only=True)
+    if workspace is None:
+        raise RuntimeError("load workspace failed")
+    # The step's inputs, upstream steps and position in the flow come only from
+    # req.json. The ledger stays loaded read-only for the checklist and QoR
+    # evidence code, which still reads step states from it.
+    workspace.flow.read_only = True
+    step = _build_requested_step(workspace, request)
     try:
-        import chipcompiler.data as data_api
-        from chipcompiler.engine.flow import EngineFlow
-
-        workspace = data_api.load_workspace(
-            directory=payload["workspace_directory"], read_only=True
-        )
-        if workspace is None:
-            raise RuntimeError("load workspace failed")
-        flow = EngineFlow(workspace)
-        # Directories and configs already exist from the parent's flow setup;
-        # eda.run_step refreshes the step config on every run.
-        flow.create_step_workspaces(initialize_config=False)
-        step = flow.get_workspace_step(payload["step_name"])
-        if step is None or step.tool != payload["tool"]:
-            raise RuntimeError(f"step {payload['step_name']}({payload['tool']}) missing in worker")
+        declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
+        if missing := missing_design_data(request, step, declared_spef=declared_spef):
+            raise RuntimeError(
+                f"{request.step} cannot run: missing {', '.join(sorted(missing))} "
+                "(no upstream step provides it and the project does not declare it)"
+            )
+        flow = flow_factory(workspace)
         workspace._runtime_flow_observer = _ResultFileObserver(result, flush)
 
         flow.init_db_engine_for_step(step)
@@ -331,19 +338,59 @@ def main() -> int:
         from chipcompiler.utility.log import capture_stdio_to_file
 
         with capture_stdio_to_file(step.log.file):
-            from chipcompiler.tools import run_step
+            engine = flow.engine_db.engine
+            ok = tool_runner(workspace=workspace, step=step, ecc_module=engine) is True
+        outputs_complete = ok and flow.check_step_result(workspace_step=step)
+    except (Exception, SystemExit):
+        # Downstream steps must see this attempt failed, not a missing answer.
+        write_response(request.directory, build_step_response(request, step, succeeded=False))
+        raise
+    # rsp.json describes the step's design data; the layout thumbnail below is
+    # not part of it, so the response is published before rendering.
+    write_response(
+        request.directory, build_step_response(request, step, succeeded=outputs_complete)
+    )
+    if outputs_complete and request.layout_image and not flow._is_placement_only_step(step):
+        from chipcompiler.tools import save_layout_image
 
-            ok = run_step(workspace=workspace, step=step, ecc_module=flow.engine_db.engine)
-        result["ok"] = bool(ok)
-        if ok and step.name == StepEnum.RCX.value and isinstance(step.output, EccOutput):
-            result["rcx_spef"] = [Path(path).name for path in step.output.spef]
-        if not ok:
-            result["error"] = f"step {payload['step_name']} reported failure"
-    except (Exception, SystemExit) as exc:
-        result["error"] = f"{type(exc).__name__}: {exc}"
-    result["done"] = True
-    flush()
-    return 0 if result["ok"] else 1
+        if not save_layout_image(workspace=workspace, step=step):
+            workspace.logger.warning("[STEP] %s layout image was not generated", step.name)
+    if not ok:
+        result["error"] = f"step {request.step} reported failure"
+    return ok
+
+
+def _build_requested_step(workspace: Workspace, request: StepRequest) -> WorkspaceStep:
+    from chipcompiler.tools import create_step
+
+    inputs = request.inputs
+    step = create_step(
+        workspace=workspace,
+        step=request.step,
+        eda=request.tool,
+        input_def=inputs.design.def_,
+        input_verilog=inputs.design.verilog,
+        input_db=inputs.golden_verilog if request.tool in LEC_STEP_TOOLS else inputs.design.db,
+        step_directory=request.directory,
+        initialize_config=False,
+    )
+    if step is None:
+        raise RuntimeError(f"step {request.step}({request.tool}) could not be built in the worker")
+    if step.directory is None or Path(step.directory) != request.directory:
+        raise RuntimeError(
+            f"step {request.step} builds into {step.directory}, not {request.directory}"
+        )
+    if inputs.spef and isinstance(step.output, EccOutput):
+        step.output.spef = list(inputs.spef)
+    return step
+
+
+def main() -> int:
+    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.tools import run_step
+
+    handler = partial(run_step_worker, flow_factory=EngineFlow, tool_runner=run_step)
+    return worker.worker_main(handler)
 
 
 if __name__ == "__main__":

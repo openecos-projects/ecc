@@ -7,8 +7,6 @@ exactly one step. Everything here drives an ``EngineFlow`` that was loaded
 from an existing workspace; execution itself stays in ``EngineFlow.run_step``.
 """
 
-import logging
-import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -20,13 +18,18 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
-from chipcompiler.utility.log import redirect_stdio_to_file
+from chipcompiler.data.handshake import (
+    HandshakeError,
+    ResponseStatus,
+    clear_response,
+    load_response,
+)
+from chipcompiler.data.step import recorded_step_directory
+from chipcompiler.data.workspace.flow_ledger import reset_step_record
 from chipcompiler.utility.path import path_is_within
 
 if TYPE_CHECKING:
     from chipcompiler.engine.flow import EngineFlow
-
-logger = logging.getLogger(__name__)
 
 
 class StepRunResult(NamedTuple):
@@ -109,10 +112,10 @@ def run_from(
     _require_steps_available(flow, last_index)
     suffix = flow.workspace_steps[index : last_index + 1]
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    # A bounded rerun executes only the requested interval, but all later
-    # states become stale because their input chain changed. Their outputs are
-    # deliberately retained until the user chooses to run them.
-    _invalidate_suffix(flow, index)
+    # A bounded rerun executes only the requested interval; later steps built
+    # on it are invalidated too. Their outputs are deliberately retained until
+    # the user chooses to run them.
+    _invalidate_selection(flow, index, last_index)
     return _run_selected(
         flow,
         list(zip(suffix, output_dirs, strict=True)),
@@ -141,13 +144,12 @@ def run_only(
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
     # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
-    # actual WorkspaceStep through the persisted canonical name, not the raw
-    # selector, including ``diff_opt`` for a legacy ``diff_buffering`` ledger.
+    # actual WorkspaceStep through the persisted canonical name, not the raw selector.
     workspace_step = flow.get_workspace_step(steps[index]["name"])
     if workspace_step is None:
         raise RuntimeError(f"step {steps[index]['name']!r} has no workspace step")
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
-    _invalidate_suffix(flow, index)
+    _invalidate_selection(flow, index, index)
     return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
 
 
@@ -164,12 +166,6 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     canonical = normalize_flow_step(name)
     for index, step in enumerate(steps):
         if step.get("name") == canonical:
-            return index
-        # A pre-migration ledger records the old step name, while the
-        # canonical selector and flow target now use diff_opt.  Keep the raw
-        # ledger entry executable so migration does not require rewriting its
-        # artifact directory before the first rerun.
-        if canonical == "diff_opt" and step.get("name") == "diff_buffering":
             return index
     folded = str(name or "").casefold()
     for index, step in enumerate(steps):
@@ -201,12 +197,47 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
     steps = flow.workspace.flow.data.get("steps", [])
     end = len(steps) if last_index is None else last_index + 1
     for step in steps[index:end]:
-        step["state"] = StateEnum.Unstart.value
-        step["runtime"] = ""
-        step["peak memory (mb)"] = 0
-        step.pop("resource_observation", None)
+        reset_step_record(step)
     if not flow.save():
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+
+
+def _invalidate_selection(flow: "EngineFlow", first: int, last: int) -> None:
+    """Mark steps *first*..*last* Unstart, and every later step built on them.
+
+    A later step keeps its results only when its rsp.json shows that nothing it
+    read came from an invalidated step; a step without a readable response is
+    invalidated, as positional invalidation always did. Once the invalidation
+    is persisted, the selected steps' responses are removed before any of
+    their outputs are deleted.
+    """
+    steps = flow.workspace.flow.data.get("steps", [])
+    root = Path(flow.workspace.directory)
+    invalidated: set[str] = set()
+    for index in range(first, len(steps)):
+        directory = recorded_step_directory(steps[index])
+        if index > last and not _built_on(root / directory, invalidated):
+            continue
+        reset_step_record(steps[index])
+        invalidated.add(directory)
+    if not flow.save():
+        raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+    for step in steps[first : last + 1]:
+        clear_response(root / recorded_step_directory(step))
+
+
+def _built_on(step_directory: Path, invalidated: set[str]) -> bool:
+    """Whether the step may have read anything from the *invalidated* step directories."""
+    try:
+        response = load_response(step_directory)
+    except HandshakeError:
+        return True
+    if response is None or response.status is not ResponseStatus.SUCCESS:
+        return True
+    links = list(response.upstream.values())
+    if response.design_source is not None:
+        links.append(response.design_source)
+    return any(link.step_directory in invalidated for link in links)
 
 
 def _run_selected(
@@ -234,8 +265,6 @@ def _run_selected(
                 f"{workspace_step.tool} - begin step - {workspace_step.name}"
             )
             _reset_output_dir(output_dir)
-            _redirect_to_step_log(workspace_step)
-            flow.init_db_engine_for_step(workspace_step)
             if _callable_accepts_keyword(flow.run_step, "observer"):
                 state = flow.run_step(workspace_step, rerun=rerun, observer=observer)
             else:
@@ -327,19 +356,6 @@ def _validated_output_dirs(workspace: Workspace, steps: list[WorkspaceStep]) -> 
             )
         output_dirs.append(resolved)
     return output_dirs
-
-
-def _redirect_to_step_log(workspace_step: WorkspaceStep) -> None:
-    """Redirect stdio before DB init so its warnings land in the step log."""
-    log_file = workspace_step.log.file or ""
-    if not log_file:
-        return
-    log_file = os.path.abspath(log_file)
-    try:
-        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-        redirect_stdio_to_file(log_file)
-    except Exception:
-        logger.exception("Failed to redirect stdio to log file: %s", log_file)
 
 
 def _reset_output_dir(output_dir: Path) -> None:

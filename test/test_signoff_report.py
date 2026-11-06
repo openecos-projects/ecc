@@ -17,6 +17,7 @@ from chipcompiler.engine.signoff.report import (
     parse_runtime_seconds,
 )
 from chipcompiler.engine.signoff.report_text import format_text_report
+from test.flow_fixture import step_fields
 
 
 class TestParsers:
@@ -116,6 +117,7 @@ class TestExtractDesignReportData:
             "pdk": "ics55",
             "parameters": {"Design": "gcd", "PDK": "ics55", "Frequency max [MHz]": 200.0},
             "flow": {
+                "schema_version": 2,
                 "steps": [
                     {
                         "name": "Synthesis",
@@ -123,9 +125,16 @@ class TestExtractDesignReportData:
                         "state": "Success",
                         "runtime": "0:00:18",
                         "peak memory (mb)": 512,
+                        **step_fields("Synthesis", "yosys"),
                     },
-                    {"name": "route", "tool": "ecc", "state": "Success", "runtime": "0:01:00"},
-                ]
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:01:00",
+                        **step_fields("route", "ecc"),
+                    },
+                ],
             },
             "step_metrics": {},
             "step_summaries": {},
@@ -246,14 +255,16 @@ class TestFormatTextReport:
                 "pdk": "ics55",
                 "parameters": {"Frequency max [MHz]": 200.0},
                 "flow": {
+                    "schema_version": 2,
                     "steps": [
                         {
                             "name": "Synthesis",
                             "tool": "yosys",
                             "state": "Success",
                             "runtime": "0:00:18",
+                            **step_fields("Synthesis", "yosys"),
                         }
-                    ]
+                    ],
                 },
                 "step_metrics": {
                     "Harden_ecc": {
@@ -311,6 +322,7 @@ def _make_workspace(tmp_path, *, full=True):
     _write_json(
         root / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "Synthesis",
@@ -318,12 +330,27 @@ def _make_workspace(tmp_path, *, full=True):
                     "state": "Success",
                     "runtime": "0:00:18",
                     "peak memory (mb)": 256,
+                    **step_fields("Synthesis", "yosys"),
                 },
-            ]
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("Harden", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+            ],
         },
     )
     if full:
-        _write_json(root / "home" / "parameters.json", {"Design": "gcd", "PDK": "ics55"})
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
         _write_json(
             root / "Harden_ecc" / "analysis" / "qor_metrics.json",
             {
@@ -371,10 +398,21 @@ class TestCollectWorkspaceReport:
         _write_json(
             Path(workspace.directory) / "home" / "flow.json",
             {
+                "schema_version": 2,
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "powerAnalysis", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "Synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        **step_fields("Synthesis", "yosys"),
+                    },
+                    {
+                        "name": "powerAnalysis",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("powerAnalysis", "ecc"),
+                    },
+                ],
             },
         )
         report_path = (
@@ -430,3 +468,45 @@ class TestCollectWorkspaceReport:
         assert workspace is not None
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace
+
+
+def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
+    steps = [
+        {
+            "name": name,
+            "tool": tool,
+            "state": "Success",
+            "category": "CHECKER" if name == "drc" else "PNR",
+            "directory": directory,
+        }
+        for (name, tool), directory in directories.items()
+    ]
+    _write_json(root / "home" / "flow.json", {"schema_version": 2, "steps": steps})
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
+    harden = directories[("Harden", "ecc")]
+    drc = directories[("drc", "ecc")]
+    _write_json(
+        root / harden / "analysis" / "qor_metrics.json",
+        {"metrics": [{"id": "Design Layout.die_area", "value": 0.42}]},
+    )
+    _write_json(root / drc / "analysis" / "qor_metrics.json", {"drc_count": 2})
+    return SimpleNamespace(
+        directory=str(root), name="gcd", flow=SimpleNamespace(data={}), config={}
+    )
+
+
+def test_indexed_step_directories_report_like_the_legacy_layout(tmp_path):
+    names = {("Synthesis", "yosys"): "Synthesis_yosys", ("drc", "ecc"): "drc_ecc"}
+    names[("Harden", "ecc")] = "Harden_ecc"
+    indexed = {key: f"{index:02d}_{name}" for index, (key, name) in enumerate(names.items(), 1)}
+
+    legacy_data = collect_workspace_report(_make_flow_workspace(tmp_path / "legacy", names))
+    indexed_data = collect_workspace_report(_make_flow_workspace(tmp_path / "indexed", indexed))
+
+    assert (indexed_data.physical, indexed_data.verification) == (
+        legacy_data.physical,
+        legacy_data.verification,
+    )
+    assert indexed_data.physical.die_area_um2 == 420000.0

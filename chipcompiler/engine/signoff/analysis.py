@@ -14,7 +14,6 @@ from chipcompiler.analysis.qor.summary_contract import (
     gate_reason,
     is_supported_summary,
     summary_analysis_revision,
-    summary_blocking_issues,
     summary_gates,
     summary_missing_metrics,
     summary_quality_status,
@@ -137,12 +136,17 @@ class CollectorAnalysisMixin:
     def _qor_summary_issues(
         self, workspace_dir: Path, flow_data: dict
     ) -> list[SignoffPackageIssue]:
+        from chipcompiler.data.step import StepDirectories
+
+        directories = StepDirectories.from_records(
+            workspace_dir, flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+        )
         issues: list[SignoffPackageIssue] = []
         for flow_step in flow_data.get("steps", []):
             if not isinstance(flow_step, dict) or flow_step.get("state") != StateEnum.Success.value:
                 continue
             step_name = str(flow_step.get("name", ""))
-            step_dir = self._step_dirs().get(step_name)
+            step_dir = directories.by_step.get(step_name)
             if not step_name or not step_dir:
                 continue
             summary_path = workspace_dir / step_dir / "analysis" / "qor_summary.json"
@@ -169,22 +173,6 @@ class CollectorAnalysisMixin:
                         required=required,
                         reason="qor_summary.json has no current analysis revision",
                         kind="freshness",
-                    )
-                )
-
-            for blocking_issue in summary_blocking_issues(summary):
-                metric_id = str(blocking_issue.get("metric_id", "QoR blocking issue"))
-                reason = str(blocking_issue.get("reason", "Current QoR analysis blocked signoff."))
-                value = blocking_issue.get("value")
-                if value is not None:
-                    reason = f"{reason} actual={value}"
-                issues.append(
-                    self._analysis_issue(
-                        step_name=step_name,
-                        required=required,
-                        label=metric_id,
-                        reason=reason,
-                        kind="analysis",
                     )
                 )
 

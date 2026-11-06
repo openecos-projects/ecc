@@ -7,7 +7,7 @@ lifecycle under the sibling workspace lock (``<workspace>.lock``):
 re-probe, load, reconcile against the workspace's persisted target, and
 execute — the default resume bounded to the reconciled target so a wider
 persisted ledger is never re-run or invalidated past it. Two runs of the
-same workspace (or an overwrite/migration replacing it) serialize on the
+same workspace (or an overwrite replacing it) serialize on the
 lock. Imported lazily by the run handler; keep module-level imports cheap.
 """
 
@@ -70,7 +70,7 @@ def _execute_workspace_run(
     ctx,
 ) -> CommandResult:
     from chipcompiler.data import load_workspace
-    from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
+    from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -112,8 +112,8 @@ def _execute_workspace_run(
             reason="the workspace flow target diverges from the persisted flow",
         )
 
-    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create checklist state, or take the lock.
+    # Pure-read preflight: reject a divergent flow before loading the workspace,
+    # creating checklist state, or taking the lock.
     probe = classify_workspace(workspace_path)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "")
@@ -125,8 +125,8 @@ def _execute_workspace_run(
         return error("invalid_workspace", workspace=workspace_path)
 
     # Everything from here holds the workspace lock: two runs of the same
-    # workspace never execute concurrently, and an overwrite or migration
-    # replacing the tree serializes against this execution.
+    # workspace never execute concurrently, and an overwrite replacing the tree
+    # serializes against this execution.
     with workspace_lock(Path(workspace_path), blocking=not command_input.no_wait):
         from chipcompiler.cli.project.revision import expected_revision_error
 

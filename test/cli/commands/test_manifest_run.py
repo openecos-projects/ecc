@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 
 class TestVirginFirstRun:
@@ -392,7 +393,7 @@ class TestExistingRunGuards:
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 2, "steps": []}, f)
         from chipcompiler.data.workspace_config import save_workspace_config
 
         assert save_workspace_config(
@@ -731,6 +732,7 @@ class TestExplicitRunLogOrdering:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
+                    "schema_version": 2,
                     "steps": [
                         {
                             "name": "place",
@@ -738,8 +740,9 @@ class TestExplicitRunLogOrdering:
                             "state": "Success",
                             "runtime": "",
                             "info": {},
+                            **step_fields("place", "ecc"),
                         }
-                    ]
+                    ],
                 },
                 f,
             )

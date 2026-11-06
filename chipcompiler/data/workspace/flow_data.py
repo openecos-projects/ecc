@@ -6,14 +6,14 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import (
-    FlowStepCategory,
     StateEnum,
     StepBaseEnum,
     default_flow_step_category,
 )
 
-from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
+from ..schema_versions import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
 from .flow_types import FlowDocument, FlowStepEntry
 
 #: The schema_version written into home/flow.json ledgers.
@@ -102,8 +102,9 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
                 name.value if isinstance(name, StepBaseEnum) else str(name),
                 str(tool),
                 state.value if isinstance(state, StateEnum) else str(state),
+                index=index,
             )
-            for name, tool, state in selected
+            for index, (name, tool, state) in enumerate(selected, start=1)
         ],
     }
 
@@ -145,27 +146,14 @@ def _normalize_flow_step_name(value) -> str:
     return normalize_flow_step(value)
 
 
-def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
+def _flow_step_template(name: str, tool: str, state: str, *, index: int | None) -> FlowStepEntry:
     return {
         "name": name,
         "tool": tool,
         "category": default_flow_step_category(name).value,
         "state": state,
+        "directory": new_step_directory(name, tool, index=index),
         "runtime": "",
         "peak memory (mb)": 0,
         "info": {},
     }
-
-
-def normalize_flow_step_categories(flow_data: FlowDocument) -> bool:
-    """Repair default categories persisted before a step classification changed."""
-    changed = False
-    for step in flow_data.get("steps", []):
-        if not isinstance(step, dict) or not isinstance(step.get("name"), str):
-            continue
-        category = str(step.get("category") or FlowStepCategory.PNR.value).upper()
-        canonical = default_flow_step_category(step["name"])
-        if category == FlowStepCategory.PNR.value and canonical == FlowStepCategory.CHECKER:
-            step["category"] = canonical.value
-            changed = True
-    return changed

@@ -1,12 +1,14 @@
 import subprocess
 import sys
 import tomllib
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
 from chipcompiler.pyinstaller_utils import (
     collect_package_extension_binaries,
     filter_collected_payloads,
     filter_hiddenimports,
+    normalize_python_extension,
 )
 
 
@@ -46,6 +48,21 @@ def test_collect_package_extension_binaries_checks_sibling_bin(tmp_path):
     assert collect_package_extension_binaries([package_dir], "ecc_py*.so", "ecc_tools_bin") == [
         (str(extension), "ecc_tools_bin")
     ]
+
+
+def test_normalize_python_extension_stages_current_abi_link(tmp_path):
+    source = tmp_path / "ecc_py.cpython-299-x86_64-linux-gnu.so"
+    source.write_bytes(b"native")
+    full_tag = next(suffix for suffix in EXTENSION_SUFFIXES if suffix.startswith(".cpython-"))
+    build_root = tmp_path / "build"
+
+    normalized = normalize_python_extension(source, build_root)
+
+    assert normalized == build_root / f"ecc_py{full_tag}"
+    assert normalized.resolve() == source.resolve()
+    assert normalize_python_extension(source, build_root) == normalized
+    current_source = tmp_path / f"ecc_py{full_tag}"
+    assert normalize_python_extension(current_source, build_root) == current_source
 
 
 def test_pyinstaller_payload_filter_excludes_oversized_paths():

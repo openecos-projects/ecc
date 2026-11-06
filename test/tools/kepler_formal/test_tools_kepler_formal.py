@@ -24,6 +24,7 @@ from chipcompiler.tools.kepler_formal.netlist_prep import (
     prepare_netlist,
 )
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
@@ -308,15 +309,27 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
             {
                 "name": SkippableStepEnum.LEC.value,
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.LEC.value, "kepler_formal"),
             },
-            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": StepEnum.FLOORPLAN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+            },
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -381,15 +394,27 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
-            {"name": StepEnum.LVS.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
+            {
+                "name": StepEnum.LVS.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.LVS.value, "ecc"),
+            },
             {
                 "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.POST_ROUTE_LEC.value, "kepler_formal"),
             },
-        ]
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -442,10 +467,10 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     assert lec_step.input.golden_verilog == synth_step.output.verilog
 
 
-def test_step_directory_helpers_resolve_both_lec_engines():
+def test_step_directory_helpers_resolve_supported_lec_engines():
     from chipcompiler.data.step import (
-        LEGACY_STEP_DIRECTORIES,
         STEP_DIRECTORIES,
+        YOSYS_LEC_STEP_DIRECTORIES,
         all_step_directories,
         step_directory_for_tool,
     )
@@ -453,7 +478,7 @@ def test_step_directory_helpers_resolve_both_lec_engines():
     assert step_directory_for_tool("lec", "kepler_formal") == "lec_kepler_formal"
     assert step_directory_for_tool("lec", "yosys_lec") == "lec_yosys_lec"
     assert step_directory_for_tool("postRouteLec", None) == STEP_DIRECTORIES["postRouteLec"]
-    assert LEGACY_STEP_DIRECTORIES["lec"] in all_step_directories()
+    assert YOSYS_LEC_STEP_DIRECTORIES["lec"] in all_step_directories()
     assert STEP_DIRECTORIES["lec"] in all_step_directories()
 
 

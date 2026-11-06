@@ -115,10 +115,6 @@ def compute_features(inputs) -> FeatureBundle:
     )
 
     power_metric_ids = ("power_analysis_dynamic_uw", "power_analysis_leakage_uw")
-    if not any(metric_id in inputs.metrics for metric_id in power_metric_ids):
-        # Workspaces written before powerAnalysis emitted its own metric ids
-        # stored the same values under the synthesis-prefixed legacy ids.
-        power_metric_ids = ("synthesis_power_dynamic_uw", "synthesis_power_leakage_uw")
     power_records = [inputs.metrics.get(metric_id) for metric_id in power_metric_ids]
     if all(record is not None and record.step == "powerAnalysis" for record in power_records):
         dynamic, leak = (record.value for record in power_records)

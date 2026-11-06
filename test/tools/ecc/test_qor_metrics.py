@@ -45,7 +45,16 @@ def test_harden_signoff_source_reads_the_step_directory_table(tmp_path):
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     summary = tmp_path / STEP_DIRECTORIES[StepEnum.HARDEN.value] / "analysis" / "qor_summary.json"
-    _write(summary, {"schema_version": 3, "status": "pass", "hard_gates": []})
+    _write(
+        summary,
+        {
+            "schema_version": 4,
+            "analysis_revision": "quality-gates-v4",
+            "analysis_status": "valid",
+            "quality_status": "pass",
+            "gates": [],
+        },
+    )
 
     source = _harden_signoff_source(workspace, StepEnum.HARDEN.value)
 

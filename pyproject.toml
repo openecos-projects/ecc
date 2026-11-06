@@ -116,6 +116,7 @@ norecursedirs = [".venv"]
 markers = [
   "integration: tests that run an ECC flow or large workspace orchestration",
   "pdk: tests that require a complete external PDK installation",
+  "real_step_worker: tests that bypass the in-process step execution double",
   "slow: tests that are expected to be expensive on a normal developer shell",
 ]
 addopts = [

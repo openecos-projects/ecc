@@ -9,6 +9,7 @@ allowed to disagree on this ledger.
 from typing import Any
 
 from chipcompiler.data import OriginDesign, StateEnum, StepEnum, Workspace
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
@@ -65,8 +66,11 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
     collector._refresh_workspace_analysis(tmp_path)
 
     assert collector.issues == []
+    directories = StepDirectories.from_records(tmp_path, ledger.get("steps", []))
     output_paths = {
-        name.value: build_ecc_step(workspace, name.value, None, None).output.def_
+        name.value: build_ecc_step(
+            workspace, name.value, None, None, step_directory=directories.path(name.value)
+        ).output.def_
         for name in (
             StepEnum.ROUTING,
             StepEnum.FILLER,

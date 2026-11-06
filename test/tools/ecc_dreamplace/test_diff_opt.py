@@ -69,35 +69,6 @@ def test_diff_opt_joint_expands_to_zero_gp_and_rejects_route_parasitics(
     ]
 
 
-def test_diff_opt_rejects_conflicting_explicit_legacy_buffering_fields(
-    dreamplace_default_config,
-):
-    with pytest.raises(ValueError, match="diff_buffering_rounds"):
-        apply_diff_opt_defaults(
-            dreamplace_default_config
-            | {
-                "diff_optimization_mode": "buffering",
-                "diff_optimization_flows": [
-                    ["bf", 10, [500.0, 5.0, 1.0, 1.0]],
-                ],
-                "diff_buffering_rounds": 5,
-            }
-        )
-
-    with pytest.raises(ValueError, match="legacy"):
-        apply_diff_opt_defaults(
-            dreamplace_default_config
-            | {
-                "diff_optimization_mode": "joint",
-                "diff_optimization_flows": [
-                    ["sz", 5, [500.0, 5.0, 1.0, 1.0]],
-                    ["bf", 1, [500.0, 5.0, 1.0, 1.0]],
-                ],
-                "diff_buffering_coefficients": {"wns": 100.0},
-            }
-        )
-
-
 def test_diff_opt_public_fields_are_scoped_to_diff_opt():
     payload = {
         "place.diff_optimization_mode": "joint",
@@ -187,31 +158,3 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     )
     assert params.timing_sizing_action == overrides.get("timing_sizing_action", "up")
     assert params.result_dir == str(result_dir)
-
-
-@pytest.mark.parametrize(
-    "coefficients",
-    [
-        [100.0, 1.0, 2.0, 3.0],
-        {"wns": 100.0, "tns": 1.0, "slew": 2.0, "cap": 3.0},
-    ],
-)
-def test_diff_opt_accepts_equivalent_legacy_and_canonical_buffering_config(
-    coefficients,
-    dreamplace_default_config,
-):
-    policy = {"wns": 100.0, "tns": 1.0, "slew": 2.0, "cap": 3.0}
-    config = dreamplace_default_config | {
-        "diff_optimization_mode": "buffering",
-        "diff_buffering_rounds": 3,
-        "diff_buffering_coefficients": policy,
-        "diff_optimization_flows": [["bf", 3, coefficients]],
-    }
-    result = apply_diff_opt_defaults(config)
-    assert result["diff_optimization_flows"] == [["bf", 3, policy]]
-    assert {
-        "wns": result["timing_wns_coeff"],
-        "tns": result["timing_tns_coeff"],
-        "slew": result["timing_slew_weight"],
-        "cap": result["timing_cap_weight"],
-    } == policy

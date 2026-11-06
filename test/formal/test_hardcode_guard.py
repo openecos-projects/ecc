@@ -19,8 +19,8 @@ from pathlib import Path
 import chipcompiler
 from chipcompiler.data.step import (
     DUAL_STEP_DIRECTORIES,
-    LEGACY_STEP_DIRECTORIES,
     STEP_DIRECTORIES,
+    YOSYS_LEC_STEP_DIRECTORIES,
     step_storage_name,
 )
 from chipcompiler.data.types import SkippableStepEnum, ToolName
@@ -30,7 +30,7 @@ _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
 _STEP_DIRECTORY_LITERALS = frozenset(
     {
         *STEP_DIRECTORIES.values(),
-        *LEGACY_STEP_DIRECTORIES.values(),
+        *YOSYS_LEC_STEP_DIRECTORIES.values(),
         *DUAL_STEP_DIRECTORIES.values(),
         f"{step_storage_name(SkippableStepEnum.TIMING_OPT.value, ToolName.SIZER.value)}"
         f"_{ToolName.SIZER.value}",
@@ -74,7 +74,7 @@ _ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
 
 _TOOL_NAMES = frozenset(member.value for member in ToolName)
 
-# Directory literals: the table in data/step.py owns them; the design-report
+# Directory literals: the table in data/step/directories.py owns them; the design-report
 # display table is a contract vocabulary, not directory resolution.
 _STEP_DIR_ALLOWLIST = {
     "engine/signoff/report_data.py": "design-report display-name canonicalization table",
@@ -101,13 +101,12 @@ _ARTIFACT_ALLOWLIST = {
 }
 
 # Writers of home/flow.json. The ledger module is the one first-party writer;
-# the other three are recovery/migration paths that intentionally do not load
+# the other two are recovery paths that intentionally do not load
 # a Workspace (the plan's explicit exceptions).
 _FLOW_WRITE_OWNERS = {
     "data/workspace/flow_ledger.py": "the schema-aware ledger writer",
     "engine/reconcile.py": "recovery path without a loaded Workspace",
     "engine/interrupted_run.py": "recovery path without a loaded Workspace",
-    "cli/project/migrate_fs.py": "filesystem migration without a loaded Workspace",
 }
 
 
@@ -158,7 +157,7 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 value = node.value
-                if relative not in {"data/step.py", *_STEP_DIR_ALLOWLIST}:
+                if relative not in {"data/step/directories.py", *_STEP_DIR_ALLOWLIST}:
                     for name in _STEP_DIRECTORY_LITERALS:
                         # A bare tool spelling (`lec_dual`) belongs to the tool
                         # vocabulary; its directory form is still controlled.
@@ -204,7 +203,7 @@ def test_guard_rejects_a_directory_literal_outside_the_owner(tmp_path):
 
 
 def test_guard_accepts_the_same_literal_in_the_owner_table(tmp_path):
-    _write(tmp_path, "data/step.py", 'DIR = "Harden_ecc"\n')
+    _write(tmp_path, "data/step/directories.py", 'DIR = "Harden_ecc"\n')
 
     assert scan(tmp_path) == []
 
@@ -307,7 +306,6 @@ _FLOW_WRITE_OWNERS_CEILING = frozenset(
         "data/workspace/flow_ledger.py",
         "engine/reconcile.py",
         "engine/interrupted_run.py",
-        "cli/project/migrate_fs.py",
     }
 )
 

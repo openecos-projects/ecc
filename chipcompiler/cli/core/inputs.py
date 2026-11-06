@@ -135,13 +135,6 @@ class ProcessReconcileInput:
 
 
 @dataclass(frozen=True)
-class MigrateInput:
-    output: OutputOptions
-    project: ProjectOptions
-    yes: bool = False
-
-
-@dataclass(frozen=True)
 class StatusInput:
     output: OutputOptions
     project: ProjectOptions

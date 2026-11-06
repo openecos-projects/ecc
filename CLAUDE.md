@@ -30,9 +30,10 @@ If you need to worry about feature compatibility between different 3.xx point re
 
 - ECC-Tools tool identifier in code is `"ecc"`, not `"ecc-tools"`. Wrapper: `chipcompiler/tools/ecc/`
 - Every tool module must implement `is_eda_exist`, `build_step`, `run_step`
-- Step tool execution runs in a `python -m chipcompiler.engine.step_subprocess` subprocess by default; `ECC_STEP_SUBPROCESS=0` runs steps in process (also the automatic fallback for frozen builds); flow state persisted in `workspace.flow.json`
+- Step tool execution always runs in a one-shot subprocess worker, including frozen builds. The parent writes the step's `req.json` (inputs and accepted upstream responses), each step's run results (`<step dir>/state.json`) and the flow ledger `home/flow.json`, which indexes those results; the worker takes its inputs, upstream steps and flow position only from `req.json`, publishes `rsp.json` in its step directory, and never writes the ledger (checklist and QoR evidence code still reads it read-only). Every ledger save resets steps built from upstream runs that changed (stale); `ecc run --from/--only` invalidate only later steps whose `rsp.json` shows they were built on the rerun steps. See `chipcompiler/data/handshake/` and `chipcompiler/data/step/results.py`
 - File chaining: each step reads previous step's `output/`; first step uses `workspace.design.origin_verilog/origin_def`
 - `uv.lock` is source of truth for Python deps; `requirements_lock.txt` is auto-generated and gitignored
+- Make sure that class and variable names are more aligned with conventional EDA terminology.
 
 # Behavioral Guidelines
 
@@ -49,14 +50,6 @@ If you need to worry about feature compatibility between different 3.xx point re
 - No "flexibility" or "configurability" that wasn't requested.
 - No error handling for impossible scenarios.
 - If you write 200 lines and it could be 50, rewrite it.
-
-## 3. Surgical Changes
-
-- Touch only what you must. Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken. Match existing style.
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-- Every changed line should trace directly to the user's request.
 
 ## 4. Goal-Driven Execution
 

@@ -404,49 +404,6 @@ SCHEMAS = (
             "with outer timing weight 1; placement weights are restored on exit"
         ),
     ),
-    # Compatibility aliases for existing 13-case profiles and workspace
-    # configs.  Aliases write the canonical timing_opt_* fields directly.
-    config_param(
-        "place.inflation_s5b1_enabled",
-        "dreamplace",
-        ("timing_opt_enabled",),
-        1,
-        applies="placement",
-        description="Deprecated alias for place.timing_opt_enabled",
-    ),
-    config_param(
-        "place.inflation_s5b1_buffering_enabled",
-        "dreamplace",
-        ("timing_opt_buffering_enabled",),
-        0,
-        applies="placement",
-        description="Deprecated alias for place.timing_opt_buffering_enabled",
-    ),
-    config_param(
-        "place.inflation_s5b1_max_windows",
-        "dreamplace",
-        ("timing_opt_max_windows",),
-        5,
-        applies="placement",
-        description="Deprecated alias for place.timing_opt_max_windows",
-    ),
-    config_param(
-        "place.inflation_s5b1_overflow_milestones",
-        "dreamplace",
-        ("timing_opt_overflow_milestones",),
-        [],
-        type="list[float]",
-        applies="placement",
-        description="Deprecated alias for place.timing_opt_overflow_milestones",
-    ),
-    config_param(
-        "place.inflation_sizing_rounds",
-        "dreamplace",
-        ("timing_opt_sizing_rounds",),
-        10,
-        applies="placement",
-        description="Deprecated alias for place.timing_opt_sizing_rounds",
-    ),
     config_param(
         "place.discrete_gradient_topk_shared_budget_percent",
         "dreamplace",

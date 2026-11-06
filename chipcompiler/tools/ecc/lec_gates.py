@@ -15,7 +15,7 @@ from chipcompiler.data import (
     StepEnum,
     Workspace,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, step_directory_for_tool
+from chipcompiler.data.step import StepDirectories, recorded_step_directory
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
     ledger_category,
@@ -36,7 +36,7 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
         tool = flow_step.get("tool")
         if not tool or not name or name in ADVISORY_FLOW_STEPS:
             continue
-        output_dir = workspace_dir / step_directory_for_tool(name, tool) / "output"
+        output_dir = workspace_dir / recorded_step_directory(flow_step) / "output"
         matches = sorted(output_dir.glob(f"*{suffix}"))
         if matches:
             candidate = matches[-1]
@@ -50,13 +50,10 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     # synthesis output when the flow contains Synthesis, else the declared
     # golden netlist, else the origin RTL.
     golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
-    gate = None
-    workspace_dir = workspace.directory
     gate = _post_route_gate(workspace)
     if workspace.flow.has_step(StepEnum.SYNTHESIS):
         golden = (
-            workspace_dir
-            / STEP_DIRECTORIES[StepEnum.SYNTHESIS.value]
+            StepDirectories.of(workspace).path(StepEnum.SYNTHESIS.value)
             / "output"
             / f"{design}_Synthesis.v.gz"
         )

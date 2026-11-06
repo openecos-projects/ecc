@@ -1,27 +1,20 @@
-import json
-
 from chipcompiler.cli.project.revision import expected_revision_error
 
 
 def _snapshot(workspace, revision: int) -> None:
-    home = workspace / "home"
-    home.mkdir(parents=True)
-    (home / "engineering-snapshot.json").write_text(
-        json.dumps(
-            {
-                "schemaVersion": 2,
-                "workspaceId": "workspace-1",
-                "workspaceRevision": revision,
-                "flow": {},
-                "parameters": {},
-                "checklist": {},
-                "analysis": {},
-                "qorAssessment": {},
-                "signoffAssessment": {},
-                "artifacts": [],
-            }
+    from types import SimpleNamespace
+
+    from chipcompiler.engine.snapshot import create_engineering_snapshot
+
+    create_engineering_snapshot(
+        SimpleNamespace(
+            directory=workspace,
+            flow=SimpleNamespace(data={"steps": []}),
+            parameters=SimpleNamespace(data={"design": "gcd"}),
+            design=SimpleNamespace(name="gcd"),
         ),
-        encoding="utf-8",
+        workspace_id="workspace-1",
+        workspace_revision=revision,
     )
 
 

@@ -15,7 +15,7 @@ from chipcompiler.cli.core.output import normalize_step_name
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
-from chipcompiler.data.step import step_directory_for_tool
+from chipcompiler.data.step import recorded_step_directory
 
 _GEOMETRY_SCHEMA_VERSION = 1
 _REQUIRED_FILES = (
@@ -104,7 +104,7 @@ def _resolve_step_geometry(workspace_dir: Path, requested: str) -> dict:
         tool = str(flow_step.get("tool", "")).strip()
         if not name or not tool:
             continue
-        directory = step_directory_for_tool(name, tool)
+        directory = recorded_step_directory(flow_step)
         if not _step_matches(requested, name, tool, directory):
             continue
         step_dir = workspace_dir / directory

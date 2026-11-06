@@ -165,10 +165,13 @@ def _design_name(workspace) -> str:
     if isinstance(parameters, dict):
         return parameters.get("design") or parameters.get("Design") or "design"
 
-    from chipcompiler.utility.json import json_read
+    from chipcompiler.data.workspace_config import load_workspace_config
 
-    parameters = json_read(os.path.join(workspace.directory, "home", "parameters.json"))
-    return parameters.get("design") or parameters.get("Design") or "design"
+    try:
+        parameters = load_workspace_config(workspace.directory)
+    except (OSError, ValueError):
+        return "design"
+    return parameters.get("design") or "design"
 
 
 def summary(command_input, ctx: CommandContext) -> CommandResult:
@@ -198,7 +201,7 @@ def _resolve_workspace_dir(command_input, ctx: CommandContext) -> str:
     """Resolve the workspace directory without loading a Workspace.
 
     `report step` previews current artifacts only; load_workspace would
-    migrate configs and append a workspace log file on every invocation.
+    append a workspace log file on every invocation.
     Error records match resolve_command_workspace's contract. Unlike the
     loaded variant, the conflict check uses the resolved ctx.run_id, so a
     run selected via ecc.toml or the manifest also conflicts with

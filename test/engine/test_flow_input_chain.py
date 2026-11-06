@@ -1,22 +1,25 @@
-"""Pins which input each step receives before the input-source rule is unified.
+"""Pin the input each current-ledger step receives from its producers.
 
-Two ledgers cover the current split: a ledger built from ``flow_config`` (the
-shape every real workspace has, with ``category``) and a legacy ledger without
-``category``. Consumers are pinned separately and are allowed to disagree; this
-module does not assert that they agree.
+Execution, read-only projection, worker requests, and signoff collection are
+covered separately so a consumer cannot silently diverge from the wired chain.
 """
 
+import json
+from contextlib import nullcontext
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.data.workspace.flow_types import FlowDocument
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_flow import iter_workspace_steps
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
+from test.flow_fixture import step_directory
 
 _ROUTE_TO_HARDEN = ("route", "filler", "lvs", "drc", "antennaCheck", "postRouteLec", "RCX", "sta")
 
@@ -48,7 +51,16 @@ def _legacy_ledger() -> FlowDocument:
     return data
 
 
-def _build(workspace, step_name, tool, input_def=None, input_verilog=None, input_db=None):
+def _build(
+    workspace,
+    step_name,
+    tool,
+    input_def=None,
+    input_verilog=None,
+    input_db=None,
+    *,
+    step_directory=None,
+):
     builder = build_kepler_step if tool in {"kepler_formal", "yosys_lec"} else build_ecc_step
     return builder(
         workspace=workspace,
@@ -56,15 +68,23 @@ def _build(workspace, step_name, tool, input_def=None, input_verilog=None, input
         input_def=input_def,
         input_verilog=input_verilog,
         input_db=input_db,
+        step_directory=step_directory,
+    )
+
+
+def _built(workspace, record):
+    """The step *record* builds, in the directory the ledger records for it."""
+    return _build(
+        workspace,
+        record["name"],
+        record["tool"],
+        step_directory=workspace.directory / recorded_step_directory(record),
     )
 
 
 def _output_paths(workspace, ledger) -> dict[str, tuple[object, object]]:
     return {
-        step["name"]: (
-            _build(workspace, step["name"], step["tool"]).output.def_,
-            _build(workspace, step["name"], step["tool"]).output.verilog,
-        )
+        step["name"]: (_built(workspace, step).output.def_, _built(workspace, step).output.verilog)
         for step in ledger.get("steps", [])
     }
 
@@ -92,7 +112,15 @@ def _recorded_sources(workspace, ledger, monkeypatch):
 
     def create_step(workspace, step, eda, input_def, input_verilog, input_db=None, **kwargs):
         recorded[step] = (input_def, input_verilog)
-        return _build(workspace, step, eda, input_def, input_verilog, input_db)
+        return _build(
+            workspace,
+            step,
+            eda,
+            input_def,
+            input_verilog,
+            input_db,
+            step_directory=kwargs.get("step_directory"),
+        )
 
     monkeypatch.setattr(tools, "create_step", create_step)
     flow = EngineFlow(workspace=workspace)
@@ -139,47 +167,9 @@ def test_signoff_steps_read_the_filler_output(tmp_path, monkeypatch):
     }
 
 
-def test_legacy_ledger_keeps_policy_sources_and_physical_chaining(tmp_path, monkeypatch):
-    workspace = _workspace(tmp_path)
-    sources = _recorded_sources(workspace, _legacy_ledger(), monkeypatch)
-
-    assert sources == {
-        "route": "origin",
-        "filler": "route",
-        "lvs": "filler",
-        "drc": "filler",
-        "antennaCheck": "filler",
-        "postRouteLec": "filler",
-        "RCX": "filler",
-        "sta": "filler",
-        "powerAnalysis": "filler",
-        "emir": "filler",
-        "Harden": "filler",
-    }
-
-
 def test_read_only_projection_matches_the_execution_chain_on_this_ledger(tmp_path):
     workspace = _workspace(tmp_path)
     sources = _iterated_sources(workspace, _real_ledger())
-
-    assert sources == {
-        "route": "origin",
-        "filler": "route",
-        "lvs": "filler",
-        "drc": "filler",
-        "antennaCheck": "filler",
-        "postRouteLec": "filler",
-        "RCX": "filler",
-        "sta": "filler",
-        "powerAnalysis": "filler",
-        "emir": "filler",
-        "Harden": "filler",
-    }
-
-
-def test_read_only_projection_follows_the_previous_step_without_category(tmp_path):
-    workspace = _workspace(tmp_path)
-    sources = _iterated_sources(workspace, _legacy_ledger())
 
     assert sources == {
         "route": "origin",
@@ -241,6 +231,128 @@ def test_explicit_input_step_selects_the_named_step(tmp_path, input_step, expect
     assert sources["RCX"] == expected
 
 
+def _worker_payload(workspace, ledger, step_name) -> dict:
+    """Wire *ledger* in the parent and write the step's req.json, as run_step does."""
+    from chipcompiler.data.handshake import build_step_request, write_request
+
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = ledger
+    flow.create_step_workspaces(initialize_config=False)
+    step = flow.get_workspace_step(step_name)
+    assert step is not None
+    request = build_step_request(
+        workspace.directory,
+        ledger.get("steps", []),
+        step,
+        attempt_id=f"attempt-{step_name}",
+        layout_image=False,
+    )
+    write_request(request)
+    return {"step_directory": str(request.directory), "attempt_id": request.attempt_id}
+
+
+def _run_worker(monkeypatch, workspace, payload, run_step):
+    from chipcompiler.engine import step_subprocess
+
+    monkeypatch.setattr(
+        "chipcompiler.data.load_workspace",
+        lambda directory, *, read_only=False: workspace,
+    )
+
+    def initialize_db(flow, step):
+        flow.engine_db = SimpleNamespace(engine=object(), initialization_error=None)
+
+    monkeypatch.setattr(EngineFlow, "init_db_engine_for_step", initialize_db)
+    monkeypatch.setattr(EngineFlow, "check_step_result", lambda self, workspace_step: True)
+    monkeypatch.setattr(
+        "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
+    )
+    return step_subprocess.run_step_worker(
+        payload, {"events": []}, lambda: None, flow_factory=EngineFlow, tool_runner=run_step
+    )
+
+
+def test_worker_uses_persisted_explicit_input_step(tmp_path, monkeypatch):
+    workspace = _workspace(tmp_path)
+    ledger = _real_ledger()
+    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = "route"
+    payload = _worker_payload(workspace, ledger, "RCX")
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(exist_ok=True)
+    flow_path.write_text(json.dumps({"schema_version": 2, "steps": []}), encoding="utf-8")
+    workspace.flow.path = flow_path
+    workspace.flow.data = {}
+    executed = {}
+
+    def run_step(workspace, step, ecc_module=None):
+        executed.update(name=step.name, input_def=step.input.def_)
+        return True
+
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
+
+    # The worker took its input from req.json: the ledger it reads is empty,
+    # stays read-only and is never written.
+    route = next(record for record in ledger.get("steps", []) if record["name"] == "route")
+    assert executed == {"name": "RCX", "input_def": _built(workspace, route).output.def_}
+    assert workspace.flow.read_only is True
+    assert flow_path.read_text(encoding="utf-8") == json.dumps({"schema_version": 2, "steps": []})
+
+
+def test_worker_evidence_code_reads_the_persisted_ledger(tmp_path, monkeypatch):
+    workspace = _workspace(tmp_path)
+    ledger = _real_ledger()
+    payload = _worker_payload(workspace, ledger, "RCX")
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir(exist_ok=True)
+    flow_path.write_text(json.dumps(ledger), encoding="utf-8")
+    workspace.flow.path = flow_path
+    workspace.flow.data = {}
+    seen = []
+
+    def run_step(workspace, step, ecc_module=None):
+        # Checklist and QoR evidence code reads step states from the ledger.
+        seen.extend(record["name"] for record in workspace.flow.steps())
+        return True
+
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
+
+    assert seen == [record["name"] for record in ledger.get("steps", [])]
+
+
+def test_worker_builds_only_its_requested_step(tmp_path, monkeypatch):
+    import chipcompiler.tools as tools
+
+    workspace = _workspace(tmp_path)
+    flow = EngineFlow(workspace)
+    ledger: FlowDocument = {
+        "schema_version": 2,
+        "steps": [
+            flow.init_flow_step("preFloorplan", "ecc", "Unstart"),
+            flow.init_flow_step("place", "dreamplace", "Unstart"),
+            flow.init_flow_step("CTS", "ecc", "Unstart"),
+        ],
+    }
+    payload = _worker_payload(workspace, ledger, "preFloorplan")
+    real_create_step = tools.create_step
+    built = []
+
+    def create_step(*args, **kwargs):
+        built.append(kwargs["eda"])
+        return real_create_step(*args, **kwargs)
+
+    monkeypatch.setattr(tools, "create_step", create_step)
+    executed = []
+
+    def run_step(workspace, step, ecc_module=None):
+        executed.append(step.name)
+        return True
+
+    assert _run_worker(monkeypatch, workspace, payload, run_step)
+
+    # Unselected DreamPlace is never built, so its package is never imported.
+    assert (built, executed) == (["ecc"], ["preFloorplan"])
+
+
 @pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])
 def test_explicit_input_step_must_already_exist(tmp_path, input_step):
     from chipcompiler.data.workspace.flow_policy import FlowInputStepError
@@ -295,9 +407,8 @@ def _signoff_sources(workspace, ledger):
     }
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_every_consumer_resolves_the_same_input_sources(tmp_path, monkeypatch, legacy):
-    ledger = _legacy_ledger() if legacy else _real_ledger()
+def test_every_consumer_resolves_the_same_input_sources(tmp_path, monkeypatch):
+    ledger = _real_ledger()
     workspace = _workspace(tmp_path)
     execution = _recorded_sources(workspace, ledger, monkeypatch)
     projection = _iterated_sources(workspace, ledger)
@@ -322,16 +433,57 @@ def test_execution_rejects_a_missing_explicit_input(tmp_path, monkeypatch):
 
 def test_checker_batch_and_filler_sources_are_independent_policies(tmp_path, monkeypatch):
     ledger = {
+        "schema_version": 2,
         "steps": [
-            {"name": "route", "tool": "ecc", "category": "PNR"},
-            {"name": "filler", "tool": "ecc", "category": "PNR"},
-            {"name": "lvs", "tool": "ecc", "category": "CHECKER"},
-            {"name": "drc", "tool": "ecc", "category": "CHECKER"},
-            {"name": "RCX", "tool": "ecc", "category": "CHECKER"},
-            {"name": "sta", "tool": "ecc", "category": "CHECKER"},
-            {"name": "powerAnalysis", "tool": "ecc", "category": "CHECKER"},
-            {"name": "Harden", "tool": "ecc", "category": "PNR"},
-        ]
+            {
+                "name": "route",
+                "tool": "ecc",
+                "category": "PNR",
+                **step_directory("route", "ecc"),
+            },
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "category": "PNR",
+                **step_directory("filler", "ecc"),
+            },
+            {
+                "name": "lvs",
+                "tool": "ecc",
+                "category": "CHECKER",
+                **step_directory("lvs", "ecc"),
+            },
+            {
+                "name": "drc",
+                "tool": "ecc",
+                "category": "CHECKER",
+                **step_directory("drc", "ecc"),
+            },
+            {
+                "name": "RCX",
+                "tool": "ecc",
+                "category": "CHECKER",
+                **step_directory("RCX", "ecc"),
+            },
+            {
+                "name": "sta",
+                "tool": "ecc",
+                "category": "CHECKER",
+                **step_directory("sta", "ecc"),
+            },
+            {
+                "name": "powerAnalysis",
+                "tool": "ecc",
+                "category": "CHECKER",
+                **step_directory("powerAnalysis", "ecc"),
+            },
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                "category": "PNR",
+                **step_directory("Harden", "ecc"),
+            },
+        ],
     }
 
     sources = _recorded_sources(_workspace(tmp_path), ledger, monkeypatch)
@@ -352,10 +504,21 @@ def test_an_unregistered_step_fails_loudly(tmp_path):
     from chipcompiler.data.workspace.flow_policy import FlowInputStepError
 
     ledger = {
+        "schema_version": 2,
         "steps": [
-            {"name": "route", "tool": "ecc", "category": "PNR"},
-            {"name": "custom", "tool": "one", "category": "PNR"},
-        ]
+            {
+                "name": "route",
+                "tool": "ecc",
+                "category": "PNR",
+                **step_directory("route", "ecc"),
+            },
+            {
+                "name": "custom",
+                "tool": "one",
+                "category": "PNR",
+                **step_directory("custom", "one"),
+            },
+        ],
     }
 
     with pytest.raises(FlowInputStepError, match="no flow policy registered"):
@@ -391,13 +554,8 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
     return {name: source for name, source in prerequisite.items() if source is not None}
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_post_route_gate_and_checker_chain_gate_semantics(tmp_path, monkeypatch, legacy):
-    ledger = _legacy_ledger() if legacy else _real_ledger()
-    workspace = _workspace(tmp_path)
-    execution = _recorded_sources(workspace, ledger, monkeypatch)
+def test_flow_category_rejects_a_ledger_without_categories():
+    from chipcompiler.data.workspace.flow_policy import flow_category
 
-    assert _post_route_gate_source(workspace, ledger) == execution["postRouteLec"]
-
-    prerequisites = _checklist_prerequisite_sources(workspace, ledger)
-    assert prerequisites == {"filler": "route", "Harden": "emir"}
+    with pytest.raises(ValueError, match="no declared category"):
+        flow_category(_legacy_ledger().get("steps", [])[0])

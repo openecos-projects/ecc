@@ -7,6 +7,7 @@ from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
 from chipcompiler.tools.yosys_lec.builder import build_step as build_yosys_lec_step
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 
 @pytest.mark.parametrize("lec_engine", ["kepler_formal", "yosys_lec"])
@@ -26,12 +27,18 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         ),
     )
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": name.value, "tool": tool, "state": state.value}
+            {
+                "name": name.value,
+                "tool": tool,
+                "state": state.value,
+                **step_fields(name.value, tool),
+            }
             for name, tool, state in build_flow_range(
                 "route", "Harden", skip=skip, lec_engine=lec_engine
             )
-        ]
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     assert workspace.flow.path is not None
@@ -100,7 +107,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         )
 
 
-def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
+def test_loading_existing_workspace_preserves_persisted_post_route_order(tmp_path):
     names = [
         "route",
         "filler",
@@ -113,14 +120,16 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
         "Harden",
     ]
     ledger = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
                 "tool": "kepler_formal" if name == "postRouteLec" else "ecc",
                 "state": "Success",
+                **step_fields(name, "kepler_formal" if name == "postRouteLec" else "ecc"),
             }
             for name in names
-        ]
+        ],
     }
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
