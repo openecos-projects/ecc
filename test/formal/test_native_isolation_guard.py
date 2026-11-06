@@ -32,7 +32,7 @@ _ALLOWLIST = {
     (
         "chipcompiler.tools.ecc.timing_constraints",
         "prepare_timing_context",
-    ): "timing IO classification inside worker",
+    ): "timing IO-cell context inside a tool's run_step",
     (
         "chipcompiler.tools.ecc_dreamplace.runner",
         "_run_placement_mode",
