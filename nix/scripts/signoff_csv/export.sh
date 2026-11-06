@@ -133,8 +133,18 @@ step_state() {
 
 step_directory() {
   local name="$1"
-  local tool
+  local recorded tool
+  if [[ -f "${flow_file}" ]]; then
+    recorded="$(jq -r --arg name "${name}" \
+      '([.steps[]? | select(.name == $name) | .directory // empty] | .[0]) // ""' \
+      "${flow_file}" 2>/dev/null || true)"
+    if [[ -n "${recorded}" && "${recorded}" != */* && "${recorded}" != . && "${recorded}" != .. ]]; then
+      printf '%s' "${recorded}"
+      return 0
+    fi
+  fi
   case "$name" in
+    Synthesis) printf 'Synthesis_yosys' ;;
     sta) printf 'sta_ecc' ;;
     drc) printf 'drc_ecc' ;;
     Harden) printf 'Harden_ecc' ;;
@@ -376,14 +386,15 @@ collect_area() {
   local step dir source metrics value present
   local metric unit
   for spec in \
-    "Synthesis Synthesis_yosys synthesis_cell_area um^2" \
-    "postFloorplan postFloorplan_ecc die_area um^2" \
-    "postFloorplan postFloorplan_ecc core_area um^2" \
-    "postFloorplan postFloorplan_ecc core_utilization ratio" \
-    "Harden Harden_ecc die_area um^2" \
-    "Harden Harden_ecc core_area um^2" \
-    "Harden Harden_ecc core_utilization ratio"; do
-    read -r step dir metric unit <<< "${spec}"
+    "Synthesis synthesis_cell_area um^2" \
+    "postFloorplan die_area um^2" \
+    "postFloorplan core_area um^2" \
+    "postFloorplan core_utilization ratio" \
+    "Harden die_area um^2" \
+    "Harden core_area um^2" \
+    "Harden core_utilization ratio"; do
+    read -r step metric unit <<< "${spec}"
+    dir="$(step_directory "${step}")"
     metrics="${workspace}/${dir}/analysis/qor_metrics.json"
     source="$(relative_path "${metrics}")"
     value="$(json_metric_value "${metrics}" "${metric}")"

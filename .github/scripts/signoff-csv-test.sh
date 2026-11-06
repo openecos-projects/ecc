@@ -224,4 +224,26 @@ mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
 check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
 
+# 15. Indexed step directories must populate CSV data used by the job summary.
+ws="${tmp}/indexed"
+fresh_workspace "${ws}"
+mv "${ws}/Synthesis_yosys" "${ws}/01_Synthesis_yosys"
+mv "${ws}/postFloorplan_ecc" "${ws}/04_postFloorplan_ecc"
+mv "${ws}/drc_ecc" "${ws}/14_drc_ecc"
+mv "${ws}/sta_ecc" "${ws}/18_sta_ecc"
+mv "${ws}/postRouteLec_kepler_formal" "${ws}/16_postRouteLec_kepler_formal"
+mv "${ws}/Harden_ecc" "${ws}/21_Harden_ecc"
+mutate_json "${ws}/home/flow.json" \
+  '.steps = [.steps[] | . + {directory: ({
+    "Synthesis": "01_Synthesis_yosys",
+    "postFloorplan": "04_postFloorplan_ecc",
+    "drc": "14_drc_ecc",
+    "sta": "18_sta_ecc",
+    "postRouteLec": "16_postRouteLec_kepler_formal",
+    "Harden": "21_Harden_ecc"
+  }[.name] // (.name + "_" + .tool))}]'
+check_export "indexed step directories pass" "${ws}" pass
+grep -q '^Synthesis,synthesis_cell_area,4200.0,um^2,01_Synthesis_yosys/analysis/qor_metrics.json,true$' \
+  "${ws}/out/area.csv" || fail "indexed Synthesis area is missing from the summary CSV"
+
 echo "all signoff CSV negative-path checks passed"
