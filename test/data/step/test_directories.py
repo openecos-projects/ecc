@@ -51,17 +51,13 @@ def test_new_ledgers_record_the_directory_each_step_is_built_in(tmp_path):
     )
 
 
-def test_ledgers_without_directories_keep_the_names_they_were_created_with(tmp_path):
+def test_ledgers_without_directories_are_rejected(tmp_path):
     ledger = _rtl2gds_ledger()
     for record in ledger.get("steps", []):
         record.pop("directory", None)
 
-    flow = _flow(tmp_path, ledger)
-
-    assert [_directory_name(step) for step in flow.workspace_steps] == [
-        new_step_directory(record["name"], record["tool"]) for record in ledger.get("steps", [])
-    ]
-    assert _directory_name(flow.workspace_steps[0]) == "Synthesis_yosys"
+    with pytest.raises(ValueError, match="no recorded directory"):
+        _flow(tmp_path, ledger)
 
 
 def test_a_recorded_directory_is_where_the_step_is_built(tmp_path):
@@ -105,22 +101,28 @@ def test_engine_directories_of_a_non_dual_step_are_rejected():
         engine_step_directory(Path("/ws/02_lec_kepler_formal"), "yosys_lec")
 
 
-def test_step_directories_follow_recorded_names_and_keep_legacy_ones(tmp_path):
+def test_step_directories_use_recorded_names(tmp_path):
     from chipcompiler.data.step import StepDirectories
 
     records = [
         {"name": "place", "tool": "dreamplace", "directory": "07_place_dreamplace"},
-        {"name": "sta", "tool": "ecc"},
+        {"name": "sta", "tool": "ecc", "directory": "19_sta_ecc"},
     ]
 
     directories = StepDirectories.from_records(tmp_path, records)
 
-    assert [directories.path("place"), directories.path("sta"), directories.path("drc")] == [
+    assert [directories.path("place"), directories.path("sta")] == [
         tmp_path / "07_place_dreamplace",
-        tmp_path / "sta_ecc",
-        tmp_path / "drc_ecc",
+        tmp_path / "19_sta_ecc",
     ]
-    assert directories.scan_names()[:2] == ["07_place_dreamplace", "Synthesis_yosys"]
+    assert directories.scan_names() == ["07_place_dreamplace", "19_sta_ecc"]
+
+
+def test_step_directories_reject_a_record_without_a_directory(tmp_path):
+    from chipcompiler.data.step import StepDirectories
+
+    with pytest.raises(ValueError, match="no recorded directory"):
+        StepDirectories.from_records(tmp_path, [{"name": "sta", "tool": "ecc"}])
 
 
 def test_step_directories_read_the_persisted_ledger(tmp_path):
@@ -130,103 +132,38 @@ def test_step_directories_read_the_persisted_ledger(tmp_path):
 
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "RCX", "tool": "ecc", "directory": "18_RCX_ecc"}]}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "RCX",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "category": "CHECKER",
+                        "directory": "18_RCX_ecc",
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 
     assert StepDirectories.at(tmp_path).name("RCX") == "18_RCX_ecc"
 
 
-@pytest.mark.parametrize(
-    ("tool", "expected"),
-    [
-        ("yosys_lec", "postRouteLec_yosys_lec"),
-        ("lec_dual", "postRouteLec_dual"),
-        ("kepler_formal", "postRouteLec_kepler_formal"),
-    ],
-)
-def test_unrecorded_ledger_steps_keep_their_engine_directory(tmp_path, tool, expected):
+@pytest.mark.parametrize("tool", ["yosys_lec", "lec_dual", "kepler_formal"])
+def test_unrecorded_ledger_steps_are_rejected_regardless_of_engine(tmp_path, tool):
     from chipcompiler.data.step import StepDirectories
 
-    directories = StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
-
-    assert directories.name("postRouteLec") == expected
-
-
-@pytest.mark.parametrize(
-    ("directories", "expected"),
-    [
-        ([], 1),
-        (["01_Synthesis_yosys", "03_place_dreamplace"], 4),
-        (["Synthesis_yosys"], None),
-        (["01_Synthesis_yosys", None], None),
-    ],
-)
-def test_appended_steps_take_the_next_free_index(directories, expected):
-    from chipcompiler.data.step import next_step_index
-
-    records = [
-        {"name": "step", "tool": "ecc"} | ({} if directory is None else {"directory": directory})
-        for directory in directories
-    ]
-
-    assert next_step_index(records) == expected
+    with pytest.raises(ValueError, match="no recorded directory"):
+        StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
 
 
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [
-        ("07_place_dreamplace", "place_dreamplace"),
-        ("120_route_ecc", "route_ecc"),
-        ("CTS_ecc", "CTS_ecc"),
-    ],
-)
-def test_unindexed_step_directory_names(name, expected):
-    from chipcompiler.data.step import unindexed_step_directory
-
-    assert unindexed_step_directory(name) == expected
-
-
-def test_added_steps_extend_an_indexed_ledger_and_keep_a_legacy_one(tmp_path):
-    workspace = Workspace(directory=tmp_path)
-    flow = EngineFlow(workspace)
-    flow.add_step("place", "dreamplace", "Unstart")
-    flow.add_step("CTS", "ecc", "Unstart")
-    legacy = EngineFlow(Workspace(directory=tmp_path / "legacy"))
-    legacy.workspace.flow.data = {"steps": [{"name": "place", "tool": "dreamplace", "state": "x"}]}
-    legacy.add_step("CTS", "ecc", "Unstart")
-
-    assert [record.get("directory") for record in flow.workspace.flow.steps()] == [
-        "01_place_dreamplace",
-        "02_CTS_ecc",
-    ]
-    assert legacy.workspace.flow.steps()[-1].get("directory") == "CTS_ecc"
-
-
-def test_a_step_dropped_from_the_ledger_is_found_in_its_inherited_directory(tmp_path):
-    """A derived workspace keeps the directories of the steps its ledger dropped."""
-    from chipcompiler.data.step import StepDirectories
-
-    for name in ("18_RCX_ecc", "19_RCX_ecc", "20_sta_ecc"):
-        (tmp_path / name).mkdir()
-    records = [{"name": "sta", "tool": "ecc", "directory": "20_sta_ecc"}]
-
-    directories = StepDirectories.from_records(tmp_path, records)
-
-    assert [directories.name("sta"), directories.name("RCX"), directories.name("drc")] == [
-        "20_sta_ecc",
-        "19_RCX_ecc",
-        "drc_ecc",
-    ]
-    # Scans visit the newest inherited directory of each step, not every copy.
-    assert directories.scan_names()[:2] == ["20_sta_ecc", "19_RCX_ecc"]
-    assert "18_RCX_ecc" not in directories.scan_names()
-
-
-def test_a_legacy_directory_wins_over_an_inherited_indexed_one(tmp_path):
+def test_an_inherited_indexed_directory_wins_over_a_legacy_one(tmp_path):
     from chipcompiler.data.step import StepDirectories
 
     for name in ("RCX_ecc", "19_RCX_ecc"):
         (tmp_path / name).mkdir()
 
-    assert StepDirectories.from_records(tmp_path, []).name("RCX") == "RCX_ecc"
+    assert StepDirectories.from_records(tmp_path, []).name("RCX") == "19_RCX_ecc"

@@ -2,8 +2,8 @@
 
 from chipcompiler.data.step.directories import (
     DUAL_STEP_DIRECTORIES,
-    LEGACY_STEP_DIRECTORIES,
     STEP_DIRECTORIES,
+    YOSYS_LEC_STEP_DIRECTORIES,
     StepDirectories,
     all_step_directories,
     engine_step_directory,
@@ -22,7 +22,7 @@ from chipcompiler.data.step.metrics import StepMetrics, load_metrics, save_metri
 
 __all__ = [
     "DUAL_STEP_DIRECTORIES",
-    "LEGACY_STEP_DIRECTORIES",
+    "YOSYS_LEC_STEP_DIRECTORIES",
     "STEP_DIRECTORIES",
     "StepDirectories",
     "StepMetrics",

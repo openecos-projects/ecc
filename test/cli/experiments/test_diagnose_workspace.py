@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from chipcompiler.cli.experiments.operations import diagnose_workspace
+from test.flow_fixture import step_fields
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -15,10 +16,21 @@ def test_diagnose_workspace_uses_current_flow_and_qor_schema(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                {"name": "Harden", "tool": "ecc", "state": "Unstart"},
-            ]
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    **step_fields("Synthesis", "yosys"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("Harden", "ecc"),
+                },
+            ],
         },
     )
     _write_json(
@@ -65,10 +77,21 @@ def test_diagnose_workspace_reports_non_advisory_failed_step(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": "Incomplete"},
-                {"name": "Harden", "tool": "ecc", "state": "Unstart"},
-            ]
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Incomplete",
+                    **step_fields("Synthesis", "yosys"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("Harden", "ecc"),
+                },
+            ],
         },
     )
     _write_json(workspace / "home" / "checklist.json", {"status": "ready", "checklist": []})
@@ -90,11 +113,27 @@ def test_diagnose_workspace_does_not_fail_on_advisory_step(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "antennaCheck", "tool": "ecc", "state": "Incomplete"},
-                {"name": "emir", "tool": "ecc", "state": "Success"},
-                {"name": "Harden", "tool": "ecc", "state": "Unstart"},
-            ]
+                {
+                    "name": "antennaCheck",
+                    "tool": "ecc",
+                    "state": "Incomplete",
+                    **step_fields("antennaCheck", "ecc"),
+                },
+                {
+                    "name": "emir",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("emir", "ecc"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("Harden", "ecc"),
+                },
+            ],
         },
     )
     _write_json(workspace / "home" / "checklist.json", {"status": "ready", "checklist": []})

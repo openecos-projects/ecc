@@ -3,10 +3,7 @@ import json
 import pytest
 
 from chipcompiler.engine.snapshot import (
-    LEGACY_SNAPSHOT_SCHEMA_VERSION,
     SNAPSHOT_SCHEMA_VERSION,
-    SNAPSHOT_V3_SCHEMA_VERSION,
-    SNAPSHOT_V4_SCHEMA_VERSION,
     EngineeringSnapshotError,
     read_engineering_snapshot_file,
     read_engineering_snapshot_from_directory,
@@ -20,7 +17,7 @@ def snapshot_file(tmp_path):
         "schemaVersion": SNAPSHOT_SCHEMA_VERSION,
         "workspaceId": "archived-gcd",
         "workspaceRevision": 1,
-        "flow": {"steps": []},
+        "flow": {"schema_version": 2, "steps": []},
         "parameters": {},
         "checklist": {},
         "signoffAssessment": {},
@@ -32,7 +29,7 @@ def snapshot_file(tmp_path):
         "hotspotPreview": {},
         "workspaceSpec": {},
         "workspaceBindings": {},
-        "stepOutputs": {"directory": ".", "design": "gcd", "steps": []},
+        "stepOutputs": {"schema_version": 2, "directory": ".", "design": "gcd", "steps": []},
         "artifacts": [],
     }
     path = tmp_path / "archive" / "saved.json"
@@ -41,27 +38,16 @@ def snapshot_file(tmp_path):
     return path, snapshot
 
 
-@pytest.mark.parametrize(
-    "schema_version",
-    [
-        LEGACY_SNAPSHOT_SCHEMA_VERSION,
-        SNAPSHOT_V3_SCHEMA_VERSION,
-        SNAPSHOT_V4_SCHEMA_VERSION,
-        SNAPSHOT_SCHEMA_VERSION,
-    ],
-)
-def test_file_reader_supports_existing_schemas_without_migration(snapshot_file, schema_version):
+def test_file_reader_reads_current_schema_without_mutation(snapshot_file):
     path, snapshot = snapshot_file
-    snapshot["schemaVersion"] = schema_version
-    path.write_text(json.dumps(snapshot))
     original = path.read_bytes()
 
     assert read_engineering_snapshot_file(path) == snapshot
     assert path.read_bytes() == original
 
 
-@pytest.mark.parametrize("schema_version", [[], {}, None, True, "4", 4.0, 999])
-def test_invalid_schema_version_is_a_snapshot_error(snapshot_file, schema_version):
+@pytest.mark.parametrize("schema_version", [2, 3, 4, [], {}, None, True, "4", 4.0, 999])
+def test_invalid_or_legacy_schema_version_is_a_snapshot_error(snapshot_file, schema_version):
     path, snapshot = snapshot_file
     snapshot["schemaVersion"] = schema_version
     path.write_text(json.dumps(snapshot))
@@ -71,9 +57,8 @@ def test_invalid_schema_version_is_a_snapshot_error(snapshot_file, schema_versio
 
 
 @pytest.mark.parametrize("section", ["workspaceSpec", "workspaceBindings", "qorSnapshotExtension"])
-def test_invalid_optional_legacy_sections_are_rejected(snapshot_file, section):
+def test_invalid_optional_sections_are_rejected(snapshot_file, section):
     path, snapshot = snapshot_file
-    snapshot["schemaVersion"] = LEGACY_SNAPSHOT_SCHEMA_VERSION
     snapshot[section] = []
     path.write_text(json.dumps(snapshot))
 

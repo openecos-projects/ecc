@@ -11,6 +11,7 @@ import os
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 
 def _enable_lec_in(project_dir):
@@ -108,10 +109,21 @@ def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
     with open(os.path.join(home, "flow.json"), "w") as f:
         json.dump(
             {
+                "schema_version": 2,
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "lec", "tool": "yosys_lec", "state": "Success"},
-                ]
+                    {
+                        "name": "Synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        **step_fields("Synthesis", "yosys"),
+                    },
+                    {
+                        "name": "lec",
+                        "tool": "yosys_lec",
+                        "state": "Success",
+                        **step_fields("lec", "yosys_lec"),
+                    },
+                ],
             },
             f,
         )

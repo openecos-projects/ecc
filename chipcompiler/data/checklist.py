@@ -87,12 +87,14 @@ class Checklist:
 
     def _load_current_data(self) -> dict:
         data = json_read(self.path) if self.path.exists() else {}
-        if (
+        if self.path.exists() and (
             not isinstance(data, dict)
             or data.get("schema_version") != CHECKLIST_SCHEMA_VERSION
             or data.get("kind") != "signoff_checklist"
             or not isinstance(data.get("checklist"), list)
         ):
+            raise ValueError(f"incompatible signoff checklist: {self.path}; create a new workspace")
+        if not self.path.exists():
             data = self._default_data()
             json_write(self.path, data)
             return data

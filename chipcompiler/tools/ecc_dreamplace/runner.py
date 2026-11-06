@@ -56,8 +56,6 @@ def run_step(
             state = run_diff_opt(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_SIZING.value:
             state = run_diff_sizing(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.DIFF_BUFFERING.value:
-            state = run_diff_buffering(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
             state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
 
@@ -154,13 +152,6 @@ def run_diff_opt(
     return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_OPT)
 
 
-def run_diff_buffering(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """Run standalone candidate buffering between placement and diff sizing."""
-    return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_BUFFERING)
-
-
 def _run_placement_mode(
     workspace: Workspace,
     step: EccStep,
@@ -175,13 +166,11 @@ def _run_placement_mode(
         DreamplaceRunMode.PLACEMENT: EccSubFlowEnum.run_placement.value,
         DreamplaceRunMode.DIFF_OPT: EccSubFlowEnum.run_diff_opt.value,
         DreamplaceRunMode.DIFF_SIZING: EccSubFlowEnum.run_diff_sizing.value,
-        DreamplaceRunMode.DIFF_BUFFERING: EccSubFlowEnum.run_diff_buffering.value,
     }[mode]
     backend = _placement_backend(workspace)
     if mode in (
         DreamplaceRunMode.DIFF_OPT,
         DreamplaceRunMode.DIFF_SIZING,
-        DreamplaceRunMode.DIFF_BUFFERING,
     ):
         backend = "ecc"
     openroad_backend = mode is DreamplaceRunMode.PLACEMENT and backend == "openroad"
@@ -207,8 +196,6 @@ def _run_placement_mode(
         reslut = dreamplace_module.run_diff_opt()
     elif mode is DreamplaceRunMode.DIFF_SIZING:
         reslut = dreamplace_module.run_diff_sizing()
-    elif mode is DreamplaceRunMode.DIFF_BUFFERING:
-        reslut = dreamplace_module.run_diff_buffering()
     else:
         reslut = dreamplace_module.run_placement()
     if not reslut:

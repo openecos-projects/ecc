@@ -189,25 +189,6 @@ def test_refresh_rejects_invalid_placement_and_preserves_file(
     assert tcl.read_text() == seeded
 
 
-def test_legacy_macro_localtion_filename_migrates_on_load(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    workspace_dir = _create_workspace(
-        tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, {}
-    )
-    legacy = workspace_dir / "config" / "macro_localtion.tcl"
-    canonical = workspace_dir / "config" / "macro_location.tcl"
-    legacy_content = "# legacy handoff\nplaceInstance u0 1 2 R0\n"
-    canonical.unlink()
-    legacy.write_text(legacy_content)
-
-    workspace = load_workspace(workspace_dir)
-
-    assert not legacy.exists()
-    assert workspace.config["macro_location"] == canonical
-    assert canonical.read_text() == legacy_content
-
-
 def test_macro_placements_round_trip_through_params_toml(tmp_path):
     parameters_path = tmp_path / "params.toml"
     data = {"design": "gcd", "macro": {"placements": deepcopy(PLACEMENTS)}}

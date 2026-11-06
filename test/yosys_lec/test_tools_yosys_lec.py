@@ -19,6 +19,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
@@ -473,15 +474,27 @@ def test_engine_flow_wires_synthesis_lec_without_changing_physical_chain(tmp_pat
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
             {
                 "name": SkippableStepEnum.LEC.value,
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.LEC.value, "yosys_lec"),
             },
-            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": StepEnum.FLOORPLAN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+            },
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -549,16 +562,33 @@ def test_engine_flow_wires_post_route_lec_against_synthesis_gate(tmp_path, monke
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
-            {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
+            {
+                "name": StepEnum.ROUTING.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.ROUTING.value, "ecc"),
+            },
             {
                 "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.POST_ROUTE_LEC.value, "yosys_lec"),
             },
-            {"name": StepEnum.RCX.value, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": StepEnum.RCX.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.RCX.value, "ecc"),
+            },
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -627,15 +657,27 @@ def test_engine_flow_wires_post_route_lec_to_origin_without_synthesis(tmp_path, 
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
-            {"name": StepEnum.ROUTING.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.FLOORPLAN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+            },
+            {
+                "name": StepEnum.ROUTING.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.ROUTING.value, "ecc"),
+            },
             {
                 "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "yosys_lec",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.POST_ROUTE_LEC.value, "yosys_lec"),
             },
-        ]
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)

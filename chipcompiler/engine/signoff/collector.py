@@ -24,7 +24,6 @@ from chipcompiler.data import (
     workspace_checklist_path,
 )
 from chipcompiler.data.step import (
-    STEP_DIRECTORIES,
     StepDirectories,
     engine_step_directory,
     flow_step_directory,
@@ -398,10 +397,6 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         from chipcompiler.data.workspace_config import workspace_config_path
 
         parameters_config = workspace_config_path(workspace_dir)
-        if not parameters_config.exists():
-            # A read-only legacy workspace (TOML migration deferred) runs on
-            # its parameters.json — package the file it actually runs on.
-            parameters_config = workspace_dir / "home" / "parameters.json"
         add_file(
             "initial.parameters",
             parameters_config,
@@ -986,7 +981,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
     def _step_dirs(self) -> dict[str, str]:
         """The directory of every step a signoff package reads, as recorded."""
         directories = self._directories()
-        return {step: directories.name(step) for step in STEP_DIRECTORIES}
+        return {step: directories.name(step) for step in directories.reader_step_names()}
 
     def _directories(self) -> StepDirectories:
         flow = self.workspace.flow

@@ -15,7 +15,7 @@ def snapshot_project(tmp_path, manifest_stubs):
     (root / "home").mkdir(parents=True)
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
@@ -45,7 +45,7 @@ def test_json_export_is_read_only_and_uses_managed_workspace(
     before = _files(project)
 
     def unexpected(*args, **kwargs):
-        pytest.fail("snapshot export must not load, migrate, generate snapshots, or execute EDA")
+        pytest.fail("snapshot export must not load workspaces, generate snapshots, or execute EDA")
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", unexpected)
     monkeypatch.setattr("chipcompiler.engine.snapshot.create_engineering_snapshot", unexpected)

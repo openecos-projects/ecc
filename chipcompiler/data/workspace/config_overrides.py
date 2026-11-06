@@ -12,13 +12,10 @@ import tempfile
 from pathlib import Path
 
 CONFIG_OVERRIDES_KEY = "config_overrides"
-_LEGACY_CONFIG_OVERRIDES_KEY = "Config Overrides"
 
 
 def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> None:
     overrides = parameters.get(CONFIG_OVERRIDES_KEY)
-    if overrides is None:
-        overrides = parameters.get(_LEGACY_CONFIG_OVERRIDES_KEY)
     if not isinstance(overrides, dict):
         return
 

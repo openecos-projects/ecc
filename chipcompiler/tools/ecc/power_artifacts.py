@@ -39,7 +39,7 @@ def published_power_report_path(power_step_directory: str | Path) -> Path:
 
 
 def power_report_source_path(power_step_directory: str | Path) -> Path:
-    """Return the current power report, falling back to legacy iPW workspaces."""
+    """Return the published report, or the native report before publication."""
     published = published_power_report_path(power_step_directory)
     return published if published.is_file() else native_power_report_path(power_step_directory)
 

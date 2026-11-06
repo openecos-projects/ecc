@@ -10,6 +10,7 @@ import pytest
 
 from chipcompiler.engine import resource_observation as resources
 from chipcompiler.engine.resource_observation import ResourceObservation, start_observation
+from test.flow_fixture import step_fields
 
 
 def _process(root, pid, parent=0, *, start="100", pages=10, children=""):
@@ -174,7 +175,17 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: False)
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Unstart",
+                **step_fields("route", "ecc"),
+            }
+        ],
+    }
     assert workspace.flow.path is not None
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
@@ -202,14 +213,16 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "route",
                 "tool": "ecc",
                 "state": "Success",
                 "resource_observation": {"attempt_id": "previous-execution"},
+                **step_fields("route", "ecc"),
             }
-        ]
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     assert workspace.flow.path is not None
@@ -236,6 +249,7 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "route",
@@ -243,8 +257,9 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
                 "state": "Unstart",
                 "info": {},
                 "resource_observation": {"attempt_id": "previous-execution"},
+                **step_fields("route", "ecc"),
             }
-        ]
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     assert workspace.flow.path is not None

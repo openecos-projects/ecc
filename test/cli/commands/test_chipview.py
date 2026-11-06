@@ -4,6 +4,7 @@ from pathlib import Path
 from chipcompiler.cli.command_handlers import chipview
 from chipcompiler.cli.core.inputs import ChipviewInput, OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, OutputMode
+from test.flow_fixture import step_fields
 
 
 def _context(workspace: Path) -> CommandContext:
@@ -41,7 +42,19 @@ def _workspace(tmp_path: Path, *, step: str = "route") -> Path:
     _manifest(step_dir / "geometry")
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": step, "tool": "ecc", "state": "Success"}]}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": step,
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields(step, "ecc"),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     return workspace

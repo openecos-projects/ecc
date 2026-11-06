@@ -3,6 +3,7 @@ import json
 import pytest
 
 from chipcompiler.cli.experiments import operations
+from test.flow_fixture import step_fields
 
 
 def _workspace(tmp_path, flow):
@@ -16,14 +17,16 @@ def test_collect_candidate_evidence_reads_a_blocked_flow_projection(tmp_path, mo
     workspace = _workspace(
         tmp_path,
         {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "sta",
                     "tool": "ecc",
                     "state": "Success",
                     "checklist_status": {"status": "blocked", "blocked": True},
+                    **step_fields("sta", "ecc"),
                 }
-            ]
+            ],
         },
     )
     monkeypatch.setattr(operations, "_json_command", lambda *_args: (0, []))
@@ -40,14 +43,16 @@ def test_collect_candidate_evidence_does_not_block_passed_flow_steps(tmp_path, m
     workspace = _workspace(
         tmp_path,
         {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "sta",
                     "tool": "ecc",
                     "state": "Success",
                     "checklist_status": {"status": "passed", "blocked": False},
+                    **step_fields("sta", "ecc"),
                 }
-            ]
+            ],
         },
     )
     monkeypatch.setattr(operations, "_json_command", lambda *_args: (0, []))
@@ -90,7 +95,7 @@ def test_collect_candidate_evidence_does_not_block_passed_flow_steps(tmp_path, m
 def test_collect_candidate_evidence_reads_status_step_records(
     tmp_path, monkeypatch, record, expected
 ):
-    workspace = _workspace(tmp_path, {"steps": []})
+    workspace = _workspace(tmp_path, {"schema_version": 2, "steps": []})
     payload = [
         {"workspace_id": "default", "status": "success", "workspace": str(workspace)},
         record,
@@ -110,7 +115,17 @@ def test_collect_candidate_evidence_reads_status_step_records(
 def test_collect_candidate_evidence_keeps_incomplete_steps_out_of_passed(tmp_path, monkeypatch):
     workspace = _workspace(
         tmp_path,
-        {"steps": [{"name": "sta", "tool": "ecc", "state": "Incomplete"}]},
+        {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Incomplete",
+                    **step_fields("sta", "ecc"),
+                }
+            ],
+        },
     )
     monkeypatch.setattr(operations, "_json_command", lambda *_args: (0, []))
 

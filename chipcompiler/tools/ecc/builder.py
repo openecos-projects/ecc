@@ -92,7 +92,6 @@ def build_step(
                 StepEnum.PREPLACE.value: data_dir / "preplace",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 SkippableStepEnum.DIFF_OPT.value: data_dir / "diff_opt",
-                StepEnum.DIFF_BUFFERING.value: data_dir / "diff_buffering",
                 StepEnum.DIFF_SIZING.value: data_dir / "diff_sizing",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "mj",

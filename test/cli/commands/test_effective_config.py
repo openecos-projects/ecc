@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 
 class TestHybridManifestFallbacks:
@@ -28,9 +29,15 @@ class TestHybridManifestFallbacks:
         (run_dir / "home" / "flow.json").write_text(
             json.dumps(
                 {
+                    "schema_version": 2,
                     "steps": [
-                        {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    ]
+                        {
+                            "name": "Synthesis",
+                            "tool": "yosys",
+                            "state": "Success",
+                            **step_fields("Synthesis", "yosys"),
+                        },
+                    ],
                 }
             )
         )

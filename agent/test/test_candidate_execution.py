@@ -75,7 +75,8 @@ def _make_workspace(root, records, *, design="same-design"):
     workspace.parameters = parameters
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "steps": [flow.init_flow_step(name, tool, state) for name, tool, state in records]
+        "schema_version": 2,
+        "steps": [flow.init_flow_step(name, tool, state) for name, tool, state in records],
     }
     assert flow.save()
     if any(name == "place" for name, _tool, _state in records):

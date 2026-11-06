@@ -7,6 +7,7 @@ import pytest
 import chipcompiler.project.process_control as process_control
 from chipcompiler.project.process_control import reconcile_process
 from chipcompiler.project.runtime_processes import RuntimeProcessError, default_log_path
+from test.flow_fixture import step_fields
 
 
 def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, str]:
@@ -31,6 +32,7 @@ def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, st
                                 "started_at": 1.0,
                             }
                         },
+                        **step_fields("Synthesis", "yosys"),
                     }
                 ],
             }

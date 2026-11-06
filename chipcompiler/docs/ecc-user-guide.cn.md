@@ -99,8 +99,8 @@ uv run ecc --help
 ## 1. 通用约定
 
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
-- 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目必须先执行 `ecc migrate`。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
-- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`migrate`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview`、`gdsview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。实验命令组没有统一的输出开关：`sweep create/list/run/verify`、`explore rank/promote` 和 `reproducible export` 直接输出 JSON；`sweep compare`、`reproducible report` 和 `diagnose run` 默认 TEXT、可用 `--json` 切换；`sweep show` 与 `reproducible inspect/verify` 始终输出 JSON（其 `--json` 选项可传但不会改变结果）；`explore export` 输出所选 JSON/CSV/Markdown 内容，提供 `--output` 时只输出一行 JSON 状态。这些命令组均不支持 `--plain`。
+- 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目不再迁移，请新建项目与 workspace。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
+- 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview`、`gdsview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。实验命令组没有统一的输出开关：`sweep create/list/run/verify`、`explore rank/promote` 和 `reproducible export` 直接输出 JSON；`sweep compare`、`reproducible report` 和 `diagnose run` 默认 TEXT、可用 `--json` 切换；`sweep show` 与 `reproducible inspect/verify` 始终输出 JSON（其 `--json` 选项可传但不会改变结果）；`explore export` 输出所选 JSON/CSV/Markdown 内容，提供 `--output` 时只输出一行 JSON 状态。这些命令组均不支持 `--plain`。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。完整注册表：
 
 | 退出码 | 含义 | 触发者 |
@@ -194,7 +194,6 @@ Commands:
   status        Show a quick run/step progress summary (full evidence: 'ecc report step')
   log           Show available logs or step log content
   config        Show resolved project or step configuration
-  migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   check-update  Check whether a newer nightly build is available
   rtl           Import project RTL sources
@@ -256,7 +255,6 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc status` | run 与步骤进度速查 | §6 |
 | `ecc log [STEP]` | 列出或查看日志 | §7 |
 | `ecc config [STEP]` | 查看解析后的项目/步骤配置 | §8 |
-| `ecc migrate` | legacy `runs/` 布局迁移 | §5.4 |
 | `ecc doctor` | 环境体检（9 项组件） | §4 |
 | `ecc check-update` | 检查是否有更新的 nightly 构建 | §2.5 |
 | `ecc rtl import` | 把 RTL/filelist 导入项目 `rtl/` | §8.5 |
@@ -703,7 +701,7 @@ $ ecc run --workspace a/b     # 相对路径非法；应使用单段名称或完
 | `workspace_not_importable` | 目录不是受支持的 ECC workspace，或其 design/PDK 身份与项目不匹配 | 指向该项目的有效 workspace |
 | `workspace_conflict` | 同名 workspace 已声明在另一个路径 | 换名称 |
 | `workspace_registration_failed` | 向 `project.json` 登记新 workspace 失败（清单不可写等） | 检查 `project.json` 可读写后重试 |
-| `legacy_workspace_migration_required` | 在 legacy `runs/` 项目上执行 `ecc run` | 先 `ecc migrate`（提示记录会给出完整命令） |
+| `legacy_workspace_unsupported` | 在 legacy `runs/` 项目上执行 `ecc run` | 新建项目与 workspace |
 | `selector_requires_workspace` | 全新项目上直接用 `--resume`/`--only` | 先跑一次 `ecc run` |
 | `selector_conflict` | `--resume`/`--from`/`--only` 组合使用，或新建范围搭配 `--preset` 等 | 只保留一个选择器 |
 | `flow_range_requires_pair` | `--to` 单独出现；或新建目标上 `--from` 无 `--to` | 补齐配对参数 |
@@ -716,14 +714,6 @@ $ ecc run --workspace a/b     # 相对路径非法；应使用单段名称或完
 | `set_requires_fresh_run` | 对已有 workspace 用 `--set` | `--overwrite` 或新 `--workspace` |
 | `env_not_ready` | 新建/`--overwrite` 目标预检发现必需工具缺失 | 按 `ecc doctor` 输出补齐 |
 | `step_input_missing` 之外的 `config_error` | `ecc.toml`/清单参数校验失败 | `ecc check` 查看具体字段 |
-
-### 5.4 migrate — 旧布局迁移（过渡期命令）
-
-```bash
-ecc migrate [--project DIR] [--yes] [--plain]
-```
-
-把 legacy `runs/` 布局项目迁移到 manifest 布局：每个安全的 `runs/<id>` workspace 都会移动到 `<project>/<id>`，重写 workspace 内部路径，并登记到新建或更新的 `project.json`。缺省先输出迁移计划，确认后才执行；`--yes` 跳过确认。该命令为过渡期保留（代码标注 deprecated），存量项目迁完即可弃用。`run`/`check`/`status` 在 legacy 项目上会自动附带迁移提示记录。
 
 ## 6. status — 查看 run 与步骤状态
 
@@ -949,7 +939,7 @@ ecc status --project /projects/gcd --workspace archive
 ecc run --project /projects/gcd --workspace archive --resume
 ```
 
-导入会拒绝格式错误或不兼容的 workspace、重复 ID/路径、受保护路径，以及仍需先执行 `ecc migrate` 的 legacy 项目。如果只有 `ecc.toml` 而还没有 `project.json`，成功导入时会先创建 schema-v1 manifest，再登记该 workspace。
+导入会拒绝格式错误或不兼容的 workspace、重复 ID/路径、受保护路径，以及不再支持的 legacy 项目。如果只有 `ecc.toml` 而还没有 `project.json`，成功导入时会先创建 schema-v1 manifest，再登记该 workspace。
 
 `ecc workspace refresh NAME --project DIR` 用当前 `ecc.toml` 重建一个已在 `project.json` 声明的 workspace，但不执行 flow。它会在清单已声明的路径上替换该 workspace 的复制输入、工具配置、状态和产物；完成后再执行 `ecc run --workspace NAME`。替换前会把受管 JSON 配置和 `macro_location.tcl` 与 `home/config-derived-manifest.json` 比对；如其中任一文件在上次派生后被改过，则返回 `derived_configs_modified`、列出文件，并保持 workspace 不变。应先审查修改，尽量通过 `ecc param`/`ecc macro`/`ecc.toml` 表达；确定丢弃时才传 `--force`。旧 workspace 若还没有派生清单，因无比对基线，首次 refresh 会直接进行。`ecc run --workspace NAME --overwrite` 仍是显式重建并立即执行的快捷方式：
 

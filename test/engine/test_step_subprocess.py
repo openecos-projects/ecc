@@ -61,7 +61,7 @@ def _workspace(tmp_path):
         directory=tmp_path,
         logger=logging.getLogger("ecc-test"),
         parameters=parameters,
-        flow=Flow(path=tmp_path / "home/flow.json", data={"steps": []}),
+        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 2, "steps": []}),
     )
 
 
@@ -381,6 +381,7 @@ def test_failed_worker_reloads_subflow_for_interrupted_finalization(monkeypatch,
     subflow_path.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "path": str(subflow_path),
                 "steps": [{"name": "load", "state": StateEnum.Ongoing.value}],
             }

@@ -40,7 +40,7 @@ def test_flow_gate_requires_all_steps_success(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "flow.json").write_text(
-        json.dumps({"steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
+        json.dumps({"schema_version": 2, "steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
         encoding="utf-8",
     )
 
@@ -230,7 +230,9 @@ def test_sta_gate_separates_setup_and_hold(tmp_path):
 def test_flow_gate_reports_ongoing_as_fail(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Ongoing"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps({"schema_version": 2, "steps": [{"state": "Ongoing"}]}), encoding="utf-8"
+    )
 
     assert _flow_gate(tmp_path)["status"] == "fail"
 
@@ -318,7 +320,23 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "Harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "category": "PNR",
+                        "directory": "Harden_ecc",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     (home / "qor_report.json").write_text(json.dumps({"score": 90}), encoding="utf-8")
     monkeypatch.setattr(
         module,

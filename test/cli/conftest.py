@@ -5,6 +5,8 @@ import shlex
 
 import pytest
 
+from test.flow_fixture import current_flow_document
+
 
 def parse_plain_records(out: str) -> list[dict[str, str]]:
     """Parse `--plain` output (one key=value record per line) into dicts.
@@ -87,7 +89,7 @@ def create_flow_json(run_dir, steps=None, profile="inspect"):
     if steps is None:
         steps = FLOW_JSON_DEFAULTS[profile]
     with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump(current_flow_document(steps), f)
 
 
 def create_step_dir(run_dir, step_name, tool, subdirs=None, files=None):

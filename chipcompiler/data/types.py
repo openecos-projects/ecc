@@ -41,7 +41,6 @@ class StepEnum(StepBaseEnum):
     POST_FLOORPLAN = "postFloorplan"
     PREPLACE = "preplace"
     PLACEMENT = "place"
-    DIFF_BUFFERING = "diff_buffering"
     DIFF_SIZING = "diff_sizing"
     CTS = "CTS"
     LEGALIZATION = "legalization"
@@ -203,12 +202,6 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         FlowStepCategory.PNR,
         requires=_data(DesignState.FLOORPLAN),
         provides=_data(DesignState.PLACED),
-        legality=PlacementLegality.LEGALIZED,
-    ),
-    # Legacy spelling of diff_opt; both finish with a legalizing placement pass.
-    StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(
-        FlowStepCategory.PNR,
-        requires=_data(DesignState.PLACED),
         legality=PlacementLegality.LEGALIZED,
     ),
     SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(
@@ -454,8 +447,7 @@ def is_finished_step_state(state: object) -> bool:
     """Whether a persisted step state counts as done for selection and skipping.
 
     Incomplete/Invalid steps are unfinished: resume and rerun selectors
-    re-execute them. A legacy ``Warning`` state (removed terminal state for
-    the synthesis LEC) is not finished and is normalized to Unstart on
-    resume.
+    re-execute them. The removed ``Warning`` state is rejected before rerun
+    rather than normalized.
     """
     return state in FINISHED_STEP_STATES

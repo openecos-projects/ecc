@@ -409,12 +409,16 @@ def collect_workspace_report(workspace) -> DesignReportData:
     """Walk an ECC workspace (Workspace or duck-typed stand-in) and extract."""
     workspace_root = Path(workspace.directory)
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
-    flow = json_read(workspace_root / "home" / "flow.json") or flow_data
+    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    flow = load_flow_document(workspace_root / "home" / "flow.json") or flow_data
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)
     if not isinstance(parameters, dict):
-        parameters = json_read(workspace_root / "home" / "parameters.json")
-    if not isinstance(parameters, dict):
-        parameters = {}
+        try:
+            parameters = load_workspace_config(workspace_root)
+        except (OSError, ValueError):
+            parameters = {}
 
     directories = StepDirectories.from_records(
         workspace_root, flow.get("steps", []) if isinstance(flow, dict) else []

@@ -6,6 +6,7 @@ from chipcompiler.data import OriginDesign, Parameters, StateEnum, Workspace
 from chipcompiler.engine import EngineFlow
 from chipcompiler.engine.signoff import SignoffPackageOptions
 from chipcompiler.utility import file_digest
+from test.flow_fixture import step_directory, step_fields
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
@@ -70,26 +71,76 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": StateEnum.Success.value},
-                {"name": "route", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "filler", "tool": "ecc", "state": StateEnum.Success.value},
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": StateEnum.Success.value,
+                    **step_fields("Synthesis", "yosys"),
+                },
+                {
+                    "name": "route",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("route", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("drc", "ecc"),
+                },
+                {
+                    "name": "lvs",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("lvs", "ecc"),
+                },
+                {
+                    "name": "filler",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("filler", "ecc"),
+                },
                 {
                     "name": "postRouteLec",
                     "tool": "yosys_lec",
                     "input_step": "lvs",
                     "state": StateEnum.Success.value,
+                    **step_fields("postRouteLec", "yosys_lec"),
                 },
-                {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "powerAnalysis", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "Harden", "tool": "ecc", "state": StateEnum.Success.value},
+                {
+                    "name": "RCX",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("RCX", "ecc"),
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("sta", "ecc"),
+                },
+                {
+                    "name": "powerAnalysis",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("powerAnalysis", "ecc"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("Harden", "ecc"),
+                },
             ],
         },
     )
-    _write_json(workspace_dir / "home" / "checklist.json", {"checklist": []})
+    _write_json(
+        workspace_dir / "home" / "checklist.json",
+        {"schema_version": 3, "kind": "signoff_checklist", "checklist": []},
+    )
 
     _write_json(
         workspace_dir / "config" / "sta_ecc.json",
@@ -460,6 +511,10 @@ def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_pat
 
 def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> None:
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
+    first_step = {
+        **first_step,
+        **step_fields(first_step["name"], first_step["tool"]),
+    }
     flow["steps"] = [
         first_step,
         *[step for step in flow["steps"] if step.get("name") != "Synthesis"],
@@ -692,7 +747,17 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
     (workspace_dir / "Harden_ecc" / "output" / "gcd_Harden.gds").unlink()
     _write_json(
         workspace_dir / "home" / "flow.json",
-        {"steps": [{"name": "RCX", "state": "Failed"}]},
+        {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "RCX",
+                    "tool": "ecc",
+                    "state": "Failed",
+                    **step_fields("RCX", "ecc"),
+                }
+            ],
+        },
     )
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False)
@@ -852,26 +917,6 @@ def test_collect_signoff_package_rewrites_absolute_filelist_entries(tmp_path):
     assert packaged_filelist == '"gcd.sv"  # top\n'
 
 
-def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp_path):
-    workspace_dir = _make_signoff_workspace(tmp_path)
-    # A read-only legacy workspace whose TOML migration was deferred runs
-    # on parameters.json: the package carries the file it actually runs on.
-    (workspace_dir / "home" / "params.toml").unlink()
-    _write_json(
-        workspace_dir / "home" / "parameters.json",
-        {"design": "gcd", "top_module": "gcd", "pdk": "ics55"},
-    )
-    engine_flow = _make_engine_flow(workspace_dir)
-
-    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
-
-    package_dir = Path(result.package_dir)
-    assert result.ok is True
-    assert (package_dir / "initial" / "parameters.json").is_file()
-    summary = json.loads((package_dir / "summary.json").read_text())
-    assert summary["initial"]["parameters"] == "initial/parameters.json"
-
-
 def test_signoff_required_qor_steps_contain_no_skippable_step():
     """The QoR required set must stay free of skippable steps: a workspace
     that skipped one would false-fail its signoff. A future skippable
@@ -893,6 +938,7 @@ def _make_dual_signoff_workspace(tmp_path: Path) -> Path:
     for step in flow["steps"]:
         if step["name"] == "postRouteLec":
             step["tool"] = "lec_dual"
+            step["directory"] = "postRouteLec_dual"
     flow_path.write_text(json.dumps(flow), encoding="utf-8")
 
     yosys_result = json.loads(
@@ -1033,14 +1079,16 @@ def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
     assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "postRouteLec",
                 "tool": "kepler_formal",
                 "state": "Success",
                 "category": "CHECKER",
+                **step_directory("postRouteLec", "kepler_formal"),
             }
-        ]
+        ],
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     engine_flow = EngineFlow(workspace)

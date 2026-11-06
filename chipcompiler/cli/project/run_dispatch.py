@@ -1,15 +1,10 @@
 #!/usr/bin/env python
 
-"""Locked run dispatch for project runs.
+"""Run dispatch for project runs.
 
-The run handler resolves config, warnings, and the run target; this
-module owns the filesystem decision under the shared project migration
-lock: revalidate the project state (a concurrent ``ecc migrate`` can
-complete between context construction and here), classify
-existing-vs-fresh, refuse or atomically create the run target, and hand
-off to preparation/execution. Legacy runs hold the lock through engine
-execution — their targets live under ``runs/``, the very paths a
-migration moves. Imported lazily by the run handler; keep module-level
+The run handler resolves config, warnings, and the run target. This module
+classifies existing-vs-fresh, refuses or atomically creates the run target,
+and hands off to preparation/execution. Imported lazily by the run handler; keep module-level
 imports cheap.
 """
 
@@ -207,31 +202,6 @@ def _abandon_prepared_target(backup_path: str | None, run_dir: str, *, owns_targ
             os.replace(backup_path, run_dir)
 
 
-def _stale_project_state(project_dir: str, expected: str) -> CommandResult | None:
-    """Fail-loud guard inside the shared project lock.
-
-    ``build_context`` classifies the project before any lock is held, and
-    a concurrent ``ecc migrate`` can complete in that gap. Acting on the
-    stale classification would recreate ``runs/<id>`` next to the moved,
-    registered ``<root>/<id>`` — so the locked decision revalidates and
-    refuses with a retry hint instead of splitting the project.
-    """
-    from chipcompiler.cli.core.records import error_record
-    from chipcompiler.project.manifest import classify_project
-
-    if classify_project(project_dir) == expected:
-        return None
-    return CommandResult.err(
-        [
-            error_record(
-                "project_state_changed",
-                reason="the project layout changed while the run was starting "
-                "(a concurrent migration?); retry the command",
-            )
-        ]
-    )
-
-
 def dispatch_project_run(
     command_input,
     ctx,
@@ -246,15 +216,7 @@ def dispatch_project_run(
     workspace_registered: bool,
     execute_flow: bool = True,
 ) -> CommandResult:
-    """Run the existing/fresh decision and target creation under the shared
-    project lock, then execute.
-
-    Every filesystem decision derived from the pre-lock context is
-    revalidated inside the lock, so an interleaved ``ecc migrate`` either
-    waits for this run or turns it into a loud, retryable error — never
-    into a recreated ``runs/<id>`` shadowing the migrated workspace.
-    """
-    from chipcompiler.cli.project import migrate_fs
+    """Serialize target creation/replacement with workspace locks, then execute."""
 
     def existing_workspace_run() -> CommandResult:
         return run_existing_workspace(
@@ -297,152 +259,121 @@ def dispatch_project_run(
     project_dir = ctx.project_dir
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
-    if project_state == "legacy":
-        # Legacy runs create inside runs/ — the very paths a migration
-        # moves — so state revalidation, the existing/fresh decision,
-        # creation, AND the engine all hold the shared project lock.
-        ws_locks = contextlib.ExitStack()
-        try:
-            with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-                stale = _stale_project_state(project_dir, "legacy")
-                if stale is not None:
-                    return stale
-                if os.path.exists(flow_json) and not command_input.overwrite:
-                    unsafe = _existing_target_guard(run_dir, project_dir, run_name)
-                    if unsafe is not None:
-                        return unsafe
-                    return existing_workspace_run()
-                prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
-                if isinstance(prepared, CommandResult):
-                    return prepared
-                return fresh_run(
-                    owns_target=prepared[0], backup_path=prepared[1], ws_locks=ws_locks
-                )
-        finally:
-            ws_locks.close()
-
-    # The ownership decision (overwrite rename + create) runs inside the
-    # shared project lock, and the workspace lock taken for the rename stays
-    # held until the replacement is fully built: two concurrent overwrite
-    # runs can no longer interleave so that one's failure cleanup destroys
-    # the other's completed workspace. The engine still runs outside the
-    # project-wide lock so a run never holds it for minutes.
+    # The workspace lock taken for an overwrite rename or creation stays held
+    # until the replacement is fully built: one run's failure cleanup cannot
+    # destroy another run's completed workspace.
     owns_target = False
     backup_path = None
     created_registration = False
     ws_locks = contextlib.ExitStack()
     try:
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            existing = os.path.exists(flow_json) and not command_input.overwrite
-            if existing:
-                unsafe = _existing_target_guard(run_dir, project_dir, run_name)
-                if unsafe is not None:
-                    return unsafe
-                if not workspace_registered and ctx.workspace_path_explicit:
-                    from chipcompiler.cli.core.records import error_record
-                    from chipcompiler.cli.project.config import resolve_pdk_root
-                    from chipcompiler.cli.project.workspace_registration import (
-                        WorkspaceRegistrationError,
-                        register_existing_workspace,
-                    )
+        existing = os.path.exists(flow_json) and not command_input.overwrite
+        if existing:
+            unsafe = _existing_target_guard(run_dir, project_dir, run_name)
+            if unsafe is not None:
+                return unsafe
+            if not workspace_registered and ctx.workspace_path_explicit:
+                from chipcompiler.cli.core.records import error_record
+                from chipcompiler.cli.project.config import resolve_pdk_root
+                from chipcompiler.cli.project.workspace_registration import (
+                    WorkspaceRegistrationError,
+                    register_existing_workspace,
+                )
 
-                    try:
-                        registration, _metadata = register_existing_workspace(
-                            project_dir,
-                            cfg=cfg,
-                            pdk_root=resolve_pdk_root(cfg),
-                            workspace_id=run_name,
-                            workspace_path=run_dir,
-                            project_lock_held=True,
-                        )
-                    except WorkspaceRegistrationError as exc:
-                        return CommandResult.err(
-                            [
-                                error_record(
-                                    exc.code,
-                                    workspace_id=run_name,
-                                    workspace=run_dir,
-                                    reason=str(exc),
-                                )
-                            ]
-                        )
-                    if registration.startswith("conflict"):
-                        return CommandResult.err(
-                            [
-                                error_record(
-                                    "workspace_conflict",
-                                    workspace_id=run_name,
-                                    workspace=run_dir,
-                                )
-                            ]
-                        )
-                    if registration not in ("registered", "existing"):
-                        return CommandResult.err(
-                            [
-                                error_record(
-                                    "workspace_registration_failed",
-                                    workspace_id=run_name,
-                                    workspace=run_dir,
-                                )
-                            ]
-                        )
-                    workspace_registered = True
-                    # This execution must use the imported workspace's own
-                    # persisted range, not the project's fresh-run preset.
-                    cfg.manifest_driven = True
-            else:
-                prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
-                if isinstance(prepared, CommandResult):
-                    return prepared
-                owns_target, backup_path = prepared
-                # A legacy virgin `ecc run` still has to create the initial
-                # Project manifest before it can execute. Explicit GUI
-                # Workspace creation always runs after `ecc init`, so it
-                # publishes the directory first and registers it in the
-                # fresh-run commit path.
-                if not workspace_registered and not os.path.lexists(
-                    os.path.join(project_dir, MANIFEST_FILENAME)
-                ):
-                    from chipcompiler.cli.core.records import error_record
-                    from chipcompiler.cli.project.config import resolve_pdk_root
-                    from chipcompiler.project.manifest_write import pre_register_workspace
-
-                    registration = pre_register_workspace(
+                try:
+                    registration, _metadata = register_existing_workspace(
                         project_dir,
                         cfg=cfg,
                         pdk_root=resolve_pdk_root(cfg),
                         workspace_id=run_name,
                         workspace_path=run_dir,
-                        flow_config=flow_config,
                     )
-                    if registration.startswith("conflict"):
-                        _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
-                        return CommandResult.err(
-                            [
-                                error_record(
-                                    "workspace_conflict",
-                                    workspace_id=run_name,
-                                    workspace=run_dir,
-                                )
-                            ]
-                        )
-                    if registration not in ("registered", "existing"):
-                        _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
-                        return CommandResult.err(
-                            [
-                                error_record(
-                                    "workspace_registration_failed",
-                                    workspace_id=run_name,
-                                    workspace=run_dir,
-                                )
-                            ]
-                        )
-                    workspace_registered = True
-                    created_registration = registration == "registered"
+                except WorkspaceRegistrationError as exc:
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                exc.code,
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                                reason=str(exc),
+                            )
+                        ]
+                    )
+                if registration.startswith("conflict"):
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_conflict",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                if registration not in ("registered", "existing"):
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_registration_failed",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                workspace_registered = True
+                # This execution must use the imported workspace's own
+                # persisted range, not the project's fresh-run preset.
+                cfg.manifest_driven = True
+        else:
+            prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
+            if isinstance(prepared, CommandResult):
+                return prepared
+            owns_target, backup_path = prepared
+            # A direct CLI `ecc run` creates the initial project manifest
+            # before execution. Explicit GUI
+            # Workspace creation always runs after `ecc init`, so it
+            # publishes the directory first and registers it in the
+            # fresh-run commit path.
+            if not workspace_registered and not os.path.lexists(
+                os.path.join(project_dir, MANIFEST_FILENAME)
+            ):
+                from chipcompiler.cli.core.records import error_record
+                from chipcompiler.cli.project.config import resolve_pdk_root
+                from chipcompiler.project.manifest_write import pre_register_workspace
+
+                registration = pre_register_workspace(
+                    project_dir,
+                    cfg=cfg,
+                    pdk_root=resolve_pdk_root(cfg),
+                    workspace_id=run_name,
+                    workspace_path=run_dir,
+                    flow_config=flow_config,
+                )
+                if registration.startswith("conflict"):
+                    _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_conflict",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                if registration not in ("registered", "existing"):
+                    _abandon_prepared_target(backup_path, run_dir, owns_target=owns_target)
+                    return CommandResult.err(
+                        [
+                            error_record(
+                                "workspace_registration_failed",
+                                workspace_id=run_name,
+                                workspace=run_dir,
+                            )
+                        ]
+                    )
+                workspace_registered = True
+                created_registration = registration == "registered"
         if existing:
-            # Manifest workspaces live outside runs/ — migration never moves
-            # them, so the engine must not pin the shared lock for its whole
-            # execution the way the legacy branch intentionally does.
+            # The engine must not pin the workspace lock for its whole execution.
             return existing_workspace_run()
         return fresh_run(
             owns_target=owns_target,

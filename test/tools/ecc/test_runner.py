@@ -29,6 +29,7 @@ from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.checklist import EccRcxChecklist
 from chipcompiler.tools.ecc.subflow import EccSubFlowEnum
+from test.flow_fixture import step_fields
 
 
 class FakeEccModule:
@@ -881,7 +882,19 @@ def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
     spef.write_text("*SPEF\n", encoding="utf-8")
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "sta", "tool": "ecc", "directory": "sta_ecc"}]}),
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Unstart",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     workspace = Workspace(

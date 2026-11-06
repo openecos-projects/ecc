@@ -141,20 +141,6 @@ def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_de
         assert effective["timing_opt_coefficients"] == preset | {"mode": mode}
 
 
-@pytest.mark.parametrize("enabled", [0, 1])
-def test_legacy_timing_opt_override_is_accepted(dreamplace_default_config, enabled):
-    public = {"place.inflation_s5b1_enabled": enabled}
-    cli, errors = parse_cli_overrides([f"place.inflation_s5b1_enabled={enabled}"])
-    assert (cli, errors) == (public, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    overrides = build_config_overrides(resolved)
-    actual = apply_direct_config_overrides(
-        dreamplace_default_config, {"config_overrides": overrides}
-    )
-    assert actual == dreamplace_default_config | {"timing_opt_enabled": enabled}
-
-
 def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_path):
     root = Path(__file__).resolve().parents[3]
     profile = json.loads((root / "test/regression/ics55/placement_s5b1.json").read_text())

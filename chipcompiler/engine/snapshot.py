@@ -20,21 +20,9 @@ from chipcompiler.engine.snapshot_qor import (
 )
 from chipcompiler.utility import JsonObject, JsonReadError, json_read_strict, json_write
 
-LEGACY_SNAPSHOT_SCHEMA_VERSION = 2
-SNAPSHOT_V3_SCHEMA_VERSION = 3
-SNAPSHOT_V4_SCHEMA_VERSION = 4
 SNAPSHOT_SCHEMA_VERSION = 6
-SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS = frozenset(
-    {
-        LEGACY_SNAPSHOT_SCHEMA_VERSION,
-        SNAPSHOT_V3_SCHEMA_VERSION,
-        SNAPSHOT_V4_SCHEMA_VERSION,
-        SNAPSHOT_SCHEMA_VERSION,
-    }
-)
 SNAPSHOT_FILENAME = "engineering-snapshot.json"
 STALE_SNAPSHOT_FILENAME = "engineering-snapshot.stale.json"
-SNAPSHOT_MIGRATION_CAUSE = "snapshot.migrated.to_v6"
 SNAPSHOT_REBUILD_REQUIRED = "snapshot_rebuild_required"
 SNAPSHOT_IDENTITY_MISMATCH = "snapshot_identity_mismatch"
 SNAPSHOT_REVISION_MISMATCH = "snapshot_revision_mismatch"
@@ -81,7 +69,7 @@ def ensure_engineering_snapshot(workspace: Any) -> dict[str, Any]:
         if snapshot["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
             raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
         return snapshot
-    return create_engineering_snapshot(workspace, cause="workspace.migrated")
+    return create_engineering_snapshot(workspace, cause="workspace.created")
 
 
 def open_workspace_snapshot(workspace: Any) -> dict[str, Any]:
@@ -189,49 +177,6 @@ def _read_snapshot_file(path: Path, *, validate_workspace_identity: bool) -> dic
 def read_stale_engineering_snapshot(workspace: Any) -> dict[str, Any] | None:
     path = _stale_snapshot_path(workspace)
     return _read_snapshot(path) if path.is_file() else None
-
-
-def migrate_engineering_snapshot(
-    workspace: Any,
-    *,
-    expected_workspace_revision: int | None = None,
-    cause: str = SNAPSHOT_MIGRATION_CAUSE,
-) -> dict[str, Any]:
-    """Rebuild one legacy v2/v3/v4 Snapshot into the production v6 contract."""
-    current = _read_snapshot(_snapshot_path(workspace))
-    if current["schemaVersion"] not in {
-        LEGACY_SNAPSHOT_SCHEMA_VERSION,
-        SNAPSHOT_V3_SCHEMA_VERSION,
-        SNAPSHOT_V4_SCHEMA_VERSION,
-    }:
-        raise EngineeringSnapshotError("Snapshot migration requires schemaVersion 2, 3, or 4")
-    if (
-        expected_workspace_revision is not None
-        and current["workspaceRevision"] != expected_workspace_revision
-    ):
-        raise EngineeringSnapshotError(
-            "Workspace Revision does not match before Snapshot migration"
-        )
-    try:
-        snapshot = _build_snapshot(
-            workspace,
-            workspace_id=current["workspaceId"],
-            workspace_revision=current["workspaceRevision"],
-            cause=cause,
-            strict_qor=True,
-        )
-    except Exception as exc:
-        raise EngineeringSnapshotError(
-            "failed to regenerate QoR facts for Snapshot migration"
-        ) from exc
-    if isinstance(current.get("stalePredecessor"), dict):
-        snapshot["stalePredecessor"] = deepcopy(current["stalePredecessor"])
-    _write_snapshot(_snapshot_path(workspace), snapshot)
-    return snapshot
-
-
-# Kept until downstream callers migrate to the version-neutral entry point.
-migrate_engineering_snapshot_v2_to_v3 = migrate_engineering_snapshot
 
 
 def commit_engineering_snapshot(
@@ -415,8 +360,8 @@ def _build_snapshot(
         "cause": cause,
         "flow": flow,
         "parameters": _data_mapping(getattr(workspace, "parameters", None)),
-        # Keep the v4 compatibility envelope used by the CLI workspace
-        # migration path while exposing the bounded v6 projections below.
+        # Keep the established Snapshot envelope alongside the bounded v6
+        # projections below.
         "analysis": {"steps": deepcopy(flow.get("steps", []))},
         "qorAssessment": {"metrics": deepcopy(projections["metrics"])},
         "metrics": projections["metrics"],
@@ -548,7 +493,7 @@ def _validate_snapshot(
     if not isinstance(snapshot, dict):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
     schema_version = snapshot.get("schemaVersion")
-    if schema_version not in SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS:
+    if schema_version != SNAPSHOT_SCHEMA_VERSION:
         raise EngineeringSnapshotError(
             f"invalid Engineering Snapshot: {SNAPSHOT_REBUILD_REQUIRED}: unsupported "
             "Engineering Snapshot "
@@ -560,15 +505,7 @@ def _validate_snapshot(
         or isinstance(snapshot.get("workspaceRevision"), bool)
         or not isinstance(snapshot.get("workspaceRevision"), int)
         or snapshot["workspaceRevision"] < 1
-        or (
-            schema_version
-            in {
-                SNAPSHOT_V3_SCHEMA_VERSION,
-                SNAPSHOT_V4_SCHEMA_VERSION,
-                SNAPSHOT_SCHEMA_VERSION,
-            }
-            and not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
-        )
+        or not validate_qor_snapshot_extension(snapshot.get("qorSnapshotExtension"))
     ):
         raise EngineeringSnapshotError(f"invalid Engineering Snapshot: {path}")
     _validate_snapshot_sections(
@@ -583,26 +520,28 @@ def _validate_snapshot_sections(
     *,
     validate_workspace_identity: bool = True,
 ) -> None:
-    required = ["flow", "parameters", "checklist", "signoffAssessment"]
-    if snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION:
-        required.extend(("timingPreview", "hotspotPreview"))
-    else:
-        required.extend(("analysis", "qorAssessment"))
+    required = [
+        "flow",
+        "parameters",
+        "checklist",
+        "signoffAssessment",
+        "timingPreview",
+        "hotspotPreview",
+    ]
     for key in required:
         if not isinstance(snapshot.get(key), dict):
             raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
-    if snapshot["schemaVersion"] == SNAPSHOT_SCHEMA_VERSION:
-        # v6 predates the workspace-spec envelope; keep it optional so
-        # snapshots written by the bounded v6 contract stay readable.
-        for key in ("workspaceSpec", "workspaceBindings", "stepOutputs"):
-            if key in snapshot and not isinstance(snapshot[key], dict):
-                raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
-        if "stepOutputs" in snapshot:
-            if not isinstance(snapshot.get("workspaceBindings"), dict):
-                raise EngineeringSnapshotError(
-                    "invalid Engineering Snapshot section: workspaceBindings"
-                )
-            _validate_step_outputs(snapshot, workspace_root)
+    # The workspace-spec envelope stays optional so snapshots written by the
+    # bounded v6 contract remain readable.
+    for key in ("workspaceSpec", "workspaceBindings", "stepOutputs"):
+        if key in snapshot and not isinstance(snapshot[key], dict):
+            raise EngineeringSnapshotError(f"invalid Engineering Snapshot section: {key}")
+    if "stepOutputs" in snapshot:
+        if not isinstance(snapshot.get("workspaceBindings"), dict):
+            raise EngineeringSnapshotError(
+                "invalid Engineering Snapshot section: workspaceBindings"
+            )
+        _validate_step_outputs(snapshot, workspace_root)
     if "steps" in snapshot["flow"] and not isinstance(snapshot["flow"]["steps"], list):
         raise EngineeringSnapshotError("invalid Engineering Snapshot section: flow.steps")
     artifacts = snapshot.get("artifacts")

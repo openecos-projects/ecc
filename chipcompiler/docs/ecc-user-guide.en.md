@@ -100,8 +100,8 @@ uv run ecc --help
 ## 1. General conventions
 
 - Global: `ecc --version` (single version line), `ecc --help`.
-- Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects must be upgraded with `ecc migrate` before running a flow. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
-- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `migrate`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, `chipview`, and `gdsview` accept `--plain` where documented, with human-readable TEXT by default. The experiment groups do not share one output switch: `sweep create/list/run/verify`, `explore rank/promote`, and `reproducible export` emit JSON directly; `sweep compare`, `reproducible report`, and `diagnose run` default to text and accept `--json`; `sweep show` and `reproducible inspect/verify` emit JSON (their `--json` option is accepted but does not change the payload); `explore export` prints the selected JSON/CSV/Markdown content, or a one-line JSON status when `--output` is supplied. None of these groups supports `--plain`.
+- Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects are not migrated; create a new project and workspace. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
+- Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, `chipview`, and `gdsview` accept `--plain` where documented, with human-readable TEXT by default. The experiment groups do not share one output switch: `sweep create/list/run/verify`, `explore rank/promote`, and `reproducible export` emit JSON directly; `sweep compare`, `reproducible report`, and `diagnose run` default to text and accept `--json`; `sweep show` and `reproducible inspect/verify` emit JSON (their `--json` option is accepted but does not change the payload); `explore export` prints the selected JSON/CSV/Markdown content, or a one-line JSON status when `--output` is supplied. None of these groups supports `--plain`.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`). Complete registry:
 
 | Exit code | Meaning | Emitted by |
@@ -136,7 +136,6 @@ Commands:
   status        Show a quick run/step progress summary (full evidence: 'ecc report step')
   log           Show available logs or step log content
   config        Show resolved project or step configuration
-  migrate       Migrate a legacy runs/ project to the manifest layout
   doctor        Check host environment: PDK, tools, and components
   check-update  Check whether a newer nightly build is available
   rtl           Import project RTL sources
@@ -198,7 +197,6 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc status` | quick run/step progress summary | §6 |
 | `ecc log [STEP]` | list or view logs | §7 |
 | `ecc config [STEP]` | view resolved project/step configuration | §8 |
-| `ecc migrate` | migrate a legacy `runs/` layout | §5.4 |
 | `ecc doctor` | environment self-check (9 components) | §4 |
 | `ecc check-update` | check whether a newer nightly build is available | §2.5 |
 | `ecc rtl import` | import RTL/filelist into the project's `rtl/` | §8.5 |
@@ -646,7 +644,7 @@ $ ecc run --workspace a/b     # a relative path is invalid; use a simple name or
 | `workspace_not_importable` | an existing directory is not a supported ECC workspace, or its design/PDK identity does not match the project | point to a valid workspace for this project |
 | `workspace_conflict` | a workspace with the same name is already declared at another path | choose a different name |
 | `workspace_registration_failed` | registering the new workspace in `project.json` failed (unwritable manifest, …) | make `project.json` writable and retry |
-| `legacy_workspace_migration_required` | `ecc run` on a legacy `runs/` project | run `ecc migrate` first (the hint record carries the full command) |
+| `legacy_workspace_unsupported` | `ecc run` on a legacy `runs/` project | create a new project and workspace |
 | `selector_requires_workspace` | `--resume`/`--only` used directly on a brand-new project | run `ecc run` once first |
 | `selector_conflict` | `--resume`/`--from`/`--only` combined, or a fresh range combined with `--preset` etc. | keep a single selector |
 | `flow_range_requires_pair` | `--to` appears alone; or `--from` without `--to` on a fresh target | supply the missing pair argument |
@@ -659,14 +657,6 @@ $ ecc run --workspace a/b     # a relative path is invalid; use a simple name or
 | `set_requires_fresh_run` | `--set` used on an existing workspace | `--overwrite` or a new `--workspace` |
 | `env_not_ready` | the preflight of a fresh/`--overwrite` target finds a required tool missing | fix per the `ecc doctor` output |
 | `config_error` other than `step_input_missing` | `ecc.toml`/manifest parameter validation failed | use `ecc check` to see the offending fields |
-
-### 5.4 migrate — legacy-layout migration (transitional command)
-
-```bash
-ecc migrate [--project DIR] [--yes] [--plain]
-```
-
-Migrates a legacy `runs/`-layout project to the manifest layout: each safe `runs/<id>` workspace is moved to `<project>/<id>`, its workspace-internal paths are rebased, and it is registered in a generated or updated `project.json`. By default it prints the migration plan and asks for confirmation; `--yes` skips the prompt. The command is kept for the transition period (marked deprecated in code) and can be retired once existing projects have migrated. `run`/`check`/`status` attach a migration-hint record to their output on legacy projects.
 
 ## 6. status — show run and step status
 
@@ -934,7 +924,7 @@ ecc status --project /projects/gcd --workspace archive
 ecc run --project /projects/gcd --workspace archive --resume
 ```
 
-Import rejects malformed or incompatible workspaces, duplicate IDs/paths, protected paths, and legacy projects that still require `ecc migrate`. If an `ecc.toml` project has no `project.json` yet, a successful import creates the schema-v1 manifest before registering the workspace.
+Import rejects malformed or incompatible workspaces, duplicate IDs/paths, protected paths, and unsupported legacy projects. If an `ecc.toml` project has no `project.json` yet, a successful import creates the schema-v1 manifest before registering the workspace.
 
 `ecc workspace refresh NAME --project DIR` rebuilds a workspace already declared in `project.json` from the current `ecc.toml`, without running the flow. It replaces the workspace's copied inputs, tool configuration, state, and artifacts at the path already declared in the manifest; run `ecc run --workspace NAME` afterwards. Before replacing anything, it compares the managed JSON configs and `macro_location.tcl` with `home/config-derived-manifest.json`. If one changed since the last derivation, refresh returns `derived_configs_modified`, lists the files, and leaves the workspace intact. Review the edit and either express it through `ecc param`/`ecc macro`/`ecc.toml` or pass `--force` to discard it. A workspace predating the manifest has no comparison baseline, so its first refresh proceeds. `ecc run --workspace NAME --overwrite` remains the explicit rebuild-and-run shortcut:
 
@@ -1648,7 +1638,7 @@ ecc report checklist --project gcd
 
 ### 12.4 step — per-step feature / analysis / checklist report (read-only preview)
 
-Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace, so no config migration or workspace log is appended). This is the deep-dive counterpart of `ecc status`: `status` answers "where is the run", `report step` answers "what exactly happened in this step":
+Previews the **current step artifacts** of one workspace directly in the terminal. It writes no files and refreshes nothing (unlike `report qor/checklist` it does not load a Workspace or append a workspace log). This is the deep-dive counterpart of `ecc status`: `status` answers "where is the run", `report step` answers "what exactly happened in this step":
 
 - Without arguments: an overview table of all steps (state, runtime, peak memory, metric count, quality, checklist status)
 - With `STEP`: the step's three detail sections
@@ -1705,8 +1695,8 @@ ecc report step sta --workspace <workspace> --section outputs --json
 ```
 
 The default report still shows only feature, analysis, and checklist, preserving the existing
-behavior. `outputs` runs no tools, does not migrate the snapshot or refresh the workspace, and
-does not scan directories; a missing or damaged index returns `unavailable` without generating
+behavior. `outputs` runs no tools, accepts only the current snapshot schema, does
+not refresh the workspace, and does not scan directories; a missing or damaged index returns `unavailable` without generating
 a new one.
 
 - `exists` and `bytes` check the in-workspace file at query time; a cached `exists` is not trusted.
@@ -1818,7 +1808,7 @@ checkers never reuse stale zero counts. LEC only shows a saved proven verdict, w
 verifying netlist content or inventing a count. RCX/powerAnalysis without a supported
 violation count show N/A. Execution success is separate from checker cleanliness.
 
-No workspace loading/migration, EDA execution, QoR/snapshot refresh or file writing occurs.
+No workspace loading, EDA execution, QoR/snapshot refresh or file writing occurs.
 JSON uses the shared record array with `report=project` and `columns/workspaces/warnings`.
 Plain mode emits related project_report, step_column, workspace, workspace_step,
 checker_count and warning records. Workspace-local gaps retain the row and yield partial

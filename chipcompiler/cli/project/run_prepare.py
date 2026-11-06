@@ -431,55 +431,48 @@ def execute_fresh_run(
     else:
         pdk_cli_overrides = {}
 
-    from chipcompiler.cli.project import migrate_fs
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    # Lock order is always migration → workspace, and the workspace lock
-    # is taken BEFORE the target becomes discoverable (flow.json appears
-    # in create_workspace): a concurrent `ecc run` can never classify
-    # this target as existing and win the race to execute it. The lock
-    # file lives next to the workspace, so it predates and survives the
-    # creation. It stays held through seeding and engine execution below —
-    # the same execution ownership as the existing-run path — while the
-    # migration lock is released right after creation so a run never pins
-    # project-wide migration for minutes. The caller's stack already holds
-    # the lock when it took the overwrite rename; entering here would be a
-    # no-op on the same path, so only a self-owned stack enters it.
+    # The workspace lock is taken BEFORE the target becomes discoverable
+    # (flow.json appears in create_workspace), so a concurrent `ecc run` cannot
+    # classify this target as existing and win the race to execute it. The lock
+    # stays held through seeding and engine execution. The caller's stack
+    # already holds it after an overwrite rename, so only a self-owned stack
+    # enters it here.
     caller_locks = ws_locks is not None
     if ws_locks is None:
         ws_locks = contextlib.ExitStack()
     try:
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            if not caller_locks:
-                ws_locks.enter_context(
-                    workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
-                )
-            try:
-                workspace = create_workspace(
-                    directory=run_dir,
-                    origin_def=origin_def,
-                    origin_verilog=origin_verilog,
-                    pdk=cfg.pdk_name,
-                    parameters=parameters,
-                    input_filelist=input_filelist,
-                    pdk_root=pdk_root,
-                    pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
-                    flow_config=flow_config,
-                    sdc=inputs.sdc,
-                    spef=inputs.spef,
-                    golden_verilog=inputs.golden_netlist,
-                )
-                if workspace is not None:
-                    workspace.__dict__["_ecc_project_dir"] = project_dir
-            except Exception as exc:
-                return failed_workspace(str(exc))
-            finally:
-                if generated_filelist is not None:
-                    with contextlib.suppress(OSError):
-                        shutil.rmtree(os.path.dirname(generated_filelist))
+        if not caller_locks:
+            ws_locks.enter_context(
+                workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
+            )
+        try:
+            workspace = create_workspace(
+                directory=run_dir,
+                origin_def=origin_def,
+                origin_verilog=origin_verilog,
+                pdk=cfg.pdk_name,
+                parameters=parameters,
+                input_filelist=input_filelist,
+                pdk_root=pdk_root,
+                pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+                flow_config=flow_config,
+                sdc=inputs.sdc,
+                spef=inputs.spef,
+                golden_verilog=inputs.golden_netlist,
+            )
+            if workspace is not None:
+                workspace.__dict__["_ecc_project_dir"] = project_dir
+        except Exception as exc:
+            return failed_workspace(str(exc))
+        finally:
+            if generated_filelist is not None:
+                with contextlib.suppress(OSError):
+                    shutil.rmtree(os.path.dirname(generated_filelist))
 
-            if workspace is None:
-                return failed_workspace(None)
+        if workspace is None:
+            return failed_workspace(None)
 
         # Seeding writes are part of the replacement construction: they run
         # before the commit point inside the recovery boundary, so a write
