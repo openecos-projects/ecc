@@ -577,25 +577,16 @@ class FoundationExtractor:
         return [by_name[name] for name in requested_names]
 
     def _workspace_config_path(self) -> Path:
-        """The workspace's persisted configuration: home/params.toml
-        preferred, legacy home/parameters.json as the fallback."""
+        """The workspace's current persisted configuration."""
         from chipcompiler.data.workspace_config import workspace_config_path
 
-        toml_path = workspace_config_path(self.workspace_dir)
-        if toml_path.exists():
-            return toml_path
-        return self.workspace_dir / "home" / "parameters.json"
+        return workspace_config_path(self.workspace_dir)
 
     def _workspace_config_rel_path(self) -> str:
         return str(self._workspace_config_path().relative_to(self.workspace_dir))
 
     def _read_workspace_parameters(self) -> dict[str, Any]:
-        """Read workspace parameters in whichever format the workspace
-        persists them: canonical flat keys from home/params.toml, or the
-        legacy display-key JSON with display/flat fallback reads downstream."""
-        config_path = self._workspace_config_path()
-        if config_path.suffix == ".json":
-            return self._read_json(config_path)
+        """Read canonical flat parameters from home/params.toml."""
         from chipcompiler.data.workspace_config import load_workspace_config
 
         return load_workspace_config(self.workspace_dir)
@@ -2980,14 +2971,10 @@ class FoundationExtractor:
 
     @staticmethod
     def _engineer_settable_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-        from chipcompiler.data.parameter_keys import normalize_parameter_dict
-
-        # One canonical schema regardless of the on-disk format: legacy
-        # display keys normalize first, then environment keys and the flow
-        # target are dropped and core keeps only the tunables. The flow
-        # target surfaces as "flow" after normalization ("_flow").
-        normalized = json.loads(json.dumps(normalize_parameter_dict(parameters)))
-        for key in ("pdk_root", "die", "flow"):
+        # Environment keys and the flow target are not engineer-settable
+        # parameters; core keeps only its tunables.
+        normalized = json.loads(json.dumps(parameters))
+        for key in ("pdk_root", "die", "_flow"):
             normalized.pop(key, None)
         core = normalized.get("core")
         if isinstance(core, dict):

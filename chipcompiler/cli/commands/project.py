@@ -10,7 +10,6 @@ from chipcompiler.cli.core.inputs import (
     ConfigInput,
     InitInput,
     LogInput,
-    MigrateInput,
     RtlImportInput,
     RunInput,
     StatusInput,
@@ -36,9 +35,6 @@ def register_project_commands(app: typer.Typer) -> None:
     )(status_cmd)
     app.command("log", help="Show available logs or step log content")(log_cmd)
     app.command("config")(config_cmd)
-    app.command("migrate", help="Migrate a legacy runs/ project to the manifest layout")(
-        migrate_cmd
-    )
 
 
 rtl_app = create_app(help="Import project RTL sources")
@@ -225,23 +221,6 @@ def log_cmd(
         workspace=workspace,
     )
     execute_command("log", command_input, inspect_handlers.log)
-
-
-def migrate_cmd(
-    *,
-    project: ProjectOption = None,
-    yes: Annotated[
-        bool,
-        typer.Option("--yes", help="Migrate without interactive confirmation"),
-    ] = False,
-    plain: PlainOption = False,
-) -> None:
-    command_input = MigrateInput(
-        output=output_options(plain=plain),
-        project=project_options(project),
-        yes=yes,
-    )
-    execute_command("migrate", command_input, project_handlers.migrate)
 
 
 def config_cmd(

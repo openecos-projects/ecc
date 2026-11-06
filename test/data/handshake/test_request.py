@@ -58,7 +58,11 @@ def _request(flow: EngineFlow, name: str):
 def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, legacy):
     import chipcompiler.tools as tools
 
-    flow = _wired_flow(tmp_path, legacy=legacy)
+    if legacy:
+        with pytest.raises(ValueError, match="no recorded directory"):
+            _wired_flow(tmp_path, legacy=True)
+        return
+    flow = _wired_flow(tmp_path)
     real_create_step = tools.create_step
     # The parent built optional tools path-only; rebuild them the same way.
     monkeypatch.setattr(
@@ -131,16 +135,9 @@ def test_a_step_outside_the_workspace_is_rejected(tmp_path):
         )
 
 
-def test_ledgers_without_recorded_directories_link_their_legacy_names(tmp_path):
-    flow = _wired_flow(tmp_path, legacy=True)
-
-    _step, request = _request(flow, StepEnum.STA.value)
-
-    assert {item: source.step_directory for item, source in request.upstream.items()} == {
-        DesignState.FILLED: "filler_ecc",
-        DesignState.CLOCK_TREE: "CTS_ecc",
-        AnalysisData.PARASITICS: "RCX_ecc",
-    }
+def test_ledgers_without_recorded_directories_are_rejected(tmp_path):
+    with pytest.raises(ValueError, match="no recorded directory"):
+        _wired_flow(tmp_path, legacy=True)
 
 
 def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):

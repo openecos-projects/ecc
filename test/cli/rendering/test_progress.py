@@ -664,7 +664,7 @@ def _make_ws(directory="/tmp", log_section_fn=None):
                     "log_separator": lambda *a, **k: None,
                 },
             )(),
-            "flow": type("F", (), {"data": {"steps": []}, "path": ""})(),
+            "flow": type("F", (), {"data": {"schema_version": 2, "steps": []}, "path": ""})(),
             "directory": directory,
         },
     )()
@@ -1402,12 +1402,13 @@ class TestRunWithStepProgress:
     def _flow(self, tmp_path):
         workspace: Any = _make_ws(str(tmp_path))
         workspace.flow.data = {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "Synthesis",
                     "runtime": "0:00:03",
                 }
-            ]
+            ],
         }
         step = _make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))
         return _make_flow(workspace, [step], lambda self, s: StateEnum.Success), step

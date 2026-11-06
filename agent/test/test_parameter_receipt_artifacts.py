@@ -16,6 +16,7 @@ from agent.workspace_api import (
     _parameter_receipt_context,
     _stable_hash,
 )
+from test.flow_fixture import step_fields
 
 HASH = "sha256:" + "a" * 64
 PRODUCER = Path(__file__).parents[1] / "data/parameter_runtime_observer.py"
@@ -65,10 +66,9 @@ def _materialized_workspace(
     (origin / "filelist").write_text("top.v\n", encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir()
-    (home / "parameters.json").write_text(
-        json.dumps({"PDK Root": str(tmp_path / "pdk")}),
-        encoding="utf-8",
-    )
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(tmp_path, {"pdk_root": str(tmp_path / "pdk")})
     config = tmp_path / "config" / "dreamplace.json"
     config.parent.mkdir(parents=True)
     config.write_text(json.dumps({knob_id.removeprefix("place."): before}), encoding="utf-8")
@@ -76,7 +76,18 @@ def _materialized_workspace(
         directory=tmp_path,
         config={"dreamplace": config},
         pdk=SimpleNamespace(tech=tech, site_core="core7"),
-        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
     materialize_candidate_config(
         workspace,
@@ -169,7 +180,7 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
     )
 
 
-def test_parameter_receipt_context_uses_loaded_pdk_tech_without_legacy_json(
+def test_parameter_receipt_context_uses_loaded_pdk_tech(
     tmp_path: Path,
 ) -> None:
     workspace, _ = _materialized_workspace(
@@ -179,7 +190,6 @@ def test_parameter_receipt_context_uses_loaded_pdk_tech_without_legacy_json(
         before=0.5,
         written=0.85,
     )
-    (tmp_path / "home" / "parameters.json").unlink()
     request = SimpleNamespace(
         candidate_id="candidate-canonical-config",
         target_step="place",

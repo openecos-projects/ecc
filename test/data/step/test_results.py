@@ -8,6 +8,7 @@ from chipcompiler.data.workspace import Flow
 from chipcompiler.data.workspace.flow_ledger import save_ledger, set_flow_state
 from chipcompiler.data.workspace.flow_types import load_flow_document
 from chipcompiler.engine.flow import EngineFlow
+from test.flow_fixture import step_fields
 
 
 def _flow(tmp_path, *steps: tuple[str, str]) -> EngineFlow:
@@ -16,10 +17,11 @@ def _flow(tmp_path, *steps: tuple[str, str]) -> EngineFlow:
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             flow.init_flow_step(name, "ecc", state, index=index)
             for index, (name, state) in enumerate(steps, start=1)
-        ]
+        ],
     }
     for record in flow.workspace.flow.steps():
         (tmp_path / str(record.get("directory"))).mkdir()
@@ -102,7 +104,20 @@ def test_ledgers_outside_a_workspace_home_write_no_step_results(tmp_path):
     path = tmp_path / "notes" / "flow.json"
     path.parent.mkdir()
     (tmp_path / "route_ecc").mkdir()
-    flow = Flow(path=path, data={"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]})
+    flow = Flow(
+        path=path,
+        data={
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "route",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("route", "ecc"),
+                }
+            ],
+        },
+    )
 
     assert save_ledger(flow)
 

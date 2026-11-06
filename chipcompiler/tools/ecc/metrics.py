@@ -3515,30 +3515,12 @@ def save_qor_hotspots(workspace: Workspace, step: WorkspaceStep, step_metrics: S
     )
 
 
-def _remove_legacy_step_metric_artifacts(step: WorkspaceStep) -> bool:
-    analysis_dir = step.analysis.dir
-    if analysis_dir is None or analysis_dir == "":
-        return True
-
-    legacy_prefix = f"{step.name}_metrics"
-    try:
-        for suffix in (".json", ".png"):
-            legacy_path = Path(analysis_dir) / f"{legacy_prefix}{suffix}"
-            if legacy_path.is_file():
-                legacy_path.unlink()
-    except OSError:
-        return False
-    return True
-
-
 def save_step_metrics(workspace: Workspace, step: WorkspaceStep, step_metrics: StepMetrics) -> bool:
     if not save_qor_metrics(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
     if not save_qor_summary(workspace=workspace, step=step, step_metrics=step_metrics):
         return False
-    if not save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics):
-        return False
-    return _remove_legacy_step_metric_artifacts(step)
+    return save_qor_hotspots(workspace=workspace, step=step, step_metrics=step_metrics)
 
 
 def build_step_metrics(

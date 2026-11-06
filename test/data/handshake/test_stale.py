@@ -71,16 +71,18 @@ def test_saving_the_ledger_resets_steps_built_on_a_changed_run(tmp_path):
     flow = Flow(
         path=tmp_path / "home" / "flow.json",
         data={
+            "schema_version": 2,
             "steps": [
                 {
                     "name": directory.split("_")[1],
                     "tool": directory.split("_", 2)[2],
                     "state": "Success",
                     "runtime": "0:0:1",
+                    "category": "PNR",
                     "directory": directory,
                 }
                 for directory in _CHAIN
-            ]
+            ],
         },
     )
     answer(tmp_path, _CHAIN[1], "legal-2", (_CHAIN[0], "cts-1"))  # legalization reran

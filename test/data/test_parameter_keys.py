@@ -74,7 +74,7 @@ def test_normalize_keys_collision_long_key_wins(caplog):
 
 def test_normalize_parameter_dict_preserves_reserved_payloads():
     payload = {
-        "Config Overrides": {
+        "config_overrides": {
             "CTS": {"skew_bound": "0.1"},
             "route": {"RT": {"-thread_number": "16"}},
         },

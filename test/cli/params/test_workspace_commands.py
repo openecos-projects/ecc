@@ -34,11 +34,36 @@ def _workspace(workspace_dir):
         flow=SimpleNamespace(
             path=parameters_path.parent / "flow.json",
             data={
+                "schema_version": 2,
                 "steps": [
-                    {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                    {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                    {"name": "route", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                ]
+                    {
+                        "name": "Synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "Synthesis_yosys",
+                    },
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "place_dreamplace",
+                    },
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "route_ecc",
+                    },
+                ],
             },
         ),
     )

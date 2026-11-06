@@ -33,7 +33,6 @@ MANIFEST_FLOW_STEPS = (
     "Preplace",
     "Place",
     "DiffOpt",
-    "DiffBuffering",
     "DiffSizing",
     "CTS",
     "Legal",
@@ -51,28 +50,10 @@ MANIFEST_FLOW_STEPS = (
     "Harden",
 )
 
-# ``Floor`` was the public manifest value before floorplanning was split into
-# pre/macro/post stages.  Read it as the completed handoff stage so old ranges
-# keep their original start/end meaning without rewriting project.json.
-# ``Timing Opt``/``Post-route LEC``/``Power Analysis`` are the Studio display
-# spellings the GUI sends on workspace registration; accept them so a manifest
-# carrying display names still loads (entries self-heal to canonical spellings
-# on next write).
-_MANIFEST_STEP_ALIASES = {
-    "Floor": "PostFloorplan",
-    "Timing Opt": "TimingOpt",
-    "Post-route LEC": "PostRouteLEC",
-    "Power Analysis": "PowerAnalysis",
-}
-
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
-    # Legacy presets removed from the builder; keep resolving them so
-    # persisted projects still load.
-    "rcx": ("Synth", "STA"),
-    "harden": ("Synth", "Harden"),
 }
 
 _CANONICAL_TO_MANIFEST_STEP = {
@@ -81,11 +62,9 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "preFloorplan": "PreFloorplan",
     "macroPlacement": "MacroPlacement",
     "postFloorplan": "PostFloorplan",
-    "Floorplan": "PostFloorplan",
     "preplace": "Preplace",
     "place": "Place",
     "diff_opt": "DiffOpt",
-    "diff_buffering": "DiffBuffering",
     "diff_sizing": "DiffSizing",
     "CTS": "CTS",
     "legalization": "Legal",
@@ -108,9 +87,7 @@ _MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.item
 
 
 def validate_manifest_range(start_step: str, end_step: str) -> tuple[str, str]:
-    """Alias-resolve and validate a persisted start/end range."""
-    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
-    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
+    """Validate a persisted start/end range in the current manifest vocabulary."""
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
         if step_name not in MANIFEST_FLOW_STEPS:
             raise ManifestError(f"{field_name} is not on the canonical flow chain: {step_name}")
@@ -499,8 +476,8 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
     DECLARED project source spellings preserved: ``rtl_list`` verbatim,
     and ``origin_verilog`` when the single source is plain RTL (empty for
     a filelist source; the document builder drops empty keys). Parameters
-    are the GUI-flat projection. Shared by virgin generation and first
-    migration so the two writers cannot drift.
+    are the GUI-flat projection. Shared by every manifest writer so their
+    generated documents cannot drift.
     """
     from chipcompiler.utility.filelist import FILELIST_SUFFIXES
 

@@ -722,6 +722,7 @@ def test_sizer_build_step_config_rewrites_legacy_one_stage_subflow(tmp_path, mon
     step.subflow.path.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "path": str(step.subflow.path),
                 "steps": [
                     {

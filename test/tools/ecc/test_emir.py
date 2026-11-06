@@ -44,30 +44,6 @@ def test_emir_default_technology_path_uses_workspace_config_copy(
     assert technology_path.is_file()
 
 
-def test_emir_legacy_packaged_technology_path_migrates_to_workspace_copy(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
-    workspace = create_workspace(
-        directory=tmp_path / "workspace",
-        origin_def="",
-        origin_verilog=fixtures / "gcd/gcd.v",
-        pdk="ics55",
-        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
-        parameters={},
-    )
-    assert workspace is not None
-    config_path = workspace.config[StepEnum.EMIR.value]
-    packaged_path = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
-    assert json_write(config_path, {"technology_file_path": str(packaged_path)})
-
-    refresh_workspace_config(workspace)
-
-    technology_path = Path(json_read(config_path)["technology_file_path"])
-    assert technology_path == config_path.parent / "ics55_synthetic.tech"
-    assert technology_path.is_file()
-
-
 def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
     fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     technology_path = fixtures / "emir/ics55_synthetic.tech"

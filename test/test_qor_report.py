@@ -9,6 +9,7 @@ from chipcompiler.engine.signoff.report_checklist import (
     build_checklist_report,
     generate_checklist_report,
 )
+from test.flow_fixture import step_fields
 
 
 def _write(path, payload):
@@ -49,21 +50,74 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
     _write(
         root / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-                {"name": "place", "tool": "dreamplace", "state": "Success"},
-                {"name": "CTS", "tool": "ecc", "state": "Success"},
-                {"name": "route", "tool": "ecc", "state": "Success"},
-                {"name": "drc", "tool": "ecc", "state": "Success"},
-                {"name": "lvs", "tool": "ecc", "state": "Success"},
-                {"name": "RCX", "tool": "ecc", "state": "Success"},
-                {"name": "sta", "tool": "ecc", "state": "Success"},
-                {"name": "Harden", "tool": "ecc", "state": "Success"},
-            ]
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    **step_fields("Synthesis", "yosys"),
+                },
+                {
+                    "name": "Floorplan",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("Floorplan", "ecc"),
+                },
+                {
+                    "name": "place",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    **step_fields("place", "dreamplace"),
+                },
+                {
+                    "name": "CTS",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("CTS", "ecc"),
+                },
+                {
+                    "name": "route",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("route", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+                {
+                    "name": "lvs",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("lvs", "ecc"),
+                },
+                {
+                    "name": "RCX",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("RCX", "ecc"),
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("sta", "ecc"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("Harden", "ecc"),
+                },
+            ],
         },
     )
-    _write(root / "home" / "parameters.json", {"Design": "gcd", "frequency_max": 50.0})
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
     if with_metrics:
         _write(
             root / "drc_ecc" / "analysis" / "qor_metrics.json",

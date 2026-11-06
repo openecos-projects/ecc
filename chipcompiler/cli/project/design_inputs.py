@@ -28,7 +28,6 @@ _PHYSICAL_STEPS = frozenset(
         "preplace",
         "place",
         "diff_opt",
-        "diff_buffering",
         "diff_sizing",
         "CTS",
         "legalization",

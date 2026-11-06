@@ -19,8 +19,8 @@ from pathlib import Path
 import chipcompiler
 from chipcompiler.data.step import (
     DUAL_STEP_DIRECTORIES,
-    LEGACY_STEP_DIRECTORIES,
     STEP_DIRECTORIES,
+    YOSYS_LEC_STEP_DIRECTORIES,
     step_storage_name,
 )
 from chipcompiler.data.types import SkippableStepEnum, ToolName
@@ -30,7 +30,7 @@ _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
 _STEP_DIRECTORY_LITERALS = frozenset(
     {
         *STEP_DIRECTORIES.values(),
-        *LEGACY_STEP_DIRECTORIES.values(),
+        *YOSYS_LEC_STEP_DIRECTORIES.values(),
         *DUAL_STEP_DIRECTORIES.values(),
         f"{step_storage_name(SkippableStepEnum.TIMING_OPT.value, ToolName.SIZER.value)}"
         f"_{ToolName.SIZER.value}",
@@ -101,13 +101,12 @@ _ARTIFACT_ALLOWLIST = {
 }
 
 # Writers of home/flow.json. The ledger module is the one first-party writer;
-# the other three are recovery/migration paths that intentionally do not load
+# the other two are recovery paths that intentionally do not load
 # a Workspace (the plan's explicit exceptions).
 _FLOW_WRITE_OWNERS = {
     "data/workspace/flow_ledger.py": "the schema-aware ledger writer",
     "engine/reconcile.py": "recovery path without a loaded Workspace",
     "engine/interrupted_run.py": "recovery path without a loaded Workspace",
-    "cli/project/migrate_fs.py": "filesystem migration without a loaded Workspace",
 }
 
 
@@ -307,7 +306,6 @@ _FLOW_WRITE_OWNERS_CEILING = frozenset(
         "data/workspace/flow_ledger.py",
         "engine/reconcile.py",
         "engine/interrupted_run.py",
-        "cli/project/migrate_fs.py",
     }
 )
 

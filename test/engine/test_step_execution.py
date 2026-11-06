@@ -4,12 +4,23 @@ from chipcompiler.data import EccStep, StateEnum, Workspace
 from chipcompiler.engine import flow as flow_module
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.step_execution import STEP_WORKER_MODULE, StepExecutionResult
+from test.flow_fixture import step_fields
 
 
 def test_engine_flow_passes_worker_module_and_layout_policy(monkeypatch, tmp_path):
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Unstart",
+                **step_fields("route", "ecc"),
+            }
+        ],
+    }
     flow = EngineFlow(workspace)
     step = EccStep(name="route", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]

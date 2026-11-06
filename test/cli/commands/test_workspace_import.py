@@ -3,6 +3,7 @@ from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters, save_parameter
+from test.flow_fixture import step_fields
 
 
 def _existing_workspace(
@@ -17,13 +18,15 @@ def _existing_workspace(
     (home / "flow.json").write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "steps": [
                     {
                         "name": "Synthesis",
                         "tool": "yosys",
                         "state": state,
+                        **step_fields("Synthesis", "yosys"),
                     }
-                ]
+                ],
             }
         )
     )

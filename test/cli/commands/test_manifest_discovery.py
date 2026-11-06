@@ -13,7 +13,7 @@ class TestManifestRunDiscovery:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         run_dir = project_dir / "ws_0001"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
 
         rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
@@ -32,7 +32,7 @@ class TestManifestRunDiscovery:
         )
         run_dir = project_dir / "ws_0002"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
 
         rc = cli_main.run(
             ["status", "--project", str(project_dir), "--workspace", "ws_0002", "--plain"]
@@ -119,7 +119,7 @@ class TestManifestRunDiscovery:
         )
         run_dir = project_dir / "ws_0002"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
 
         rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
@@ -155,231 +155,37 @@ class TestManifestCheck:
         assert records[0]["config"] == "project.json"
 
 
-class TestLegacyHint:
-    def test_check_emits_legacy_hint_in_runs_project(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
-
-        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
-
-        assert rc == 0
-        records = manifest_stubs.records()
-        hint = [r for r in records if r.get("warning") == "legacy_layout_detected"]
-        assert len(hint) == 1
-        assert "ecc migrate" in hint[0]["migrate"]
-
-    def test_check_no_hint_in_virgin_project(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-
-        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
-
-        assert rc == 0
-        records = manifest_stubs.records()
-        assert all(r.get("warning") != "legacy_layout_detected" for r in records)
-
-    def test_check_no_hint_in_manifest_project(
-        self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-        minimal_ics55_pdk_factory(project_dir / "pdk")
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        records = manifest_stubs.records()
-        assert all(r.get("warning") != "legacy_layout_detected" for r in records)
-
-    def test_status_emits_legacy_hint_in_runs_project(
-        self, tmp_path, capsys, create_cli_project, create_flow_json, manifest_stubs
-    ):
-        project_dir = create_cli_project()
-        run_dir = os.path.join(project_dir, "runs", "default")
-        create_flow_json(run_dir, profile="main")
-
-        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
-
-        # Read-only commands resolve the managed path, not runs/<id>: the
-        # legacy workspace is reported missing, with the migration hint.
-        assert rc != 0
-        records = manifest_stubs.records()
-        assert records[0]["status"] == "missing"
-        hint = [r for r in records if r.get("warning") == "legacy_layout_detected"]
-        assert len(hint) == 1
-
-
-class TestLegacyHintBoundary:
-    """AC-16: the hint rides every run/check/status outcome on legacy
-    projects — run refuses with it, check succeeds with it, status reports
-    the managed path missing with it — and never appears elsewhere."""
-
-    @staticmethod
-    def _hints(records):
-        return [r for r in records if r.get("warning") == "legacy_layout_detected"]
-
-    @pytest.mark.parametrize("command", ["check", "status"])
-    def test_outcome_carries_hint(
+class TestLegacyWorkspaceRejected:
+    @pytest.mark.parametrize("command", ["check", "status", "run"])
+    def test_legacy_runs_project_is_rejected(
         self,
         command,
         tmp_path,
         capsys,
         create_cli_project,
         minimal_ics55_pdk_factory,
-        create_flow_json,
         manifest_stubs,
+        monkeypatch,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
-        create_flow_json(os.path.join(project_dir, "runs", "default"), profile="main")
+        os.makedirs(os.path.join(project_dir, "runs", "default"), exist_ok=True)
+        handler = {
+            "run": "chipcompiler.cli.command_handlers.project.run",
+            "check": "chipcompiler.cli.command_handlers.project.check",
+            "status": "chipcompiler.cli.command_handlers.inspect.status",
+        }[command]
+        monkeypatch.setattr(
+            handler,
+            lambda *_args, **_kwargs: pytest.fail("legacy project handler must not run"),
+        )
 
         rc = cli_main.run([command, "--project", project_dir, "--plain"])
 
-        records = manifest_stubs.records()
-        assert len(self._hints(records)) == 1
-        if command == "status":
-            # Read-only commands resolve the managed path: runs/<id> is
-            # invisible, so status reports the workspace missing.
-            assert rc != 0
-            assert records[0]["status"] == "missing"
-        else:
-            assert rc == 0
-
-    def test_run_refusal_carries_hint(
-        self,
-        tmp_path,
-        capsys,
-        create_cli_project,
-        minimal_ics55_pdk_factory,
-        flow_mocks,
-        manifest_stubs,
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-
-        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
-
-        # Legacy projects must migrate first: run refuses before any work.
         assert rc != 0
-        records = manifest_stubs.records()
-        assert records[0]["error"] == "legacy_workspace_migration_required"
-        assert len(self._hints(records)) == 1
-
-    def test_status_missing_flow_carries_hint(
-        self, tmp_path, capsys, create_cli_project, manifest_stubs
-    ):
-        project_dir = create_cli_project()
-        os.makedirs(os.path.join(project_dir, "runs", "default"))
-
-        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
-
-        assert rc != 0
-        records = manifest_stubs.records()
-        assert records[0]["status"] == "missing"
-        assert len(self._hints(records)) == 1
-
-    def test_status_corrupt_flow_carries_hint(
-        self, tmp_path, capsys, create_cli_project, manifest_stubs
-    ):
-        project_dir = create_cli_project()
-        home = os.path.join(project_dir, "runs", "default", "home")
-        os.makedirs(home)
-        with open(os.path.join(home, "flow.json"), "w") as f:
-            f.write("{broken")
-
-        rc = cli_main.run(["status", "--project", project_dir, "--plain"])
-
-        # The corrupt legacy ledger is never read: status resolves the
-        # managed path and reports the workspace missing.
-        assert rc != 0
-        records = manifest_stubs.records()
-        assert records[0]["status"] == "missing"
-        assert len(self._hints(records)) == 1
-
-    def test_run_failure_flow_never_runs_on_legacy(
-        self,
-        tmp_path,
-        capsys,
-        create_cli_project,
-        minimal_ics55_pdk_factory,
-        flow_mocks,
-        manifest_stubs,
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        flow_mocks.flow.run_steps_value = False
-
-        rc = cli_main.run(["run", "--project", project_dir, "--plain"])
-
-        # The engine never starts on a legacy project — not even to fail.
-        assert rc != 0
-        records = manifest_stubs.records()
-        assert records[0]["error"] == "legacy_workspace_migration_required"
-        assert len(self._hints(records)) == 1
-        assert flow_mocks.capture["create_kwargs"] is None
-        assert flow_mocks.flow.instances == []
-
-    def test_config_error_carries_hint(
-        self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, manifest_stubs
-    ):
-        pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        project_dir = create_cli_project(pdk_root=pdk_root)
-        os.makedirs(os.path.join(project_dir, "runs", ".keep"), exist_ok=True)
-        with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
-            f.write("\n[params.cts]\nmax_fanout = 0\n")
-
-        rc = cli_main.run(["check", "--project", project_dir, "--plain"])
-
-        assert rc != 0
-        assert len(self._hints(manifest_stubs.records())) == 1
-
-    @pytest.mark.parametrize("command", ["check", "status"])
-    def test_manifest_project_never_hints(
-        self,
-        command,
-        tmp_path,
-        capsys,
-        minimal_ics55_pdk_factory,
-        manifest_stubs,
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-        minimal_ics55_pdk_factory(project_dir / "pdk")
-        home = project_dir / "ws_0001" / "home"
-        home.mkdir(parents=True)
-        (home / "flow.json").write_text('{"steps": []}')
-
-        rc = cli_main.run([command, "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert self._hints(manifest_stubs.records()) == []
-
-    def test_manifest_run_never_hints(
-        self,
-        tmp_path,
-        capsys,
-        minimal_ics55_pdk_factory,
-        flow_mocks,
-        manifest_stubs,
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
-        minimal_ics55_pdk_factory(project_dir / "pdk")
-
-        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert self._hints(manifest_stubs.records()) == []
+        (record,) = manifest_stubs.records()
+        assert record["error"] == "legacy_workspace_unsupported"
+        assert "create a new project and workspace" in record["reason"]
 
 
 class TestParamManifestMode:

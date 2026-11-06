@@ -2,7 +2,6 @@
 
 import os
 from collections.abc import Callable
-from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -106,7 +105,6 @@ def register_existing_workspace(
     pdk_root: str,
     workspace_id: str,
     workspace_path: str,
-    project_lock_held: bool = False,
     blocking: bool = True,
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Inspect and atomically register an existing workspace."""
@@ -120,7 +118,6 @@ def register_existing_workspace(
         expected_design=cfg.design_name,
         expected_pdk=str(cfg.pdk_name or ""),
         base_parameters=base_parameters,
-        project_lock_held=project_lock_held,
         blocking=blocking,
         register=lambda metadata: pre_register_workspace(
             project_dir,
@@ -183,7 +180,6 @@ def import_managed_workspace(
         expected_design=design_name,
         expected_pdk=expected_pdk,
         base_parameters=base_parameters,
-        project_lock_held=False,
         blocking=blocking,
         register=register,
     )
@@ -196,17 +192,14 @@ def _inspect_and_register(
     expected_design: str,
     expected_pdk: str,
     base_parameters: dict | None,
-    project_lock_held: bool,
     blocking: bool,
     register: Callable[[ExistingWorkspaceMetadata], str],
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Inspect (once unlocked, once locked) then register from locked metadata.
 
-    Callers already dispatching under the project lock can opt out of taking
-    it twice. The workspace is inspected once before any lock and again while
-    locked so an import never binds metadata read from a replaced directory.
+    The workspace is inspected once before locking and again while locked so
+    an import never binds metadata read from a replaced directory.
     """
-    from chipcompiler.cli.project import migrate_fs
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     inspect_existing_workspace(
@@ -215,12 +208,7 @@ def _inspect_and_register(
         expected_pdk=expected_pdk,
         base_parameters=base_parameters,
     )
-    project_lock = (
-        nullcontext()
-        if project_lock_held
-        else migrate_fs.project_migrate_lock(project_dir, exclusive=False)
-    )
-    with project_lock, workspace_lock(Path(workspace_path), blocking=blocking):
+    with workspace_lock(Path(workspace_path), blocking=blocking):
         metadata = inspect_existing_workspace(
             workspace_path,
             expected_design=expected_design,

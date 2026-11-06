@@ -35,6 +35,7 @@ from chipcompiler.data.workspace import Flow
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import Logger
+from test.flow_fixture import step_fields
 
 # Map StateEnum values to z3 integers.
 STATE_MAP: dict[StateEnum, int] = {
@@ -225,16 +226,17 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(f"step_{i}", "mock"),
             }
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 2, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 2, "steps": steps}),
         logger=Logger(),
     )
 

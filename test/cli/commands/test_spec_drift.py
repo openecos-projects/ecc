@@ -13,6 +13,7 @@ import os
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 from chipcompiler.data.workspace_config import save_workspace_config
+from test.flow_fixture import step_fields
 
 SNAPSHOT = {
     "schemaVersion": 2,
@@ -87,12 +88,13 @@ class TestRunWarnsOnSpecDrift:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, tools[name]),
             }
             for name in step_names
         ]
         os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
         with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
-            json.dump({"steps": steps}, f)
+            json.dump({"schema_version": 2, "steps": steps}, f)
         assert save_workspace_config(
             run_dir, parameters or _base_parameters(), {"preset": "rtl2gds"}
         )

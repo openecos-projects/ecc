@@ -311,7 +311,7 @@ def _validate_pdk_string(knob: CandidateKnob, value: Any, workspace: Any) -> Non
 
 
 def _load_parameters_config(path: Path) -> dict:
-    """Load the canonical workspace parameters regardless of on-disk format."""
+    """Load the current workspace parameters from home/params.toml."""
     from chipcompiler.data.parameter import load_parameter
 
     try:
@@ -319,8 +319,8 @@ def _load_parameters_config(path: Path) -> dict:
     except Exception as exc:
         raise ValueError(f"invalid candidate base config: {path}: {exc}") from exc
     if not data:
-        # load_parameter returns {} when neither the canonical TOML nor a
-        # legacy JSON exists; hashing {} would sail through the missing-base
+        # load_parameter returns {} when params.toml is missing; hashing {}
+        # would sail through the missing-base
         # guard and let the applied patch recreate a config holding only the
         # patch keys, dropping the workspace identity and other parameters.
         raise ValueError(f"missing candidate base config: {path}")
@@ -331,9 +331,7 @@ def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
     """Persist candidate parameters through the canonical save boundary
     (home/params.toml), keeping the workspace's [flow] section.
 
-    Returns the path that was actually written: when the workspace still
-    references a legacy parameters.json path, the save lands on the
-    canonical home/params.toml target, and receipts must hash THAT file.
+    Returns the canonical home/params.toml target, which receipts must hash.
     """
     from chipcompiler.data.parameter import Parameters, save_parameter
     from chipcompiler.data.workspace_config import workspace_config_path

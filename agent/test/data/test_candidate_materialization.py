@@ -16,6 +16,7 @@ from agent.data.candidate_materialization import (
     validate_materialized_candidate_config,
 )
 from agent.data.candidate_registry import candidate_capability_registry
+from test.flow_fixture import step_fields
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -85,10 +86,11 @@ def _workspace(tmp_path: Path):
         tmp_path / "config" / "route_ecc.json",
         {"RT": {"-bottom_routing_layer": "MET2", "-top_routing_layer": "MET5"}},
     )
-    parameters_path = tmp_path / "home" / "parameters.json"
-    _write_json(
-        parameters_path,
-        {"Core": {"Utilitization": 0.6, "Aspect ratio": 1.0, "Margin": [2, 2]}},
+    parameters_path = tmp_path / "home" / "params.toml"
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(
+        tmp_path, {"core": {"utilitization": 0.6, "aspect_ratio": 1.0, "margin": [2, 2]}}
     )
     return SimpleNamespace(
         directory=str(tmp_path),
@@ -109,14 +111,39 @@ def _workspace(tmp_path: Path):
         parameters=SimpleNamespace(path=parameters_path),
         flow=SimpleNamespace(
             data={
+                "schema_version": 2,
                 "steps": [
-                    {"name": "Floorplan", "tool": "ecc"},
-                    {"name": "place", "tool": "dreamplace"},
-                    {"name": "CTS", "tool": "ecc"},
-                    {"name": "legalization", "tool": "dreamplace"},
-                    {"name": "route", "tool": "ecc"},
-                    {"name": "filler", "tool": "ecc"},
-                ]
+                    {
+                        "name": "Floorplan",
+                        "tool": "ecc",
+                        **step_fields("Floorplan", "ecc"),
+                    },
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    },
+                    {
+                        "name": "CTS",
+                        "tool": "ecc",
+                        **step_fields("CTS", "ecc"),
+                    },
+                    {
+                        "name": "legalization",
+                        "tool": "dreamplace",
+                        **step_fields("legalization", "dreamplace"),
+                    },
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        **step_fields("route", "ecc"),
+                    },
+                    {
+                        "name": "filler",
+                        "tool": "ecc",
+                        **step_fields("filler", "ecc"),
+                    },
+                ],
             }
         ),
     )
@@ -627,7 +654,13 @@ def test_materialized_candidate_rejects_backend_drift_before_execution(tmp_path)
 
 def test_duplicate_workspace_target_is_fail_closed_for_candidates(tmp_path):
     workspace = _workspace(tmp_path)
-    workspace.flow.data["steps"].append({"name": "legalization", "tool": "dreamplace"})
+    workspace.flow.data["steps"].append(
+        {
+            "name": "legalization",
+            "tool": "dreamplace",
+            **step_fields("legalization", "dreamplace"),
+        }
+    )
 
     capabilities = export_candidate_capabilities(workspace)
     target = next(item for item in capabilities["targets"] if item["target_step"] == "legalization")

@@ -28,7 +28,7 @@ def output_records(workspace_dir: str, step_token: str, state: str) -> list[dict
                 "step": step_token,
                 "section": "outputs",
                 "section_status": "unavailable",
-                "reason": "snapshot has no step output index; no migration was performed",
+                "reason": "snapshot has no step output index; no snapshot was generated",
             }
         ]
     invalidated = snapshot.get("stalePredecessor", {}).get("invalidatedStepIds", [])

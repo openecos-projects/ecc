@@ -6,6 +6,7 @@ from typing import Any
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.flow_types import FlowDocument
+from test.flow_fixture import step_fields
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
@@ -67,18 +68,21 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     # Preferred order is legalization then Timing Opt; a trailing extra
     # legalize sibling after Timing Opt is still a valid cached-DB boundary.
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             },
             {
                 "name": StepEnum.LEGALIZATION.value,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.LEGALIZATION.value, "ecc"),
             },
-        ]
+        ],
     }
 
     sizer_step = EccStep(
@@ -160,13 +164,15 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             }
-        ]
+        ],
     }
     sizer_step = EccStep(
         name=SkippableStepEnum.TIMING_OPT.value,
@@ -208,18 +214,21 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     workspace.flow.path = Path(workspace.directory) / "home" / "flow.json"
     workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
     flow_data: FlowDocument = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Success.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             },
             {
                 "name": StepEnum.ROUTING.value,
                 "tool": "ecc",
                 "state": StateEnum.Success.value,
+                **step_fields(StepEnum.ROUTING.value, "ecc"),
             },
-        ]
+        ],
     }
     workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
     workspace.flow.data = flow_data
@@ -240,6 +249,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     step.subflow.path.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "path": str(step.subflow.path),
                 "steps": [
                     {

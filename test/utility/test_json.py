@@ -17,6 +17,7 @@ from chipcompiler.utility.json import (
     json_read_strict,
     json_write,
 )
+from test.flow_fixture import step_fields
 
 
 class Unserializable:
@@ -248,7 +249,19 @@ class TestFlowSetStatePersistence:
 
         flow_path = tmp_path / "flow.json"
         flow_path.write_text(
-            json.dumps({"steps": [{"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"}]})
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "steps": [
+                        {
+                            "name": "SYNTHESIS",
+                            "tool": "yosys",
+                            "state": "Unstart",
+                            **step_fields("SYNTHESIS", "yosys"),
+                        }
+                    ],
+                }
+            )
         )
 
         workspace: Any = type(
@@ -289,10 +302,21 @@ class TestFlowSetStatePersistence:
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
+            "schema_version": 2,
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
-            ]
+                {
+                    "name": "SYNTHESIS",
+                    "tool": "yosys",
+                    "state": "Unstart",
+                    **step_fields("SYNTHESIS", "yosys"),
+                },
+                {
+                    "name": "FLOORPLAN",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("FLOORPLAN", "ecc"),
+                },
+            ],
         }
         flow_path.write_text(json.dumps(flow_data))
 
@@ -326,10 +350,21 @@ class TestFlowSetStatePersistence:
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
+            "schema_version": 2,
             "steps": [
-                {"name": "SYNTHESIS", "tool": "yosys", "state": "Unstart"},
-                {"name": "FLOORPLAN", "tool": "ecc", "state": "Unstart"},
-            ]
+                {
+                    "name": "SYNTHESIS",
+                    "tool": "yosys",
+                    "state": "Unstart",
+                    **step_fields("SYNTHESIS", "yosys"),
+                },
+                {
+                    "name": "FLOORPLAN",
+                    "tool": "ecc",
+                    "state": "Unstart",
+                    **step_fields("FLOORPLAN", "ecc"),
+                },
+            ],
         }
         flow_path.write_text(json.dumps(flow_data))
 

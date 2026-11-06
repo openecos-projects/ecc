@@ -182,7 +182,7 @@ gcd/
 
 # the workspace is created by the first `ecc run`: `gcd/default/` by default and
 # registered in `project.json`. Create another managed workspace with
-# `ecc run --workspace <name>`. Legacy `runs/<id>/` projects require `ecc migrate`.
+# `ecc run --workspace <name>`. Legacy `runs/<id>/` projects are not migrated; create a new project and workspace.
 ```
 
 ### 3.2 Add the RTL

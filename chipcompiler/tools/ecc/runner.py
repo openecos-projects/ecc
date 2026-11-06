@@ -62,7 +62,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
-        StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,

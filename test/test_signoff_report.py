@@ -17,6 +17,7 @@ from chipcompiler.engine.signoff.report import (
     parse_runtime_seconds,
 )
 from chipcompiler.engine.signoff.report_text import format_text_report
+from test.flow_fixture import step_fields
 
 
 class TestParsers:
@@ -116,6 +117,7 @@ class TestExtractDesignReportData:
             "pdk": "ics55",
             "parameters": {"Design": "gcd", "PDK": "ics55", "Frequency max [MHz]": 200.0},
             "flow": {
+                "schema_version": 2,
                 "steps": [
                     {
                         "name": "Synthesis",
@@ -123,9 +125,16 @@ class TestExtractDesignReportData:
                         "state": "Success",
                         "runtime": "0:00:18",
                         "peak memory (mb)": 512,
+                        **step_fields("Synthesis", "yosys"),
                     },
-                    {"name": "route", "tool": "ecc", "state": "Success", "runtime": "0:01:00"},
-                ]
+                    {
+                        "name": "route",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:01:00",
+                        **step_fields("route", "ecc"),
+                    },
+                ],
             },
             "step_metrics": {},
             "step_summaries": {},
@@ -246,14 +255,16 @@ class TestFormatTextReport:
                 "pdk": "ics55",
                 "parameters": {"Frequency max [MHz]": 200.0},
                 "flow": {
+                    "schema_version": 2,
                     "steps": [
                         {
                             "name": "Synthesis",
                             "tool": "yosys",
                             "state": "Success",
                             "runtime": "0:00:18",
+                            **step_fields("Synthesis", "yosys"),
                         }
-                    ]
+                    ],
                 },
                 "step_metrics": {
                     "Harden_ecc": {
@@ -311,6 +322,7 @@ def _make_workspace(tmp_path, *, full=True):
     _write_json(
         root / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
                 {
                     "name": "Synthesis",
@@ -318,12 +330,27 @@ def _make_workspace(tmp_path, *, full=True):
                     "state": "Success",
                     "runtime": "0:00:18",
                     "peak memory (mb)": 256,
+                    **step_fields("Synthesis", "yosys"),
                 },
-            ]
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("Harden", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+            ],
         },
     )
     if full:
-        _write_json(root / "home" / "parameters.json", {"Design": "gcd", "PDK": "ics55"})
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
         _write_json(
             root / "Harden_ecc" / "analysis" / "qor_metrics.json",
             {
@@ -371,10 +398,21 @@ class TestCollectWorkspaceReport:
         _write_json(
             Path(workspace.directory) / "home" / "flow.json",
             {
+                "schema_version": 2,
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "powerAnalysis", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "Synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        **step_fields("Synthesis", "yosys"),
+                    },
+                    {
+                        "name": "powerAnalysis",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("powerAnalysis", "ecc"),
+                    },
+                ],
             },
         )
         report_path = (
@@ -434,11 +472,19 @@ class TestCollectWorkspaceReport:
 
 def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
     steps = [
-        {"name": name, "tool": tool, "state": "Success", "directory": directory}
+        {
+            "name": name,
+            "tool": tool,
+            "state": "Success",
+            "category": "CHECKER" if name == "drc" else "PNR",
+            "directory": directory,
+        }
         for (name, tool), directory in directories.items()
     ]
-    _write_json(root / "home" / "flow.json", {"steps": steps})
-    _write_json(root / "home" / "parameters.json", {"Design": "gcd", "PDK": "ics55"})
+    _write_json(root / "home" / "flow.json", {"schema_version": 2, "steps": steps})
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
     harden = directories[("Harden", "ecc")]
     drc = directories[("drc", "ecc")]
     _write_json(

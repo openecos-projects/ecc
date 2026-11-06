@@ -15,6 +15,7 @@ from agent.operations import RuntimeOperationManager
 from agent.requests import CandidateResumeRequest
 from agent.runtime_support import AgentApplicationError as RuntimeApiError
 from agent.workspace_api import FlowAgentRuntimeApi, _workspace_state_sha256
+from test.flow_fixture import step_fields
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 
@@ -57,11 +58,27 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
     candidate_id = "candidate-1"
     candidate = tmp_path / ".agent" / "candidates" / candidate_id
     flow_data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "place", "tool": "dreamplace", "state": "Success"},
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete"},
-            {"name": "Harden", "tool": "ecc", "state": "Unstart"},
-        ]
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                "state": "Success",
+                **step_fields("place", "dreamplace"),
+            },
+            {
+                "name": "CTS",
+                "tool": "ecc",
+                "state": "Incomplete",
+                **step_fields("CTS", "ecc"),
+            },
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                "state": "Unstart",
+                **step_fields("Harden", "ecc"),
+            },
+        ],
     }
     flow_path = candidate / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
@@ -199,7 +216,18 @@ def test_candidate_resume_restores_drifted_target_config_before_strict_validatio
     workspace = SimpleNamespace(
         directory=tmp_path,
         config={"dreamplace": config},
-        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
     materialize_candidate_config(
         workspace,

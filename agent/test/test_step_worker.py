@@ -22,7 +22,8 @@ from chipcompiler.engine.step_subprocess import run_step_worker
 def _new_flow(workspace, names):
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "steps": [flow.init_flow_step(name, "ecc", StateEnum.Unstart) for name in names]
+        "schema_version": 2,
+        "steps": [flow.init_flow_step(name, "ecc", StateEnum.Unstart) for name in names],
     }
     assert flow.save()
     return flow

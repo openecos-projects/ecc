@@ -4,6 +4,7 @@ import pytest
 
 from chipcompiler.engine.snapshot_compare import SnapshotComparisonError, compare_snapshots
 from chipcompiler.engine.snapshot_qor import build_qor_snapshot_extension
+from test.flow_fixture import step_fields
 
 
 def _snapshot(metrics=None):
@@ -11,7 +12,17 @@ def _snapshot(metrics=None):
         "schemaVersion": 2,
         "workspaceId": "workspace-gcd",
         "workspaceRevision": 1,
-        "flow": {"steps": [{"name": "place", "tool": "ecc", "state": "Success"}]},
+        "flow": {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "place",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("place", "ecc"),
+                }
+            ],
+        },
         "parameters": {"design": "gcd", "frequency_mhz": 100},
         "checklist": {},
         "signoffAssessment": {},
@@ -184,7 +195,14 @@ def test_noncanonical_unit_is_not_assumed_to_match_registry():
 
 def test_changed_flow_order_disables_numeric_trends():
     baseline = _snapshot([_metric()])
-    baseline["flow"]["steps"].append({"name": "route", "tool": "ecc", "state": "Success"})
+    baseline["flow"]["steps"].append(
+        {
+            "name": "route",
+            "tool": "ecc",
+            "state": "Success",
+            **step_fields("route", "ecc"),
+        }
+    )
     current = deepcopy(baseline)
     current["flow"]["steps"].reverse()
 

@@ -75,25 +75,19 @@ editing `ecc.toml` and refreshing) over hand-editing generated files.
 
 ## schema versioning
 
-Workspace files carry an explicit schema version so newer files fail loudly
-instead of parsing silently:
+Only current workspace formats are supported. Older files are not migrated;
+recreate the workspace with this ECC.
 
-| File | Field | Current version | Notes |
-| --- | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 2 | absent = version 0 (pre-versioning); version 0 migrates through the legacy `parameters.json` path and version 1 is deduplicated to v2 |
-| `home/flow.json` | `schema_version` | 1 | absent = version 0; writers stamp it, reconcile rejects newer versions |
-| `home/engineering-snapshot.json` | `schemaVersion` | 4 | shared with the GUI; v2/v3 are read and rebuilt to v4, while unsupported versions fail closed with `snapshot_rebuild_required` |
+| File | Field | Required version |
+| --- | --- | --- |
+| `home/params.toml` | `schema_version` | 2 |
+| `home/flow.json` | `schema_version` | 2 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 6 |
 
-The registry lives in `chipcompiler/data/schema_migrations.py`:
-`{file type: {target version: migration}}`, applied in ascending order at
-workspace open. A `params.toml` or `flow.json` declaring a version newer than
-supported raises `unsupported_schema_version` with the file path and version —
-never a silent parse. The Snapshot registry supports v2, v3, and v4 with target
-version 4. Legacy v2/v3 snapshots are read and explicitly rebuilt into the v4
-contract by `migrate_engineering_snapshot`; v4 is already current and is not
-migrated. A corrupt or structurally invalid file raises
-`EngineeringSnapshotError` (`invalid Engineering Snapshot: <path>`), and an
-unsupported or newer `schemaVersion` fails closed with
+`chipcompiler/data/schema_versions.py` checks the declared version before a
+file is loaded. An older version fails with a recreate-workspace error, and a
+newer version fails closed rather than being parsed. Invalid snapshots raise
+`EngineeringSnapshotError`; unsupported versions report
 `snapshot_rebuild_required`.
 
 ## Engineering Snapshot payload bounds

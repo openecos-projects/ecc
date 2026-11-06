@@ -43,7 +43,7 @@ def test_sta_refresh_preserves_external_absolute_paths(
         pdk_root=str(pdk_root),
         parameters={
             **default_ics55_parameters,
-            "Config Overrides": {"sta": {"liberty": liberty}},
+            "config_overrides": {"sta": {"liberty": liberty}},
         },
     )
     assert workspace is not None

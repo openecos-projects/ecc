@@ -122,12 +122,7 @@ The default timing optimization flow after placement is
 `place → diff_sizing → CTS → legalization → Timing optimization → route`.
 Set `[flow] skip_steps = ["lec"]` to insert the optional `diff_opt` step
 between `place` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
-while the legacy `diff_buffering` name remains an alias for existing workspaces.
 The controller's ordered mode/flow tuple configuration is documented in
-[the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
-The legacy alias runs the same placement-parasitic controller and
-commits physical buffers, and legalizes with zero padding. Its independent
-round count, selection fraction and objective coefficients are documented in
 [the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
 `diff_sizing` remains the DreamPlace standalone GR S50 lane; `Timing optimization`
 is the separate ECC-Sizer step after CTS and legalization.
@@ -303,7 +298,7 @@ pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main(), a thin wrapper
 chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes; version / gdsview / chipview are registered here
 chipcompiler/cli/commands/        # typer command definition layer (thin)
-  ├── project.py                  # registration and option declarations for init/check/run/status/log/config/migrate
+  ├── project.py                  # registration and option declarations for init/check/run/status/log/config
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
   ├── macro.py                    # macro sub-app (set/remove/show/import)
@@ -317,7 +312,7 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── chipview.py                 # open a saved geometry snapshot in Chip Viewer
   └── gds_view.py                 # open a step GDS in KLayout
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
-  ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
+  ├── project.py                  # init / check / run / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
   ├── param.py                    # the five param subcommands (validation + TOML edits via cli/project/toml_edit.py)
@@ -344,7 +339,7 @@ chipcompiler/cli/inspection/      # read-only probing logic
   ├── step_view.py                # per-step view records for ecc report step
   ├── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
   └── tool_versions.py            # environment tool versions for ecc version (yosys/sizer/klayout)
-chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / workspace_location.py (canonical explicit-path validation) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
+chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / workspace_location.py (canonical explicit-path validation) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
 chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
@@ -377,9 +372,10 @@ Using `ecc check --project gcd --plain` as the example:
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()` (`cli/core/invocation.py`) then:
-   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve a single-segment `--workspace NAME` through the `project.json` workspaces table, while an absolute `--workspace PATH` is canonicalized as an external target and matched by path before basename-based ID resolution. One active workspace auto-selects, multiple ones require the selector, and a new run target is registered before files are created. A legacy project must migrate before `ecc run`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain`, records whether the selector was an explicit path, and carries `project_state` / `manifest_error` (`cli/core/types.py`).
+   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve a single-segment `--workspace NAME` through the `project.json` workspaces table, while an absolute `--workspace PATH` is canonicalized as an external target and matched by path before basename-based ID resolution. One active workspace auto-selects, multiple ones require the selector, and a new run target is registered before files are created. A legacy project is rejected with `legacy_workspace_unsupported`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain`, records whether the selector was an explicit path, and carries `project_state` / `manifest_error` (`cli/core/types.py`).
    - Calls the handler: `handler(command_input, ctx) -> CommandResult`.
-   - After the handler, records are appended as needed (`_with_legacy_hint` / `_with_config_shadow_hint`): `run/check/status` on a legacy project carry a migration hint (pointing at `ecc migrate`); when a workspace's `home/` holds both `params.toml` and the legacy `parameters.json`, a `workspace_config_shadowed` warning is emitted (the JSON is inert).
+   - Legacy `runs/` projects are rejected with `legacy_workspace_unsupported` instead of being migrated.
+
    - Renders: `rendering/renderers.py::render_command_result()` first looks up a custom renderer in `RENDERERS[(render_key, output_mode)]`, falling back to the generic `rendering/render.py::render_result()`.
    - `raise typer.Exit(code=result.exit_code)` passes the exit code through to `invoke_typer_app`.
 4. `invoke_typer_app` runs the click command and catches the `SystemExit`
@@ -689,9 +685,7 @@ required by doctor.
   operations. Filesystems such as NFS can reject those flags with `EINVAL`; in
   that case refresh performs a lock-protected three-rename exchange and leaves
   snapshot/command-ledger evidence for `project reconcile` after a crash.
-  Legacy migration similarly rechecks the destination through already-bound
-  directory descriptors before a plain rename under the migration lock. A
-  destination conflict remains fail-closed and is never silently replaced.
+  A destination conflict remains fail-closed and is never silently replaced.
 - Workspace-scoped `param set/unset/list/diff --workspace NAME` mutate
   `home/params.toml` through `cli/command_handlers/workspace_params.py`
   (records in `workspace_param_overrides`, suffix invalidation via

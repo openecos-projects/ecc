@@ -23,6 +23,7 @@ from chipcompiler.tools.ecc.metrics import (
 )
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.subflow import EccSubFlow
+from test.flow_fixture import step_fields
 
 ecc_py = importlib.import_module("ecc_tools_bin.ecc_py")
 
@@ -992,7 +993,6 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
 
     assert metrics.data["max_clock_wirelength"] == 97514
     assert metrics.data["max_level_of_clock_tree"] == 2
-    assert not legacy_metrics.exists()
     assert step.analysis.qor_metrics is not None
     records = {
         record["id"]: record
@@ -2192,11 +2192,27 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Success"},
-            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
-            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": StepEnum.DRC.value,
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields(StepEnum.DRC.value, "ecc"),
+            },
+            {
+                "name": StepEnum.STA.value,
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields(StepEnum.STA.value, "ecc"),
+            },
+            {
+                "name": StepEnum.RCX.value,
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields(StepEnum.RCX.value, "ecc"),
+            },
+        ],
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
     _write_harden_signoff_summary(
@@ -2228,7 +2244,18 @@ def test_ecc_metrics_harden_reads_v4_signoff_summary(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    workspace.flow.data = {"steps": [{"name": StepEnum.DRC.value, "state": "Success"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": StepEnum.DRC.value,
+                "tool": "ecc",
+                "state": "Success",
+                "category": "CHECKER",
+                "directory": "drc_ecc",
+            }
+        ],
+    }
     _write_harden_signoff_v4_summary(
         tmp_path,
         StepEnum.DRC.value,
@@ -2271,11 +2298,27 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": StepEnum.DRC.value, "tool": "ecc", "state": "Incomplete"},
-            {"name": StepEnum.STA.value, "tool": "ecc", "state": "Success"},
-            {"name": StepEnum.RCX.value, "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": StepEnum.DRC.value,
+                "tool": "ecc",
+                "state": "Incomplete",
+                **step_fields(StepEnum.DRC.value, "ecc"),
+            },
+            {
+                "name": StepEnum.STA.value,
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields(StepEnum.STA.value, "ecc"),
+            },
+            {
+                "name": StepEnum.RCX.value,
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields(StepEnum.RCX.value, "ecc"),
+            },
+        ],
     }
     _write_harden_signoff_summary(tmp_path, StepEnum.DRC.value)
     _write_harden_signoff_summary(

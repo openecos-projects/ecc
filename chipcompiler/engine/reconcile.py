@@ -28,8 +28,8 @@ Outcomes:
   written; the caller surfaces flow_mismatch.
 
 :func:`classify_workspace` exposes the pure-read phase to callers that
-must reject a mismatch before loading (and thereby initializing or
-migrating) the workspace; it additionally returns ``pending_mutation``
+must reject a mismatch before loading and initializing the workspace; it
+additionally returns ``pending_mutation``
 when the flow is compatible but an append/adopt is due.
 """
 
@@ -76,11 +76,7 @@ def _target_step_states(flow_data: dict, target: list[tuple[str, str]]) -> set[s
     shifting which states fall inside the evaluated target range.
     """
     states_by_name = {
-        (
-            "diff_opt"
-            if str(step.get("name", "")) == "diff_buffering"
-            else str(step.get("name", ""))
-        ): str(step.get("state", ""))
+        str(step.get("name", "")): str(step.get("state", ""))
         for step in flow_data.get("steps", [])
         if isinstance(step, dict)
     }
@@ -111,7 +107,7 @@ def _normalized_entries(entries: list[tuple[str, str]]) -> list[tuple[str, str]]
     lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
     return [
         (
-            "diff_opt" if name == "diff_buffering" else name,
+            name,
             "yosys_lec" if name in lec_names and tool in LEC_STEP_TOOLS else tool,
         )
         for name, tool in entries
@@ -237,7 +233,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     is due). Nothing is created or written here: no lock, no config
     initialization, no ledger rewrite.
     """
-    from chipcompiler.data.schema_migrations import (
+    from chipcompiler.data.schema_versions import (
         FLOW_JSON,
         UnsupportedSchemaVersionError,
         ensure_supported_schema_version,
@@ -377,7 +373,7 @@ def classify_workspace(
     """Pure-read classification of the workspace against the target range.
 
     Use before loading/initializing a workspace: a ``mismatch`` result
-    guarantees nothing was written (no lock and no migration).
+    guarantees nothing was written and no lock was taken.
     ``pending_mutation`` means the flow is compatible but an append/adopt
     is due — load the workspace and call :func:`reconcile_workspace`,
     which re-classifies under the lock before writing.

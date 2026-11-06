@@ -6,9 +6,9 @@ failure instead of raising, so callers can restore their in-memory state. For
 a workspace ledger it also resets steps built from upstream runs that changed,
 writes each step's results into its step directory and stamps the digest of
 those results (see ``chipcompiler.data.step.results``).
-Recovery paths that deliberately do not load a Workspace (reconcile,
-interrupted runs, filesystem migration) keep a low-level writer and are listed
-in the regression guard's allowlist.
+Recovery paths that deliberately do not load a Workspace (reconcile and
+interrupted runs) keep a low-level writer and are listed in the regression
+guard's allowlist.
 """
 
 import logging
@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from typing import cast
 
-from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
+from chipcompiler.data.schema_versions import SCHEMA_VERSION_FIELD
 from chipcompiler.data.types import StateEnum
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
 from chipcompiler.data.workspace.flow_types import (

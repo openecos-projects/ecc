@@ -30,7 +30,7 @@ _RESERVED_PAYLOAD_KEYS = frozenset(
 
 # Internal workspace controls are canonical identifiers too. They are kept
 # out of the user-facing schema, but must survive params.toml round-trips.
-_INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode"})
+_INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode", "_flow"})
 
 # Positional GUI geometry aliases and where they live in the canonical tree.
 # (alias, subtree, key, list index or None)

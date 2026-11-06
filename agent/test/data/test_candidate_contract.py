@@ -10,6 +10,7 @@ from agent.data.candidate_contract import (
 )
 from agent.data.candidate_input_binding import bind_candidate_input
 from agent.data.candidate_materialization import materialize_candidate_config
+from test.flow_fixture import step_fields
 
 
 class _Flow:
@@ -28,8 +29,10 @@ def _write_json(path: Path, payload: dict) -> None:
 def _workspace(tmp_path: Path):
     cts_config = tmp_path / "config" / "cts_ecc.json"
     _write_json(cts_config, {"skew_bound": 0.08})
-    parameters = tmp_path / "home" / "parameters.json"
-    _write_json(parameters, {"Core": {"Utilitization": 0.6}})
+    parameters = tmp_path / "home" / "params.toml"
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
     source_dir = tmp_path / "legalization_dreamplace" / "output"
     source_dir.mkdir(parents=True)
     source_def = source_dir / "gcd_legalization.def.gz"
@@ -52,10 +55,19 @@ def _workspace(tmp_path: Path):
         parameters=SimpleNamespace(path=parameters),
         flow=SimpleNamespace(
             data={
+                "schema_version": 2,
                 "steps": [
-                    {"name": "CTS", "tool": "ecc"},
-                    {"name": "legalization", "tool": "dreamplace"},
-                ]
+                    {
+                        "name": "CTS",
+                        "tool": "ecc",
+                        **step_fields("CTS", "ecc"),
+                    },
+                    {
+                        "name": "legalization",
+                        "tool": "dreamplace",
+                        **step_fields("legalization", "dreamplace"),
+                    },
+                ],
             }
         ),
     )

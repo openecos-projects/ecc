@@ -231,7 +231,7 @@ def _execute_existing_run(
     project_dir = ctx.project_dir
     warnings = list(warning_records)
     from chipcompiler.data import load_workspace
-    from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
+    from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -285,14 +285,14 @@ def _execute_existing_run(
             ]
         )
 
-    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create checklist state, or take the lock.
+    # Pure-read preflight: reject a divergent flow before loading the workspace,
+    # creating checklist state, or taking the lock.
     probe = classify_workspace(run_dir, target_section)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")
 
-    # Execution ownership: the ledger revalidation, migration, reconcile,
-    # and the engine run all hold the workspace lock, so two `ecc run`
+    # Execution ownership: ledger revalidation, reconciliation, and the engine
+    # run all hold the workspace lock, so two `ecc run`
     # processes can never execute the same workspace concurrently.
     from chipcompiler.engine.reconcile import reconcile_workspace_locked
     from chipcompiler.utility.workspace_lock import workspace_lock

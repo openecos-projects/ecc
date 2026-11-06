@@ -181,7 +181,7 @@ gcd/
 └── constraints/   # 约束预留目录（本教程无需手写约束，见 §3.3）
 
 # workspace 由首个 ecc run 创建：缺省为 gcd/default/，并写入 project.json 登记；
-# 可用 ecc run --workspace <名称> 创建其他受管 workspace。旧布局 runs/<id>/ 必须先 ecc migrate。
+# 可用 ecc run --workspace <名称> 创建其他受管 workspace。旧布局 runs/<id>/ 不再迁移，请新建项目与 workspace。
 ```
 
 ### 3.2 放入 RTL

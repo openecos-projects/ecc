@@ -4,7 +4,7 @@ from pathlib import Path
 from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from chipcompiler.cli.core.output import normalize_state
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
-from chipcompiler.data.step import STEP_DIRECTORIES, recorded_step_directory
+from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories, recorded_step_directory
 from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
 
 _VIOLATION_METRICS = {
@@ -34,7 +34,11 @@ def checker_evidence(root: Path, step: dict, design: str) -> dict:
     ):
         record["availability"] = "unsupported_tool"
         return record
-    step_root = root / recorded_step_directory(step)
+    step_root = root / (
+        recorded_step_directory(step)
+        if "directory" in step
+        else StepDirectories.at(root).name(name)
+    )
     metric_ids = _VIOLATION_METRICS.get(name)
     if metric_ids is None:
         if name in {"lec", "postRouteLec"}:

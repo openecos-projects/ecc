@@ -14,11 +14,12 @@ from chipcompiler.cli.inspection.evidence_summary import flow_status
 )
 def test_flow_status_keeps_advisory_identity(required_state, expected):
     flow = {
+        "schema_version": 2,
         "steps": [
             {"name": "antennaCheck", "state": "Incomplete"},
             {"name": "emir", "state": "Incomplete"},
             {"name": "Harden", "state": required_state},
-        ]
+        ],
     }
 
     assert flow_status(flow) == expected

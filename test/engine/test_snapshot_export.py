@@ -18,7 +18,7 @@ def committed_snapshot(tmp_path):
     (root / "home").mkdir(parents=True)
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
@@ -34,10 +34,8 @@ def _files(root):
     }
 
 
-@pytest.mark.parametrize("schema_version", [2, 3, 4])
-def test_export_preserves_snapshot_and_workspace(committed_snapshot, tmp_path, schema_version):
+def test_export_preserves_snapshot_and_workspace(committed_snapshot, tmp_path):
     root, snapshot = committed_snapshot
-    snapshot["schemaVersion"] = schema_version
     snapshot["parameters"]["label"] = "设计比较"
     source = root / "home" / "engineering-snapshot.json"
     source.write_text(json.dumps(snapshot), encoding="utf-8")
@@ -50,7 +48,7 @@ def test_export_preserves_snapshot_and_workspace(committed_snapshot, tmp_path, s
     assert saved.path == destination
     assert saved.source == source
     assert (saved.schema_version, saved.workspace_id, saved.workspace_revision) == (
-        schema_version,
+        snapshot["schemaVersion"],
         snapshot["workspaceId"],
         snapshot["workspaceRevision"],
     )

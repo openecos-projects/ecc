@@ -213,7 +213,7 @@ class TestRunStatusStates:
         from chipcompiler.cli.inspection.discovery import get_run_status
 
         def flow(*states):
-            return {"steps": [{"state": state} for state in states]}
+            return {"schema_version": 2, "steps": [{"state": state} for state in states]}
 
         assert get_run_status(flow("Success", "Unstart")) == "partial"
         assert get_run_status(flow("Success")) == "success"

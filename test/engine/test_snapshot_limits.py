@@ -11,6 +11,7 @@ from chipcompiler.engine.snapshot import (
     read_engineering_snapshot,
 )
 from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
+from test.flow_fixture import step_fields
 
 
 def _sta_workspace(tmp_path):
@@ -18,7 +19,19 @@ def _sta_workspace(tmp_path):
     (root / "home").mkdir(parents=True)
     return SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            }
+        ),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -65,6 +78,7 @@ def test_snapshot_indexes_step_subflow_artifact(tmp_path):
     (step_dir / "subflow.json").write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "path": str(step_dir / "subflow.json"),
                 "steps": [
                     {
@@ -97,10 +111,21 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
         directory=root,
         flow=SimpleNamespace(
             data={
+                "schema_version": 2,
                 "steps": [
-                    {"name": "postRouteLec", "tool": "yosys_lec", "state": "Success"},
-                    {"name": "RCX", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "postRouteLec",
+                        "tool": "yosys_lec",
+                        "state": "Success",
+                        **step_fields("postRouteLec", "yosys_lec"),
+                    },
+                    {
+                        "name": "RCX",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("RCX", "ecc"),
+                    },
+                ],
             }
         ),
         home=SimpleNamespace(data={}),
@@ -148,7 +173,17 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
     workspace = SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(
-            data={"steps": [{"name": "powerAnalysis", "tool": "ecc", "state": "Success"}]}
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "powerAnalysis",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("powerAnalysis", "ecc"),
+                    }
+                ],
+            }
         ),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -227,7 +262,7 @@ def test_checklist_projection_cap_is_a_producer_error(tmp_path):
     )
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -262,7 +297,7 @@ def test_checklist_projection_exposes_requirement_state(tmp_path):
     )
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -280,11 +315,17 @@ def test_artifact_index_cap_is_a_producer_error(tmp_path):
     # 7 indexed artifacts per step (3 analysis files, layout image, geometry
     # manifest, 2 reports): 586 steps overshoot the 4096-entry index limit.
     steps = [
-        {"name": f"Step{index:04d}", "tool": "ecc", "state": "Unstart"} for index in range(586)
+        {
+            "name": f"Step{index:04d}",
+            "tool": "ecc",
+            "state": "Unstart",
+            **step_fields(f"Step{index:04d}", "ecc"),
+        }
+        for index in range(586)
     ]
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": steps}),
+        flow=SimpleNamespace(data={"schema_version": 2, "steps": steps}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -325,6 +366,7 @@ def _snapshot_with_step_outputs(step_count, *, references_per_step=0, extra_refe
         steps.append(step)
     return {
         "stepOutputs": {
+            "schema_version": 2,
             "directory": ".",
             "design": "gcd",
             "steps": steps,

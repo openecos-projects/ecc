@@ -466,7 +466,7 @@ Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dim
 - **Staleness detection**: when the report's embedded `flow_steps` snapshot disagrees with the current `home/flow.json` (e.g., artifacts changed after the report was written), the report is treated as absent → **NOT_RATED** — prefer no score over a wrong score. Rerunning any step restores it.
 - Per-step metric detail, cross-workspace metric comparison, trend, and regression detection still read the per-step `qor_metrics.json`; they are pure data display and never produce scores.
 
-## 11. Differences From the Legacy Scheme (Migration Notes)
+## 11. Differences From the Previous Scheme
 
 | Aspect | Legacy (pre-V3) | Current (V3) |
 |---|---|---|
@@ -478,17 +478,17 @@ Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dim
 | Timing weighting | WNS/TNS/frequency/NVP equally weighted (one fact counted 4×) | a single continuous Q_T; WNS/TNS/NVP for gating and diagnostics only |
 | Implementation | separate GUI and CLI scorers with three threshold tables; they could drift | one implementation in ECC; the GUI only renders the report |
 
-Migration impact (to know before upgrading):
+Breaking upgrade impact:
 
 1. **Score scale and color semantics change**: a legacy 75 (the then-ceiling) lands in YELLOW on the new scale; the GREEN line moves from 40 to 90. Watch for the scale switch when comparing historical trends.
-2. **Legacy workspaces are blanked**: workspaces completed before the upgrade (no `qor_report.json`) show NOT_RATED; **rerunning any step (or the whole flow) restores scoring**.
+2. **Older workspace schemas are not upgraded**: create a new workspace; current workspaces without `qor_report.json` show NOT_RATED until a step regenerates the report.
 3. The report field `scoring_engine: "qor-v3"` identifies the new scorer programmatically.
 4. **The legacy Snapshot scoring path is gone**: `engine/qor_scoring.py` and the old `qorAssessment.score` were removed — Snapshot consumers read scores from `qorSnapshotExtension`; `qorAssessment` remains as data-only metric/step passthrough.
 
 ## 12. FAQ
 
 **Q: The score is NOT_RATED / shows "—". Why?**
-One of: no `home/qor_report.json` (legacy workspace completed before the upgrade); a stale report (`flow_steps` disagrees with flow.json); feasibility is NOT_VERIFIED (a gate's stage did not run successfully) or UNKNOWN (the stage ran but its evidence is missing or corrupt — e.g., no hold report; ECC's hold STA output is optional); or no dimension is evaluable. Rerun the affected steps (producing the missing evidence) to close it out.
+One of: no `home/qor_report.json`; a stale report (`flow_steps` disagrees with flow.json); feasibility is NOT_VERIFIED (a gate's stage did not run successfully) or UNKNOWN (the stage ran but its evidence is missing or corrupt — e.g., no hold report; ECC's hold STA output is optional); or no dimension is evaluable. Rerun the affected steps (producing the missing evidence) to close it out.
 
 **Q: The dimension scores look fine but the composite is 0 / FAIL?**
 The feasibility veto: one of the seven gates failed (most often setup/hold slack < 0, or a nonzero DRC/LVS count). See the Tier 1 entries under `PRIMARY DIAGNOSES`.

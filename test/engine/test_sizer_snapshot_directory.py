@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from chipcompiler.engine.snapshot import create_engineering_snapshot
+from test.flow_fixture import step_fields
 
 
 def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
@@ -49,7 +50,7 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
     (output / "gcd_Timing optimization.png").write_bytes(b"layout")
     (report / "Timing optimization.db.rpt").write_text("report", encoding="utf-8")
     (step_dir / "subflow.json").write_text(
-        json.dumps({"steps": [{"name": "run sizer", "state": "Success"}]}),
+        json.dumps({"schema_version": 2, "steps": [{"name": "run sizer", "state": "Success"}]}),
         encoding="utf-8",
     )
     workspace = SimpleNamespace(
@@ -57,13 +58,15 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
         design=SimpleNamespace(name="gcd"),
         flow=SimpleNamespace(
             data={
+                "schema_version": 2,
                 "steps": [
                     {
                         "name": "Timing optimization",
                         "tool": "sizer",
                         "state": "Success",
+                        **step_fields("Timing optimization", "sizer"),
                     }
-                ]
+                ],
             }
         ),
         parameters=SimpleNamespace(data={}),

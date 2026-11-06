@@ -44,8 +44,6 @@ def apply_direct_config_overrides(params: dict, parameter_data: dict) -> dict:
     """Reapply the direct DreamPlace JSON patch after flow-profile expansion."""
     result = deepcopy(params)
     overrides = parameter_data.get("config_overrides")
-    if overrides is None:
-        overrides = parameter_data.get("Config Overrides")
     if not isinstance(overrides, dict):
         return result
 

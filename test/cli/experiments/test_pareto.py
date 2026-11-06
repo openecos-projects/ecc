@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 from chipcompiler.analysis.pareto import Objective
 from chipcompiler.cli.app import app
 from chipcompiler.cli.experiments import pareto
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
@@ -36,7 +37,17 @@ def sweep(tmp_path, monkeypatch):
     def snapshot(workspace):
         score = 90.0 if workspace.name.endswith("1") else 85.0
         return {
-            "flow": {"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]},
+            "flow": {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            },
             "checklist": {"status": "ready", "checklist": [{"step": "sta", "state": "pass"}]},
             "workspaceSpec": {"parameters": {"floorplan.core_util": 0.35}},
             "qorSnapshotExtension": {"status": "available", "score": score},
@@ -147,7 +158,17 @@ def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
         )
     facts = {
         "artifacts": artifacts,
-        "flow": {"steps": [{"name": step, "tool": "ecc"} for step in ("postFloorplan", "place")]},
+        "flow": {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": step,
+                    "tool": "ecc",
+                    **step_fields(step, "ecc"),
+                }
+                for step in ("postFloorplan", "place")
+            ],
+        },
     }
     with pytest.raises(ValueError, match="ambiguous"):
         pareto._measurement(tmp_path, facts, Objective("core_area", "um^2", "minimize"))

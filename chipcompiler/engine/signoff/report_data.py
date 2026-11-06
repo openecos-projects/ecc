@@ -37,8 +37,6 @@ STAGE_CANONICAL_NAMES = {
     "detailed_placement": "Place",
     "diff_sizing": "DiffSizing",
     "diff_opt": "DiffOpt",
-    "diff_buffering": "DiffBuffering",
-    "diff_buffering_dreamplace": "DiffBuffering",
     "diff_opt_dreamplace": "DiffOpt",
     "cts": "CTS",
     "cts_ecc": "CTS",

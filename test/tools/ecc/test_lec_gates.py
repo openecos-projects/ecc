@@ -1,7 +1,9 @@
+from typing import cast
+
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
+from chipcompiler.data.workspace.flow_types import FlowDocument, FlowStepEntry
 from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 
 
@@ -9,7 +11,7 @@ from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 @pytest.mark.parametrize("explicit_input", [None, "lvs"])
 def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category, explicit_input):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records: list[FlowStepEntry] = [
+    records = [
         {"state": "Unstart", "name": "filler", "tool": "ecc"},
         {"state": "Unstart", "name": "lvs", "tool": "ecc"},
         {"state": "Unstart", "name": "drc", "tool": "ecc"},
@@ -21,7 +23,9 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
             record["category"] = checker_category
     if explicit_input:
         records[-1]["input_step"] = explicit_input
-    workspace.flow.data = {"steps": records}
+    from test.flow_fixture import current_flow_document
+
+    workspace.flow.data = current_flow_document(records)
 
     _golden, gate = post_route_lec_netlists(workspace)
 
@@ -40,45 +44,78 @@ def test_latest_pnr_output_skips_declared_checkers_and_advisory_steps(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records: list[FlowStepEntry] = [
+    records = [
         {"state": "Unstart", "name": "route", "tool": "ecc", "category": "PNR"},
         {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
         {"state": "Unstart", "name": "drc", "tool": "ecc", "category": "CHECKER"},
         {"state": "Unstart", "name": "emir", "tool": "ecc", "category": "PNR"},
-        {"state": "Unstart", "name": "sta", "tool": "ecc"},
+        {"state": "Unstart", "name": "sta", "tool": "ecc", "category": "PNR"},
     ]
-    workspace.flow.data = {"steps": records}
+    from test.flow_fixture import current_flow_document
+
+    workspace.flow.data = current_flow_document(records)
     _write_pnr_outputs(tmp_path, records)
 
-    # `drc` declares CHECKER and `emir` is advisory, so both are skipped. A
-    # category-less ledger treats every step as PNR for chaining, so `sta` is
-    # the latest PNR output.
+    # drc and emir are skipped; sta is the latest declared PNR output.
     assert latest_pnr_output(workspace, ".v.gz") == (
         tmp_path / "sta_ecc" / "output" / "design_sta.v.gz"
     )
 
 
-def test_latest_pnr_output_honors_the_info_category_fallback(tmp_path):
+def test_latest_pnr_output_rejects_a_step_without_a_category(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    records: list[FlowStepEntry] = [
+    records = [
+        {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "drc", "tool": "ecc", "category": "CHECKER"},
+        {"state": "Unstart", "name": "sta", "tool": "ecc"},
+    ]
+    from test.flow_fixture import current_flow_document
+
+    document = cast(dict, current_flow_document(records))
+    del document["steps"][-1]["category"]
+    workspace.flow.data = cast(FlowDocument, document)
+
+    with pytest.raises(ValueError, match="no declared category"):
+        latest_pnr_output(workspace, ".v.gz")
+
+
+def test_latest_pnr_output_rejects_info_only_category(tmp_path):
+    from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
+    records = [
         {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
         {"state": "Unstart", "name": "drc", "tool": "ecc", "info": {"category": "CHECKER"}},
     ]
-    workspace.flow.data = {"steps": records}
+    from test.flow_fixture import current_flow_document
+
+    document = cast(dict, current_flow_document(records))
+    del document["steps"][-1]["category"]
+    workspace.flow.data = cast(FlowDocument, document)
     _write_pnr_outputs(tmp_path, records)
 
-    assert latest_pnr_output(workspace, ".v.gz") == (
-        tmp_path / "filler_ecc" / "output" / "design_filler.v.gz"
-    )
+    with pytest.raises(ValueError, match="no declared category"):
+        latest_pnr_output(workspace, ".v.gz")
 
 
 def test_latest_pnr_output_rejects_an_unregistered_step(tmp_path):
     from chipcompiler.tools.ecc.lec_gates import latest_pnr_output
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
-    workspace.flow.data = {"steps": [FlowStepEntry(name="custom", tool="one", state="Unstart")]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            FlowStepEntry(
+                name="custom",
+                tool="one",
+                state="Unstart",
+                category="PNR",
+                directory="custom_one",
+            )
+        ],
+    }
 
     with pytest.raises(ValueError, match="no flow policy registered"):
         latest_pnr_output(workspace, ".v.gz")

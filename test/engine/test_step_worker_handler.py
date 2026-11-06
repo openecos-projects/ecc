@@ -47,7 +47,7 @@ def _workspace(tmp_path):
         directory=str(tmp_path),
         logger=logging.getLogger("ecc-test"),
         parameters=parameters,
-        flow=Flow(path=tmp_path / "home/flow.json", data={"steps": []}),
+        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 2, "steps": []}),
     )
 
 

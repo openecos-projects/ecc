@@ -73,7 +73,7 @@ def test_load_manifest_normalizes_workspace_entries(tmp_path):
     assert manifest.active_workspaces() == [entry]
 
 
-def test_load_manifest_maps_legacy_floor_range_to_post_floorplan(tmp_path):
+def test_load_manifest_rejects_legacy_floor_range(tmp_path):
     _write_manifest(
         tmp_path,
         _minimal_document(
@@ -89,9 +89,8 @@ def test_load_manifest_maps_legacy_floor_range_to_post_floorplan(tmp_path):
         ),
     )
 
-    entry = load_manifest(str(tmp_path)).workspaces[0]
-
-    assert (entry.start_step, entry.end_step) == ("PostFloorplan", "Place")
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        load_manifest(str(tmp_path))
 
 
 def test_load_manifest_relative_workspace_path_resolves_inside_root(tmp_path):

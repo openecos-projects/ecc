@@ -35,13 +35,24 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
     return None
 
 
+def _parameter_flow_step(value: str) -> str:
+    """Canonical flow step owning a parameter or its shared config section."""
+    applies = normalize_flow_step(value)
+    if applies.casefold() == "floorplan":
+        # Floorplan is a shared configuration section owned by the floorplan
+        # steps, not a standalone flow step.
+        return "preFloorplan"
+    return applies
+
+
 def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
     preset = getattr(ctx.config, "flow_preset", "")
     builder = get_flow_builders().get(preset)
     if builder is None or schema.applies == "all" or schema.pdk_target is not None:
         return None
     flow_steps = {normalize_flow_step(step).casefold() for step, _tool, _state in builder()}
-    if normalize_flow_step(schema.applies).casefold() in flow_steps:
+    applies = _parameter_flow_step(schema.applies)
+    if applies.casefold() in flow_steps:
         return None
     return CommandResult.err(
         [error_record("parameter_not_in_flow", param=schema.param, preset=preset)],
@@ -88,12 +99,12 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     records = []
     for rp in resolved:
         s = rp.schema
-        applies = normalize_flow_step(s.applies).casefold()
+        applies = _parameter_flow_step(s.applies).casefold()
         if flow_steps and s.applies != "all" and applies not in flow_steps:
             continue
         schema_steps = {
-            normalize_flow_step(s.group).casefold(),
-            normalize_flow_step(s.applies).casefold(),
+            _parameter_flow_step(s.group).casefold(),
+            applies,
         }
         global_at_first_step = s.applies == "all" and selected_step == first_flow_step
         if selected_step and selected_step not in schema_steps and not global_at_first_step:

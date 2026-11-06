@@ -12,6 +12,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters, save_parameter
+from test.flow_fixture import step_fields
 
 
 def _make_workspace(project_dir, name, *, state="Success", start="Synthesis", end="Harden"):
@@ -19,7 +20,19 @@ def _make_workspace(project_dir, name, *, state="Success", start="Synthesis", en
     home = project_dir / name / "home"
     home.mkdir(parents=True)
     (home / "flow.json").write_text(
-        json.dumps({"steps": [{"name": start, "tool": "yosys", "state": state}]})
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": start,
+                        "tool": "yosys",
+                        "state": state,
+                        **step_fields(start, "yosys"),
+                    }
+                ],
+            }
+        )
     )
     assert save_parameter(
         Parameters(

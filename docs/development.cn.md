@@ -247,7 +247,7 @@ pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main()，仅做薄封装
 chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / gdsview / chipview 直接注册于此
 chipcompiler/cli/commands/        # typer 命令定义层（薄）
-  ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
+  ├── project.py                  # init/check/run/status/log/config 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
   ├── macro.py                    # macro 子应用（set/remove/show/import）
@@ -260,7 +260,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── chipview.py                 # 打开 geometry snapshot 的原生 Chip Viewer
   └── gds_view.py                 # 在 KLayout 中打开 step 的 GDS
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
-  ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
+  ├── project.py                  # init / check / run / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
   ├── param.py                    # param 五子命令（校验 + 经 cli/project/toml_edit.py 做 TOML 定点改写）
@@ -287,7 +287,7 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── step_view.py                # `ecc report step` 的逐步骤查看记录
   ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
   └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
-chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ workspace_location.py（显式路径规范化校验）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ workspace_location.py（显式路径规范化校验）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
 chipcompiler/analysis/qor/ # QoR v3 唯一分析、评分与报告契约
@@ -308,9 +308,10 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目用单段 `--workspace NAME` 从 `project.json` workspace 表解析；绝对 `--workspace PATH` 则先规范化为项目外路径，并优先按路径匹配，再按 basename 推导新 ID。唯一活跃 workspace 自动选中，多个时必须选择；新的 run workspace 会在创建文件前登记。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，并在 `CommandContext`（`cli/core/types.py`）中记录是否为显式路径选择器以及 `project_state` / `manifest_error`。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目用单段 `--workspace NAME` 从 `project.json` workspace 表解析；绝对 `--workspace PATH` 则先规范化为项目外路径，并优先按路径匹配，再按 basename 推导新 ID。唯一活跃 workspace 自动选中，多个时必须选择；新的 run workspace 会在创建文件前登记。legacy 项目直接报 `legacy_workspace_unsupported`，不再迁移；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，并在 `CommandContext`（`cli/core/types.py`）中记录是否为显式路径选择器以及 `project_state` / `manifest_error`。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
-   - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
+   - legacy `runs/` 项目直接报 `legacy_workspace_unsupported`，不再迁移。
+
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
    - `raise typer.Exit(code=result.exit_code)` 把退出码透传给 `invoke_typer_app`。
 4. `invoke_typer_app` 运行 click 命令并捕获成功/失败退出时抛出的 `SystemExit`，转换成进程退出码，保证测试里 `cli_main.run([...])` 能拿到返回值。
@@ -463,7 +464,7 @@ config_param(
 
 - `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。manifest 项目中的 `set`/`unset`/`add`/`remove` 经 `project_application.apply_project` 在一次加锁写入中同步 `ecc.toml` 与 `project.json.base_design`；legacy/virgin 项目仍只写 `ecc.toml`。
 - `ecc workspace refresh` 把当前 Project 结构投影到 Engine 的 Workspace update transaction。事务校验 expected revision，在 staging 中构造新 Workspace，保留 Workspace 局部参数覆盖，然后交换目录并只增加一次 revision。它仍执行新建 Workspace 的环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。事务开始前会把 `config/*.json` 与上次派生记录 `home/config-derived-manifest.json` 比对；检测到差异时以 `derived_configs_modified` 拒绝，除非给出 `--force`。
-- 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。旧布局迁移也会在 migration lock 内通过已绑定的目录 fd 重新检查目标后使用普通 rename。目标冲突始终 fail closed，绝不静默覆盖。
+- 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。目标冲突始终 fail closed，绝不静默覆盖。
 - workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
 
 ## CLI 用法
