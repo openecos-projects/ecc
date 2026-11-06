@@ -167,6 +167,11 @@ def test_build_flow_range_exposes_split_floorplan_steps():
     ]
 
 
+@pytest.mark.parametrize("selector", ["floorplan", "floor-plan"])
+def test_floorplan_selector_alias_targets_pre_floorplan(selector):
+    assert builder_module.normalize_flow_step(selector) == StepEnum.PRE_FLOORPLAN.value
+
+
 def test_build_flow_range_skip_excludes_steps_from_the_slice():
     flow = builder_module.build_flow_range("Synthesis", "preFloorplan", skip=("lec",))
 
