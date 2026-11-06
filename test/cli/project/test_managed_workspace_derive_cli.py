@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data import load_workspace
+from chipcompiler.data import EccStep, load_workspace
 from chipcompiler.engine import create_workspace_from_spec
 from chipcompiler.engine.snapshot import (
     create_engineering_snapshot,
@@ -315,11 +315,29 @@ def test_cli_derive_missing_entry_output_does_not_fall_back_to_original_rtl(comp
     assert load_project_manifest(project) == before
 
 
-def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_source):
+def _sta_signoff_items(workspace):
+    """The STA corner items of *workspace*'s sta step, run from its req.json."""
+    from chipcompiler.data.handshake import build_step_request, write_request
     from chipcompiler.tools.ecc.runner import collect_sta_signoff_items
 
+    flow = build_flow_for_workspace(workspace)
+    step = flow.get_workspace_step("sta")
+    assert isinstance(step, EccStep)
+    write_request(
+        build_step_request(
+            Path(workspace.directory),
+            workspace.flow.steps(),
+            step,
+            attempt_id="attempt-sta",
+            layout_image=False,
+        )
+    )
+    return collect_sta_signoff_items(workspace, step)
+
+
+def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_source):
     project, source, _steps = completed_source
-    source_items = collect_sta_signoff_items(load_workspace(source))
+    source_items = _sta_signoff_items(load_workspace(source))
     assert len(source_items) > 1
     for item in source_items:
         path = Path(item["spef_file"])
@@ -351,7 +369,7 @@ def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_sou
         {**item, "spef_file": str(target / Path(item["spef_file"]).relative_to(source))}
         for item in source_items
     ]
-    assert collect_sta_signoff_items(workspace) == expected
+    assert _sta_signoff_items(workspace) == expected
     assert all(Path(item["spef_file"]).is_file() for item in expected)
 
 

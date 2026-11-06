@@ -22,6 +22,7 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.data.handshake import load_request
 from chipcompiler.data.types import AnalysisData
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
@@ -858,6 +859,45 @@ def test_sta_entry_workspace_uses_declared_spef(tmp_path):
     workspace.pdk.spef = None
     with pytest.raises(ValueError, match="no parasitics"):
         ecc_runner.collect_sta_signoff_items(workspace, step)
+
+
+def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
+    from chipcompiler.data.handshake import missing_design_data
+
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
+    )
+    # Derived with --from sta: the ledger dropped RCX, the copy kept its outputs.
+    spef = tmp_path / "19_RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
+    spef.parent.mkdir(parents=True)
+    spef.write_text("*SPEF\n", encoding="utf-8")
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text(
+        json.dumps({"steps": [{"name": "sta", "tool": "ecc", "directory": "sta_ecc"}]}),
+        encoding="utf-8",
+    )
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={"sta": sta_config},
+    )
+    workspace.flow.path = tmp_path / "home" / "flow.json"
+    step = _sta_step_with_request(tmp_path, {})
+
+    items = ecc_runner.collect_sta_signoff_items(workspace, step)
+
+    assert [item["spef_file"] for item in items] == [str(spef)]
+    assert step.directory is not None
+    request = load_request(step.directory)
+    assert AnalysisData.PARASITICS not in missing_design_data(request, step, declared_spef=None)
 
 
 def _sta_step_with_request(workspace_dir, upstream):

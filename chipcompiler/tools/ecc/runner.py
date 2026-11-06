@@ -14,6 +14,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.handshake import load_request
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import AnalysisData
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
@@ -122,17 +123,22 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
         return []
     sta_data = json_read(sta_config)
     # The step's req.json names the upstream step its parasitics come from.
-    # STA-entry workspaces declare their parasitics (design.spef) instead of
-    # producing them with RCX: without an upstream, every corner reads the
-    # declared SPEF.
+    # Without an upstream RCX step, STA-entry workspaces read their declared
+    # parasitics (design.spef), and a derived workspace reads the RCX outputs
+    # it inherited from its source.
     if step.directory is None:
         raise ValueError(f"{step.name} step directory is not configured")
     rcx = load_request(Path(step.directory)).upstream.get(AnalysisData.PARASITICS)
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
-    if rcx is None and not declared_spef:
-        raise ValueError(
-            f"{step.name} has no parasitics: no upstream RCX step and no declared design.spef"
-        )
+    if rcx is not None:
+        rcx_output_dir = workspace_dir / rcx.step_directory / "output"
+    else:
+        rcx_output_dir = StepDirectories.of(workspace).path(StepEnum.RCX.value) / "output"
+        if not declared_spef and not rcx_output_dir.is_dir():
+            raise ValueError(
+                f"{step.name} has no parasitics: no upstream RCX step, no inherited RCX "
+                "outputs and no declared design.spef"
+            )
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
@@ -155,9 +161,9 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
                     f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
                 spef_file = (
-                    str(workspace_dir / rcx.step_directory / "output" / spef_name)
-                    if rcx is not None
-                    else str(declared_spef)
+                    str(declared_spef)
+                    if rcx is None and declared_spef
+                    else str(rcx_output_dir / spef_name)
                 )
                 items.append(
                     {

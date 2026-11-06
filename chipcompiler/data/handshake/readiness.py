@@ -7,9 +7,10 @@ an upstream step or from a project declaration.
 
 from pathlib import Path
 
-from chipcompiler.data import WorkspaceStep
+from chipcompiler.data import StepEnum, WorkspaceStep
 from chipcompiler.data.handshake.files import REQ_FILE, load_response
 from chipcompiler.data.handshake.messages import StepRequest
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import AnalysisData, DesignData, DesignState, flow_step_policy
 
 
@@ -39,11 +40,21 @@ def _declared(
 ) -> bool:
     match item:
         case AnalysisData.PARASITICS:
-            return bool(request.inputs.spef) or declared_spef is not None
+            return (
+                bool(request.inputs.spef)
+                or declared_spef is not None
+                or _has_inherited_spef(request.workspace_directory)
+            )
         case AnalysisData.GOLDEN_NETLIST:
             return getattr(step.input, "golden_verilog", None) is not None
         case AnalysisData.POWER:
             return False
+
+
+def _has_inherited_spef(workspace_directory: Path) -> bool:
+    """Whether the workspace holds RCX outputs it inherited from a source workspace."""
+    output = StepDirectories.at(workspace_directory).path(StepEnum.RCX.value) / "output"
+    return output.is_dir() and any(output.glob("*.spef"))
 
 
 def input_design_states(request: StepRequest) -> frozenset[DesignState]:

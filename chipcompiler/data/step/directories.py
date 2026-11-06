@@ -238,12 +238,21 @@ class StepDirectories:
     legacy name readers have always used: the engine-aware ``<step>_<tool>``
     lookup for a ledger step, ``STEP_DIRECTORIES`` for a step not in the
     ledger. Workspaces created before steps recorded a directory read unchanged.
+
+    A step that is not in the ledger but whose directory the workspace holds
+    under an indexed name (a derived workspace inherits the directories of the
+    steps its ledger dropped) is found by that name when no legacy directory
+    exists.
     """
 
     root: Path
     by_step: Mapping[str, str]
     #: Directory names the ledger records explicitly, in ledger order.
     recorded: tuple[str, ...]
+    #: Unindexed name -> the highest-indexed unrecorded directory with it.
+    inherited: Mapping[str, str]
+    #: Directory names present under *root* when the lookup was built.
+    present: frozenset[str]
 
     @classmethod
     def from_records(cls, root: Path, records: Iterable[object]) -> "StepDirectories":
@@ -263,7 +272,19 @@ class StepDirectories:
                 tool = entry.get("tool")
                 directory = step_directory_for_tool(name, tool if isinstance(tool, str) else None)
             by_step[name] = directory
-        return cls(Path(root), MappingProxyType(by_step), tuple(recorded))
+        root = Path(root)
+        present = frozenset(_directory_names(root))
+        inherited: dict[str, str] = {}
+        for directory in sorted(present - set(by_step.values()), key=_index_order):
+            if step_directory_index(directory) is not None:
+                inherited[unindexed_step_directory(directory)] = directory
+        return cls(
+            root,
+            MappingProxyType(by_step),
+            tuple(recorded),
+            MappingProxyType(inherited),
+            present,
+        )
 
     @classmethod
     def of(cls, workspace: _HasDirectory) -> "StepDirectories":
@@ -282,11 +303,30 @@ class StepDirectories:
         return cls.from_records(Path(root), document.get("steps", []))
 
     def name(self, step: str) -> str:
-        return self.by_step.get(step) or STEP_DIRECTORIES.get(step, step)
+        recorded = self.by_step.get(step)
+        if recorded is not None:
+            return recorded
+        legacy = STEP_DIRECTORIES.get(step, step)
+        if legacy in self.present:
+            return legacy
+        return self.inherited.get(legacy, legacy)
 
     def path(self, step: str) -> Path:
         return self.root / self.name(step)
 
     def scan_names(self) -> list[str]:
         """Every directory a whole-workspace scan visits, recorded ones first."""
-        return list(dict.fromkeys([*self.recorded, *all_step_directories()]))
+        return list(
+            dict.fromkeys([*self.recorded, *self.inherited.values(), *all_step_directories()])
+        )
+
+
+def _directory_names(root: Path) -> list[str]:
+    try:
+        return [entry.name for entry in root.iterdir() if entry.is_dir()]
+    except OSError:
+        return []
+
+
+def _index_order(directory: str) -> tuple[int, str]:
+    return (step_directory_index(directory) or 0, directory)
