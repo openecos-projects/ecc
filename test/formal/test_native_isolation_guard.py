@@ -30,6 +30,10 @@ _ALLOWLIST = {
     ("chipcompiler.tools.ecc.runner", "run_sta_without_spef"): "post-synthesis STA in worker",
     ("chipcompiler.tools.ecc.sta_parallel", "_run_corner"): "multiprocessing STA corner child",
     (
+        "chipcompiler.tools.ecc.timing_constraints",
+        "prepare_timing_context",
+    ): "timing IO-cell context inside a tool's run_step",
+    (
         "chipcompiler.tools.ecc_dreamplace.runner",
         "_run_placement_mode",
     ): "DreamPlace execution inside worker",
