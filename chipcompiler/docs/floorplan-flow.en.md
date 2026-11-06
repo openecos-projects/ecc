@@ -67,6 +67,15 @@ Removing the last entry clears the parameter and restores the automatic
 DreamPlace behavior. Hand-editing the file is not supported: without
 `macro.placements` set, re-running `macroPlacement` regenerates the handoff.
 
+To make hand placement mandatory, set `macro.manual_placement true` before the
+run (the Studio Flow Setup card exposes it as **Manual macro placement**). At
+`macroPlacement`, ECC verifies that both `macro.placements` and the generated
+`config/macro_location.tcl` contain placements. If either is missing, the step
+stops as incomplete with a message to finish macro placement first; saving the
+layout through Chip Viewer or `ecc macro` and rerunning the step resumes the
+flow. Leave the flag off for designs that should use automatic DreamPlace
+placement.
+
 ## Resuming or re-running stages
 
 The normal command resumes from the first non-successful persisted step:

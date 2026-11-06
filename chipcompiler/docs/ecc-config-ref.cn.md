@@ -224,6 +224,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 `ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
+设置 `macro.manual_placement true`（参数 ID 为 `macro.manual_placement`，在 Studio 中位于 Floorplan 配置下；例如 `ecc param set macro.manual_placement true --workspace default`）可把 `macroPlacement` 变成强制手摆检查点。启用后，只有当 `macro.placements` 非空且生成的 `config/macro_location.tcl` 包含可解析的摆放时该步骤才继续；否则步骤以未完成状态中断。请先在 Chip Viewer 完成并保存宏摆放，或执行 `ecc macro` 命令，再重跑该步骤。该检查对没有硬宏的设计同样生效，因此仅在确实需要手摆宏时启用。
+
 交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
 
 ### 1.6 自动生成的 SDC
