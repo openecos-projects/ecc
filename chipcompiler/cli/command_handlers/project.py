@@ -967,6 +967,13 @@ def _run_project(
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
+    if (
+        not fresh_target
+        and ctx.project_state == "manifest"
+        and workspace_registered
+        and command_input.preset is None
+    ):
+        cfg.manifest_driven = True
     if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
         return run_dispatch.dispatch_project_run(
             command_input,

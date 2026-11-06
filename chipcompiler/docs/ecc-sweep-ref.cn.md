@@ -100,6 +100,16 @@ ecc sweep run --name NAME [--max-candidates N] [--project DIR]
 已有 `passed`、`blocked`、`failed` 或 `unknown` 状态的结果记录且 workspace 目录
 存在，就直接复用记录，不重跑 flow，也不重新采集证据；中断的 `run` 从停止处继续。
 
+候选工程的运行进程注册表初始化为空对象（`{}`），不复制父工程的进程记录。
+如果旧候选包含错误的空数组 `runtime_processes: []`，`sweep run` 会持有工作区锁和
+manifest 锁修复该字段，再次运行候选，不复用其旧结果。已有工作区文件和有效的进程
+注册表对象会保留；工作区被占用或修复写入失败时，命令停止，不启动该候选。
+已有工作区沿用保存的候选参数，不再重复传入仅适用于创建的 `--set` 选项。
+
+批处理命令完成时退出 `0`，其中的候选仍可能失败。必须检查各候选的 `exit_code`、
+`status` 和步骤证据，不能只依据父命令退出码判断通过。`explore promote` 继续拒绝
+结果状态不是 `passed` 的候选。
+
 ### 4.5 sweep compare
 
 ```bash
@@ -215,6 +225,8 @@ Pareto 模式接受 1–3 个互不相同的目标。每个 `ID` 必须属于 EC
    `experiments/<name>/candidates/<id>/project/`，排除 `experiments/`、`.git`、
    `*.lock` 和 `ws_*`。复制出的 `project.json` 被改写：`root_path` 指向副本，
    `workspaces` / `runtime_processes` 清空——副本以干净的单 workspace 项目启动。
+   manifest 登记的源工作区按实际路径排除，覆盖普通名称、嵌套目录和指向导入
+   工作区的符号链接；同级的 RTL、配置等项目输入仍保留，源工作区不受修改。
 2. 若该候选已有四种状态之一的结果记录且 workspace 目录存在，直接复用记录，不运行。
 3. 否则以子进程运行候选：
    `ecc run --project <副本> --workspace <副本>/<candidate-id> --set KEY=VALUE …`，

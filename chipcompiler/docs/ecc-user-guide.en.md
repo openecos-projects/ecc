@@ -514,7 +514,7 @@ workspaces in a project declaring `flow.preset`. Otherwise the project preset or
 workspace's persisted target governs. An explicit `--preset` overrides the saved range.
 The CLI aligns the persisted ledger with that target:
 
-- the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary (for example a workspace first created with `--preset synthesis_lec` while `ecc.toml` says `rtl2gds`: a subsequent bare `ecc run` continues from the current progress and completes the physical flow);
+- the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary;
 - the persisted range ⊇ the target and every step succeeded → `no_op` (a default resume never re-runs the wider persisted range past the target end);
 - the target and the persisted flow **diverge** (neither a prefix nor a superset) → `flow_mismatch`; rebuild with `--overwrite` as the error suggests, or use a new `--workspace`.
 
@@ -972,6 +972,13 @@ ecc workspace delete <NAME> [--delete-directory]
 ecc workspace reset-flow <NAME>     # clear persisted flow state so the next run starts from scratch
 ecc workspace reconcile-deletes     # finish half-completed workspace deletions after a crash
 ```
+
+`reconcile-deletes` operates on the whole project and does not accept `--workspace`.
+Run it from the project root, or specify the project with
+`ecc workspace reconcile-deletes --project /path/to/project`; zero or multiple workspaces
+are supported. Only staging directories with valid delete-intent records are processed:
+restore the directory if its manifest entry remains, or remove staging if the entry is gone.
+With no pending deletions, the command succeeds without changes.
 
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
@@ -1456,7 +1463,11 @@ ecc explore promote --project /path/to/project --name density --candidate candid
 `--max-candidates N` bounds `sweep run` to the first N candidates of the plan (useful for a
 smoke pass over a large product). `sweep run` is resumable: a candidate with one of the four
 recorded statuses and an existing workspace is reused without re-running or recollecting
-evidence. `sweep show` and `explore rank` print JSON directly; `sweep compare` prints a human
+evidence. An older candidate with `runtime_processes: []` is repaired under locks and
+run again, preserving its workspace files. New candidates use `{}` and do not inherit
+parent process records. A completed batch exits `0` even when a candidate fails; inspect
+each candidate's `exit_code`, `status`, and step evidence.
+`sweep show` and `explore rank` print JSON directly; `sweep compare` prints a human
 table by default and switches to JSON with `--json`. Rows sort passed-first and by descending
 QoR score. Candidate-mode `explore promote` writes `experiments/<name>/winner.json` after
 checking only the cached row and its `passed` status; it does not revalidate current evidence.

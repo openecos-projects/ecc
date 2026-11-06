@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.cli.experiments.candidate_evidence import normalized_step_statuses
+from chipcompiler.cli.experiments.candidate_project import copy_candidate_project
+from chipcompiler.cli.experiments.candidate_runtime import repair_legacy_candidate_registry
 from chipcompiler.cli.inspection.evidence_summary import (
     checklist_items,
     checklist_status,
@@ -688,28 +690,13 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
         candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
         candidate_project = candidate_root / "project"
         if not candidate_project.exists():
-
-            def ignore(source: str, names: list[str]) -> set[str]:
-                return {
-                    item
-                    for item in names
-                    if item in {"experiments", ".git"}
-                    or item.endswith(".lock")
-                    or item.startswith("ws_")
-                }
-
-            shutil.copytree(project, candidate_project, ignore=ignore)
-            manifest_path = candidate_project / MANIFEST_FILENAME
-            manifest = load_json(manifest_path, {})
-            if isinstance(manifest, dict):
-                manifest["root_path"] = str(candidate_project)
-                manifest["workspaces"] = []
-                manifest["runtime_processes"] = []
-                dump_json(manifest_path, manifest)
+            copy_candidate_project(project, candidate_project)
         workspace = candidate_project / candidate["id"]
+        repaired_registry = repair_legacy_candidate_registry(candidate_project, workspace)
         existing = previous_results.get(candidate["id"])
         if (
             existing
+            and not repaired_registry
             and existing.get("status") in {"passed", "blocked", "failed", "unknown"}
             and workspace.exists()
         ):
@@ -728,8 +715,9 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
             "--workspace",
             str(workspace),
         ]
-        for key, value in candidate["parameters"].items():
-            command.extend(["--set", f"{key}={value}"])
+        if not (workspace / "home" / "flow.json").is_file():
+            for key, value in candidate["parameters"].items():
+                command.extend(["--set", f"{key}={value}"])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
         evidence = collect_candidate_evidence(candidate_project, workspace, completed.returncode)
         results.append(

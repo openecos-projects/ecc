@@ -190,6 +190,84 @@ class TestVirginFirstRun:
 
 
 class TestManifestRunCommand:
+    def test_existing_workspace_run_keeps_declared_manifest_range(
+        self, tmp_path, capsys, manifest_stubs, monkeypatch
+    ):
+        project_dir = tmp_path / "proj"
+        project_dir.mkdir()
+        (project_dir / "pdk").mkdir()
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.config._validate_pdk_contents",
+            lambda name, root, overrides=None: None,
+        )
+        (project_dir / "ecc.toml").write_text(
+            """[design]
+name = "gcd"
+top = "gcd"
+rtl = ["rtl/gcd.v"]
+clock_port = "clk"
+frequency_mhz = 100.0
+
+[pdk]
+name = "ics55"
+root = "pdk"
+
+[flow]
+preset = "rtl2gds"
+"""
+        )
+        workspace = project_dir / "default"
+        home = workspace / "home"
+        home.mkdir(parents=True)
+        (home / "flow.json").write_text(
+            json.dumps({"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Unstart"}]})
+        )
+        entry = manifest_stubs.entry(project_dir, "default")
+        entry.update({"start_step": "Synth", "end_step": "Synth"})
+        manifest_stubs.write(
+            project_dir,
+            [entry],
+            base_design={
+                "pdk": "ics55",
+                "pdk_root": str(project_dir / "pdk"),
+                "top_module": "gcd",
+                "clock": "clk",
+                "rtl_list": ["rtl/gcd.v"],
+                "parameters": {"design": "gcd", "frequency_max": 100},
+            },
+        )
+
+        captured = {}
+
+        def fake_execute(
+            command_input,
+            ctx,
+            cfg,
+            run_dir,
+            run_name,
+            flow_config,
+            target_section,
+            warning_records,
+            **kwargs,
+        ):
+            captured["target_section"] = target_section
+            return CommandResult.ok(
+                [{"workspace_id": run_name, "status": "success", "workspace": run_dir}]
+            )
+
+        from chipcompiler.cli.core.types import CommandResult
+
+        monkeypatch.setattr(
+            "chipcompiler.cli.project.run_existing._execute_existing_run", fake_execute
+        )
+
+        rc = cli_main.run(
+            ["run", "--project", str(project_dir), "--workspace", "default", "--plain"]
+        )
+
+        assert rc == 0
+        assert captured["target_section"] is None
+
     def test_undeclared_workspace_registers_and_creates_at_root(
         self, tmp_path, capsys, flow_mocks, manifest_stubs
     ):
