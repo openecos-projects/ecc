@@ -9,6 +9,7 @@ from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
+from test.flow_fixture import step_fields
 
 
 def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
@@ -19,6 +20,7 @@ def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
@@ -27,9 +29,10 @@ def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, tools_by_name.get(name, "ecc")),
             }
             for name, state in steps
-        ]
+        ],
     }
     engine_flow.save()
     engine_flow.workspace_steps = []

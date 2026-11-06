@@ -1,7 +1,5 @@
-"""Hydrate a Workspace from committed files without mixing migration policy."""
+"""Hydrate a Workspace from committed current-format files."""
 
-import os
-import stat
 from pathlib import Path
 from typing import Any
 
@@ -9,51 +7,10 @@ from chipcompiler.utility import Logger, create_logger, json_read
 
 from ..parameter import load_parameter
 from ..pdk import get_pdk
-from ..schema_migrations import (
-    PARAMS_TOML,
-    WORKSPACE_CONFIGS,
-    apply_schema_migrations,
-    read_file_schema_version,
-)
-from ..workspace_config import (
-    WORKSPACE_CONFIG_SCHEMA_VERSION,
-    legacy_parameters_fallback,
-    warn_legacy_config_shadow,
-)
+from ..schema_versions import PARAMS_TOML, require_file_schema_version
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
 )
-
-_LEGACY_HOME_FILES = ("home.json", "home.json.lock")
-
-
-def remove_legacy_home_files(workspace_dir: str | Path) -> None:
-    """Remove obsolete home state without following filesystem links."""
-    root = Path(workspace_dir).expanduser().resolve()
-    home = root / "home"
-    from chipcompiler.utility.workspace_lock import workspace_lock
-
-    with workspace_lock(root):
-        try:
-            home_info = os.lstat(home)
-        except FileNotFoundError:
-            return
-        if not stat.S_ISDIR(home_info.st_mode) or stat.S_ISLNK(home_info.st_mode):
-            raise OSError(f"Workspace home directory is not a real directory: {home}")
-        legacy_paths = []
-        for name in _LEGACY_HOME_FILES:
-            path = home / name
-            try:
-                info = os.lstat(path)
-            except FileNotFoundError:
-                continue
-            if stat.S_ISDIR(info.st_mode):
-                raise OSError(f"Legacy home state path is a directory: {path}")
-            if not (stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)):
-                raise OSError(f"Legacy home state path is not a file or symlink: {path}")
-            legacy_paths.append(path)
-        for path in legacy_paths:
-            path.unlink()
 
 
 def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
@@ -75,29 +32,17 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         from ..workspace_transaction import recover_workspace_file_transaction
 
         recover_workspace_file_transaction(workspace_dir)
-        config_version = read_file_schema_version(PARAMS_TOML, workspace_dir)
-        apply_schema_migrations(PARAMS_TOML, workspace_dir)
-        if config_version >= WORKSPACE_CONFIG_SCHEMA_VERSION:
-            # The migration chain may normalize older versions; the shadow
-            # disclosure must fire on every open for the current format.
-            warn_legacy_config_shadow(workspace_dir)
+        require_file_schema_version(PARAMS_TOML, workspace_dir)
 
     workspace = Workspace(directory=workspace_dir)
-    if not read_only:
-        apply_schema_migrations(WORKSPACE_CONFIGS, workspace_dir)
     workspace.config = build_workspace_config_paths(workspace)
 
     config_path = workspace_config_toml_path(workspace_dir)
-    legacy_path = home_dir / "parameters.json"
     if config_path.is_symlink():
         from chipcompiler.data.workspace_config import WorkspaceConfigError
 
         raise WorkspaceConfigError(f"workspace config is a symlink: {config_path}")
     parameters = load_parameter(config_path)
-    if len(parameters.data) <= 0 and not config_path.exists() and legacy_path.exists():
-        fallback = legacy_parameters_fallback(workspace_dir)
-        if fallback:
-            parameters.data = fallback
     if len(parameters.data) <= 0:
         return None
 
@@ -146,12 +91,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
     if def_gz_path:
         workspace.design.origin_def = def_gz_path[0]
 
-    golden, golden_declared = _persisted_golden_verilog(workspace_dir)
-    if golden is None and not golden_declared:
-        golden_paths = list(origin_dir.rglob("golden_*.v")) + list(
-            origin_dir.rglob("golden_*.v.gz")
-        )
-        golden = golden_paths[0] if golden_paths else None
+    golden = _persisted_golden_verilog(workspace_dir)
 
     verilog_path = [path for path in origin_dir.rglob("*.v") if path != golden]
     verilog_gz_path = [path for path in origin_dir.rglob("*.v.gz") if path != golden]
@@ -183,7 +123,6 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
     else:
         home_dir.mkdir(parents=True, exist_ok=True)
         workspace.config["dir"].mkdir(parents=True, exist_ok=True)
-        remove_legacy_home_files(workspace_dir)
         workspace.logger = create_logger(
             name=parameters.data["design"], log_dir=workspace_dir / "log"
         )

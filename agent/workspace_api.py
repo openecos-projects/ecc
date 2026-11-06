@@ -466,14 +466,12 @@ def _workspace_state_sha256(root: Path) -> str:
     relative_files = (
         FLOORPLAN_MODE_REF,
         "home/flow.json",
-        "home/parameters.json",
+        "home/params.toml",
         "config/floorplan_ecc.json",
         "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )
-    if (root / FLOORPLAN_MODE_REF).is_file():
-        relative_files += ("home/params.toml",)
     hashes = {
         relative: _required_file_sha256(root / relative, relative)
         for relative in relative_files

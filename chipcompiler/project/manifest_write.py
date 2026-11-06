@@ -3,13 +3,13 @@
 """Manifest write, mutation, and registration operations for the CLI.
 
 All ``project.json`` writes go through one read-modify-write helper so
-status write-back and migration entry-append share the same atomicity
+status write-back and workspace entry-append share the same atomicity
 story. Loading and normalization live in
 chipcompiler.project.manifest; this module imports from it, never
 the reverse.
 
 Like manifest.py, this module sits on the CLI startup path (imported by
-run dispatch and migration flows): keep module-level imports cheap — no
+run dispatch): keep module-level imports cheap — no
 chipcompiler.data imports here.
 """
 
@@ -67,8 +67,8 @@ def manifest_workspace_entry(
 ) -> dict:
     """One complete schema-v1 workspaces[] entry, every field materialized.
 
-    The single builder for generated manifests and migration previews, so
-    the previewed entry and the applied entry are the same object shape.
+    The single builder for generated manifests and registered workspaces,
+    so every writer emits the same object shape.
     ``skip_steps`` is materialized only when the workspace carries a
     declared policy (an explicit empty list stays []). ``parameter_patch``
     is always materialized as an object for imported workspace metadata.
@@ -235,7 +235,7 @@ def update_manifest(project_dir: str | Path, mutator) -> bool:
     except OSError as exc:
         # An untakeable lock (e.g. a directory at the lock path) degrades
         # like any write failure: a warning, never an uncaught exception —
-        # the migration registration path relies on False to roll back.
+        # registration callers rely on False to roll back.
         logger.warning("manifest update failed: %s: %s", path, exc)
         return False
 

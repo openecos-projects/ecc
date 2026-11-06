@@ -13,6 +13,7 @@ import os
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
 from chipcompiler.data.workspace_config import save_workspace_config
+from test.flow_fixture import step_fields
 
 
 def _write_workspace(run_dir, parameters, flow=None):
@@ -99,12 +100,13 @@ class TestRunWarnsOnEnvFallbackRoot:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, tools[name]),
             }
             for name, state in zip(step_names, states, strict=True)
         ]
         os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
         with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
-            json.dump({"steps": steps}, f)
+            json.dump({"schema_version": 2, "steps": steps}, f)
         assert save_workspace_config(
             run_dir, parameters or _base_parameters(), {"preset": "rtl2gds"}
         )

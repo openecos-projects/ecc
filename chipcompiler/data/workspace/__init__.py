@@ -5,8 +5,6 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from typing_extensions import deprecated
-
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
 
@@ -28,12 +26,6 @@ from ..types import (
 )
 from ..types import (
     StateEnum as StateEnum,
-)
-from ..workspace_config import (
-    legacy_parameters_fallback as legacy_parameters_fallback,
-)
-from ..workspace_config import (
-    migrate_legacy_parameters as migrate_legacy_parameters,
 )
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
@@ -128,9 +120,9 @@ class Workspace:
 
 
 def step_group_to_dict(group: Any) -> dict:
-    """Project a typed path group back to its legacy-key dict for logging.
+    """Project a typed path group to its flat dictionary for logging.
 
-    Reproduces the pre-migration per-builder key set: a scalar/path field is
+    Reproduces the established per-builder key set: a scalar/path field is
     emitted only when populated (so a variant's inherited-but-unset fields — e.g.
     ``db`` on a synthesis output, or ``sizer_env`` on a non-sizer script — do not
     appear), while list/mapping payloads (``spef``/``steps``/``checklist``) are
@@ -193,25 +185,13 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "dreamplace": "dreamplace_ecc.json",
 }
 
-_LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
-    "db": "db_default_config.json",
-    StepEnum.CTS.value: "cts_default_config.json",
-    StepEnum.DRC.value: "drc_default_config.json",
-    StepEnum.FLOORPLAN.value: "fp_default_config.json",
-    "macro_location": "macro_localtion.tcl",
-    StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.FILLER.value: "pl_default_config.json",
-    StepEnum.RCX.value: "rcx.json",
-    StepEnum.STA.value: "sta.json",
-    "sizer": "sizer_default_config.json",
-    "dreamplace": "dreamplace.json",
-}
-
 _STEP_BY_VALUE: Final[dict[str, StepBaseEnum]] = {
     step.value: step for step in (*StepEnum, *SkippableStepEnum)
 }
 
 _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
+    # The shared floorplan config key also accepts parameter edits directly.
+    (StepEnum.FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
     (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
     (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
@@ -228,7 +208,6 @@ _STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
     (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
     (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.DIFF_OPT, "dreamplace"): ("dreamplace",),
-    (StepEnum.DIFF_BUFFERING, "dreamplace"): ("dreamplace",),
     (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
     (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
     (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
@@ -250,24 +229,6 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
             for config_key, filename in _WORKSPACE_CONFIG_FILENAMES.items()
         },
     }
-
-
-@deprecated(
-    "legacy parameters.json -> params.toml migration; slated for removal once "
-    "legacy workspaces are phased out",
-    category=None,
-)
-def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
-    """Rename legacy workspace configs before resolving their canonical paths."""
-    config_dir = Path(workspace_dir) / "config"
-    if not config_dir.is_dir():
-        return
-
-    for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items():
-        legacy_path = config_dir / legacy_filename
-        canonical_path = config_dir / _WORKSPACE_CONFIG_FILENAMES[config_key]
-        if legacy_path.is_file() and not canonical_path.exists():
-            legacy_path.rename(canonical_path)
 
 
 def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Path | None:
@@ -435,7 +396,7 @@ def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
         json_write(path, config)
 
 
-def _coerce_legacy_dreamplace_routability_flag(workspace: Workspace, dreamplace: dict) -> None:
+def _coerce_dreamplace_routability_flag(workspace: Workspace, dreamplace: dict) -> None:
     dreamplace_overrides = workspace.parameters.data.get("dreamplace", {})
     if isinstance(dreamplace_overrides, dict) and "routability_opt_flag" in dreamplace_overrides:
         return
@@ -452,24 +413,6 @@ def _load_default_floorplan_config() -> dict:
     return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
 
 
-def _default_emir_technology_file() -> Path:
-    import sys
-
-    bundle_root = getattr(sys, "_MEIPASS", None)
-    if bundle_root:
-        return (
-            Path(bundle_root)
-            / "chipcompiler"
-            / "tools"
-            / "ecc"
-            / "configs"
-            / "ics55_synthetic.tech"
-        )
-
-    root_dir = Path(__file__).resolve().parent.parent.parent
-    return root_dir / "tools" / "ecc" / "configs" / "ics55_synthetic.tech"
-
-
 def _refresh_emir_config(workspace: Workspace) -> None:
     from chipcompiler.utility import json_read, json_write
 
@@ -482,13 +425,8 @@ def _refresh_emir_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
 
     technology_path = config_path.parent / "ics55_synthetic.tech"
-    configured = config.get("technology_file_path")
-    if configured:
-        configured_path = Path(str(configured)).expanduser()
-        if configured_path == technology_path:
-            return
-        if configured_path != _default_emir_technology_file().expanduser():
-            return
+    if config.get("technology_file_path"):
+        return
 
     if not technology_path.is_file():
         raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
@@ -608,16 +546,6 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
         die_size["width_micron"] = die_dimensions[0]
         die_size["height_micron"] = die_dimensions[1]
         die_builder["mode"] = "die_size"
-    for legacy_key in (
-        "core_width_to_height_ratio",
-        "core_utilization",
-        "left_margin_micron",
-        "right_margin_micron",
-        "top_margin_micron",
-        "bottom_margin_micron",
-    ):
-        die_builder.pop(legacy_key, None)
-
     phy_placer = floorplan.setdefault("phy_placer", {})
     well_tap = phy_placer.setdefault("well_tap", {})
     well_tap["cell_name"] = workspace.pdk.tap_cell or well_tap.get("cell_name", "")
@@ -685,8 +613,6 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    migrate_workspace_config_filenames(workspace.directory)
-
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
         shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
@@ -730,9 +656,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"Filler config missing or corrupt: {filler_path}")
     min_filler_width = filler.get("-min_filler_width")
     if min_filler_width is None:
-        nested = filler.get("PL", {})
-        nested = nested.get("Filler", {}) if isinstance(nested, dict) else {}
-        min_filler_width = nested.get("min_filler_width", 1) if isinstance(nested, dict) else 1
+        raise ValueError(f"filler config requires -min_filler_width: {filler_path}")
     json_write(filler_path, {"-min_filler_width": min_filler_width})
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
@@ -776,7 +700,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     ]
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
-    _coerce_legacy_dreamplace_routability_flag(workspace, dreamplace)
+    _coerce_dreamplace_routability_flag(workspace, dreamplace)
     json_write(workspace.config["dreamplace"], dreamplace)
 
     from .config_manifest import record_derived_config
@@ -842,18 +766,13 @@ def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path)
 
 
 def _reset_workspace_checklist(workspace: Workspace) -> None:
-    from chipcompiler.utility import json_write
-
-    from ..checklist import workspace_checklist_path
+    from ..checklist import Checklist, workspace_checklist_path
 
     checklist_path = workspace_checklist_path(workspace.directory)
-    json_write(
-        checklist_path,
-        {
-            "path": str(checklist_path),
-            "checklist": [],
-        },
-    )
+    checklist = Checklist(checklist_path)
+    checklist.data["checklist"] = []
+    if not checklist.save():
+        raise OSError(f"failed to reset workspace checklist: {checklist_path}")
 
 
 def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
@@ -925,10 +844,6 @@ def prepare_workspace_for_rerun(
             step_directory.unlink()
         else:
             shutil.rmtree(step_directory)
-
-    from .loader import remove_legacy_home_files
-
-    remove_legacy_home_files(workspace_root)
 
     if hasattr(engine_flow, "clear_states"):
         engine_flow.clear_states()
@@ -1231,30 +1146,18 @@ def create_workspace(
     return workspace
 
 
-def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
-    """Golden netlist recorded at workspace creation.
+def _persisted_golden_verilog(workspace_dir: Path) -> Path | None:
+    """The golden netlist explicitly recorded in the current flow ledger."""
+    from chipcompiler.data.workspace.flow_types import load_flow_document
 
-    Returns ``(path, True)`` when the flow ledger declares a golden netlist,
-    ``(None, True)`` when a current-format ledger declares none, and
-    ``(None, False)`` for legacy ledgers without step info, where the
-    ``golden_*`` filename convention still applies.
-    """
-    from chipcompiler.utility import json_read
-
-    flow_data = json_read(workspace_dir / "home" / "flow.json")
-    steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
-    if not steps or not isinstance(steps[0], dict):
-        return None, False
-    if not isinstance(steps[0].get("info"), dict):
-        return None, False
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        info = step.get("info")
-        golden = info.get("golden_verilog") if isinstance(info, dict) else None
+    for step in load_flow_document(workspace_dir / "home" / "flow.json").get("steps", []):
+        info = step.get("info") or {}
+        if not isinstance(info, dict):
+            raise ValueError("flow step info must be an object; create a new workspace")
+        golden = info.get("golden_verilog")
         if golden and Path(golden).is_file():
-            return Path(golden), True
-    return None, True
+            return Path(golden)
+    return None
 
 
 def load_workspace(directory: str | Path, *, read_only: bool = False) -> Workspace:

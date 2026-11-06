@@ -33,7 +33,7 @@ def _checker_workers(tmp_path, steps=3):
     records = [flow.init_flow_step(step.name, step.tool, "Unstart") for step in steps]
     for record in records:
         record["peak memory (mb)"] = 1024
-    workspace.flow.data = {"steps": records}
+    workspace.flow.data = {"schema_version": 2, "steps": records}
     return flow._checker_parallelism(steps)
 
 

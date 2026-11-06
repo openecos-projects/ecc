@@ -1,12 +1,9 @@
 import contextlib
 import os
 
-from typing_extensions import deprecated
-
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     InitInput,
-    MigrateInput,
     RtlImportInput,
     RunInput,
     WorkspaceImportInput,
@@ -278,18 +275,6 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
 
 
-@deprecated(
-    "legacy runs/ -> manifest layout migration machinery; slated for removal "
-    "after the transition period",
-    category=None,
-)
-def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
-    """Upgrade a legacy runs/ project to the manifest layout."""
-    from chipcompiler.cli.project.migrate import migrate_project
-
-    return migrate_project(command_input, ctx)
-
-
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
     try:
         return _run_project(command_input, ctx, execute_flow=True)
@@ -484,7 +469,9 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
 def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -> CommandResult:
     """Register an existing workspace without opening or changing it."""
     if ctx.project_state == "legacy":
-        return CommandResult.err([error_record("legacy_workspace_migration_required")])
+        from chipcompiler.cli.core.records import legacy_workspace_error_record
+
+        return CommandResult.err([legacy_workspace_error_record()])
     if ctx.manifest_error:
         return CommandResult.err(
             [
@@ -782,7 +769,9 @@ def _run_project(
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
     if ctx.project_state == "legacy":
-        return error("legacy_workspace_migration_required")
+        from chipcompiler.cli.core.records import legacy_workspace_error_record
+
+        return CommandResult.err([legacy_workspace_error_record()])
     if ctx.manifest_error:
         return error(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)
 

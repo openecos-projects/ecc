@@ -27,7 +27,7 @@ def step_tcl_path(
     if source is None:
         return None
     names = [entry[0].value for entry in build_rtl2gds_flow()]
-    name = StepEnum.DIFF_SIZING.value if step.name == StepEnum.DIFF_BUFFERING.value else step.name
+    name = step.name
     post_cts = names.index(name) > names.index(StepEnum.CTS.value)
     if not is_generated_sdc(source):
         return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)

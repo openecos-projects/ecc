@@ -29,6 +29,7 @@ from chipcompiler.data.workspace.flow_ledger import _VALID_TRANSITIONS
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
+from test.flow_fixture import step_fields
 
 
 def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
@@ -49,16 +50,17 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(f"step_{i}", "mock"),
             }
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 2, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 2, "steps": steps}),
         logger=Logger(),
     )
 
@@ -328,10 +330,21 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
     first_name = StepEnum.FLOORPLAN.value
     second_name = StepEnum.PLACEMENT.value
     ws.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": first_name, "tool": "ecc", "state": StateEnum.Unstart.value},
-            {"name": second_name, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": first_name,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(first_name, "ecc"),
+            },
+            {
+                "name": second_name,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(second_name, "ecc"),
+            },
+        ],
     }
     assert ws.flow.path is not None
     Path(ws.flow.path).write_text(json.dumps(ws.flow.data), encoding="utf-8")
@@ -372,18 +385,21 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
 def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisory, parallel):
     ws = _make_workspace(tmp_path, num_steps=2)
     ws.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": advisory,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(advisory, "ecc"),
             },
             {
                 "name": StepEnum.HARDEN.value,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.HARDEN.value, "ecc"),
             },
-        ]
+        ],
     }
     flow = EngineFlow(ws)
     flow.workspace_steps = [
@@ -424,6 +440,7 @@ def _make_resume_workspace(tmp_path, steps):
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
@@ -432,9 +449,10 @@ def _make_resume_workspace(tmp_path, steps):
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, "ecc"),
             }
             for name, state in steps
-        ]
+        ],
     }
     engine_flow.save()
     engine_flow.workspace_steps = []
@@ -453,11 +471,11 @@ def _make_resume_workspace(tmp_path, steps):
     return engine_flow
 
 
-class TestLegacyStateNormalization:
+class TestTerminalStateNormalization:
     """run_step() normalizes terminal states before set_state(Ongoing)."""
 
     def test_incomplete_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Legacy workspace with Incomplete step — resume normalizes it."""
+        """An Incomplete step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
             [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
@@ -474,7 +492,7 @@ class TestLegacyStateNormalization:
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
     def test_invalid_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Legacy workspace with Invalid step — resume normalizes it."""
+        """An Invalid step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
             [("Synthesis", "Success"), ("Floorplan", "Invalid")],
@@ -488,21 +506,14 @@ class TestLegacyStateNormalization:
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
-    def test_legacy_warning_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Persisted Warning state from the removed LEC downgrade — resume normalizes it."""
+    def test_removed_warning_state_is_rejected_on_resume(self, tmp_path):
         flow = _make_resume_workspace(
             tmp_path,
             [("Synthesis", "Success"), ("Floorplan", "Warning")],
         )
-        monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
-        monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
 
-        # This must NOT raise ValueError
-        result = flow.run_step(flow.workspace_steps[1], rerun=False)
-        assert result == StateEnum.Success
-
-        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
-        assert persisted["steps"][1]["state"] == StateEnum.Success.value
+        with pytest.raises(ValueError, match="removed Warning state"):
+            flow.run_step(flow.workspace_steps[1], rerun=False)
 
     def test_ongoing_step_not_normalized(self, tmp_path, monkeypatch):
         """Ongoing step is NOT a terminal state — no normalization needed."""
@@ -530,7 +541,7 @@ class TestLegacyStateNormalization:
         assert result == StateEnum.Success
 
     def test_normalization_emits_warning(self, tmp_path, monkeypatch, caplog):
-        """Normalization logs a warning so the legacy state is not silently lost."""
+        """Resetting an unfinished step logs a warning before it reruns."""
         flow = _make_resume_workspace(
             tmp_path,
             [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
@@ -540,7 +551,7 @@ class TestLegacyStateNormalization:
 
         with caplog.at_level(logging.WARNING):
             flow.run_step(flow.workspace_steps[1], rerun=False)
-        assert "Normalizing legacy" in caplog.text
+        assert "Resetting" in caplog.text
         assert "Incomplete" in caplog.text
 
 
@@ -553,6 +564,7 @@ def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monke
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "Floorplan",
@@ -561,8 +573,9 @@ def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monke
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields("Floorplan", "ecc"),
             }
-        ]
+        ],
     }
     workspace.logger = Logger()
 
@@ -602,6 +615,7 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "Floorplan",
@@ -610,8 +624,9 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields("Floorplan", "ecc"),
             }
-        ]
+        ],
     }
     workspace.logger = Logger()
 

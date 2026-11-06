@@ -2,6 +2,7 @@ import json
 import os
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 
 def _make_path_unreadable(monkeypatch, unreadable_path):
@@ -333,14 +334,21 @@ class TestLogListingMode:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
+                    "schema_version": 2,
                     "steps": [
-                        {"name": "lec", "tool": "yosys_lec", "state": "Success"},
+                        {
+                            "name": "lec",
+                            "tool": "yosys_lec",
+                            "state": "Success",
+                            **step_fields("lec", "yosys_lec"),
+                        },
                         {
                             "name": "postRouteLec",
                             "tool": "yosys_lec",
                             "state": "Success",
+                            **step_fields("postRouteLec", "yosys_lec"),
                         },
-                    ]
+                    ],
                 },
                 f,
             )

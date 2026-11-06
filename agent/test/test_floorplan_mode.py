@@ -129,12 +129,12 @@ def test_mode_state_hash_binds_canonical_parameters_and_resume_rolls_back(tmp_pa
     home = workspace.directory / "home"
     home.mkdir()
     params = home / "params.toml"
-    params.write_text("[params.core]\nutilitization = 0.4\n")
+    params.write_text("schema_version = 2\n[params.core]\nutilitization = 0.4\n")
     workspace.parameters = load_parameter(params)
     prepare_floorplan_mode(workspace, _request())
     digest = _workspace_state_sha256(workspace.directory)
     backups = _candidate_resume_config_backups(workspace)
-    params.write_text("[params.core]\nutilitization = 0.7\n")
+    params.write_text("schema_version = 2\n[params.core]\nutilitization = 0.7\n")
     assert _workspace_state_sha256(workspace.directory) != digest
     _restore_candidate_resume_configs(workspace, backups)
     assert _workspace_state_sha256(workspace.directory) == digest

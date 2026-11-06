@@ -27,7 +27,6 @@ from chipcompiler.data.step import (
     next_step_index,
     recorded_step_directory,
 )
-from chipcompiler.data.workspace.flow_data import normalize_flow_step_categories
 from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
@@ -42,9 +41,6 @@ from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
 )
 from chipcompiler.engine.flow_completion import (
-    normalize_legacy_terminal_state as _normalize_legacy_terminal_state,
-)
-from chipcompiler.engine.flow_completion import (
     notify_flow_observer as _notify_flow_observer,
 )
 from chipcompiler.engine.flow_completion import (
@@ -55,6 +51,9 @@ from chipcompiler.engine.flow_completion import (
 )
 from chipcompiler.engine.flow_completion import (
     refresh_signoff_checklist as _refresh_signoff_checklist,
+)
+from chipcompiler.engine.flow_completion import (
+    reset_unfinished_terminal_state as _reset_unfinished_terminal_state,
 )
 from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
 from chipcompiler.engine.memory import read_memory_status
@@ -89,7 +88,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
-        StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
@@ -207,8 +205,6 @@ class EngineFlow:
             return False
         flow_data = load_flow_document(self.workspace.flow.path)
         self.workspace.flow.data = flow_data
-        if normalize_flow_step_categories(flow_data):
-            self.save()
         return len(self.workspace.flow.data.get("steps", [])) > 0
 
     def save(self) -> bool:
@@ -345,7 +341,6 @@ class EngineFlow:
                 SkippableStepEnum.TIMING_OPT.value
                 | SkippableStepEnum.DIFF_OPT.value
                 | StepEnum.PREPLACE.value
-                | StepEnum.DIFF_BUFFERING.value
                 | StepEnum.DIFF_SIZING.value
             ):
                 if os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""):
@@ -759,7 +754,7 @@ class EngineFlow:
             _refresh_qor_report(self.workspace, step_tag)
             return StateEnum.Success
 
-        _normalize_legacy_terminal_state(self, workspace_step, step_tag)
+        _reset_unfinished_terminal_state(self, workspace_step, step_tag)
 
         # set state ongoing
         start_time = time.time()

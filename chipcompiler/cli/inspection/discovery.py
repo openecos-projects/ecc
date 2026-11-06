@@ -1,5 +1,5 @@
-import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli.core.output import (
     disclosure_cmd,
@@ -10,35 +10,19 @@ from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.data.step import recorded_step_directory, unindexed_step_directory
 
-
-def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
-    if not run_id:
-        return os.path.join(project_dir, "runs", "default"), run_id
-
-    if run_id == "default":
-        return os.path.join(project_dir, "runs", "default"), "default"
-
-    if os.path.isabs(run_id):
-        return run_id, run_id
-
-    if os.sep in run_id or "/" in run_id:
-        return os.path.join(project_dir, run_id), run_id
-
-    return os.path.join(project_dir, "runs", run_id), run_id
-
-
 CORRUPT_FLOW_JSON = "CORRUPT"
 
 
 def read_flow_json(run_dir: str) -> dict | str | None:
+    from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
+    from chipcompiler.data.workspace.flow_types import load_flow_document
+
     path = os.path.join(run_dir, "home", "flow.json")
     if not os.path.isfile(path):
         return None
     try:
-        with open(path) as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else CORRUPT_FLOW_JSON
-    except (json.JSONDecodeError, OSError):
+        return dict(load_flow_document(Path(path)))
+    except (UnsupportedSchemaVersionError, ValueError, OSError):
         return CORRUPT_FLOW_JSON
 
 
@@ -188,10 +172,10 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
 
     The project workspace directory (`run_dir`) is already resolved by the
     command context. Wraps resolve_workspace_path with
-    load_workspace, which appends a workspace log entry and may migrate
-    workspace configs — read-only commands must use resolve_workspace_path
-    instead. Returns (workspace, error-record-or-None); the caller maps a
-    non-None record to a CommandResult.err.
+    load_workspace, which appends a workspace log entry. Read-only commands
+    must use resolve_workspace_path instead. Returns (workspace,
+    error-record-or-None); the caller maps a non-None record to
+    a CommandResult.err.
     """
     import inspect
 

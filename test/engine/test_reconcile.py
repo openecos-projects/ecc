@@ -8,6 +8,7 @@ from chipcompiler.engine.reconcile import (
     reconcile_workspace,
     resolve_target_section,
 )
+from test.flow_fixture import step_fields
 
 # Derived from the canonical builder so reconciliation tests always
 # exercise the real current topology, never a stale hand-copied chain.
@@ -22,6 +23,7 @@ def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=Non
     home.mkdir(parents=True)
     states = states or ["Success"] * len(steps)
     flow = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
@@ -30,9 +32,10 @@ def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=Non
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, tool),
             }
             for (name, tool), state in zip(steps, states, strict=True)
-        ]
+        ],
     }
     (home / "flow.json").write_text(json.dumps(flow))
 

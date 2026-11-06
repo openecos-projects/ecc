@@ -10,7 +10,6 @@ rules of its own.
 import math
 from typing import Any
 
-_LEGACY_METRIC_CATEGORIES = {"power": "power_integrity"}
 METRIC_CATEGORIES = frozenset(
     {
         "timing",
@@ -30,23 +29,7 @@ def collect_metric_records(payload: Any) -> list[dict[str, Any]]:
     records = payload.get("metrics")
     if not isinstance(records, list):
         return []
-    return [
-        record
-        for record in (_canonical_metric_category(record) for record in records)
-        if _valid_metric(record)
-    ]
-
-
-def _canonical_metric_category(record: Any) -> Any:
-    if not isinstance(record, dict):
-        return record
-    category = record.get("category")
-    if not isinstance(category, str):
-        return record
-    mapped = _LEGACY_METRIC_CATEGORIES.get(category, category)
-    if mapped != category and mapped in METRIC_CATEGORIES:
-        return {**record, "category": mapped}
-    return record
+    return [record for record in records if _valid_metric(record)]
 
 
 def _valid_metric(record: Any) -> bool:

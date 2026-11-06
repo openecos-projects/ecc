@@ -127,7 +127,7 @@ Current implementation status:
 | --- | --- |
 | `ecc init` | `--plain` |
 | `ecc check`, `ecc doctor` | `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config` | `--plain` |
 | `ecc param list/show/set/unset/diff` | `--plain` |
 | `ecc pdk set-root/show/unset` | `--plain` |
 | `ecc project set/unset/add/remove/show/doctor` | `--plain` |
@@ -204,7 +204,6 @@ ecc run
 ecc status
 ecc log
 ecc config
-ecc migrate
 ecc param
 ecc macro
 ecc pdk
@@ -231,7 +230,6 @@ Responsibilities:
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show the resolved project or step configuration |
-| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout (deprecated; slated for removal after the transition period) |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc macro` | Manage manual macro placement (`macro_location.tcl`): `set`, `remove`, `import`, `show` |
 | `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
@@ -285,7 +283,7 @@ serve a process expose only the options meaningful for that operation.
 The command graph follows these rules; new commands must follow them too:
 
 - **Architecture.** Top-level commands are workflow-scale verbs (`init`,
-  `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
+  `check`, `run`, `status`, `log`, `config`, `doctor`, `version`)
   plus the frozen tool invocations (`gdsview`, `chipview`). Resource management and
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`).

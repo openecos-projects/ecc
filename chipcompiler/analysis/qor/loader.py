@@ -9,11 +9,13 @@ disk, and stale suffixes must not report obsolete metrics as current.
 import dataclasses
 from math import isfinite
 from pathlib import Path
+from typing import cast
 
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.tools.ecc.power_artifacts import power_step_path, step_power_summary_path
+from chipcompiler.data.workspace.flow_types import FlowStepEntry
+from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
     STA_POWER_SUMMARY_FILENAME,
@@ -86,20 +88,26 @@ class QorInputs:
         return self.flow_states.get(step_value)
 
 
-def _flow_records(workspace, workspace_root: Path) -> list[dict]:
+def _flow_records(workspace, workspace_root: Path) -> list[FlowStepEntry]:
     flow = getattr(workspace, "flow", None)
     data = getattr(flow, "data", None)
     if not isinstance(data, dict) or not data:
-        # load_workspace leaves flow.data empty; the persisted file is the
-        # source of truth (same fallback the signoff collector uses).
-        data = json_read(workspace_root / "home" / "flow.json")
+        # load_workspace leaves flow.data empty; the persisted ledger is the
+        # source of truth and enforces the current schema.
+        from chipcompiler.data.workspace.flow_types import load_flow_document
+
+        data = load_flow_document(workspace_root / "home" / "flow.json")
     steps = data.get("steps") if isinstance(data, dict) else None
     if not isinstance(steps, list):
         return []
-    return [raw for raw in steps if isinstance(raw, dict) and isinstance(raw.get("name"), str)]
+    return [
+        cast(FlowStepEntry, raw)
+        for raw in steps
+        if isinstance(raw, dict) and isinstance(raw.get("name"), str)
+    ]
 
 
-def _flow_states(records: list[dict]) -> dict:
+def _flow_states(records: list[FlowStepEntry]) -> dict:
     states = {}
     for raw in records:
         state = raw.get("state")
@@ -111,8 +119,12 @@ def _parameters(workspace, workspace_root: Path) -> dict:
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)
     if isinstance(parameters, dict):
         return parameters
-    legacy = json_read(workspace_root / "home" / "parameters.json")
-    return legacy if isinstance(legacy, dict) else {}
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    try:
+        return load_workspace_config(workspace_root)
+    except (OSError, ValueError):
+        return {}
 
 
 def _payload_metrics(payload: dict) -> list:
@@ -202,7 +214,7 @@ def _corner_slack(workspace, directories: StepDirectories, flow_states: dict) ->
 
 
 def _power_summary(workspace, directories: StepDirectories, flow_states: dict):
-    """Select signoff power from the current step artifact, with fallbacks."""
+    """Select signoff power from the current powerAnalysis or synthesis artifact."""
     power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
     if power_state == StateEnum.Success.value:
         power_directory = directories.path(StepEnum.POWER_ANALYSIS.value)
@@ -216,49 +228,6 @@ def _power_summary(workspace, directories: StepDirectories, flow_states: dict):
                 "signoff",
                 StepEnum.POWER_ANALYSIS.value,
             )
-
-        # Keep pre-step-artifact workspaces readable while they are migrated.
-        path = step_power_summary_path(power_directory)
-        summary = read_sta_power_summary_json(path)
-        if summary is not None:
-            return (
-                summary.dynamic_uw + summary.leakage_uw,
-                path,
-                "signoff",
-                StepEnum.POWER_ANALYSIS.value,
-            )
-
-    # Workspaces created before powerAnalysis retain their historical STA
-    # feature layout. Current workspaces must not score stale STA power when
-    # their dedicated power step failed or is unfinished.
-    if (
-        StepEnum.POWER_ANALYSIS.value not in flow_states
-        and flow_states.get(StepEnum.STA.value) == StateEnum.Success.value
-    ):
-        feature_root = directories.path(StepEnum.STA.value) / "feature"
-        totals = []
-        configured = configured_sta_artifact_directories(workspace, feature_root)
-        if configured:
-            candidates = configured
-        else:
-            # Keep report generation useful for fixtures and workspaces whose
-            # STA config is unavailable: only persisted feature artifacts are
-            # considered, and the selected path remains auditable.
-            candidates = [
-                (
-                    path.parent.relative_to(feature_root).as_posix(),
-                    path.parent,
-                )
-                for path in sorted(feature_root.glob("*/*/" + STA_POWER_SUMMARY_FILENAME))
-            ]
-        for corner, directory in candidates:
-            path = directory / STA_POWER_SUMMARY_FILENAME
-            summary = read_sta_power_summary_json(path)
-            if summary is not None:
-                totals.append((summary.dynamic_uw + summary.leakage_uw, path, corner))
-        if totals:
-            total, path, corner = max(totals, key=lambda item: item[0])
-            return total, path, "signoff", corner
 
     if flow_states.get(StepEnum.SYNTHESIS.value) == StateEnum.Success.value:
         path = (

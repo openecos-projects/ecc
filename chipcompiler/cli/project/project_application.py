@@ -326,18 +326,8 @@ def _reconcile_workspace_state(
     blocking: bool,
     repairs: list[str],
 ) -> None:
-    from chipcompiler.data import load_workspace, recover_workspace_file_transaction
-    from chipcompiler.data.schema_migrations import (
-        ENGINEERING_SNAPSHOT,
-        read_file_schema_version,
-    )
+    from chipcompiler.data import recover_workspace_file_transaction
     from chipcompiler.engine.interrupted_run import recover_interrupted_run
-    from chipcompiler.engine.snapshot import (
-        LEGACY_SNAPSHOT_SCHEMA_VERSION,
-        SNAPSHOT_V3_SCHEMA_VERSION,
-        SNAPSHOT_V4_SCHEMA_VERSION,
-        migrate_engineering_snapshot,
-    )
     from chipcompiler.project.runtime_processes import (
         RuntimeProcessError,
         identity_is_live,
@@ -355,20 +345,6 @@ def _reconcile_workspace_state(
         if _reconcile_workspace_refresh_exchange(workspace):
             repairs.append(f"refresh_exchange:{workspace_id}")
         recover_workspace_file_transaction(workspace)
-        version = read_file_schema_version(ENGINEERING_SNAPSHOT, workspace)
-        if version in {
-            LEGACY_SNAPSHOT_SCHEMA_VERSION,
-            SNAPSHOT_V3_SCHEMA_VERSION,
-            SNAPSHOT_V4_SCHEMA_VERSION,
-        }:
-            loaded = load_workspace(workspace)
-            if loaded is None:
-                raise ProjectApplicationError(
-                    "workspace_invalid", "Workspace cannot be loaded for Snapshot migration"
-                )
-            migrate_engineering_snapshot(loaded)
-            repairs.append(f"snapshot:{workspace_id}")
-
         raw_processes = current.raw.get("runtime_processes", {})
         raw_entry = raw_processes.get(workspace_id) if isinstance(raw_processes, dict) else None
         if raw_entry is None:

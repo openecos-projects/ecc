@@ -31,12 +31,9 @@ def manifest_error_record(manifest_error: str, **fields) -> dict:
     return error_record(kind, reason=manifest_error, **fields)
 
 
-def legacy_layout_hint_record(project: str | None) -> dict:
-    """Hint record for pre-migration runs/ projects (discloses ecc migrate)."""
-    return warning_record(
-        "legacy_layout_detected",
-        reason="this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
-        migrate="ecc migrate --yes"
-        if project is None
-        else f"ecc migrate --project {project} --yes",
+def legacy_workspace_error_record() -> dict:
+    """Error for the removed runs/ layout; users must create a new workspace."""
+    return error_record(
+        "legacy_workspace_unsupported",
+        reason="the legacy runs/ layout is not supported; create a new project and workspace",
     )

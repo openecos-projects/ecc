@@ -32,8 +32,8 @@ workspace.
 ## Macro-location handoff
 
 After successful macro-only placement, the flow writes
-`config/macro_location.tcl`. Workspaces created before the rename that still
-carry `macro_localtion.tcl` are migrated automatically when opened.
+`config/macro_location.tcl`. Only the current `macro_location.tcl` spelling is supported; older workspaces
+must be recreated.
 
 The file is the iDB/Tcl handoff between macro placement and post-floorplan.
 Each hard macro is represented by these commands, with coordinates in microns:

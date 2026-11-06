@@ -11,6 +11,7 @@ from agent.workspace_api import FlowAgentRuntimeApi
 from chipcompiler.data import StateEnum
 from chipcompiler.data.parameter import load_parameter
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from test.flow_fixture import step_fields
 
 
 def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
@@ -28,11 +29,22 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
         else [{"name": "Floorplan", "tool": "ecc", "state": "Success"}]
     )
     data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Success",
+                **step_fields("Synthesis", "yosys"),
+            },
             *floorplan_states,
-            {"name": "Harden", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Harden", "ecc"),
+            },
+        ],
     }
     flow_path.write_text(json.dumps(data))
     config = tmp_path / "config"
@@ -51,7 +63,8 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     )
     if split_topology:
         (home / "params.toml").write_text(
-            "[params.core]\nutilitization = 0.5\naspect_ratio = 1.0\nmargin = [2, 2]\n"
+            "schema_version = 2\n[params.core]\nutilitization = 0.5\n"
+            "aspect_ratio = 1.0\nmargin = [2, 2]\n"
         )
         pdk = tmp_path / "pdk"
         pdk.mkdir()

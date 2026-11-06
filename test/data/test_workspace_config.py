@@ -23,6 +23,7 @@ from chipcompiler.data.workspace_config import (
     validate_flow_config,
     workspace_config_path,
 )
+from test.flow_fixture import step_fields
 
 
 def _flat_template(template: dict) -> dict:
@@ -254,10 +255,21 @@ def test_missing_flow_section_derives_from_flow_ledger(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     save_workspace_config(tmp_path, payload)
     steps = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-            {"name": "filler", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Synthesis",
+                "tool": "yosys",
+                "state": "Success",
+                **step_fields("Synthesis", "yosys"),
+            },
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("filler", "ecc"),
+            },
+        ],
     }
     (tmp_path / "home" / "flow.json").write_text(json.dumps(steps))
 
@@ -317,7 +329,9 @@ def test_flow_section_from_flow_config_range():
 
 def test_flow_section_from_flow_config_non_contiguous_degrades(caplog):
     with caplog.at_level("WARNING"):
-        section = flow_section_from_flow_config({"steps": ["Synth", "Place", "CTS"]})
+        section = flow_section_from_flow_config(
+            {"schema_version": 2, "steps": ["Synth", "Place", "CTS"]}
+        )
     assert section == {"start": "Synthesis", "end": "CTS"}
     assert any("non-contiguous" in record.message for record in caplog.records)
 
@@ -424,37 +438,32 @@ def test_save_replace_and_cleanup_failure_returns_false(
     assert not workspace_config_path(tmp_path).exists()
 
 
-def test_load_normalizes_legacy_long_keys(tmp_path):
-    """AC-1: a hand-written params.toml with legacy long keys loads canonical."""
+def test_load_rejects_legacy_long_keys(tmp_path):
     from chipcompiler.data.workspace_config import load_workspace_config
 
     home = tmp_path / "home"
     home.mkdir()
     (home / "params.toml").write_text(
-        '[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
+        'schema_version = 2\n[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
         '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
         '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
     )
 
-    payload = load_workspace_config(tmp_path)
-
-    assert payload["max_fanout"] == 48
-    assert payload["target_density"] == 0.7
-    assert "Max fanout" not in payload
-    assert "Target density" not in payload
+    with pytest.raises(WorkspaceConfigError, match="legacy parameter keys"):
+        load_workspace_config(tmp_path)
 
 
 def test_load_rejects_non_table_sections(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("params = [1]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 2\nparams = [1]\n")
     with pytest.raises(WorkspaceConfigError):
         load_workspace_config(tmp_path)
 
 
 def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("[params]\n")
-    (tmp_path / "home" / "flow.json").write_text('{"steps": 1}')
+    workspace_config_path(tmp_path).write_text("schema_version = 2\n[params]\n")
+    (tmp_path / "home" / "flow.json").write_text('{"schema_version": 2, "steps": 1}')
 
     loaded = load_workspace_config(tmp_path)
 
@@ -490,37 +499,6 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
 
     assert ok is False
     assert not (external_home / "params.toml").exists()
-
-
-def test_migration_refuses_symlinked_home_parent(tmp_path):
-    from chipcompiler.data.workspace_config import migrate_legacy_parameters
-
-    workspace_dir = tmp_path / "ws"
-    external_home = tmp_path / "external-home"
-    external_home.mkdir()
-    (external_home / "parameters.json").write_text('{"Design": "gcd"}')
-    workspace_dir.mkdir()
-    (workspace_dir / "home").symlink_to(external_home, target_is_directory=True)
-
-    migrate_legacy_parameters(workspace_dir)
-
-    assert (external_home / "parameters.json").exists()
-    assert not (external_home / "params.toml").exists()
-
-
-def test_migration_refuses_symlinked_legacy_parameters_file(tmp_path):
-    from chipcompiler.data.workspace_config import migrate_legacy_parameters
-
-    workspace_dir = tmp_path / "ws"
-    (workspace_dir / "home").mkdir(parents=True)
-    external = tmp_path / "external.json"
-    external.write_text('{"Design": "gcd"}')
-    (workspace_dir / "home" / "parameters.json").symlink_to(external)
-
-    migrate_legacy_parameters(workspace_dir)
-
-    assert not (workspace_dir / "home" / "params.toml").exists()
-    assert (workspace_dir / "home" / "parameters.json").is_symlink()
 
 
 def test_save_drops_null_values_instead_of_failing(tmp_path):

@@ -7,6 +7,7 @@ from chipcompiler.analysis.qor import build_qor_analysis
 from chipcompiler.analysis.qor.schema import validate_report
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.step import step_directory_for_tool
+from test.flow_fixture import current_flow_document
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def matrix_project(tmp_path, manifest_stubs):
                 {"name": "drc", "tool": "ecc", "state": "Success"},
             ]
         )
-        flow = {"steps": steps}
+        flow = current_flow_document(steps)
         (root / "home" / "flow.json").write_text(json.dumps(flow))
         workspace = SimpleNamespace(
             directory=root,

@@ -10,6 +10,7 @@ import pytest
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
+from test.flow_fixture import step_fields
 
 
 def _ns(**kwargs: object) -> Any:
@@ -37,7 +38,18 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
         config={"dreamplace": config_path},
         pdk=_ns(),
         logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        flow=_ns(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
     step = _ns(name="place", tool="dreamplace")
     materialize_candidate_config(
@@ -69,7 +81,18 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
         directory=str(tmp_path),
         config={},
         logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "Timing optimization", "tool": "sizer"}]}),
+        flow=_ns(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "Timing optimization",
+                        "tool": "sizer",
+                        **step_fields("Timing optimization", "sizer"),
+                    }
+                ],
+            }
+        ),
     )
     step = _ns(name="Timing optimization", tool="sizer")
     runtime_root = tmp_path / "sizer"
@@ -109,7 +132,18 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
         config={"dreamplace": config_path},
         pdk=_ns(),
         logger=_ns(exception=lambda *_args, **_kwargs: None),
-        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        flow=_ns(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
     step = _ns(name="place", tool="dreamplace")
     materialize_candidate_config(
@@ -158,7 +192,18 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
         config={"dreamplace": config_path},
         pdk=_ns(),
         logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}),
+        flow=_ns(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "legalization",
+                        "tool": "dreamplace",
+                        **step_fields("legalization", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
     step = _ns(name="legalization", tool="dreamplace")
     materialize_candidate_config(

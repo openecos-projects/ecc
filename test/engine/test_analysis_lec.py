@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.engine.analysis import collect_workspace_projections
+from test.flow_fixture import step_fields
 
 
 def _lec_workspace(tmp_path, tool, result_name):
@@ -14,7 +15,19 @@ def _lec_workspace(tmp_path, tool, result_name):
 
     workspace = SimpleNamespace(
         directory=tmp_path,
-        flow=SimpleNamespace(data={"steps": [{"name": "lec", "tool": tool, "state": "Success"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "lec",
+                        "tool": tool,
+                        "state": "Success",
+                        **step_fields("lec", tool),
+                    }
+                ],
+            }
+        ),
         design=SimpleNamespace(name=design),
     )
     return workspace

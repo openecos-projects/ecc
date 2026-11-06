@@ -27,6 +27,7 @@ from agent.workspace_api import (
 )
 from chipcompiler.data import StateEnum
 from chipcompiler.data.workspace.layout import EccOutput
+from test.flow_fixture import step_fields
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 
@@ -75,11 +76,24 @@ def test_candidate_sizer_preflight_failure_skips_clone(monkeypatch, tmp_path):
         directory=tmp_path,
         flow=SimpleNamespace(
             data={
+                "schema_version": 2,
                 "steps": [
-                    {"name": "place", "tool": "dreamplace"},
-                    {"name": "Timing optimization", "tool": "sizer"},
-                    {"name": "Harden", "tool": "ecc"},
-                ]
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        **step_fields("place", "dreamplace"),
+                    },
+                    {
+                        "name": "Timing optimization",
+                        "tool": "sizer",
+                        **step_fields("Timing optimization", "sizer"),
+                    },
+                    {
+                        "name": "Harden",
+                        "tool": "ecc",
+                        **step_fields("Harden", "ecc"),
+                    },
+                ],
             }
         ),
     )
@@ -144,12 +158,29 @@ def test_candidate_rerun_rejects_workspace_revision_conflict_before_clone(tmp_pa
 
 def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
     flow_data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Floorplan", "tool": "ecc"},
-            {"name": "place", "tool": "dreamplace"},
-            {"name": "Timing optimization", "tool": "sizer"},
-            {"name": "Harden", "tool": "ecc"},
-        ]
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                **step_fields("Floorplan", "ecc"),
+            },
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                **step_fields("place", "dreamplace"),
+            },
+            {
+                "name": "Timing optimization",
+                "tool": "sizer",
+                **step_fields("Timing optimization", "sizer"),
+            },
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                **step_fields("Harden", "ecc"),
+            },
+        ],
     }
     home = tmp_path / "home"
     home.mkdir()
@@ -228,11 +259,24 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
         workspace=SimpleNamespace(
             flow=SimpleNamespace(
                 data={
+                    "schema_version": 2,
                     "steps": [
-                        {"name": "Synthesis", "tool": "yosys"},
-                        {"name": "lec", "tool": "yosys_lec"},
-                        {"name": "Floorplan", "tool": "ecc"},
-                    ]
+                        {
+                            "name": "Synthesis",
+                            "tool": "yosys",
+                            **step_fields("Synthesis", "yosys"),
+                        },
+                        {
+                            "name": "lec",
+                            "tool": "yosys_lec",
+                            **step_fields("lec", "yosys_lec"),
+                        },
+                        {
+                            "name": "Floorplan",
+                            "tool": "ecc",
+                            **step_fields("Floorplan", "ecc"),
+                        },
+                    ],
                 }
             )
         )
@@ -263,7 +307,9 @@ _CURRENT_FLOW_STEPS = [
 
 def test_place_candidate_binds_the_post_floorplan_predecessor() -> None:
     flow = SimpleNamespace(
-        workspace=SimpleNamespace(flow=SimpleNamespace(data={"steps": _CURRENT_FLOW_STEPS}))
+        workspace=SimpleNamespace(
+            flow=SimpleNamespace(data={"schema_version": 2, "steps": _CURRENT_FLOW_STEPS})
+        )
     )
 
     assert _candidate_source_step(flow, "place") == "postFloorplan"
@@ -314,12 +360,33 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     monkeypatch, tmp_path
 ):
     flow_data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-            {"name": "place", "tool": "dreamplace", "state": "Success"},
-            {"name": "CTS", "tool": "ecc", "state": "Success"},
-            {"name": "Harden", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Floorplan", "ecc"),
+            },
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                "state": "Success",
+                **step_fields("place", "dreamplace"),
+            },
+            {
+                "name": "CTS",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("CTS", "ecc"),
+            },
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Harden", "ecc"),
+            },
+        ],
     }
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir()
@@ -587,10 +654,21 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     flow_path.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "steps": [
-                    {"name": "place", "tool": "dreamplace", "state": "Success"},
-                    {"name": "Harden", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "place",
+                        "tool": "dreamplace",
+                        "state": "Success",
+                        **step_fields("place", "dreamplace"),
+                    },
+                    {
+                        "name": "Harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("Harden", "ecc"),
+                    },
+                ],
             }
         ),
         encoding="utf-8",
@@ -780,7 +858,9 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
-            flow=SimpleNamespace(data={"steps": [{"name": "Floorplan"}, {"name": "place"}]})
+            flow=SimpleNamespace(
+                data={"schema_version": 2, "steps": [{"name": "Floorplan"}, {"name": "place"}]}
+            )
         )
     )
     request = CandidateRerunRequest(
@@ -1128,12 +1208,33 @@ def _wait_for_terminal(operations, operation_id, expected_state="succeeded"):
 
 def _seed_candidate_source_workspace(tmp_path: Path) -> tuple[Path, Path, object]:
     flow_data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-            {"name": "place", "tool": "dreamplace", "state": "Success"},
-            {"name": "CTS", "tool": "ecc", "state": "Success"},
-            {"name": "Harden", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Floorplan",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Floorplan", "ecc"),
+            },
+            {
+                "name": "place",
+                "tool": "dreamplace",
+                "state": "Success",
+                **step_fields("place", "dreamplace"),
+            },
+            {
+                "name": "CTS",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("CTS", "ecc"),
+            },
+            {
+                "name": "Harden",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("Harden", "ecc"),
+            },
+        ],
     }
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir()

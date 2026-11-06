@@ -142,8 +142,6 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "synth": StepEnum.SYNTHESIS.value,
         "synthesis": StepEnum.SYNTHESIS.value,
         "prefloorplan": StepEnum.PRE_FLOORPLAN.value,
-        "floorplan": StepEnum.PRE_FLOORPLAN.value,
-        "floor": StepEnum.POST_FLOORPLAN.value,
         "macro": StepEnum.MACRO_PLACEMENT.value,
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
@@ -153,7 +151,6 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "preplaceoptimization": StepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
-        "diffbuffering": StepEnum.DIFF_BUFFERING.value,
         "diffopt": SkippableStepEnum.DIFF_OPT.value,
         "diffoptimization": SkippableStepEnum.DIFF_OPT.value,
         "diffsizing": StepEnum.DIFF_SIZING.value,
@@ -202,10 +199,6 @@ def build_flow_range(
     ]
     first = normalize_flow_step(from_step)
     last = normalize_flow_step(to_step)
-    # The old standalone buffering spelling remains a runnable alias for
-    # existing workspaces, while new canonical ranges use diff_opt.
-    first = SkippableStepEnum.DIFF_OPT.value if first == StepEnum.DIFF_BUFFERING.value else first
-    last = SkippableStepEnum.DIFF_OPT.value if last == StepEnum.DIFF_BUFFERING.value else last
     if first not in names or last not in names:
         available = ", ".join(names)
         raise ValueError(

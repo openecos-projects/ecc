@@ -89,7 +89,7 @@ def test_execution_plan_checks_cancel_before_each_selected_step():
 
 def test_execution_failure_keeps_main_blocking_semantics():
     class Flow:
-        workspace = SimpleNamespace(flow=SimpleNamespace(data={"steps": []}))
+        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 2, "steps": []}))
 
         def run_steps(self, *, rerun=False, observer: Any = None):
             return False
@@ -200,7 +200,9 @@ def test_execution_reports_ordered_steps_and_completed_default_is_noop():
 
     class Flow:
         workspace = SimpleNamespace(
-            flow=SimpleNamespace(data={"steps": [{"name": "synthesis", "state": "Success"}]})
+            flow=SimpleNamespace(
+                data={"schema_version": 2, "steps": [{"name": "synthesis", "state": "Success"}]}
+            )
         )
 
         def run_steps(self, **_kwargs):
