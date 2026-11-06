@@ -228,7 +228,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.6 自动生成的 SDC
 
-未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 则只复制、不重新生成。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的约束，参数变化时刷新这些文件。
+未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 保持原始字节，不自动生成设计约束；ECC 在两个阶段目录中生成 `<文件名>.ecc.tcl` 入口，先 `source` 复制的原文件，再于 CTS 及之前执行 `remove_propagated_clock [all_clocks]`，于 CTS 之后执行 `set_propagated_clock [all_clocks]`。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的 corner 约束，参数变化时刷新这些文件。
 
 生成的 Tcl 按 `params.sdc.clock_list` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
 
@@ -336,7 +336,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.mode = "auto"`、`file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 把共享配置改为 `macro_placer.mode = "file"` 并指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
 
 ### ifp（iFP 布图引擎）
 
@@ -848,7 +848,7 @@ check_antenna -step_json /path/to/antennaCheck.step.json
 | 项 | 内容 |
 |---|---|
 | `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`）。 |
-| `postRouteLec` 输入 | 综合映射网表为 golden，`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
+| `postRouteLec` 输入 | golden 优先级：步骤显式覆盖 → `design.golden_netlist` → 综合映射网表 → 原始输入。`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
 | 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。 |
 
 启用综合级 LEC 并可选地固定引擎：
@@ -875,7 +875,7 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 
 ## 13. sta（ecc-tools）
 
-配置 `sta_ecc.json`，由 `liberty`（corner → liberty 列表）与 `signoff`（签核 corner 组合）两部分构成；liberty 相对路径在配置刷新时展开为 PDK 绝对路径。子阶段：load data → run sta。`STA max paths` 参数（默认 1000）在运行时直接传入引擎，不落此文件。
+配置 `sta_ecc.json`，由 `liberty`（corner → liberty 列表）与 `signoff`（签核 corner 组合）两部分构成。Liberty 相对路径及模板沿用的 `/IP/...` 路径在配置刷新时按 PDK 根目录展开；其他绝对路径保持不变，包括 PDK 外部的宏单元库。子阶段：load data → run sta。`STA max paths` 参数（默认 1000）在运行时直接传入引擎，不落此文件。
 
 | 字段 | 示例（gcd@ics55） | 含义 |
 |---|---|---|

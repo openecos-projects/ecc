@@ -227,7 +227,7 @@ The file must cover every hard macro in the design — `postFloorplan` fails wit
 
 ### 1.6 Auto-generated SDC
 
-When `[design].sdc` is absent, workspace creation generates the complete corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`, without a standalone `origin/<design>.sdc`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. A user-provided full SDC or Tcl is copied instead and is never regenerated. ECC recognizes its generated constraints by the first-line `# ECC-generated SDC file` marker and refreshes them when parameters change.
+When `[design].sdc` is absent, workspace creation generates the complete corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`, without a standalone `origin/<design>.sdc`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. A user-provided full SDC or Tcl is copied without changing its bytes or generating automatic design constraints. ECC creates `<filename>.ecc.tcl` wrappers in both phase directories: each sources the copied input, then applies `remove_propagated_clock [all_clocks]` through CTS, or `set_propagated_clock [all_clocks]` after CTS. ECC recognizes its generated corner constraints by the first-line `# ECC-generated SDC file` marker and refreshes them when parameters change.
 
 The generated Tcl defines primary clocks from `params.sdc.clock_list`, together with the scenario's IO constraints, OCV derates, setup/hold uncertainty, transition limits, and fanout constraints. After loading the design, Python emits only the IO rules selected by the actual iDB's IO-cell presence; no companion `timing_io.tcl` or Tcl branch selects the IO mode. Initial files contain an explicit preparation error until the design is loaded; timing preparation replaces them with complete constraints before execution. Clockless designs do not acquire an invented clock. For the same corner, pre-CTS and post-CTS rules are identical except that post-CTS adds `set_propagated_clock [all_clocks]`.
 
@@ -340,7 +340,7 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with `macro_placer.mode = "auto"` and an empty `file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` rewrites the shared config to `macro_placer.mode = "file"` with that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
 
 ### ifp (the iFP floorplan engine)
 
@@ -897,7 +897,7 @@ Both steps use the engine-neutral result contract `output/<design>_<step>_result
 | Item | Content |
 |---|---|
 | `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`). |
-| `postRouteLec` input | The synthesis-mapped netlist is the golden side and the `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
+| `postRouteLec` input | Golden priority: explicit step override → `design.golden_netlist` → synthesis-mapped netlist → original input. The `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
 | Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
 
 Enable the synthesis LEC and optionally pin the engine with:
@@ -925,7 +925,7 @@ Output SPEFs are named `<design>_<RCcorner>_<temp>C.spef` (e.g. `gcd_Cworst_125C
 
 ## 13. sta (ecc-tools)
 
-Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → liberty list) and `signoff` (the signoff corner combinations); relative liberty paths are expanded to absolute PDK paths on config refresh. Sub-phases: load data → run sta. The `STA max paths` parameter (default 1000) is passed to the engine directly at runtime and does not land in this file.
+Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → liberty list) and `signoff` (the signoff corner combinations). Relative Liberty paths and the template's legacy `/IP/...` paths are resolved under the PDK root on config refresh; other absolute paths, including external macro libraries, remain unchanged. Sub-phases: load data → run sta. The `STA max paths` parameter (default 1000) is passed to the engine directly at runtime and does not land in this file.
 
 | Field | Example (gcd@ics55) | Meaning |
 |---|---|---|

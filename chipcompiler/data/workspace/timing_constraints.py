@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from chipcompiler.utility import json_read
 
-from .sdc import is_generated_sdc, signoff_sdc_path
+from .sdc import custom_step_sdc_path, is_generated_sdc, signoff_sdc_path
 from .sdc_inputs import SdcInputs
 
 if TYPE_CHECKING:
@@ -55,6 +55,8 @@ def scenario_tcl_path(directory: Path, scenario: TimingScenario, *, post_cts: bo
 def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None = None) -> None:
     """Generate both sets and use pre-CTS TYP/TYPICAL as the default entry point."""
     if workspace.pdk.sdc is not None and not is_generated_sdc(workspace.pdk.sdc):
+        for post_cts in (False, True):
+            custom_step_sdc_path(workspace.pdk.sdc, workspace.directory, post_cts=post_cts)
         return
     scenarios = timing_scenarios(workspace)
     if not scenarios:

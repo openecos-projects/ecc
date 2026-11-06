@@ -146,7 +146,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
                 "spef_path": str(spef),
             },
         ),
@@ -217,7 +217,7 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
                 "spef_path": str(spef),
             },
         ),

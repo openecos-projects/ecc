@@ -4,7 +4,6 @@
         "thread_number": 16
     },
     "macro_placer": {
-        "mode": "auto",
         "file_path": "",
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0

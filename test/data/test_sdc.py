@@ -42,7 +42,7 @@ proc record {args} {
 }
 foreach cmd {
     set_load set_timing_derate set_clock_uncertainty
-    set_max_transition set_max_fanout set_propagated_clock
+    set_max_transition set_max_fanout set_propagated_clock remove_propagated_clock
     set_input_delay set_output_delay set_multicycle_path set_false_path set_clock_groups
 } {
     proc $cmd {args} [format {record %s {*}$args} $cmd]
@@ -294,7 +294,55 @@ def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
         has_io_cells=has_io_cells,
     )
 
-    assert (actual, actual.read_bytes(), target.exists()) == (workspace.pdk.sdc, content, False)
+    phase = "post_CTS" if post_cts else "pre_CTS"
+    assert actual == workspace.directory / "origin" / phase / "custom.sdc.ecc.tcl"
+    assert workspace.pdk.sdc.read_bytes() == content
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("post_cts", [False, True])
+@pytest.mark.parametrize("propagated_input", [False, True])
+def test_custom_timing_wrappers_apply_phase_after_all_user_commands(
+    workspace, sdc_trace, post_cts, propagated_input
+):
+    custom = workspace.directory / "user [literal] $clock {constraints}.sdc"
+    included = workspace.directory / "extra clocks.tcl"
+    included.write_text(
+        "create_clock -name CLK_aux -period 16 [get_ports aux]\n"
+        "set_false_path -from [get_ports reset]\n"
+    )
+    content = (
+        "create_clock -name CLK_clk -period 8 [get_ports clk]\n"
+        "source [file join [file dirname [info script]] {extra clocks.tcl}]\n"
+        "set_input_delay 0.15 -clock CLK_aux [get_ports data]\n"
+    )
+    if propagated_input:
+        content += "if {1} {set_propagated_clock \\\n    [all_clocks]}\n"
+    custom.write_text(content)
+    workspace.pdk.sdc = custom
+    generate_timing_scripts(workspace)
+    path = signoff_sdc_path(
+        workspace,
+        workspace.directory / "unused.tcl",
+        post_cts=post_cts,
+        corner="TYP",
+        rc_para="TYPICAL",
+    )
+    expected = [
+        ("create_clock", "-name", "CLK_clk", "-period", 8.0, "clk"),
+        ("create_clock", "-name", "CLK_aux", "-period", 16.0, "aux"),
+        ("set_false_path", "-from", "reset"),
+        ("set_input_delay", 0.15, "-clock", "CLK_aux", "data"),
+    ]
+    if propagated_input:
+        expected.append(("set_propagated_clock", "CLK_clk CLK_aux"))
+    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
+    expected.append((command, "CLK_clk CLK_aux"))
+    assert sdc_trace(path) == expected
+    assert custom.read_text() == content
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+    generate_timing_scripts(workspace)
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
 
 
 def test_generated_names_are_literal_tcl_words(workspace, sdc_trace):
@@ -557,7 +605,7 @@ def test_full_custom_constraints_bypass_user_input_parsing(workspace):
             corner="TYP",
             rc_para="TYPICAL",
         )
-        == custom
+        == workspace.directory / "origin/post_CTS/full.tcl.ecc.tcl"
     )
     assert custom.read_text() == "# User-owned complete Tcl\nset custom 1\n"
 

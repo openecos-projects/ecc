@@ -1133,7 +1133,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "die_size": {"width_micron": 100.1, "height_micron": 246.6},
     }
     assert floorplan["macro_placer"] == {
-        "mode": "auto",
         "file_path": "",
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,
@@ -1156,7 +1155,6 @@ def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
     )
     config_path = workspace.config[StepEnum.FLOORPLAN.value]
     floorplan = json_read(config_path)
-    floorplan["macro_placer"].pop("mode")
     floorplan["macro_placer"].pop("file_path")
     floorplan["macro_placer"]["macro_location_path"] = "macro_locations.txt"
     floorplan["io_placer"].pop("mode")
@@ -1167,7 +1165,6 @@ def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
 
     refreshed = json_read(config_path)
     assert refreshed["macro_placer"] == {
-        "mode": "auto",
         "file_path": "",
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,
