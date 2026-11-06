@@ -201,3 +201,32 @@ def test_added_steps_extend_an_indexed_ledger_and_keep_a_legacy_one(tmp_path):
         "02_CTS_ecc",
     ]
     assert legacy.workspace.flow.steps()[-1].get("directory") == "CTS_ecc"
+
+
+def test_a_step_dropped_from_the_ledger_is_found_in_its_inherited_directory(tmp_path):
+    """A derived workspace keeps the directories of the steps its ledger dropped."""
+    from chipcompiler.data.step import StepDirectories
+
+    for name in ("18_RCX_ecc", "19_RCX_ecc", "20_sta_ecc"):
+        (tmp_path / name).mkdir()
+    records = [{"name": "sta", "tool": "ecc", "directory": "20_sta_ecc"}]
+
+    directories = StepDirectories.from_records(tmp_path, records)
+
+    assert [directories.name("sta"), directories.name("RCX"), directories.name("drc")] == [
+        "20_sta_ecc",
+        "19_RCX_ecc",
+        "drc_ecc",
+    ]
+    # Scans visit the newest inherited directory of each step, not every copy.
+    assert directories.scan_names()[:2] == ["20_sta_ecc", "19_RCX_ecc"]
+    assert "18_RCX_ecc" not in directories.scan_names()
+
+
+def test_a_legacy_directory_wins_over_an_inherited_indexed_one(tmp_path):
+    from chipcompiler.data.step import StepDirectories
+
+    for name in ("RCX_ecc", "19_RCX_ecc"):
+        (tmp_path / name).mkdir()
+
+    assert StepDirectories.from_records(tmp_path, []).name("RCX") == "RCX_ecc"
