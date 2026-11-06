@@ -165,6 +165,8 @@ def test_terminal_refresh_discards_virtual_model_before_legalization(monkeypatch
                 key: getattr(params, key)
                 for key in [
                     "flow_kind",
+                    "placement_sizing_mode",
+                    "sizing_parameterization",
                     "global_place_flag",
                     "legalize_flag",
                     "enable_relaxed_buffer_timing",
@@ -173,6 +175,8 @@ def test_terminal_refresh_discards_virtual_model_before_legalization(monkeypatch
             }
             assert actual == {
                 "flow_kind": "placement",
+                "placement_sizing_mode": "place_only",
+                "sizing_parameterization": "logits",
                 "global_place_flag": 0,
                 "legalize_flag": 1,
                 "enable_relaxed_buffer_timing": False,

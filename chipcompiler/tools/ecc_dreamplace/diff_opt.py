@@ -148,6 +148,7 @@ def finalize_diff_opt(engine) -> dict:
         engine,
         flow_kind="diff_opt",
         summary_stem="diff_opt",
+        write_summary=False,
     )
     result = dict(result)
     result["diff_opt_parasitic_source"] = "placement"
