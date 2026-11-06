@@ -45,6 +45,7 @@
         0
     ],
     "ignore_net_degree": 100,
+    "zero_clock_net_weight_flag": 0,
     "gp_noise_ratio": 0.0,
     "auto_adjust_bins": 1,
     "enable_fillers": 0,
