@@ -72,7 +72,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     expected_policy = dreamplace_default_config["diff_sizing_coefficients"] | override
     expected = {
         "diff_sizing_coefficients": expected_policy,
-        "diff_sizing_optimization_flows": [["up", 50, expected_policy, 1.0]],
+        "diff_sizing_optimization_flows": [["quad", 50, expected_policy, 1.0]],
         "auto_adjust_bins": 1,
         "num_bins_x": 256,
         "num_bins_y": 256,
@@ -96,7 +96,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     (phase,) = _validate_action_profile(sizing)
     assert (phase.to_list(), phase.action_mask) == (
         expected["diff_sizing_optimization_flows"][0],
-        (True, False, False, True),
+        (True, True, True, True),
     )
     placement_step = builder.build_step(
         workspace,
