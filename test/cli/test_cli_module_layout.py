@@ -54,6 +54,7 @@ def test_command_registration_modules_live_under_commands_package():
     for module_name in (
         "project",
         "doctor",
+        "defview",
         "chipview",
         "gds_view",
         "check_update",

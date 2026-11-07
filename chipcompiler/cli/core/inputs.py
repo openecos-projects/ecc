@@ -67,6 +67,14 @@ class ChipviewInput:
 
 
 @dataclass(frozen=True)
+class DefviewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    def_path: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
 class GdsViewInput:
     output: OutputOptions
     project: ProjectOptions
