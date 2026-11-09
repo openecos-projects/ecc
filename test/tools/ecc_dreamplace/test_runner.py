@@ -170,7 +170,17 @@ def test_macro_placement_skips_dreamplace_when_manual_placements_set(monkeypatch
     ]
 
 
-def test_manual_macro_placement_gate_requires_configured_tcl(monkeypatch, tmp_path, caplog):
+def _record_logger_errors(monkeypatch, workspace):
+    errors = []
+
+    def _error(msg, *args):
+        errors.append(msg % args if args else msg)
+
+    monkeypatch.setattr(workspace.logger, "error", _error)
+    return errors
+
+
+def test_manual_macro_placement_gate_requires_configured_tcl(monkeypatch, tmp_path):
     calls = []
     subflow = FakeSubFlow()
     placements = [{"instance": "u0", "x": 1.0, "y": 2.0, "orientation": "R0"}]
@@ -180,6 +190,7 @@ def test_manual_macro_placement_gate_requires_configured_tcl(monkeypatch, tmp_pa
         config={"macro_location": macro_location},
         parameters=Parameters(data={"macro": {"manual_placement": True, "placements": placements}}),
     )
+    errors = _record_logger_errors(monkeypatch, workspace)
     step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
 
     class FakeEccModule:
@@ -204,10 +215,10 @@ def test_manual_macro_placement_gate_requires_configured_tcl(monkeypatch, tmp_pa
         "macro placement",
     ]
     assert subflow.updates[-1]["state"] is StateEnum.Imcomplete
-    assert "Manual macro placement is required" in caplog.text
+    assert any("Manual macro placement is required" in message for message in errors)
 
 
-def test_manual_macro_placement_gate_requires_placements(monkeypatch, tmp_path, caplog):
+def test_manual_macro_placement_gate_requires_placements(monkeypatch, tmp_path):
     calls = []
     subflow = FakeSubFlow()
     macro_location = tmp_path / "macro_location.tcl"
@@ -217,6 +228,7 @@ def test_manual_macro_placement_gate_requires_placements(monkeypatch, tmp_path, 
         config={"macro_location": macro_location},
         parameters=Parameters(data={"macro": {"manual_placement": True}}),
     )
+    errors = _record_logger_errors(monkeypatch, workspace)
     step = EccStep(name=StepEnum.MACRO_PLACEMENT.value)
 
     class FakeEccModule:
@@ -237,7 +249,7 @@ def test_manual_macro_placement_gate_requires_placements(monkeypatch, tmp_path, 
     assert dreamplace_runner.run_macro_placement(workspace, step) is False
     assert calls == []
     assert subflow.updates[-1]["state"] is StateEnum.Imcomplete
-    assert "Manual macro placement is required" in caplog.text
+    assert any("Manual macro placement is required" in message for message in errors)
 
 
 def test_manual_macro_placement_gate_continues_with_configured_handoff(monkeypatch, tmp_path):

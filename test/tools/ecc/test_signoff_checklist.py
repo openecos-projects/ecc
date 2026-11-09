@@ -1038,3 +1038,40 @@ def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
         ]
     }
     assert "flow.postroutelec.completed" not in home_items
+
+
+def test_macro_placement_checklist_blocks_until_manual_locations_are_ready(tmp_path):
+    macro_location = tmp_path / "config" / "macro_location.tcl"
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(data={"macro": {"manual_placement": True}}),
+        config={"macro_location": macro_location},
+    )
+    (tmp_path / "home").mkdir()
+    step = EccStep(
+        name=StepEnum.MACRO_PLACEMENT.value,
+        directory=tmp_path / "macroPlacement_ecc",
+        checklist=ChecklistState(path=tmp_path / "macroPlacement_ecc" / "checklist.json"),
+    )
+
+    assert refresh_step_checklist(workspace, step) is False
+    item = step.checklist.checklist[0]
+    assert item["id"] == "manual.macro.placement.required"
+    assert item["blocked"] is True
+    assert "Place macros in Chip Viewer" in item["summary"]
+
+    workspace.parameters.data["macro"]["placements"] = [
+        {"instance": "u_ram0", "x": 10.0, "y": 20.5, "orientation": "R0"}
+    ]
+    macro_location.parent.mkdir(parents=True, exist_ok=True)
+    macro_location.write_text("placeInstance u_ram0 10 20.5 R0\n", encoding="utf-8")
+
+    assert refresh_step_checklist(workspace, step) is True
+    assert step.checklist.checklist[0]["state"] == "pass"
+
+
+def test_macro_placement_checklist_has_no_gate_item_without_manual_placement(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+
+    assert _step_artifact_items(workspace, EccStep(name=StepEnum.MACRO_PLACEMENT.value)) == []

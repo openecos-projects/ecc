@@ -88,7 +88,7 @@ def run_macro_placement(
 
         manual_placements = macro_placements(workspace)
         if manual_placement_required(workspace) and not manual_macro_location_ready(workspace):
-            logger.error(
+            workspace.logger.error(
                 "Manual macro placement is required, but macro.placements and %s are not "
                 "configured. Complete macro placement in Chip Viewer or run `ecc macro`, "
                 "then rerun macroPlacement.",
