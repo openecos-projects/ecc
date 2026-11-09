@@ -451,6 +451,29 @@ def test_flow_show_returns_one_flow_as_json(capsys):
     assert {record["flow_id"] for record in data} == {"rtl2gds"}
 
 
+def test_flow_show_plain_matches_flow_list_line_records(capsys):
+    rc = cli_main.run(["flow", "list", "--plain"])
+    list_lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+
+    rc = cli_main.run(["flow", "show", "rtl2gds", "--plain"])
+    show_lines = capsys.readouterr().out.splitlines()
+    assert rc == 0
+
+    assert show_lines
+    assert show_lines == [line for line in list_lines if " flow_id=rtl2gds " in line]
+    assert all("=True" not in line and "=False" not in line for line in show_lines)
+
+
+def test_flow_show_plain_unknown_flow_keeps_stdout_clean(capsys):
+    rc = cli_main.run(["flow", "show", "no-such-flow", "--plain"])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert captured.out == ""
+    assert "unknown_flow" in captured.err
+
+
 def test_flow_validate_returns_validation_records(capsys):
     rc = cli_main.run(["flow", "validate", "--flow", "rtl2gds", "--json"])
 
