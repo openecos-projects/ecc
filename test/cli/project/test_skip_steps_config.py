@@ -8,9 +8,11 @@ different policies, and the materialized default in generated projects.
 """
 
 import json
+import os
 
 import pytest
 
+from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.config import load_project_config, validate_project_config
 from chipcompiler.cli.project.effective_config import (
     declared_skip_steps,
@@ -70,7 +72,6 @@ class TestManifestSkipSteps:
             "lec",
             None,
             [1],
-            ["route"],
             ["bogus"],
         ],
     )
@@ -120,7 +121,11 @@ class TestEccTomlSkipSteps:
             'skip_steps = "lec"\n',
             "skip_steps = 3\n",
             "skip_steps = [1]\n",
+            'skip_steps = ["bogus"]\n',
+            # route provides the routed design filler requires.
             'skip_steps = ["route"]\n',
+            # Harden is the rtl2gds flow target.
+            'skip_steps = ["Harden"]\n',
         ],
     )
     def test_invalid_value_is_a_config_error(self, tmp_path, flow_extra):
@@ -309,3 +314,46 @@ class TestManifestSkipBoundary:
         (entry,) = load_manifest(str(tmp_path)).workspaces
 
         assert entry.skip_steps == ("LEC",)
+
+
+@pytest.mark.parametrize(
+    ("skip_steps", "rc", "reports"),
+    [
+        # Optional data missing: warnings, and the check passes.
+        (
+            ["lec", "diff_opt", "CTS"],
+            0,
+            [
+                f"warning=flow_step_degraded step={step} missing=['clock_tree'] "
+                f"fixes=['CTS'] reason=\"{step} runs with degraded results without "
+                'clock_tree; enable CTS"'
+                for step in ("route", "sta", "powerAnalysis", "Harden")
+            ],
+        ),
+        # Required data missing: a configuration error.
+        (
+            ["lec", "diff_opt", "legalization", "TimingOpt"],
+            1,
+            [
+                'check=config status=fail reason="flow.skip_steps: route requires legal; '
+                'enable Timing optimization or legalization"'
+            ],
+        ),
+    ],
+)
+def test_check_reports_the_declared_selection(
+    capsys, create_cli_project, mock_pdk_validation, skip_steps, rc, reports
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write(f"\nskip_steps = {json.dumps(skip_steps)}\n")
+
+    assert cli_main.run(["check", "--project", project_dir, "--plain"]) == rc
+
+    lines = capsys.readouterr().out.splitlines()
+    assert [
+        line.removeprefix("kind=warning ").split(" source=")[0]
+        for line in lines
+        if "flow_step_degraded" in line or line.startswith("check=config")
+    ] == reports

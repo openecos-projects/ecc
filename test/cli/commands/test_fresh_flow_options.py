@@ -32,6 +32,7 @@ def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
         lambda *, skip=(), lec_engine=None: [
             ("Synthesis", "yosys", "Unstart"),
+            ("preFloorplan", "ecc", "Unstart"),
             ("place", "dreamplace", "Unstart"),
         ],
     )

@@ -60,8 +60,10 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     A non-contiguous explicit selection degrades to the contiguous
     first..last range (with a log note) so flow.json and the [flow] target
     always describe the same steps. A preset-shaped config selects the
-    preset's canonical range. The config's skip policy is resolved here:
-    skipped steps never enter the ledger.
+    preset's chain, whose first step may be skipped. The config's skip
+    policy is resolved here: skipped steps never enter the ledger, and a
+    selection whose remaining steps lack required design data
+    (:func:`~chipcompiler.data.flow_plan.plan_flow`) raises ``ValueError``.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
@@ -69,32 +71,34 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     from ..workspace_config import flow_range_for_preset, resolve_flow_selection
 
     entries = _flow_entries_for_config(flow_config)
+    start: str | None = None
+    end: str | None = None
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
-        first, last = flow_range_for_preset(flow_config["preset"])
-        selected_names = [first, last]
+        # _flow_entries_for_config falls back to the canonical chain.
+        flow_range_for_preset(flow_config["preset"])  # raises on unknown presets
     else:
         selected_names, _degraded = resolve_flow_selection(flow_config, entries)
-    if not selected_names:
-        return {}
+        if not selected_names:
+            return {}
+        start, end = selected_names[0], selected_names[-1]
 
     import chipcompiler.rtl2gds as rtl2gds_api
+    from chipcompiler.data.flow_plan import plan_flow
 
     skip = rtl2gds_api.resolve_skip_steps(flow_config)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
-    # Filter the whole chain first so a skipped boundary is an unknown step,
-    # exactly like a range outside the chain.
-    skipped_chain = rtl2gds_api.filter_flow_steps(entries, skip)
-    chain_names = [name for name, _tool, _state in skipped_chain]
-    try:
-        selected = skipped_chain[
-            chain_names.index(selected_names[0]) : chain_names.index(selected_names[-1]) + 1
-        ]
-    except ValueError as exc:
+    plan = plan_flow(
+        [(name, tool) for name, tool, _state in entries], skip_steps=skip, start=start, end=end
+    )
+    if plan.errors:
         raise ValueError(
-            f"unknown flow step: {selected_names[0]!r} -> {selected_names[-1]!r}; "
-            f"available steps: {', '.join(chain_names)}"
-        ) from exc
-    selected = rtl2gds_api.substitute_lec_engine(selected, lec_engine)
+            "skip_steps leaves steps without required design data: "
+            + "; ".join(violation.message() for violation in plan.errors)
+        )
+    enabled = set(plan.enabled_steps)
+    selected = rtl2gds_api.substitute_lec_engine(
+        [entry for entry in entries if entry[0] in enabled], lec_engine
+    )
     return {
         SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,
         "steps": [

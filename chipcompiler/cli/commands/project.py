@@ -5,6 +5,7 @@ import typer
 from chipcompiler.cli.command_handlers import inspect as inspect_handlers
 from chipcompiler.cli.command_handlers import project as project_handlers
 from chipcompiler.cli.core.apps import create_app
+from chipcompiler.cli.core.completion import complete_flow_step
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
@@ -118,15 +119,27 @@ def run_cmd(
     ] = False,
     from_step: Annotated[
         str | None,
-        typer.Option("--from", help="Re-execute a step and its persisted suffix"),
+        typer.Option(
+            "--from",
+            help="Re-execute a step and its persisted suffix",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     to_step: Annotated[
         str | None,
-        typer.Option("--to", help="Inclusive final step when running a bounded range"),
+        typer.Option(
+            "--to",
+            help="Inclusive final step when running a bounded range",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     only: Annotated[
         str | None,
-        typer.Option("--only", help="Run exactly one persisted step"),
+        typer.Option(
+            "--only",
+            help="Run exactly one persisted step",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     force: Annotated[
         bool,

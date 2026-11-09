@@ -597,14 +597,30 @@ flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
 `synthesis_lec`). The `rtl2gds` preset includes synthesis-level LEC immediately
 after synthesis, followed by every physical-design step
-through RCX, STA, and Harden; the synthesis LEC is skipped by default
-(`[flow] skip_steps` defaults to `["lec"]`; an explicit `[]` enables it);
+through RCX, STA, and Harden; the synthesis LEC and `diff_opt` are skipped by
+default (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`; an explicit
+`[]` runs every step);
 `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace. An explicit `ecc.toml` `[flow] skip_steps` takes precedence over
 the `project.json` workspace entry; when the two declare different effective
 values, the run warns `skip_steps_shadowed`.
+`skip_steps` may name any step of the rtl2gds chain (aliases accepted, unknown
+names rejected). Step capabilities (required design data, optional design
+data, provided design data) decide whether a selection can run: an enabled step
+that lacks required design data is a configuration error for `ecc check`,
+`ecc run`, and workspace creation, with a fix hint naming the disabled steps
+to re-enable; a step that lacks only optional data runs with degraded results
+and warns `flow_step_degraded`. The preset's final step (the flow target) and
+an explicit range start cannot be skipped; the first step can (skipping
+`Synthesis` and `lec` enters at `preFloorplan` with the declared
+`[design] netlist`). A skipped signoff checker (drc, lvs, sta) leaves its
+`ecc signoff check` gate `unknown`. Existing workspace ledgers are never
+re-filtered. `ecc flow plan` checks a selection read-only, and `ecc flow edit`
+chooses one (interactive checkbox list or `--enable`/`--disable`), asks to
+confirm unless `--yes` is given (required without a terminal), and writes
+`[flow]` `preset`, `lec_engine`, and `skip_steps` explicitly.
 `design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
 `.filelist`) is also accepted; multiple direct source entries are assembled
 into a generated filelist when the workspace is created. If `pdk.root` is

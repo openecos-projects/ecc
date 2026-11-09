@@ -44,10 +44,10 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         input_specs.append({"inputId": input_id, "role": role})
         input_bindings[input_id] = path
 
-    from chipcompiler.cli.project.effective_config import _entry_step_for_target
+    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
     from chipcompiler.rtl2gds import normalize_flow_step
 
-    entry_step = _entry_step_for_target(cfg, flow_config)
+    entry_step = fresh_entry_step(cfg, flow_config)
     rtl_mode = normalize_flow_step(entry_step or "") == "Synthesis"
     if rtl_mode:
         for index, path in enumerate(inputs.rtl):

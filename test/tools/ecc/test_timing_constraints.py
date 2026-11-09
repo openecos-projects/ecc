@@ -7,8 +7,17 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
-from chipcompiler.data.handshake import StepInputs, StepRequest, UpstreamResponse, write_request
-from chipcompiler.data.types import AnalysisData
+from chipcompiler.data.handshake import (
+    DesignFiles,
+    ResponseStatus,
+    StepInputs,
+    StepRequest,
+    StepResponse,
+    UpstreamResponse,
+    write_request,
+    write_response,
+)
+from chipcompiler.data.types import AnalysisData, DesignState
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -276,4 +285,55 @@ def test_post_synthesis_sta_receives_pre_cts_typical(timing_workspace, native_mo
     assert (
         native_module.run_timing.call_args.kwargs["sdc_path"]
         == workspace.directory / "origin/pre_CTS/TYP_25_TYPICAL.tcl"
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_states", "phase"),
+    [
+        # CTS ran upstream: the clock tree travels with the design.
+        (frozenset({DesignState.PLACED, DesignState.CLOCK_TREE, DesignState.LEGAL}), "post_CTS"),
+        # The flow skipped CTS: routing keeps the ideal-clock constraints.
+        (frozenset({DesignState.PLACED, DesignState.LEGAL}), "pre_CTS"),
+    ],
+)
+def test_constraint_phase_follows_the_clock_tree_of_the_input_design(
+    timing_workspace, source_states, phase
+):
+    workspace = timing_workspace
+    source = UpstreamResponse("11_legalization_dreamplace", "attempt-legal")
+    write_response(
+        workspace.directory / source.step_directory,
+        StepResponse(
+            step=StepEnum.LEGALIZATION.value,
+            tool="dreamplace",
+            attempt_id="attempt-legal",
+            status=ResponseStatus.SUCCESS,
+            design=DesignFiles(),
+            design_states=source_states,
+            outputs={},
+            design_source=None,
+            upstream={},
+            warnings=frozenset(),
+        ),
+    )
+    step = build_step(workspace, StepEnum.ROUTING.value, input_def=None, input_verilog=None)
+    assert step.directory is not None
+    write_request(
+        StepRequest(
+            workspace_directory=workspace.directory,
+            step=StepEnum.ROUTING.value,
+            tool="ecc",
+            step_directory=step.directory.name,
+            attempt_id="attempt-route",
+            inputs=StepInputs(),
+            design_source=source,
+            upstream={},
+            final_step=False,
+            layout_image=False,
+        )
+    )
+
+    assert step_tcl_path(workspace, step) == (
+        workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
     )

@@ -7,6 +7,8 @@ from chipcompiler.data.types import (
     SkippableStepEnum,
     StepEnum,
 )
+from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 
 
 def _flow_step_values() -> set[str]:
@@ -70,3 +72,24 @@ def test_ledgers_without_categories_run_every_step_alone():
     records = [{"name": "lvs", "tool": "ecc"}, {"name": "drc", "tool": "ecc"}]
 
     assert _waves(records) == [["lvs"], ["drc"]]
+
+
+def test_skipped_steps_hand_their_input_to_the_next_enabled_step():
+    ledger = build_dynamic_flow_data(
+        {
+            "start_step": "place",
+            "end_step": "route",
+            "skip_steps": ["diff_opt", "diff_sizing", "CTS"],
+        }
+    )
+    records = ledger.get("steps", [])
+    resolver = FlowInputResolver(records)
+
+    assert {
+        step["name"]: resolver.input_step_name(index) for index, step in enumerate(records)
+    } == {
+        "place": None,
+        "legalization": "place",
+        "Timing optimization": "legalization",
+        "route": "Timing optimization",
+    }

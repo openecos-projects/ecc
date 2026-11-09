@@ -8,6 +8,7 @@ from .builder import (
     normalize_flow_step,
     resolve_lec_engine,
     resolve_skip_steps,
+    rtl2gds_step_names,
     substitute_lec_engine,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "normalize_flow_step",
     "resolve_lec_engine",
     "resolve_skip_steps",
+    "rtl2gds_step_names",
     "substitute_lec_engine",
 ]

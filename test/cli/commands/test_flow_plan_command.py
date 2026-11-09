@@ -1,0 +1,141 @@
+"""`ecc flow plan`: the project's step selection, as records and as a checklist."""
+
+import json
+import os
+
+import pytest
+
+from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.core.completion import complete_flow_step
+from chipcompiler.data import DEFAULT_SKIP_STEPS
+
+
+def _plan(capsys, project_dir, *args):
+    rc = cli_main.run(["flow", "plan", "--project", project_dir, "--json", *args])
+    return rc, json.loads(capsys.readouterr().out)
+
+
+def _records(records, kind):
+    return [record for record in records if record["record"] == kind]
+
+
+def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_project):
+    rc, records = _plan(capsys, create_cli_project())
+
+    assert rc == 0
+    assert records[0] == {
+        "record": "flow_plan",
+        "flow": "rtl2gds",
+        "status": "ok",
+        "enabled_count": 21,
+        "step_count": 23,
+        "skip_steps": list(DEFAULT_SKIP_STEPS),
+    }
+    steps = _records(records, "flow_step")
+    assert [step["step"] for step in steps if not step["enabled"]] == list(DEFAULT_SKIP_STEPS)
+    assert next(step for step in steps if step["step"] == "route") == {
+        "record": "flow_step",
+        "position": 13,
+        "step": "route",
+        "tool": "ecc",
+        "enabled": True,
+        "optional": False,
+        "target": False,
+        "requires": ["legal"],
+        "uses": ["clock_tree"],
+        "provides": ["routed"],
+    }
+    assert [step["step"] for step in steps if step["target"]] == ["Harden"]
+    assert _records(records, "flow_violation") == []
+
+
+def test_overrides_are_checked_without_writing_the_project(capsys, create_cli_project):
+    project_dir = create_cli_project()
+    toml_path = os.path.join(project_dir, "ecc.toml")
+    with open(toml_path) as f:
+        before = f.read()
+
+    rc, records = _plan(capsys, project_dir, "--disable", "legalization", "--disable", "TimingOpt")
+
+    assert rc == 1
+    assert records[0]["status"] == "error"
+    assert _records(records, "flow_violation") == [
+        {
+            "record": "flow_violation",
+            "severity": "error",
+            "step": "route",
+            "missing": ["legal"],
+            "fixes": ["Timing optimization", "legalization"],
+            "reason": "route requires legal; enable Timing optimization or legalization",
+        }
+    ]
+    with open(toml_path) as f:
+        assert f.read() == before
+
+
+def test_unchecked_synthesis_needs_a_declared_netlist(capsys, create_cli_project):
+    rc, records = _plan(capsys, create_cli_project(), "--disable", "synth")
+
+    assert rc == 1
+    assert records[0]["skip_steps"] == ["Synthesis", *DEFAULT_SKIP_STEPS]
+    assert _records(records, "flow_input") == [
+        {
+            "record": "flow_input",
+            "severity": "error",
+            "step": "preFloorplan",
+            "reason": "step_input_missing: preFloorplan requires design.netlist",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("args", "reason"),
+    [
+        (["--disable", "Harden"], "'Harden' ends the flow and cannot be skipped"),
+        (["--enable", "lec", "--disable", "LEC"], "steps both enabled and disabled: lec"),
+        (["--disable", "Spin"], "skip_steps names unknown flow steps: Spin"),
+    ],
+)
+def test_invalid_overrides_are_rejected(capsys, create_cli_project, args, reason):
+    rc, records = _plan(capsys, create_cli_project(), *args)
+
+    assert rc == 1
+    assert records[0]["error"] == "flow_selection_invalid"
+    assert records[0]["reason"].startswith(reason)
+
+
+def test_text_mode_prints_the_checklist_and_its_warnings(capsys, create_cli_project):
+    rc = cli_main.run(["flow", "plan", "--project", create_cli_project(), "--disable", "CTS"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "rtl2gds · 20 of 23 steps enabled" in out
+    assert "! warning: route runs with degraded results without clock_tree; enable CTS" in out
+
+
+@pytest.mark.parametrize(
+    ("incomplete", "expected"),
+    [
+        ("ti", ["Timing optimization"]),
+        ("PO", ["postFloorplan", "postRouteLec", "powerAnalysis"]),
+        ("zz", []),
+    ],
+)
+def test_step_options_complete_canonical_step_names(incomplete, expected):
+    assert complete_flow_step(incomplete) == expected
+
+
+def test_plain_records_name_the_missing_design_data(capsys, create_cli_project):
+    rc = cli_main.run(
+        ["flow", "plan", "--project", create_cli_project(), "--plain", "--disable", "CTS"]
+    )
+
+    assert rc == 0
+    assert [
+        line for line in capsys.readouterr().out.splitlines() if "record=flow_violation" in line
+    ] == [
+        f"record=flow_violation severity=warning step={step} missing=['clock_tree'] "
+        f"fixes=['CTS'] reason=\"{step} runs with degraded results without clock_tree; "
+        'enable CTS"'
+        for step in ("route", "sta", "powerAnalysis", "Harden")
+    ]

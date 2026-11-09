@@ -54,14 +54,27 @@ def step_provides(step: str, item: DesignData) -> bool:
     return item in policy.provides
 
 
+def design_data_after(
+    steps: Iterable[str], *, available: Iterable[DesignData]
+) -> frozenset[DesignData]:
+    """The design data present after running *steps* in order from *available*.
+
+    Missing inputs are not checked here; see :func:`check_flow`. An unknown
+    step name raises ``ValueError``.
+    """
+    present: set[DesignData] = set(available)
+    for step in steps:
+        _advance(step, present)
+    return frozenset(present)
+
+
 def design_states_after(step: str, states: Iterable[DesignState]) -> frozenset[DesignState]:
     """The design states the output design of *step* carries.
 
     *states* are the states of the design the step read. An unknown step name
     raises ``ValueError``.
     """
-    present: set[DesignData] = set(states)
-    _advance(step, present)
+    present = design_data_after([step], available=states)
     return frozenset(item for item in present if isinstance(item, DesignState))
 
 

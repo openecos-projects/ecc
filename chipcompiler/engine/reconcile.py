@@ -368,7 +368,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
 
 
 def classify_workspace(
-    workspace_dir: str | Path, target_section: dict | None = None
+    workspace_dir: str | Path, target_section: dict[str, object] | None = None
 ) -> ReconcileResult:
     """Pure-read classification of the workspace against the target range.
 
