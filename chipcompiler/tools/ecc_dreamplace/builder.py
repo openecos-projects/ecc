@@ -152,7 +152,7 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
     coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     flow_config = result.get("diff_sizing_optimization_flows")
     if flow_config is None and action_mode == "lut_action":
-        flow_config = [["up", 50, coefficients, 1.0]]
+        flow_config = [["quad", 50, coefficients, 1.0]]
     flows = parse_diff_sizing_flows(flow_config)
     if flows is not None and action_mode != "lut_action":
         raise ValueError(

@@ -7,7 +7,7 @@ SCHEMAS = (
         "place.timing_sizing_action",
         "dreamplace",
         ("timing_sizing_action",),
-        "up",
+        "quad",
         applies="placement,diff_opt",
         choices=("up", "down", "quad"),
         description=(

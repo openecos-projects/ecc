@@ -568,9 +568,10 @@ Existing workspace ledgers retain the stored `diff_buffering` alias; new
 workspaces run `diff_opt` followed by `diff_sizing` when it is enabled.
 
 Placement sizing windows and `diff_opt` sizing phases also default to LUT
-actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
-`vt_speedup`. Their round counts, shared budgets and coefficients retain
-their own configuration. Set this parameter to `quad` or `down` explicitly
+actions. `place.timing_sizing_action="quad"` selects among all four directions
+(`size_up`, `size_down`, `vt_slowdown`, `vt_speedup`). Their round counts,
+shared budgets and coefficients retain
+their own configuration. Set this parameter to `up` or `down` explicitly
 to select another action family. Standalone `diff_sizing` uses its own phase
 chain, whose explicit action takes precedence.
 
@@ -617,17 +618,17 @@ of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
 means 0.1%). Each phase uses its own round budget and coefficients, and phases
 run in list order. The stage iteration is set to the sum of phase rounds.
 For standalone `diff_sizing` in `lut_action` mode, the default `null` expands
-to one `up` phase: 50 rounds with a shared 1% budget per round for
-`size_up`/`vt_speedup`. Its coefficients come from `diff_sizing_coefficients`
+to one `quad` phase: 50 rounds with a shared 1% budget per round across all
+four directions. Its coefficients come from `diff_sizing_coefficients`
 (default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
 
 ```toml
 [params.place]
-diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
 An explicit phase chain uses its own coefficients and budgets; configure
-`quad` explicitly to select among all four directions.
+`up` or `down` explicitly to restrict the action directions.
 `timing_action_gradient_mode=off` keeps the legacy path and does not accept
 an action phase chain.
 
