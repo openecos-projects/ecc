@@ -158,21 +158,21 @@ def validate_flow_config(flow: object) -> dict:
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
-        first, last = flow_range_for_preset(preset)  # raises on unknown presets
-        excluded = set(result.get("skip_steps") or ())
-        for boundary in (first, last):
-            if boundary in excluded:
-                raise WorkspaceFlowTargetError(
-                    f"[flow] {boundary!r} (the {preset!r} preset boundary) is skipped by "
-                    f"skip_steps and cannot be part of the flow target; set skip_steps = [] "
-                    f"or pick another preset"
-                )
+        _first, last = flow_range_for_preset(preset)  # raises on unknown presets
+        # The final step is the preset's target; its first step may be
+        # skipped, the declared inputs then stand in for it.
+        if last in set(result.get("skip_steps") or ()):
+            raise WorkspaceFlowTargetError(
+                f"[flow] {last!r} ends the {preset!r} preset and cannot be skipped; "
+                f"remove it from skip_steps (for example skip_steps = []) or pick "
+                f"another preset"
+            )
         result["preset"] = preset
         return result
 
-    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
+    from chipcompiler.rtl2gds import rtl2gds_step_names
 
-    canonical_names = [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
+    canonical_names = list(rtl2gds_step_names())
     normalized: dict[str, str] = {}
     for key, value in (("start", start), ("end", end)):
         if not isinstance(value, str):
@@ -198,13 +198,6 @@ def validate_flow_config(flow: object) -> dict:
     return result
 
 
-def canonical_flow_chain() -> list[str]:
-    """The canonical rtl2gds chain's step names, in order."""
-    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
-
-    return [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
-
-
 def flow_range_for_preset(preset: str) -> tuple[str, str]:
     """(first, last) canonical step names of a named preset."""
     from chipcompiler import rtl2gds as rtl2gds_api
@@ -215,10 +208,12 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
     steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
+    from chipcompiler.data.types import StepBaseEnum
+
     first, last = steps[0][0], steps[-1][0]
     return (
-        first.value if hasattr(first, "value") else str(first),
-        last.value if hasattr(last, "value") else str(last),
+        first.value if isinstance(first, StepBaseEnum) else str(first),
+        last.value if isinstance(last, StepBaseEnum) else str(last),
     )
 
 
@@ -239,9 +234,10 @@ def _contiguous_range(chain: list[str], first: str, last: str) -> list[str]:
 
 def flow_steps_in_range(start: str, end: str) -> list[str]:
     """Canonical step names from *start* to *end* inclusive."""
-    chain = canonical_flow_chain()
+    from chipcompiler.rtl2gds import rtl2gds_step_names
+
     try:
-        return _contiguous_range(chain, start, end)
+        return _contiguous_range(list(rtl2gds_step_names()), start, end)
     except ValueError as exc:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 

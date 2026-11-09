@@ -349,12 +349,35 @@ def manifest_range_for_steps(start: str, end: str) -> tuple[str, str]:
 
 
 def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
-    """Return the GUI manifest range for a workspace's effective target."""
+    """Return the GUI manifest range for a workspace's effective target.
+
+    A preset target starts at the first step its declared skip policy keeps,
+    so a skipped first step (entering from a netlist) never bounds the range;
+    the preset's final step cannot be skipped and always ends it.
+    """
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
         return manifest_range_for_steps(
             flow_config["start_step"], flow_config.get("end_step") or flow_config["start_step"]
         )
-    return PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+    preset_range = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+    if not (
+        cfg.flow_preset in PRESET_MANIFEST_RANGE
+        and isinstance(flow_config, dict)
+        and "skip_steps" in flow_config
+    ):
+        return preset_range
+    from chipcompiler.data.flow_plan import preset_chain
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    try:
+        skipped = set(resolve_skip_steps(flow_config))
+    except ValueError as exc:
+        raise ManifestError(str(exc)) from None
+    first = next(
+        (name for name, _tool in preset_chain(cfg.flow_preset) if name not in skipped), None
+    )
+    start = _CANONICAL_TO_MANIFEST_STEP.get(first or "")
+    return (start or preset_range[0], preset_range[1])
 
 
 def append_workspace_entry(

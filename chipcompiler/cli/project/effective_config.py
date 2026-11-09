@@ -14,7 +14,7 @@ cheap (no chipcompiler.data imports here).
 """
 
 import os
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, Any, TypeGuard
 
 from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandResult
@@ -26,6 +26,7 @@ from chipcompiler.project.manifest import (
 )
 
 if TYPE_CHECKING:
+    from chipcompiler.cli.core.types import CommandContext
     from chipcompiler.cli.project.config import ProjectConfig
 
 
@@ -119,8 +120,8 @@ def flow_config_selects_steps(flow_config: object) -> TypeGuard[dict]:
 
 
 def resolve_effective_config(
-    ctx, run_name: str | None, cfg: "ProjectConfig | None"
-) -> "CommandResult | tuple[ProjectConfig, dict | None, list[dict]]":
+    ctx: "CommandContext", run_name: str | None, cfg: "ProjectConfig | None"
+) -> "CommandResult | tuple[ProjectConfig, dict[str, Any] | None, list[dict[str, Any]]]":
     """Build the effective config for a manifest-backed project.
 
     Returns (cfg, flow_config, warnings) or a CommandResult error. The
@@ -322,13 +323,22 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     explicit ecc.toml/--set key is inert and surfaces as a divergence
     warning instead of an error.
     """
+    from chipcompiler.cli.project import flow_selection
     from chipcompiler.cli.project.config import validate_project_config
 
     errors = validate_project_config(cfg)
+    # validate_project_config checks the ecc.toml policy on the preset; the
+    # run's own flow config (a range or a project.json policy) is checked here.
+    if isinstance(flow_config, dict):
+        errors.extend(
+            error
+            for error in flow_selection.selection_errors(cfg, flow_config)
+            if error not in errors
+        )
     if fresh:
         from chipcompiler.cli.project.design_inputs import validate_entry_inputs
 
-        errors.extend(validate_entry_inputs(cfg, _entry_step_for_target(cfg, flow_config)))
+        errors.extend(validate_entry_inputs(cfg, flow_selection.entry_step(cfg, flow_config)))
     if ctx.project_state == "manifest":
         # The [flow] relaxation covers an ABSENT preset only (the target is
         # derivable elsewhere); an explicitly empty preset stays an error.
@@ -374,23 +384,6 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
                 )
             )
     return errors
-
-
-def _entry_step_for_target(cfg, flow_config) -> str | None:
-    if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        return str(flow_config["start_step"])
-    if not cfg.flow_preset:
-        return None
-    from chipcompiler import rtl2gds as rtl2gds_api
-
-    builder = rtl2gds_api.get_flow_builders().get(cfg.flow_preset)
-    if builder is None:
-        return None
-    steps = builder()
-    if not steps:
-        return None
-    step = steps[0][0]
-    return step.value if hasattr(step, "value") else str(step)
 
 
 def _validate_rtl_source(project_dir: str, entry: str) -> list[str]:

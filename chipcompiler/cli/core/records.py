@@ -1,16 +1,16 @@
-def error_record(error: str, **fields) -> dict:
-    record = {"kind": "error", "error": error}
+def error_record(error: str, **fields: object) -> dict[str, object]:
+    record: dict[str, object] = {"kind": "error", "error": error}
     record.update(fields)
     return record
 
 
-def warning_record(warning: str, **fields) -> dict:
-    record = {"kind": "warning", "warning": warning}
+def warning_record(warning: str, **fields: object) -> dict[str, object]:
+    record: dict[str, object] = {"kind": "warning", "warning": warning}
     record.update(fields)
     return record
 
 
-def manifest_error_record(manifest_error: str, **fields) -> dict:
+def manifest_error_record(manifest_error: str, **fields: object) -> dict[str, object]:
     """Error record for a manifest selector failure, preserving the kind.
 
     The manifest_error text carries a "kind: reason" prefix; unknown kinds

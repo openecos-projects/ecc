@@ -278,12 +278,14 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
     if "flow.skip_steps" in cfg._explicit_keys:
+        from chipcompiler.cli.project.flow_selection import selection_errors
         from chipcompiler.rtl2gds import resolve_skip_steps
 
         try:
             resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
         except ValueError as exc:
             errors.append(str(exc))
+        errors.extend(selection_errors(cfg, None))
 
     if "flow.lec_engine" in cfg._explicit_keys:
         from chipcompiler.rtl2gds import resolve_lec_engine

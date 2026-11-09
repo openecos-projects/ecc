@@ -201,11 +201,12 @@ def _populate(
 
 
 def _default_toml(design_name: str) -> str:
-    from chipcompiler.data import DEFAULT_SKIP_STEPS
+    from chipcompiler.data import DEFAULT_LEC_ENGINE, DEFAULT_SKIP_STEPS
 
     from .timing_template import SDC_INPUT_TEMPLATE
 
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
+    lec_engine = json.dumps(DEFAULT_LEC_ENGINE.value)
     return (
         f'''[design]
 name = "{design_name}"
@@ -219,7 +220,10 @@ root = ""
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+# lec_engine: kepler_formal | yosys_lec | lec_dual
+lec_engine = {lec_engine}
+# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = {skip_steps}
 '''
         + SDC_INPUT_TEMPLATE

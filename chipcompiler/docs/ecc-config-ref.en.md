@@ -502,7 +502,42 @@ to skip. An empty list enables both synthesis LEC and `diff_opt`.
 Existing workspaces resume their saved ledgers; use a new workspace or
 `--overwrite` to apply a different policy.
 
-When enabled, it reads the preceding
+`skip_steps` (in `ecc.toml`, `home/params.toml`, and `project.json`
+`workspaces[].skip_steps`) may name any step of the rtl2gds chain, not only
+`lec`, `diff_opt`, `postRouteLec`, and `Timing optimization`; aliases such as
+`synth`, `cts`, and `TimingOpt` are accepted and unknown names are rejected.
+An absent key means the code default `["lec", "diff_opt"]`; `[]` runs every
+step. Whether a selection can run is decided by step capabilities — the design
+data each step requires, the design data it can optionally use, and what it
+provides:
+
+- An enabled step that lacks required design data is a configuration error:
+  `ecc check`, `ecc run`, and workspace creation reject it, with a fix hint
+  naming the disabled steps to re-enable (skipping `legalization` and
+  `Timing optimization` gives
+  `route requires legal; enable Timing optimization or legalization`).
+- A step that lacks only optional data runs with degraded results and is
+  reported as a `flow_step_degraded` warning. Skipping `CTS` warns
+  `route runs with degraded results without clock_tree; enable CTS` (likewise
+  for `sta`, `powerAnalysis`, and `Harden`); routing and STA after a skipped
+  CTS use the pre-CTS (ideal clock) timing constraints.
+- The preset's final step is the flow target and cannot be skipped (`Harden`
+  for `rtl2gds`, `lec` for `synthesis_lec`), and neither can an explicit range
+  start (`home/params.toml` `[flow] start`, `ecc run --from`, `project.json`
+  `start_step`). A preset's first step may be skipped: skipping `Synthesis`
+  (and `lec`) enters the run at `preFloorplan` with the declared
+  `[design] netlist` (postSynthesis input mode); the entry step's inputs are
+  checked as before.
+- Skipping a signoff checker (`drc`, `lvs`, `sta`) leaves no signoff evidence:
+  `ecc signoff check` reports that gate as `unknown`, never pass.
+
+`ecc flow plan` lists the preset's steps and checks a selection
+(`--enable`/`--disable` try one without writing `ecc.toml`); `ecc flow edit`
+picks the steps in a terminal checkbox list, or applies `--enable`/`--disable`
+directly, and after confirmation (or with `--yes`) rewrites `[flow]` with
+`preset`, `lec_engine`, and `skip_steps` stated explicitly. See the user guide §8.6.
+
+When enabled, `diff_opt` reads the preceding
 DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
 with three positions per segment and the four ICS55 masters BUFX8H7L, BUFX12H7L,
 BUFX16H7L and BUFX20H7L. Each round accepts at most one action per net,

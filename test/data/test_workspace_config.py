@@ -12,7 +12,6 @@ from chipcompiler.data.parameter_keys import normalize_keys
 from chipcompiler.data.workspace_config import (
     WorkspaceConfigError,
     WorkspaceFlowTargetError,
-    canonical_flow_chain,
     flow_range_for_preset,
     flow_range_of,
     flow_section_from_flow_config,
@@ -300,12 +299,7 @@ def test_chip_identity_rejects_legacy_long_keys():
     assert not parameters_have_chip_identity(legacy)
 
 
-def test_canonical_chain_and_preset_ranges():
-    chain = canonical_flow_chain()
-    assert chain[0] == "Synthesis"
-    assert chain[-1] == "Harden"
-    assert "RCX" in chain and "sta" in chain
-
+def test_preset_ranges():
     assert flow_range_for_preset("rtl2gds") == ("Synthesis", "Harden")
     assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec")
 
@@ -405,8 +399,17 @@ def test_flow_section_rejects_invalid_lec_engine():
 def test_flow_section_rejects_invalid_skip_steps():
     with pytest.raises(WorkspaceFlowTargetError, match="skip_steps"):
         validate_flow_config({"skip_steps": "lec"})
-    with pytest.raises(WorkspaceFlowTargetError, match="cannot be skipped"):
-        validate_flow_config({"skip_steps": ["route"]})
+    with pytest.raises(WorkspaceFlowTargetError, match="unknown flow steps: bogus"):
+        validate_flow_config({"skip_steps": ["bogus"]})
+
+
+def test_preset_section_may_skip_its_first_step_but_not_its_final_step():
+    assert validate_flow_config({"preset": "rtl2gds", "skip_steps": ["Synthesis", "lec"]}) == {
+        "preset": "rtl2gds",
+        "skip_steps": ["Synthesis", "lec"],
+    }
+    with pytest.raises(WorkspaceFlowTargetError, match="'lec' ends the 'synthesis_lec' preset"):
+        validate_flow_config({"preset": "synthesis_lec", "skip_steps": ["lec"]})
 
 
 def test_flow_section_from_flow_config_carries_declared_skip():

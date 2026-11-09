@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 from chipcompiler.cli.project.config import ProjectConfig
 
@@ -28,13 +29,13 @@ class CommandContext:
 
 @dataclass(frozen=True)
 class CommandResult:
-    records: tuple[dict, ...] = field(default_factory=tuple)
+    records: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     exit_code: int = 0
 
     @staticmethod
-    def ok(records: list[dict]) -> "CommandResult":
+    def ok(records: list[dict[str, Any]]) -> "CommandResult":
         return CommandResult(records=tuple(records), exit_code=0)
 
     @staticmethod
-    def err(records: list[dict], exit_code: int = 1) -> "CommandResult":
+    def err(records: list[dict[str, Any]], exit_code: int = 1) -> "CommandResult":
         return CommandResult(records=tuple(records), exit_code=exit_code)

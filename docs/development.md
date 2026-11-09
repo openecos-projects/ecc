@@ -743,7 +743,7 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (20 canonical steps,
+`rtl2gds` preset is the full synthesis-to-harden chain (23 canonical steps,
 including a synthesis-level LEC immediately after Synthesis that the default
 skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
 Harden emits GDS + abstract LEF + timing LIB):
@@ -800,11 +800,11 @@ and EM limits are invented test data, **not foundry data**. A successful CI run
 with this fixture verifies execution and data handoff only; its IR/EM numbers
 must not be used for signoff. Normal projects do not select it automatically.
 
-Four optional steps can be excluded from a workspace at creation time:
-the synthesis LEC (`lec`), placement-parasitic optimization (`diff_opt`),
-the post-route LEC (`postRouteLec`), and timing
-optimization (`Timing optimization`). Skipped steps never enter the
-workspace's execution ledger — their inputs fall through to the previous
+Any step of the rtl2gds chain can be excluded from a workspace at creation
+time, not only the four optional steps — the synthesis LEC (`lec`),
+placement-parasitic optimization (`diff_opt`), the post-route LEC
+(`postRouteLec`), and timing optimization (`Timing optimization`). Skipped
+steps never enter the workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
 resume/rerun semantics are unchanged, and existing ledgers are never
 re-filtered: changing the policy later cannot insert or remove steps in a
@@ -828,13 +828,48 @@ An explicit `skip_steps = []` runs every step, enabling both.
 Selecting the `synthesis_lec` preset while the
 effective policy skips `lec` is a creation-time configuration error; the
 fix is `skip_steps = []`. Entries accept the same aliases as flow ranges
-(e.g. `LEC`, `postlec`, `TimingOpt`) and are validated against the
-skippable set.
+(e.g. `LEC`, `postlec`, `synth`, `cts`, `TimingOpt`) and are validated
+against the steps of the chain; unknown names are rejected.
+
+Whether a selection can run is decided by step capabilities — each step's
+required design data, optional design data, and what it provides
+(`plan_flow` in `chipcompiler/data/flow_plan.py`, checked by `check_flow` in
+`chipcompiler/data/flow_check.py`):
+
+- An enabled step that lacks required design data is a configuration error;
+  `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
+  naming the disabled steps to re-enable, e.g. skipping `legalization` and
+  `Timing optimization` gives
+  `route requires legal; enable Timing optimization or legalization`.
+- A step that lacks only optional data runs with degraded results and is
+  reported as a `flow_step_degraded` warning, e.g. skipping `CTS` warns
+  `route runs with degraded results without clock_tree; enable CTS` (likewise
+  sta, powerAnalysis, Harden). Routing/STA after a skipped CTS use the
+  pre-CTS (ideal clock) timing constraints.
+- The preset's final step is the flow target and cannot be skipped (Harden
+  for `rtl2gds`, lec for `synthesis_lec`); neither can an explicit range start
+  (`params.toml [flow] start`, `ecc run --from`, `project.json` `start_step`).
+  A preset's first step may be skipped: skipping `Synthesis` (and `lec`)
+  enters the run at `preFloorplan` with the declared `[design] netlist`
+  (postSynthesis input mode); the entry step's inputs are checked as before.
+- Skipping a signoff checker (drc, lvs, sta) means no signoff evidence:
+  `ecc signoff check` reports that gate as `unknown`, never pass.
+
+`ecc flow plan` shows the selection as a checklist and checks it
+(`--enable`/`--disable` try one without writing `ecc.toml`); `ecc flow edit`
+picks the steps in a terminal checkbox list (or applies `--enable`/`--disable`)
+and, once confirmed (or with `--yes`), writes `[flow]` `preset`, `lec_engine`,
+and `skip_steps` explicitly. Like
+`ecc param`, both read the selection from `ecc.toml`. `ecc init` writes:
 
 ```toml
 [flow]
+# preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+# lec_engine: kepler_formal | yosys_lec | lec_dual
+lec_engine = "kepler_formal"
+# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
 ```
 
@@ -890,7 +925,8 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# Optional: skip_steps = ["lec", "diff_opt"] (default); [] runs everything
+# Optional: skip_steps = ["lec", "diff_opt"] (default); any chain step may be
+# listed (check with `ecc flow plan`); [] runs everything
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example

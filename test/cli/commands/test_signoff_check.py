@@ -360,3 +360,34 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     assert result.exit_code == expected_code
     assert result.records[0]["status"] == status
     assert all("status" in record for record in result.records[1:])
+
+
+@pytest.mark.parametrize(
+    ("checker", "metric_id"),
+    [
+        ("drc", "drc_count"),
+        ("lvs", "lvs_count"),
+        ("sta", "sta_setup_violation_count"),
+    ],
+)
+def test_skipped_checker_never_passes_signoff(tmp_path, checker, metric_id):
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": ["lec", checker]})
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text(json.dumps(ledger))
+    # Clean evidence left in the tree (a copied or reused directory) is not
+    # evidence of a checker this ledger does not run.
+    _write_metric(tmp_path, checker, {metric_id: 0})
+
+    result = _metric_checker_gate(tmp_path, checker, metric_id)
+
+    assert result == {
+        "source": None,
+        "violation_count": None,
+        "failed_items": [],
+        "stale": False,
+        "provisional": True,
+        "status": "unknown",
+        "reason": f"{checker}_evidence_unavailable",
+    }

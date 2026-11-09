@@ -7,8 +7,12 @@ by the first requested flow step; it never writes step configuration files.
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
+
+if TYPE_CHECKING:
+    from chipcompiler.cli.project.config import ProjectConfig
 
 
 @dataclass(frozen=True)
@@ -60,7 +64,7 @@ def required_inputs_for_step(step: str) -> tuple[str, ...]:
     return ()
 
 
-def resolve_design_inputs(cfg) -> ResolvedDesignInputs:
+def resolve_design_inputs(cfg: "ProjectConfig") -> ResolvedDesignInputs:
     """Resolve declared input paths against the project root."""
     from chipcompiler.cli.project.config import _resolve_path
 
@@ -77,7 +81,7 @@ def resolve_design_inputs(cfg) -> ResolvedDesignInputs:
     )
 
 
-def validate_entry_inputs(cfg, entry_step: str | None) -> list[str]:
+def validate_entry_inputs(cfg: "ProjectConfig", entry_step: str | None) -> list[str]:
     """Validate only files needed by the requested entry step.
 
     Optional SDC is checked when explicitly declared because it is copied into

@@ -52,36 +52,6 @@ def test_discovery_ignores_non_matching_names(monkeypatch):
         assert fn not in builders.values()
 
 
-def test_build_rtl2gds_flow_is_the_complete_flow():
-    flow = builder_module.build_rtl2gds_flow()
-
-    assert flow == [
-        (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
-        (SkippableStepEnum.LEC, "kepler_formal", StateEnum.Unstart),
-        (StepEnum.PRE_FLOORPLAN, "ecc", StateEnum.Unstart),
-        (StepEnum.MACRO_PLACEMENT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.POST_FLOORPLAN, "ecc", StateEnum.Unstart),
-        (StepEnum.PREPLACE, "sizer", StateEnum.Unstart),
-        (StepEnum.PLACEMENT, "dreamplace", StateEnum.Unstart),
-        (SkippableStepEnum.DIFF_OPT, "dreamplace", StateEnum.Unstart),
-        (StepEnum.DIFF_SIZING, "dreamplace", StateEnum.Unstart),
-        (StepEnum.CTS, "ecc", StateEnum.Unstart),
-        (StepEnum.LEGALIZATION, "dreamplace", StateEnum.Unstart),
-        (SkippableStepEnum.TIMING_OPT, "sizer", StateEnum.Unstart),
-        (StepEnum.ROUTING, "ecc", StateEnum.Unstart),
-        (StepEnum.FILLER, "ecc", StateEnum.Unstart),
-        (StepEnum.LVS, "ecc", StateEnum.Unstart),
-        (StepEnum.DRC, "ecc", StateEnum.Unstart),
-        (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
-        (SkippableStepEnum.POST_ROUTE_LEC, "kepler_formal", StateEnum.Unstart),
-        (StepEnum.RCX, "ecc", StateEnum.Unstart),
-        (StepEnum.STA, "ecc", StateEnum.Unstart),
-        (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
-        (StepEnum.EMIR, "ecc", StateEnum.Unstart),
-        (StepEnum.HARDEN, "ecc", StateEnum.Unstart),
-    ]
-
-
 def test_default_flow_data_marks_checker_steps():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
@@ -279,6 +249,8 @@ def test_resolve_skip_steps_explicit_empty_list_runs_everything():
         (["DIFF-OPT", "lec", "diff_optimization"], ("lec", "diff_opt")),
         (["postRouteLec", "lec"], ("lec", "postRouteLec")),
         (["TimingOpt", "lec", "postlec"], ("lec", "Timing optimization", "postRouteLec")),
+        # Any chain step may be named; plan_flow decides whether the rest runs.
+        (["route", "Synth", "cts"], ("Synthesis", "CTS", "route")),
     ],
 )
 def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected):
@@ -293,8 +265,8 @@ def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected)
         "lec",
         None,
         [1],
-        ["lec", "route"],
         ["bogus"],
+        ["defview"],
     ],
 )
 def test_resolve_skip_steps_rejects_invalid_values(raw):
@@ -377,8 +349,27 @@ def test_preset_shaped_flow_config_builds_the_preset_ledger():
     section = flow_section_from_flow_config(policy)
     assert section == {"preset": "synthesis_lec", "skip_steps": []}
 
-    # The default policy conflicts with this preset's LEC endpoint: the
-    # skipped boundary is a deterministic unknown-step error (the data-level
-    # mirror of the creation-time preset conflict).
-    with pytest.raises(ValueError, match="unknown flow step"):
+    # The default policy skips this preset's final step, its flow target
+    # (the data-level mirror of the creation-time preset conflict).
+    with pytest.raises(ValueError, match="'lec' ends the flow"):
         build_dynamic_flow_data({"preset": "synthesis_lec"})
+
+
+def test_preset_ledger_may_start_after_a_skipped_first_step():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": ["Synthesis", "lec"]})
+
+    assert [step["name"] for step in ledger.get("steps", [])][:2] == [
+        "preFloorplan",
+        "macroPlacement",
+    ]
+
+
+def test_ledger_is_never_built_for_a_selection_missing_required_design_data():
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    with pytest.raises(ValueError, match="route requires legal; enable Timing optimization"):
+        build_dynamic_flow_data(
+            {"preset": "rtl2gds", "skip_steps": ["legalization", "Timing optimization"]}
+        )

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping
+from typing import Final
 
 from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
@@ -13,32 +14,67 @@ from chipcompiler.data import (
     ToolName,
 )
 
-# Step values a project is allowed to exclude from its ledger.
-SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
+#: One built chain entry: (step, tool, state).
+BuiltStep = tuple[StepBaseEnum | str, str, StateEnum | str]
+
+#: The canonical rtl2gds chain as (step, tool); ``None`` takes the LEC engine.
+#: Skip policies validate against this data, never a (patched) builder call.
+_RTL2GDS_CHAIN: Final[tuple[tuple[StepBaseEnum, str | None], ...]] = (
+    (StepEnum.SYNTHESIS, ToolName.YOSYS.value),
+    (SkippableStepEnum.LEC, None),
+    (StepEnum.PRE_FLOORPLAN, ToolName.ECC.value),
+    (StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value),
+    (StepEnum.POST_FLOORPLAN, ToolName.ECC.value),
+    (StepEnum.PREPLACE, ToolName.SIZER.value),
+    (StepEnum.PLACEMENT, ToolName.DREAMPLACE.value),
+    (SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value),
+    (StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value),
+    (StepEnum.CTS, ToolName.ECC.value),
+    (StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value),
+    (SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value),
+    (StepEnum.ROUTING, ToolName.ECC.value),
+    (StepEnum.FILLER, ToolName.ECC.value),
+    (StepEnum.LVS, ToolName.ECC.value),
+    (StepEnum.DRC, ToolName.ECC.value),
+    (StepEnum.ANTENNA_CHECK, ToolName.ECC.value),
+    (SkippableStepEnum.POST_ROUTE_LEC, None),
+    (StepEnum.RCX, ToolName.ECC.value),
+    (StepEnum.STA, ToolName.ECC.value),
+    (StepEnum.POWER_ANALYSIS, ToolName.ECC.value),
+    (StepEnum.EMIR, ToolName.ECC.value),
+    (StepEnum.HARDEN, ToolName.ECC.value),
+)
 
 
-def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
+def rtl2gds_step_names() -> tuple[str, ...]:
+    """The canonical rtl2gds step names, in chain order."""
+    return tuple(step.value for step, _tool in _RTL2GDS_CHAIN)
+
+
+def resolve_lec_engine(flow_config: Mapping[str, object] | None) -> LECEngineEnum:
     """The LEC engine a flow config declares.
 
     Presence-keyed like the skip policy: an absent ``lec_engine`` key yields
     the code default; a declared value validates and normalizes through
     :meth:`LECEngineEnum.from_value` (the ``dual`` alias becomes ``lec_dual``).
     """
-    if not isinstance(flow_config, dict) or "lec_engine" not in flow_config:
+    if not isinstance(flow_config, Mapping) or "lec_engine" not in flow_config:
         return DEFAULT_LEC_ENGINE
     return LECEngineEnum.from_value(flow_config["lec_engine"])
 
 
-def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
+def resolve_skip_steps(flow_config: Mapping[str, object] | None) -> tuple[str, ...]:
     """The effective skip policy carried by a flow config.
 
     Presence-keyed: an absent ``skip_steps`` key yields the code default;
     an explicitly empty list yields ``()`` (run every step). To enable
     ``diff_opt`` alone, declare ``["lec"]``. Entries accept the same aliases as step
-    ranges, must name skippable steps only, and normalize to canonical
-    step values in canonical chain order (idempotently).
+    ranges, must name steps of the rtl2gds chain, and normalize to canonical
+    step values in canonical chain order (idempotently). Whether the
+    remaining steps can run is decided by their capabilities
+    (:func:`chipcompiler.data.flow_plan.plan_flow`), not here.
     """
-    if not isinstance(flow_config, dict) or "skip_steps" not in flow_config:
+    if not isinstance(flow_config, Mapping) or "skip_steps" not in flow_config:
         return DEFAULT_SKIP_STEPS
     raw = flow_config["skip_steps"]
     if not isinstance(raw, list):
@@ -48,17 +84,13 @@ def resolve_skip_steps(flow_config: dict | None) -> tuple[str, ...]:
         if not isinstance(entry, str):
             raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
         requested.add(normalize_flow_step(entry))
-    illegal = sorted(requested - SKIPPABLE_STEP_VALUES)
-    if illegal:
-        legal = ", ".join(sorted(SKIPPABLE_STEP_VALUES))
+    chain_names = rtl2gds_step_names()
+    unknown = sorted(requested - set(chain_names))
+    if unknown:
         raise ValueError(
-            f"skip_steps names steps that cannot be skipped: {', '.join(illegal)}; "
-            f"skippable steps: {legal}"
+            f"skip_steps names unknown flow steps: {', '.join(unknown)}; "
+            f"flow steps: {', '.join(chain_names)}"
         )
-    chain_names = [
-        step.value if isinstance(step, StepBaseEnum) else str(step)
-        for step, _tool, _state in build_rtl2gds_flow()
-    ]
     return tuple(name for name in chain_names if name in requested)
 
 
@@ -73,8 +105,8 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
 
 
 def substitute_lec_engine(
-    steps: list, lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
-) -> list:
+    steps: list[BuiltStep], lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
+) -> list[BuiltStep]:
     """Replace the tool of a built chain's LEC entries with the engine.
 
     For callers that build a preset chain through the no-arg discovery
@@ -101,32 +133,10 @@ def build_rtl2gds_flow(
     *, skip: Collection[str] = (), lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
 ) -> list:
     lec_tool = LECEngineEnum.from_value(lec_engine).value
-    steps = []
-
-    steps.append((StepEnum.SYNTHESIS, ToolName.YOSYS.value, StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
-    steps.append((StepEnum.PRE_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.POST_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
-    steps.append((StepEnum.PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value, StateEnum.Unstart))
-    steps.append((StepEnum.ROUTING, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.FILLER, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.LVS, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.DRC, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.ANTENNA_CHECK, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((SkippableStepEnum.POST_ROUTE_LEC, lec_tool, StateEnum.Unstart))
-    steps.append((StepEnum.RCX, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.STA, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.POWER_ANALYSIS, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.EMIR, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.HARDEN, ToolName.ECC.value, StateEnum.Unstart))
-
+    steps = [
+        (step, lec_tool if tool is None else tool, StateEnum.Unstart)
+        for step, tool in _RTL2GDS_CHAIN
+    ]
     return filter_flow_steps(steps, skip)
 
 
@@ -235,7 +245,7 @@ def build_defview_flow() -> list:
     return [(StepEnum.DEFVIEW, ToolName.ECC.value, StateEnum.Unstart)]
 
 
-def get_flow_builders() -> dict[str, Callable[[], list]]:
+def get_flow_builders() -> dict[str, Callable[[], list[BuiltStep]]]:
     """Discover flow presets from the build_*_flow defs in this module."""
     builders = {}
     for name, fn in globals().items():

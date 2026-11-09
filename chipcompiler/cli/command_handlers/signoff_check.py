@@ -11,7 +11,7 @@ from chipcompiler.cli.inspection.discovery import (
 )
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
-from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.utility import JsonObject
 
@@ -228,7 +228,13 @@ def _metric_checker_gate(root: Path, checker: str, metric_id: str | None = None)
             for item in steps
             if isinstance(item, dict) and str(item.get("name", "")).lower() == checker
         ),
-        {"name": checker, "tool": "ecc", "state": "Success"},
+        # A checker the ledger does not run (skipped, or outside a derived
+        # range) has no evidence, whatever a step directory still holds.
+        {
+            "name": checker,
+            "tool": "ecc",
+            "state": StateEnum.Unstart.value if steps else StateEnum.Success.value,
+        },
     )
     evidence = checker_evidence(root, step, str(flow.get("design", "design")))
     counts = evidence.get("counts", {})

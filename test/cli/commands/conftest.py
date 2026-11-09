@@ -163,12 +163,20 @@ def set_flow_preset():
 
 @pytest.fixture
 def patch_all_flow_builders():
-    """Patch every preset builder with a distinctive two-step stub chain."""
+    """Patch every preset builder with a distinctive two-step stub chain.
+
+    The marker steps are registered steps without required design data, so
+    the capability check of a declared skip policy accepts every stub chain.
+    """
 
     def _patch(monkeypatch):
         markers = {}
-        for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
-            steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
+        for attr, marker in (
+            ("build_rtl2gds_flow", "GDS"),
+            ("build_syn_sta_flow", "Signoff"),
+            ("build_synthesis_lec_flow", "Abstract lef"),
+        ):
+            steps = [("Synthesis", "yosys", "Unstart"), (marker, "ecc", "Unstart")]
             markers[attr] = steps
             monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
         return markers

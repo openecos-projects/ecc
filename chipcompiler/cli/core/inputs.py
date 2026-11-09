@@ -29,6 +29,23 @@ class FlowValidateInput:
 
 
 @dataclass(frozen=True)
+class FlowPlanInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    enable: tuple[str, ...] = ()
+    disable: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FlowEditInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    enable: tuple[str, ...] = ()
+    disable: tuple[str, ...] = ()
+    yes: bool = False
+
+
+@dataclass(frozen=True)
 class InitInput:
     name: str
     output: OutputOptions

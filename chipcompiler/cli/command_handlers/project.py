@@ -74,12 +74,13 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     # manifest fallback applied, entry layer resolved, manifest relaxations
     # honored, every declared RTL source checked.
     cfg = ctx.config
+    entry_flow_config: dict | None = None
     entry_warnings: list[dict] = []
     if ctx.project_state == "manifest":
         resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
         if isinstance(resolved_cfg, CommandResult):
             return resolved_cfg
-        cfg, _entry_flow_config, entry_warnings = resolved_cfg
+        cfg, entry_flow_config, entry_warnings = resolved_cfg
     elif cfg is None:
         return CommandResult.err(
             [
@@ -91,7 +92,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = effective_config.validate_effective(ctx, cfg, fresh=False, flow_config=None)
+    errors = effective_config.validate_effective(
+        ctx, cfg, fresh=False, flow_config=entry_flow_config
+    )
 
     if errors:
         return CommandResult.err(
@@ -116,7 +119,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                     os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
                 )
 
-    records = [
+    records: list[dict[str, object]] = [
         {
             "project": cfg.design_name,
             "status": "checked",
@@ -158,6 +161,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
+    from chipcompiler.cli.project.flow_selection import selection_warnings
+
+    records.extend(selection_warnings(cfg, entry_flow_config))
     records.extend(entry_warnings)
 
     return CommandResult.ok(records)
@@ -1044,6 +1050,9 @@ def _run_project(
             preflight = None
         if preflight is not None:
             return preflight
+        from chipcompiler.cli.project.flow_selection import selection_warnings
+
+        warning_records = [*warning_records, *selection_warnings(cfg, flow_config)]
 
     if (
         not fresh_target

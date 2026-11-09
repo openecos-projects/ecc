@@ -491,7 +491,30 @@ skip_steps = ["lec"]  # 开启 diff_opt；默认值为 ["lec", "diff_opt"]
 `skip_steps = []` 同时开启 synthesis LEC 和 `diff_opt`。
 已有 workspace 按保存的 ledger 续跑；切换策略需新建 workspace 或使用 `--overwrite`。
 
-启用后，它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
+`skip_steps`（`ecc.toml`、`home/params.toml` 以及 `project.json` 的
+`workspaces[].skip_steps`）可以列出 rtl2gds 链上的任意步骤，不再限于 `lec`、`diff_opt`、
+`postRouteLec` 和 `Timing optimization`；接受 `synth`、`cts`、`TimingOpt` 等别名，未知步骤名仍被拒绝。
+缺省该键时取代码默认值 `["lec", "diff_opt"]`；`[]` 运行全部步骤。选择能否运行由步骤能力决定——
+每个步骤必需的设计数据、可选使用的设计数据及其产出：
+
+- 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 与 workspace 创建都会拒绝，
+  修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `Timing optimization` 时报
+  `route requires legal; enable Timing optimization or legalization`）。
+- 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告。跳过 `CTS` 时警告
+  `route runs with degraded results without clock_tree; enable CTS`（`sta`、`powerAnalysis`、
+  `Harden` 同理）；跳过 CTS 后的布线与 STA 使用 CTS 之前的（理想时钟）时序约束。
+- preset 的最后一步是 flow 目标，不能跳过（`rtl2gds` 为 `Harden`，`synthesis_lec` 为 `lec`）；
+  显式的范围起点（`home/params.toml` `[flow] start`、`ecc run --from`、`project.json`
+  `start_step`）同样不能跳过。preset 的首步可以跳过：跳过 `Synthesis`（及 `lec`）后，运行从
+  `preFloorplan` 进入，使用声明的 `[design] netlist`（postSynthesis 输入模式）；入口步骤的输入照旧检查。
+- 跳过签核检查步骤（`drc`、`lvs`、`sta`）即没有签核证据：`ecc signoff check` 将该门禁报告为
+  `unknown`，绝不会报 pass。
+
+`ecc flow plan` 列出 preset 的步骤并检查所选组合（`--enable`/`--disable` 只试算，不写入
+`ecc.toml`）；`ecc flow edit` 在终端勾选列表中选择步骤，或直接应用 `--enable`/`--disable`，经确认
+（或带 `--yes`）后把 `[flow]` 的 `preset`、`lec_engine`、`skip_steps` 显式写回。详见用户指南 §8.6。
+
+启用后，`diff_opt` 从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
 使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。

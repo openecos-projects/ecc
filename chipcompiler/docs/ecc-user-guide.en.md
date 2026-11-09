@@ -140,7 +140,7 @@ Commands:
   check-update  Check whether a newer nightly build is available
   rtl           Import project RTL sources
   param         Manage EDA parameters
-  flow          Inspect available ECC flows
+  flow          Inspect available ECC flows and the project's step selection
   macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -180,6 +180,7 @@ eval "$(ecc --show-completion)"     # auto-detects the current shell
 
 - Add that line to `~/.zshrc` / `~/.bashrc` (or home-manager `initExtra`) to enable completion permanently. zsh requires `compinit` to be initialized first.
 - On NixOS or other declaratively managed setups, prefer the `eval` line over `--install-completion`: the latter rewrites `~/.zshrc` / `~/.bashrc` in place, which fails on read-only rc symlinks and conflicts with home-manager.
+- Flow step names complete for `ecc flow plan` / `ecc flow edit` `--enable`/`--disable` and for `ecc run --from/--to/--only`.
 
 ## 1.7. Command index
 
@@ -201,7 +202,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc check-update` | check whether a newer nightly build is available | §2.5 |
 | `ecc rtl import` | import RTL/filelist into the project's `rtl/` | §8.5 |
 | `ecc param apply / list / show / set / unset / diff` | parameter management (project/workspace scopes) | §9 |
-| `ecc flow list / show / validate` | inspect and validate registered flows | §8.6 |
+| `ecc flow list / show / validate / plan / edit` | inspect and validate registered flows; check and choose the project's steps (`skip_steps`) | §8.6 |
 | `ecc macro set / remove / import / show` | manual macro placement | §9.5 |
 | `ecc pdk set-root / show / verify / unset` | PDK path configuration and content verification | §10 |
 | `ecc project apply / baseline / reconcile / set / unset / add / remove / show / doctor` | edit `ecc.toml` declarations, select the QoR baseline, manifest health check | §8.5 |
@@ -302,7 +303,10 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+# lec_engine: kepler_formal | yosys_lec | lec_dual
+lec_engine = "kepler_formal"
+# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
 ```
 
@@ -1020,11 +1024,15 @@ $ ecc workspace derive trial branch_a
 ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
+ecc flow plan [--enable STEP]... [--disable STEP]... [--project DIR] [--plain|--json]
+ecc flow edit [--enable STEP]... [--disable STEP]... [--yes] [--project DIR] [--plain|--json]
 ```
 
 `flow list` prints every registered flow preset and its ordered steps (`rtl2gds`, `syn_sta`,
 `synthesis_lec`) as `flow_step` records with `ordinal`, `skippable`, and `default skipped`
-flags — the same catalog `ecc run --preset` selects from. `flow show FLOW_ID` filters to one
+flags — the same catalog `ecc run --preset` selects from. `skippable` marks the steps that
+are optional by design (`lec`, `diff_opt`, `Timing optimization`, `postRouteLec`); any step
+may be skipped when the rest can still run, which `ecc flow plan` checks. `flow show FLOW_ID` filters to one
 preset (`unknown_flow`, exit 2, for an unregistered name). `flow validate` checks the flow
 definitions and step metadata and emits one `flow_validation` record per flow; all three are
 read-only and need no running workspace.
@@ -1045,7 +1053,7 @@ $ ecc flow validate
   record: flow_validation
   status: valid
   flow id: rtl2gds
-  step count: 22
+  step count: 23
   ...                            # one record per remaining flow
 
 $ ecc flow list --json
@@ -1060,6 +1068,89 @@ $ ecc flow list --json
   },
   ...
 ]
+```
+
+`flow plan` and `flow edit` work on the project's own step selection, which they read from
+`ecc.toml` `[flow]` (like `ecc param`). `[flow] skip_steps` may name any step of the rtl2gds
+chain (aliases such as `synth`, `cts`, `TimingOpt` are accepted; unknown names are rejected).
+Whether a selection can run is decided by each step's required design data, optional design
+data, and what it provides:
+
+- An enabled step that lacks required design data is a config error: `ecc check`, `ecc run`,
+  and workspace creation reject it, and the fix hint names the disabled steps to re-enable
+  (skipping `legalization` and `Timing optimization` gives
+  `route requires legal; enable Timing optimization or legalization`).
+- A step that lacks only optional data runs with degraded results and is reported as a
+  `flow_step_degraded` warning (skipping `CTS` warns
+  `route runs with degraded results without clock_tree; enable CTS`, likewise for sta,
+  powerAnalysis, and Harden; routing/STA then use the pre-CTS ideal-clock timing constraints).
+- The preset's final step is the flow target and cannot be skipped (Harden for `rtl2gds`, lec
+  for `synthesis_lec`), nor can an explicit range start (`params.toml [flow] start`,
+  `ecc run --from`, `project.json` `start_step`). The first step can: skipping `Synthesis` (and
+  `lec`) enters the run at `preFloorplan` with the declared `[design] netlist`; the entry
+  step's inputs are checked as before.
+- Skipping a signoff checker (drc, lvs, sta) leaves no signoff evidence: `ecc signoff check`
+  reports that gate as `unknown`, never pass.
+- Existing workspace ledgers are never re-filtered; a new selection applies to the next fresh
+  or `--overwrite` run.
+
+`flow plan` is read-only. It shows the preset's steps as a checklist — checkbox, position,
+step, tool, the design data the step needs (optional inputs dimmed) and gives, and `optional`
+/ `target` tags — followed by errors and warnings. `--enable`/`--disable` try a selection
+without writing `ecc.toml`. It exits 1 when an enabled step lacks required design data or an
+entry input is missing from `ecc.toml` (`step_input_missing: preFloorplan requires
+design.netlist`). `--json` emits one `flow_plan` summary (`flow`, `status` ok|warning|error,
+`enabled_count`, `step_count`, `skip_steps`), one `flow_step` per step (`position`, `step`,
+`tool`, `enabled`, `optional`, `target`, `requires`, `uses`, `provides`), plus
+`flow_violation` (`severity`, `step`, `missing`, `fixes`, `reason`) and `flow_input`
+(`severity`, `step`, `reason`) records.
+
+```console
+$ ecc flow plan --disable CTS
+rtl2gds · 20 of 23 steps enabled
+  ...
+ [ ]   10  CTS     ...
+  ...
+ [✔]   13  route   ecc   legal, clock_tree   routed
+  ...
+! warning: route runs with degraded results without clock_tree; enable CTS
+...                                   # likewise for sta, powerAnalysis, Harden
+
+$ ecc flow plan --disable legalization --disable TimingOpt     # exit 1
+  ...
+✖ error: route requires legal; enable Timing optimization or legalization
+```
+
+`flow edit` without flags opens an interactive checkbox list in the terminal (it needs a TTY
+that can redraw, so not `TERM=dumb`, and text output; otherwise it fails with
+`flow_edit_requires_terminal`): `↑/↓` or `j/k` move, `space` toggles, `enter` saves,
+`q`/`esc` cancels. Every toggle is re-checked live, a selection with errors cannot be saved,
+and the final step is shown as `target` and cannot be unchecked (a policy that skips it, such
+as `synthesis_lec` under the default policy, which skips `lec`, is edited with it checked). With
+`--enable`/`--disable` it applies the toggles without the list; an invalid selection is reported before anything
+else. Before writing, `flow edit` shows the new selection and its warnings and asks to
+confirm: `y` writes, `n`/`enter`/`q` keep `ecc.toml` unchanged. `--yes` writes without
+asking; without a terminal, `--enable`/`--disable` need `--yes` (otherwise
+`flow_edit_requires_confirmation`). It writes `ecc.toml` `[flow]` `preset`, `lec_engine`, and
+`skip_steps` explicitly (defaults included, comments preserved) so the file alone states the
+selection, then reports warnings: `flow_step_degraded`, `flow_input_missing`,
+`workspace_flow_mismatch` (an existing workspace whose ledger the new selection contradicts;
+rerun it with `ecc run --workspace <id> --overwrite`, or run the selection in a new
+workspace with `ecc run --workspace <new id>`. `ecc workspace derive` does not apply it: a
+derived workspace keeps its source's steps), and `skip_steps_shadowed` when `project.json`
+declares a different policy. `flow edit` edits the steps of the `ecc.toml` `[flow]` preset;
+without one (for example a workspace ranged only in `project.json`, which `flow plan` still
+shows) it fails with `flow_target_missing`.
+
+```console
+$ ecc flow edit --disable CTS --enable diff_opt --yes
+✔ wrote [flow] to /tmp/gcd/ecc.toml
+  preset = rtl2gds · lec_engine = kepler_formal
+  skip_steps = lec, CTS
+  enabled: diff_opt
+  disabled: CTS
+! warning: route runs with degraded results without clock_tree; enable CTS
+...                                   # likewise for sta, powerAnalysis, Harden
 ```
 
 ## 9. param — parameter management

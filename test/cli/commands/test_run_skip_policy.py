@@ -11,6 +11,7 @@ import os
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.project.manifest import load_manifest
 from test.flow_fixture import step_fields
 
 
@@ -136,3 +137,35 @@ def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
     rc = cli_main.run(["run", "--project", project_dir, "--resume"])
 
     assert rc == 0
+
+
+def test_run_skipping_synthesis_enters_with_the_declared_netlist(
+    monkeypatch, create_cli_project, flow_mocks
+):
+    from chipcompiler.rtl2gds import build_rtl2gds_flow
+
+    monkeypatch.setattr("chipcompiler.rtl2gds.builder.build_rtl2gds_flow", build_rtl2gds_flow)
+    project_dir = create_cli_project()
+    netlist = os.path.join(project_dir, "gcd_netlist.v")
+    with open(netlist, "w") as f:
+        f.write("module gcd(input clk); endmodule\n")
+    toml_path = os.path.join(project_dir, "ecc.toml")
+    with open(toml_path) as f:
+        toml = f.read()
+    toml = toml.replace("[design]\n", '[design]\nnetlist = "gcd_netlist.v"\n')
+    toml += '\nskip_steps = ["Synthesis", "lec"]\n'
+    with open(toml_path, "w") as f:
+        f.write(toml)
+
+    assert cli_main.run(["run", "--project", project_dir]) == 0
+
+    create_kwargs = flow_mocks.capture["create_kwargs"]
+    assert (create_kwargs["origin_verilog"], create_kwargs["parameters"]["_input_mode"]) == (
+        netlist,
+        "postSynthesis",
+    )
+    names = [str(step) for step, _tool, _state in flow_mocks.flow.instances[0].added_steps]
+    assert names[0] == "preFloorplan"
+    # project.json ranges the workspace from its entry step, so it reloads.
+    (entry,) = load_manifest(project_dir).workspaces
+    assert (entry.start_step, entry.end_step) == ("PreFloorplan", "Harden")

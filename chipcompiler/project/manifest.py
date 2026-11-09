@@ -23,39 +23,15 @@ from typing import Any
 MANIFEST_FILENAME = "project.json"
 CONFIG_FILENAME = "ecc.toml"
 
-# GUI display names for the canonical rtl2gds chain.
-MANIFEST_FLOW_STEPS = (
-    "Synth",
-    "LEC",
-    "PreFloorplan",
-    "MacroPlacement",
-    "PostFloorplan",
-    "Preplace",
-    "Place",
-    "DiffOpt",
-    "DiffSizing",
-    "CTS",
-    "Legal",
-    "TimingOpt",
-    "Route",
-    "Filler",
-    "RCX",
-    "STA",
-    "PowerAnalysis",
-    "LVS",
-    "PostRouteLEC",
-    "DRC",
-    "AntennaCheck",
-    "EMIR",
-    "Harden",
-)
-
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
 }
 
+#: project.json (GUI) display name of each canonical rtl2gds step, in the
+#: manifest's range order: after RCX it orders the signoff checks differently
+#: from the canonical chain, and persisted ranges are validated in this order.
 _CANONICAL_TO_MANIFEST_STEP = {
     "Synthesis": "Synth",
     "lec": "LEC",
@@ -74,13 +50,16 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "RCX": "RCX",
     "sta": "STA",
     "powerAnalysis": "PowerAnalysis",
-    "emir": "EMIR",
     "lvs": "LVS",
     "postRouteLec": "PostRouteLEC",
     "drc": "DRC",
     "antennaCheck": "AntennaCheck",
+    "emir": "EMIR",
     "Harden": "Harden",
 }
+
+# GUI display names for the canonical rtl2gds chain, in manifest range order.
+MANIFEST_FLOW_STEPS = tuple(_CANONICAL_TO_MANIFEST_STEP.values())
 
 # Display name -> canonical step value, for skip-policy boundary checks.
 _MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}

@@ -1,0 +1,246 @@
+# pyright: strict
+"""The typed view of a project's step selection, and its record form.
+
+``ecc flow plan`` reports :class:`PlanView` as records (``--json``/``--plain``);
+the rich table and the ``ecc flow edit`` checkbox draw the view itself. Records
+read back through :func:`view_from_records` are checked field by field.
+"""
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Literal, cast
+
+from chipcompiler.data.flow_check import Severity
+from chipcompiler.data.flow_plan import FlowPlan, PlannedStep
+from chipcompiler.data.types import DesignState, PlacementLegality, flow_step_policy
+
+ProblemKind = Literal["flow_violation", "flow_input"]
+ProblemSeverity = Literal["error", "warning"]
+PlanStatus = Literal["ok", "warning", "error"]
+Record = dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class StepRow:
+    position: int
+    step: str
+    tool: str
+    enabled: bool
+    optional: bool
+    #: The flow's final step: it cannot be skipped.
+    target: bool
+    requires: tuple[str, ...]
+    uses: tuple[str, ...]
+    provides: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PlanProblem:
+    """Missing design data (``flow_violation``) or an undeclared entry input
+    (``flow_input``)."""
+
+    kind: ProblemKind
+    severity: ProblemSeverity
+    step: str
+    reason: str
+    missing: tuple[str, ...] = ()
+    fixes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PlanView:
+    flow: str
+    steps: tuple[StepRow, ...]
+    problems: tuple[PlanProblem, ...]
+
+    @property
+    def enabled_count(self) -> int:
+        return sum(step.enabled for step in self.steps)
+
+    @property
+    def skip_steps(self) -> tuple[str, ...]:
+        return tuple(step.step for step in self.steps if not step.enabled)
+
+    @property
+    def status(self) -> PlanStatus:
+        severities = {problem.severity for problem in self.problems}
+        return "error" if "error" in severities else "warning" if severities else "ok"
+
+    @property
+    def blocks_saving(self) -> bool:
+        """Whether a step lacks required design data (inputs can be declared later)."""
+        return any(
+            problem.kind == "flow_violation" and problem.severity == "error"
+            for problem in self.problems
+        )
+
+
+def plan_view(plan: FlowPlan, *, flow: str, input_errors: Sequence[str] = ()) -> PlanView:
+    """The view of *plan*; *input_errors* are entry inputs ``ecc.toml`` lacks."""
+    steps = tuple(
+        _step_row(position, step, final=position == len(plan.steps))
+        for position, step in enumerate(plan.steps, start=1)
+    )
+    problems = [
+        PlanProblem(
+            kind="flow_violation",
+            severity="error" if violation.severity is Severity.ERROR else "warning",
+            step=violation.step,
+            reason=violation.message(),
+            missing=violation.missing_names,
+            fixes=violation.fixes,
+        )
+        for violation in plan.violations
+    ]
+    entry = plan.enabled_steps[0]
+    problems.extend(
+        PlanProblem(kind="flow_input", severity="error", step=entry, reason=reason)
+        for reason in input_errors
+    )
+    return PlanView(flow=flow, steps=steps, problems=tuple(problems))
+
+
+def view_records(view: PlanView) -> list[Record]:
+    """A ``flow_plan`` summary, one ``flow_step`` per step, then the problems."""
+    records: list[Record] = [
+        {
+            "record": "flow_plan",
+            "flow": view.flow,
+            "status": view.status,
+            "enabled_count": view.enabled_count,
+            "step_count": len(view.steps),
+            "skip_steps": list(view.skip_steps),
+        }
+    ]
+    records.extend(
+        {
+            "record": "flow_step",
+            "position": step.position,
+            "step": step.step,
+            "tool": step.tool,
+            "enabled": step.enabled,
+            "optional": step.optional,
+            "target": step.target,
+            "requires": list(step.requires),
+            "uses": list(step.uses),
+            "provides": list(step.provides),
+        }
+        for step in view.steps
+    )
+    for problem in view.problems:
+        record: Record = {
+            "record": problem.kind,
+            "severity": problem.severity,
+            "step": problem.step,
+        }
+        if problem.kind == "flow_violation":
+            record["missing"] = list(problem.missing)
+            record["fixes"] = list(problem.fixes)
+        record["reason"] = problem.reason
+        records.append(record)
+    return records
+
+
+def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
+    """The view :func:`view_records` reported; raises ``ValueError`` otherwise."""
+    if not records or records[0].get("record") != "flow_plan":
+        raise ValueError("flow plan records must start with a flow_plan summary")
+    steps: list[StepRow] = []
+    problems: list[PlanProblem] = []
+    for record in records[1:]:
+        kind = record.get("record")
+        if kind == "flow_step":
+            steps.append(
+                StepRow(
+                    position=_int(record, "position"),
+                    step=record_str(record, "step"),
+                    tool=record_str(record, "tool"),
+                    enabled=_bool(record, "enabled"),
+                    optional=_bool(record, "optional"),
+                    target=_bool(record, "target"),
+                    requires=record_strings(record, "requires"),
+                    uses=record_strings(record, "uses"),
+                    provides=record_strings(record, "provides"),
+                )
+            )
+        elif kind == "flow_violation" or kind == "flow_input":
+            problem_kind: ProblemKind = (
+                "flow_violation" if kind == "flow_violation" else "flow_input"
+            )
+            severity = record_str(record, "severity")
+            if severity != "error" and severity != "warning":
+                raise ValueError(f"unknown problem severity: {severity!r}")
+            problems.append(
+                PlanProblem(
+                    kind=problem_kind,
+                    severity=severity,
+                    step=record_str(record, "step"),
+                    reason=record_str(record, "reason"),
+                    missing=record_strings(record, "missing") if kind == "flow_violation" else (),
+                    fixes=record_strings(record, "fixes") if kind == "flow_violation" else (),
+                )
+            )
+        else:
+            raise ValueError(f"unexpected flow plan record: {kind!r}")
+    return PlanView(
+        flow=record_str(records[0], "flow"), steps=tuple(steps), problems=tuple(problems)
+    )
+
+
+def _step_row(position: int, step: PlannedStep, *, final: bool) -> StepRow:
+    policy = flow_step_policy(step.name)
+    provides: set[str] = {str(item) for item in policy.provides}
+    if policy.legality is PlacementLegality.LEGALIZED:
+        provides.add(DesignState.LEGAL.value)
+    return StepRow(
+        position=position,
+        step=step.name,
+        tool=step.tool,
+        enabled=step.enabled,
+        optional=step.optional,
+        target=final,
+        requires=tuple(sorted(str(item) for item in policy.requires)),
+        uses=tuple(sorted(str(item) for item in policy.uses)),
+        provides=tuple(sorted(provides)),
+    )
+
+
+def _field(record: Mapping[str, object], key: str) -> object:
+    if key not in record:
+        raise ValueError(f"flow plan record lacks {key!r}")
+    return record[key]
+
+
+def record_str(record: Mapping[str, object], key: str) -> str:
+    """The string field *key*; raises ``ValueError`` when absent or not a string."""
+    value = _field(record, key)
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string, not {value!r}")
+    return value
+
+
+def _int(record: Mapping[str, object], key: str) -> int:
+    value = _field(record, key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{key} must be an integer, not {value!r}")
+    return value
+
+
+def _bool(record: Mapping[str, object], key: str) -> bool:
+    value = _field(record, key)
+    if not isinstance(value, bool):
+        raise ValueError(f"{key} must be a boolean, not {value!r}")
+    return value
+
+
+def record_strings(record: Mapping[str, object], key: str) -> tuple[str, ...]:
+    """The list-of-strings field *key*; raises ``ValueError`` otherwise."""
+    value = _field(record, key)
+    if not isinstance(value, list):
+        raise ValueError(f"{key} must be a list, not {value!r}")
+    items: list[str] = []
+    for item in cast("list[object]", value):
+        if not isinstance(item, str):
+            raise ValueError(f"{key} entries must be strings, not {item!r}")
+        items.append(item)
+    return tuple(items)

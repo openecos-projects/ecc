@@ -198,7 +198,7 @@ Commands:
   check-update  Check whether a newer nightly build is available
   rtl           Import project RTL sources
   param         Manage EDA parameters
-  flow          Inspect available ECC flows
+  flow          Inspect available ECC flows and the project's step selection
   macro         Manage manual macro placement (macro_location.tcl)
   pdk           Show and configure the PDK path used by this project
   project       Edit project declarations in ecc.toml
@@ -238,6 +238,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 
 - 把该行写入 `~/.zshrc` / `~/.bashrc`（或 home-manager 的 `initExtra`）即可永久启用。zsh 需要先初始化 `compinit`。
 - 在 NixOS 等声明式管理的环境中，请用上面的 `eval` 方式而不是 `--install-completion`：后者会原地改写 `~/.zshrc` / `~/.bashrc`，对只读 rc 符号链接会失败，且与 home-manager 冲突。
+- `ecc flow plan` / `ecc flow edit` 的 `--enable`/`--disable` 以及 `ecc run --from/--to/--only` 可补全 flow 步骤名。
 
 ## 1.7. 命令总索引
 
@@ -259,7 +260,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc check-update` | 检查是否有更新的 nightly 构建 | §2.5 |
 | `ecc rtl import` | 把 RTL/filelist 导入项目 `rtl/` | §8.5 |
 | `ecc param apply / list / show / set / unset / diff` | 参数管理（项目/工作区双作用域） | §9 |
-| `ecc flow list / show / validate` | 查看与校验已注册 flow | §8.6 |
+| `ecc flow list / show / validate / plan / edit` | 查看与校验已注册 flow；检查并选择项目要运行的步骤（`skip_steps`） | §8.6 |
 | `ecc macro set / remove / import / show` | 手工宏单元摆放 | §9.5 |
 | `ecc pdk set-root / show / verify / unset` | PDK 路径配置与内容校验 | §10 |
 | `ecc project apply / baseline / reconcile / set / unset / add / remove / show / doctor` | 编辑 `ecc.toml` 声明、选 QoR 基线、清单健康检查 | §8.5 |
@@ -359,7 +360,10 @@ root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
+# lec_engine: kepler_formal | yosys_lec | lec_dual
+lec_engine = "kepler_formal"
+# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
 ```
 
@@ -1031,11 +1035,15 @@ $ ecc workspace derive trial branch_a
 ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
+ecc flow plan [--enable STEP]... [--disable STEP]... [--project DIR] [--plain|--json]
+ecc flow edit [--enable STEP]... [--disable STEP]... [--yes] [--project DIR] [--plain|--json]
 ```
 
 `flow list` 以 `flow_step` 记录输出每个已注册 flow preset 及其有序步骤
 （`rtl2gds`、`syn_sta`、`synthesis_lec`），含 `ordinal`、`skippable` 和
-`default skipped` 标志——即 `ecc run --preset` 选择所用的同一目录。`flow show
+`default skipped` 标志——即 `ecc run --preset` 选择所用的同一目录。`skippable`
+标记按设计可选的步骤（`lec`、`diff_opt`、`Timing optimization`、`postRouteLec`）；只要
+其余步骤仍能运行，任何步骤都可以跳过，`ecc flow plan` 负责检查。`flow show
 FLOW_ID` 只显示一个 preset（未注册的名字报 `unknown_flow`，退出码 2）。`flow
 validate` 校验 flow 定义与步骤元数据，并对每个 flow 输出一条 `flow_validation`
 记录；三者均为只读，不需要运行中的 workspace。
@@ -1049,14 +1057,14 @@ $ ecc flow show rtl2gds
   ordinal: 0
   skippable: False
   default skipped: False
-  ...                            # 依次列出 22 个步骤；lec 为 skippable=True 且默认跳过
+  ...                            # 依次列出 23 个步骤；lec 与 diff_opt 为 skippable=True 且默认跳过
 
 $ ecc flow validate
 [status]
   record: flow_validation
   status: valid
   flow id: rtl2gds
-  step count: 22
+  step count: 23
   ...                            # 其余 flow 各一条记录
 
 $ ecc flow list --json
@@ -1071,6 +1079,79 @@ $ ecc flow list --json
   },
   ...
 ]
+```
+
+`flow plan` 与 `flow edit` 作用于项目自身的步骤选择，和 `ecc param` 一样从 `ecc.toml` `[flow]`
+读取。`[flow] skip_steps` 可以列出 rtl2gds 链上的任意步骤（接受 `synth`、`cts`、`TimingOpt`
+等别名；未知步骤名仍被拒绝）。选择能否运行由各步骤的能力决定：必需的设计数据、可选的设计
+数据及其产出：
+
+- 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 和 workspace 创建都会拒绝，
+  修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `Timing optimization` 时报
+  `route requires legal; enable Timing optimization or legalization`）。
+- 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告（跳过 `CTS` 时警告
+  `route runs with degraded results without clock_tree; enable CTS`，sta、powerAnalysis、Harden
+  同理；此后的布线/STA 使用 CTS 之前的理想时钟时序约束）。
+- preset 的最后一步是 flow 目标，不能跳过（rtl2gds 为 Harden，synthesis_lec 为 lec）；显式的范围
+  起点（`params.toml [flow] start`、`ecc run --from`、`project.json` `start_step`）同样不能跳过。
+  首步可以跳过：跳过 `Synthesis`（及 `lec`）后，运行从 `preFloorplan` 进入，使用声明的
+  `[design] netlist`；入口步骤的输入照旧检查。
+- 跳过签核检查步骤（drc、lvs、sta）即没有签核证据：`ecc signoff check` 将该门禁报告为
+  `unknown`，绝不会报 pass。
+- 已有 workspace 的 ledger 不会被重新过滤；新的选择只作用于下一次新建或 `--overwrite` 运行。
+
+`flow plan` 为只读命令：以清单形式列出 preset 的步骤——勾选框、序号、步骤、工具、该步骤需要
+（可选输入以暗色显示）与产出的设计数据，以及 `optional`/`target` 标记——随后列出错误与警告。
+`--enable`/`--disable` 用于试算一个选择，不写入 `ecc.toml`。启用的步骤缺少必需设计数据，或
+`ecc.toml` 缺少入口输入（如 `step_input_missing: preFloorplan requires design.netlist`）时退出码
+为 1。`--json` 输出一条 `flow_plan` 汇总（`flow`、`status` ok|warning|error、`enabled_count`、
+`step_count`、`skip_steps`），每个步骤一条 `flow_step`（`position`、`step`、`tool`、`enabled`、
+`optional`、`target`、`requires`、`uses`、`provides`），以及 `flow_violation`（`severity`、
+`step`、`missing`、`fixes`、`reason`）与 `flow_input`（`severity`、`step`、`reason`）记录。
+
+```console
+$ ecc flow plan --disable CTS
+rtl2gds · 20 of 23 steps enabled
+  ...
+ [ ]   10  CTS     ...
+  ...
+ [✔]   13  route   ecc   legal, clock_tree   routed
+  ...
+! warning: route runs with degraded results without clock_tree; enable CTS
+...                                   # sta、powerAnalysis、Harden 同理
+
+$ ecc flow plan --disable legalization --disable TimingOpt     # 退出码 1
+  ...
+✖ error: route requires legal; enable Timing optimization or legalization
+```
+
+`flow edit` 不带参数时在终端打开交互式勾选列表（需要可重绘的 TTY，即不能是 `TERM=dumb`，
+且为文本输出，否则报 `flow_edit_requires_terminal`）：`↑/↓` 或 `j/k` 移动，`space` 切换，
+`enter` 保存，`q`/`esc` 取消。每次切换都会实时重新检查，有错误的选择无法保存；最后一步显示为
+`target`，不能取消勾选（跳过它的策略，例如默认策略下跳过 `lec` 的 `synthesis_lec`，编辑时它保持
+勾选）。带 `--enable`/`--disable` 时不打开列表、直接应用这些切换，无效的选择
+会最先报告。写入前，`flow edit` 会显示新的选择及其警告并请求确认：`y` 写入，`n`/`enter`/`q`
+保持 `ecc.toml` 不变。`--yes` 跳过确认直接写入；没有终端时，`--enable`/`--disable` 必须带
+`--yes`（否则报 `flow_edit_requires_confirmation`）。写入时把 `ecc.toml` `[flow]` 的
+`preset`、`lec_engine` 和 `skip_steps` 全部显式写出（包括默认值，保留注释），使该文件本身即可
+说明所选步骤，随后报告警告：`flow_step_degraded`、`flow_input_missing`、
+`workspace_flow_mismatch`（已有 workspace 的 ledger 与新选择矛盾；用
+`ecc run --workspace <id> --overwrite` 重跑，或用 `ecc run --workspace <new id>` 在新
+workspace 中运行该选择。`ecc workspace derive` 不会应用新选择：派生出的 workspace 沿用源
+workspace 的步骤），以及
+`project.json` 声明了不同策略时已有的 `skip_steps_shadowed`。`flow edit` 编辑的是 `ecc.toml`
+`[flow]` preset 的步骤；未声明 preset 时（例如只在 `project.json` 中声明范围的 workspace，
+`flow plan` 仍可显示）报 `flow_target_missing`。
+
+```console
+$ ecc flow edit --disable CTS --enable diff_opt --yes
+✔ wrote [flow] to /tmp/gcd/ecc.toml
+  preset = rtl2gds · lec_engine = kepler_formal
+  skip_steps = lec, CTS
+  enabled: diff_opt
+  disabled: CTS
+! warning: route runs with degraded results without clock_tree; enable CTS
+...                                   # sta、powerAnalysis、Harden 同理
 ```
 
 ## 9. param — 参数管理

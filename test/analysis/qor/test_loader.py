@@ -161,6 +161,15 @@ class TestMetricSelection:
         assert "route" not in inputs.analyzed_steps
         assert inputs.parse_failures == 0  # unstarted steps are not failures
 
+    def test_step_skipped_from_the_ledger_contributes_nothing(self, tmp_path):
+        steps = {name: state for name, state in _FULL_FLOW.items() if name != "CTS"}
+        workspace = _make_workspace(tmp_path, steps)
+        _write_step_payload(workspace.directory, "CTS_ecc", [_metric("cts_skew", 9999.0)])
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("cts_skew") is None
+        assert "CTS" not in inputs.analyzed_steps
+        assert inputs.parse_failures == 0
+
     def test_failed_payload_counts_as_parse_failure(self, tmp_path):
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         _write(
