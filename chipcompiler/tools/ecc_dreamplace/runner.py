@@ -4,7 +4,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from chipcompiler.data import EccStep, SkippableStepEnum, StateEnum, StepEnum, StepInput, Workspace
-from chipcompiler.data.workspace.macro_location import macro_placements
+from chipcompiler.data.workspace.macro_location import (
+    macro_placements,
+    manual_macro_location_ready,
+    manual_placement_required,
+)
 from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.utility import json_read
@@ -83,6 +87,17 @@ def run_macro_placement(
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         manual_placements = macro_placements(workspace)
+        if manual_placement_required(workspace) and not manual_macro_location_ready(workspace):
+            workspace.logger.error(
+                "Manual macro placement is required, but macro.placements and %s are not "
+                "configured. Complete macro placement in Chip Viewer or run `ecc macro`, "
+                "then rerun macroPlacement.",
+                workspace.config.get("macro_location", "config/macro_location.tcl"),
+            )
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.macro_place.value, state=StateEnum.Imcomplete
+            )
+            return False
         if manual_placements:
             logger.info(
                 "macro.placements set (%d entries); skipping DreamPlace, using %s",

@@ -347,6 +347,31 @@ def test_step_configuration_update_invalidates_only_target_suffix(
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
 
+def test_manual_macro_placement_is_editable_with_floorplan_configuration(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+
+    configuration = read_step_configuration(workspace, "Floorplan")
+    record = next(
+        item for item in configuration["parameters"] if item["param"] == "macro.manual_placement"
+    )
+    assert record["value"] is False
+    assert record["display_key"] == "manual_macro_placement"
+
+    updated = update_workspace_step_configuration(
+        workspace.directory,
+        configuration["workspaceRevision"],
+        "Floorplan",
+        {"macro.manual_placement": True},
+        "step-configuration-manual-macro",
+    )
+
+    assert updated.parameters.data["macro"]["manual_placement"] is True
+
+
 def test_macro_placements_apply_prunes_stale_tcl_when_emptied(tmp_path, minimal_ics55_pdk_factory):
     """§20.5.4: the macro-import commit path keeps params.toml and
     macro_location.tcl consistent — an empty import after a non-empty one

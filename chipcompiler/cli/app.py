@@ -8,6 +8,7 @@ import typer
 from chipcompiler.cli.commands.check_update import register_check_update_command
 from chipcompiler.cli.commands.chipview import register_chipview_commands
 from chipcompiler.cli.commands.compare import compare_app
+from chipcompiler.cli.commands.defview import register_defview_command
 from chipcompiler.cli.commands.doc import register_doc_commands
 from chipcompiler.cli.commands.doctor import register_doctor_commands
 from chipcompiler.cli.commands.experiments import (
@@ -72,6 +73,7 @@ def version_cmd(
 
 
 register_doc_commands(app)
+register_defview_command(app)
 register_chipview_commands(app)
 register_gds_view_commands(app)
 

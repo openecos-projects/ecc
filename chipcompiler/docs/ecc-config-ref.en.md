@@ -223,6 +223,8 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 
 Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
+Set `macro.manual_placement true` (parameter id `macro.manual_placement`, exposed under Floorplan in Studio; for example `ecc param set macro.manual_placement true --workspace default`) to make `macroPlacement` a hard manual-placement gate. With the flag enabled, the step stops as incomplete unless `macro.placements` is non-empty and the generated `config/macro_location.tcl` contains parseable placements. Complete the layout in Chip Viewer or run an `ecc macro` command, then rerun the step. The gate applies even to a design without hard macros, so leave it off unless hand placement is required.
+
 The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
 
 ### 1.6 Auto-generated SDC
@@ -566,9 +568,10 @@ Existing workspace ledgers retain the stored `diff_buffering` alias; new
 workspaces run `diff_opt` followed by `diff_sizing` when it is enabled.
 
 Placement sizing windows and `diff_opt` sizing phases also default to LUT
-actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
-`vt_speedup`. Their round counts, shared budgets and coefficients retain
-their own configuration. Set this parameter to `quad` or `down` explicitly
+actions. `place.timing_sizing_action="quad"` selects among all four directions
+(`size_up`, `size_down`, `vt_slowdown`, `vt_speedup`). Their round counts,
+shared budgets and coefficients retain
+their own configuration. Set this parameter to `up` or `down` explicitly
 to select another action family. Standalone `diff_sizing` uses its own phase
 chain, whose explicit action takes precedence.
 
@@ -615,17 +618,17 @@ of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
 means 0.1%). Each phase uses its own round budget and coefficients, and phases
 run in list order. The stage iteration is set to the sum of phase rounds.
 For standalone `diff_sizing` in `lut_action` mode, the default `null` expands
-to one `up` phase: 50 rounds with a shared 1% budget per round for
-`size_up`/`vt_speedup`. Its coefficients come from `diff_sizing_coefficients`
+to one `quad` phase: 50 rounds with a shared 1% budget per round across all
+four directions. Its coefficients come from `diff_sizing_coefficients`
 (default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
 
 ```toml
 [params.place]
-diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
 An explicit phase chain uses its own coefficients and budgets; configure
-`quad` explicitly to select among all four directions.
+`up` or `down` explicitly to restrict the action directions.
 `timing_action_gradient_mode=off` keeps the legacy path and does not accept
 an action phase chain.
 

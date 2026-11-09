@@ -247,7 +247,41 @@ def _quality_gate_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]
     )
 
 
+def _manual_macro_placement_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]:
+    from chipcompiler.data.workspace.macro_location import (
+        manual_macro_location_ready,
+        manual_placement_required,
+    )
+
+    if not manual_placement_required(workspace):
+        return []
+    ready = manual_macro_location_ready(workspace)
+    macro_location = workspace.config.get("macro_location", "config/macro_location.tcl")
+    return [
+        _item(
+            item_id="manual.macro.placement.required",
+            step=step.name,
+            category="gate",
+            owner="checklist",
+            policy="block",
+            state="pass" if ready else "failed",
+            title="Manual macro placement",
+            summary=(
+                "Manual macro placements are configured and ready."
+                if ready
+                else (
+                    "macro.manual_placement is enabled, but macro.placements and "
+                    f"{macro_location} are not ready. Place macros in Chip Viewer or run "
+                    "`ecc macro`, then rerun macroPlacement."
+                )
+            ),
+        )
+    ]
+
+
 def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]:
+    if step.name == StepEnum.MACRO_PLACEMENT.value:
+        return _manual_macro_placement_items(workspace, step)
     if step.name == StepEnum.HARDEN.value:
         artifacts = (
             ("gds", "Harden GDS", getattr(step.output, "gds", None)),

@@ -60,6 +60,13 @@ DreamPlace 宏摆放，由 `postFloorplan` 依据该文件将宏以 fixed 状态
 最后一个条目会清空参数并恢复 DreamPlace 自动摆放。不支持手工编辑该文件：未设置
 `macro.placements` 时，重新运行 `macroPlacement` 会重新生成交接文件。
 
+若要求必须手摆宏，请在运行前设置 `macro.manual_placement true`（Studio 的
+Flow Setup 卡片中显示为 **Manual macro placement**）。执行到 `macroPlacement`
+时，ECC 会检查 `macro.placements` 与生成的 `config/macro_location.tcl` 是否
+都包含摆放；任一缺失都会把该步骤标记为未完成并提示先完成宏摆放。通过 Chip
+Viewer 保存布局或执行 `ecc macro` 后重跑该步骤即可继续。应使用 DreamPlace 自动
+摆放的设计不要启用此开关。
+
 ## 恢复与重跑
 
 普通恢复会从第一个未成功的持久化步骤继续：

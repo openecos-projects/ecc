@@ -66,7 +66,7 @@ SCHEMAS = (
             "ordered standalone diff_sizing phases: "
             "[action, rounds, [wns, tns, slew, cap], selection_percent]; "
             "action is quad, up, or down and percent is in (0, 100]; "
-            "null selects an up phase; ECC defaults to 50 rounds with "
+            "null selects a quad phase; ECC defaults to 50 rounds with "
             "diff_sizing_coefficients and a shared 1% budget per round"
         ),
     ),

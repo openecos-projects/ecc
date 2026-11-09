@@ -224,6 +224,8 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 `ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
+设置 `macro.manual_placement true`（参数 ID 为 `macro.manual_placement`，在 Studio 中位于 Floorplan 配置下；例如 `ecc param set macro.manual_placement true --workspace default`）可把 `macroPlacement` 变成强制手摆检查点。启用后，只有当 `macro.placements` 非空且生成的 `config/macro_location.tcl` 包含可解析的摆放时该步骤才继续；否则步骤以未完成状态中断。请先在 Chip Viewer 完成并保存宏摆放，或执行 `ecc macro` 命令，再重跑该步骤。该检查对没有硬宏的设计同样生效，因此仅在确实需要手摆宏时启用。
+
 交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
 
 ### 1.6 自动生成的 SDC
@@ -546,8 +548,8 @@ buffering-only `diff_opt` 的兼容别名。
 启用 `diff_opt` 时执行 `diff_opt → diff_sizing` 两个独立步骤。
 
 placement 的 sizing 窗口和 `diff_opt` 的 `sz` 阶段也默认使用 LUT action，
-并以 `place.timing_sizing_action="up"` 限制为 `size_up`/`vt_speedup` 二选一。
-轮数、共享预算和系数沿用各自配置；该参数可显式设为 `quad` 或 `down`。
+并以 `place.timing_sizing_action="quad"` 在四个方向（`size_up`、`size_down`、`vt_slowdown`、`vt_speedup`）中选一。
+轮数、共享预算和系数沿用各自配置；该参数可显式设为 `up` 或 `down`。
 独立 `diff_sizing` 使用自己的 phase 链，其显式 action 优先。
 
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
@@ -584,16 +586,16 @@ snapshot + RRR3 路径。显式设置 `place.timing_rc_mode` 也会作为该步�
 `selection_percent` 是每轮参与选择的 sizeable instance 百分比，范围 `(0, 100]`；
 例如 `1` 表示 1%，`0.1` 表示 0.1%。每个 phase 使用自己的轮数和系数，phase
 按列表顺序执行；stage iteration 会自动等于各 phase 轮数之和。默认 `null`
-在独立 `diff_sizing` 的 `lut_action` 模式下展开为单个 `up` phase：50 轮，
-每轮 `size_up`/`vt_speedup` 共享 1% 预算，系数读取 `diff_sizing_coefficients`
+在独立 `diff_sizing` 的 `lut_action` 模式下展开为单个 `quad` phase：50 轮，
+每轮四方向共享 1% 预算，系数读取 `diff_sizing_coefficients`
 （默认 `[500, 5, 1, 1]`）。生成的步骤配置等价于：
 
 ```toml
 [params.place]
-diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
-显式提供 phase 链时使用链内的系数和预算；如需四方向选择，可显式配置 `quad`。
+显式提供 phase 链时使用链内的系数和预算；如需限制方向，可显式配置 `up` 或 `down`。
 `timing_action_gradient_mode=off` 仍使用原有路径，不能指定 action phase 链。
 
 自定义链示例：

@@ -2,6 +2,21 @@ from .common import ParamSchema
 
 SCHEMAS = (
     ParamSchema(
+        param="macro.manual_placement",
+        group="macro",
+        name="manual_placement",
+        type="bool",
+        default=False,
+        applies="floorplan",
+        maps_to={"macro": "manual_placement"},
+        description=(
+            "Require manual hard-macro placement. When true, macroPlacement stops "
+            "unless macro.placements and config/macro_location.tcl contain placements; "
+            "when false, an empty placement set uses DreamPlace."
+        ),
+        example="true",
+    ),
+    ParamSchema(
         param="macro.placements",
         group="macro",
         name="placements",

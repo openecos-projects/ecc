@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.data.parameter import Parameters
 
 
@@ -248,6 +249,108 @@ def test_macro_set_workspace_persists_and_invalidates_suffix(
         "Unstart",
     ]
     assert "workspace_param_overrides" in workspace.parameters.path.read_text()
+
+
+def test_macro_set_snapshot_workspace_passes_placements_to_engine(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text("{}")
+    workspace.parameters.data["macro"] = {
+        "placements": [{"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"}]
+    }
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+    captured = {}
+
+    def fake_engine_mutation(ctx, workspace, schema, requested_value, status):
+        captured["value"] = requested_value
+        captured["status"] = status
+        return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.workspace_params._mutate_via_engine",
+        fake_engine_mutation,
+    )
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "set",
+            "u_ram0",
+            "--x",
+            "10",
+            "--y",
+            "20",
+            "--orient",
+            "R0",
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["status"] == "set"
+    assert captured["status"] == "set"
+    assert captured["value"] == [
+        {"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"},
+        {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"},
+    ]
+
+
+def test_macro_remove_snapshot_workspace_passes_remaining_to_engine(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text("{}")
+    workspace.parameters.data["macro"] = {
+        "placements": [
+            {"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"},
+            {"instance": "u_keep", "x": 3.0, "y": 4.0, "orientation": "MX"},
+        ]
+    }
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+    captured = {}
+
+    def fake_engine_mutation(ctx, workspace, schema, requested_value, status):
+        captured["value"] = requested_value
+        captured["status"] = status
+        return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.workspace_params._mutate_via_engine",
+        fake_engine_mutation,
+    )
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "remove",
+            "u_old",
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["status"] == "removed"
+    assert captured["status"] == "set"
+    assert captured["value"] == [
+        {"instance": "u_keep", "x": 3.0, "y": 4.0, "orientation": "MX"},
+    ]
 
 
 def test_macro_remove_workspace_absent_instance_is_noop(
