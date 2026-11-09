@@ -37,8 +37,8 @@ def defview(command_input, ctx: CommandContext) -> CommandResult:
         output_def=step_directory / "output" / "defview.def",
         step_directory=step_directory,
     )
-    step.output.dir.mkdir(parents=True, exist_ok=True)
-    step.data.dir.mkdir(parents=True, exist_ok=True)
+    Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
+    Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
 
     try:
         generated = run_defview(workspace=workspace, step=step)
