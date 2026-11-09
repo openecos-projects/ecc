@@ -124,7 +124,7 @@ def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
 @pytest.mark.parametrize(
     ("step_name", "phase"),
     [
-        (StepEnum.PREPLACE, "pre_CTS"),
+        (SkippableStepEnum.PREPLACE, "pre_CTS"),
         (SkippableStepEnum.CTS, "pre_CTS"),
         (StepEnum.ROUTING, "post_CTS"),
         (StepEnum.STA, "post_CTS"),
