@@ -31,6 +31,7 @@ from chipcompiler.data.handshake import (
     write_response,
 )
 from chipcompiler.data.types import AnalysisData
+from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
@@ -63,13 +64,15 @@ def execute_step_subprocess(
     attempt_id = new_attempt_id()
 
     try:
-        request = build_step_request(
-            Path(workspace.directory),
-            workspace.flow.steps(),
-            workspace_step,
-            attempt_id=attempt_id,
-            layout_image=layout_image,
-        )
+        # Sibling steps of a parallel wave commit to the same ledger records.
+        with ledger_lock(workspace.flow):
+            request = build_step_request(
+                Path(workspace.directory),
+                workspace.flow.steps(),
+                workspace_step,
+                attempt_id=attempt_id,
+                layout_image=layout_image,
+            )
         write_request(request)
         clear_response(request.directory)
     except (OSError, ValueError) as exc:

@@ -9,7 +9,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from threading import RLock
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -582,7 +581,6 @@ def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monke
 
     agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
     agent_flow.workspace = workspace
-    agent_flow._completion_lock = RLock()
     agent_flow.workspace_steps = [
         EccStep(
             name="Floorplan",
@@ -634,7 +632,6 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
 
     agent_flow = agent_engine.AgentEngineFlow.__new__(agent_engine.AgentEngineFlow)
     agent_flow.workspace = workspace
-    agent_flow._completion_lock = RLock()
     agent_flow.workspace_steps = [
         EccStep(
             name="Floorplan",
