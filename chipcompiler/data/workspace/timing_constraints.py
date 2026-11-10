@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from chipcompiler.utility import json_read
-from chipcompiler.utility.file import write_text_atomic
 
-from .sdc import is_generated_sdc, signoff_sdc_path
+from .sdc import custom_step_sdc_path, is_generated_sdc, signoff_sdc_path
+from .sdc_inputs import SdcInputs
 
 if TYPE_CHECKING:
     from . import Workspace
@@ -52,27 +52,18 @@ def scenario_tcl_path(directory: Path, scenario: TimingScenario, *, post_cts: bo
     return directory / "origin" / phase_dir / f"{scenario.corner}_{temperature}_{scenario.rc}.tcl"
 
 
-def write_timing_io_context(workspace: "Workspace", *, has_io_cells: bool) -> None:
-    if not is_generated_sdc(workspace.pdk.sdc):
-        return
-    path = workspace.directory / "home" / "timing_io.tcl"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_text_atomic(path, f"set has_io_cells {int(has_io_cells)}\n")
-
-
-def generate_timing_scripts(workspace: "Workspace") -> None:
-    """Generate both complete sets without loading RTL or a native database."""
-    if not is_generated_sdc(workspace.pdk.sdc):
+def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None = None) -> None:
+    """Generate both sets and use pre-CTS TYP/TYPICAL as the default entry point."""
+    if workspace.pdk.sdc is not None and not is_generated_sdc(workspace.pdk.sdc):
+        for post_cts in (False, True):
+            custom_step_sdc_path(workspace.pdk.sdc, workspace.directory, post_cts=post_cts)
         return
     scenarios = timing_scenarios(workspace)
     if not scenarios:
         raise ValueError("Generated timing constraints require configured STA scenarios")
-    context = workspace.directory / "home" / "timing_io.tcl"
-    if not context.exists():
-        context.parent.mkdir(parents=True, exist_ok=True)
-        write_text_atomic(
-            context, 'error "ECC must load the design before selecting timing IO constraints"\n'
-        )
+    inputs = SdcInputs.from_parameters(workspace.parameters.data)
+    for corner in dict.fromkeys(scenario.corner for scenario in scenarios):
+        inputs.clocks(workspace.parameters.data, corner)
     for post_cts in (False, True):
         for scenario in scenarios:
             signoff_sdc_path(
@@ -81,4 +72,7 @@ def generate_timing_scripts(workspace: "Workspace") -> None:
                 post_cts=post_cts,
                 corner=scenario.corner,
                 rc_para=scenario.rc,
+                has_io_cells=has_io_cells,
             )
+    typical = next(item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL"))
+    workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)

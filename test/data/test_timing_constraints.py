@@ -1,6 +1,7 @@
 """Initial workspace creation publishes both timing sets before any EDA step."""
 
 import json
+import shutil
 from copy import deepcopy
 from pathlib import Path
 
@@ -17,8 +18,9 @@ def sta_template():
     return json.loads(path.read_text())
 
 
+@pytest.mark.parametrize("read_only", [False, True])
 def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, read_only
 ):
     workspace = create_workspace(
         directory=tmp_path / "run",
@@ -36,6 +38,12 @@ def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
         for post_cts in (False, True)
     }
     assert set((workspace.directory / "origin").rglob("*.tcl")) == expected
+    assert {
+        path for path in (workspace.directory / "origin").rglob("*") if path.is_file()
+    } == expected | {workspace.design.origin_verilog}
+    default_tcl = workspace.directory / "origin/pre_CTS/TYP_25_TYPICAL.tcl"
+    assert workspace.pdk.sdc == default_tcl
+    assert json.loads(workspace.config["db"].read_text())["INPUT"]["sdc_path"] == str(default_tcl)
     for scenario in timing_scenarios(workspace):
         pre = scenario_tcl_path(workspace.directory, scenario, post_cts=False).read_text()
         post = scenario_tcl_path(workspace.directory, scenario, post_cts=True).read_text()
@@ -45,17 +53,19 @@ def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
     assert "steps" in workspace.flow.data
     assert all(entry["state"] == "Unstart" for entry in workspace.flow.data["steps"])
 
-    loaded = load_workspace(workspace.directory)
+    loaded = load_workspace(workspace.directory, read_only=read_only)
+    assert loaded.pdk.sdc == default_tcl
     loaded.parameters.data["frequency_max"] = 250
     assert save_parameter(loaded.parameters)
     refresh_workspace_config(loaded)
     assert all("set clk_freq_mhz 250.0" in path.read_text() for path in expected)
 
 
-def test_workspace_with_custom_full_constraints_does_not_generate_default_sets(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file
+@pytest.mark.parametrize("suffix", [".sdc", ".tcl"])
+def test_workspace_with_custom_full_constraints_generates_only_phase_wrappers(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, suffix
 ):
-    custom = tmp_path / "constraints.sdc"
+    custom = tmp_path / f"constraints{suffix}"
     content = b"# custom \xff\ncreate_clock -period 5 [get_ports clk]\n"
     custom.write_bytes(content)
     workspace = create_workspace(
@@ -70,7 +80,80 @@ def test_workspace_with_custom_full_constraints_does_not_generate_default_sets(
     assert workspace is not None
     assert workspace.pdk.sdc is not None
     assert workspace.pdk.sdc.read_bytes() == content
-    assert list((workspace.directory / "origin").rglob("*.tcl")) == []
+    assert {path for path in (workspace.directory / "origin").rglob("*") if path.is_file()} == {
+        workspace.design.origin_verilog,
+        workspace.pdk.sdc,
+        workspace.directory / "origin/pre_CTS" / f"{custom.name}.ecc.tcl",
+        workspace.directory / "origin/post_CTS" / f"{custom.name}.ecc.tcl",
+    }
+    loaded = load_workspace(workspace.directory)
+    assert loaded.pdk.sdc == workspace.pdk.sdc
+    refresh_workspace_config(loaded)
+    assert loaded.pdk.sdc is not None
+    assert loaded.pdk.sdc.read_bytes() == content
+
+
+def test_refresh_legacy_workspace_rebinds_timing_without_rewriting_base_sdc(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file
+):
+    workspace = create_workspace(
+        directory=tmp_path / "run",
+        origin_def="",
+        origin_verilog=gcd_rtl_file,
+        pdk="ics55",
+        pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk"),
+        parameters=default_ics55_parameters,
+    )
+    assert workspace is not None
+    default_tcl = workspace.pdk.sdc
+    legacy = workspace.directory / "origin/gcd.sdc"
+    content = "# ECC-generated SDC file\ncreate_clock -period 10 [get_ports clk]\n"
+    legacy.write_text(content)
+    workspace.pdk.sdc = legacy
+
+    refresh_workspace_config(workspace)
+
+    assert (workspace.pdk.sdc, legacy.read_text()) == (default_tcl, content)
+    assert load_workspace(workspace.directory).pdk.sdc == default_tcl
+
+
+@pytest.mark.parametrize("custom_suffix", [None, ".sdc", ".tcl"])
+def test_copied_workspace_uses_its_own_timing_input(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, custom_suffix
+):
+    custom = None
+    if custom_suffix is not None:
+        custom = tmp_path / f"constraints{custom_suffix}"
+        custom.write_text("create_clock -period 5 [get_ports clk]\n")
+    workspace = create_workspace(
+        directory=tmp_path / "source",
+        origin_def="",
+        origin_verilog=gcd_rtl_file,
+        pdk="ics55",
+        pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk"),
+        parameters=default_ics55_parameters,
+        sdc=custom or "",
+    )
+    assert workspace is not None and workspace.pdk.sdc is not None
+    destination = tmp_path / "copied"
+    shutil.copytree(workspace.directory, destination)
+
+    loaded = load_workspace(destination)
+
+    assert loaded.pdk.sdc == destination / workspace.pdk.sdc.relative_to(workspace.directory)
+    assert loaded.pdk.sdc is not None
+    assert loaded.pdk.sdc.read_bytes() == workspace.pdk.sdc.read_bytes()
+    original = workspace.pdk.sdc.read_bytes()
+    loaded.parameters.data["frequency_max"] = 250
+    assert save_parameter(loaded.parameters)
+    refresh_workspace_config(loaded)
+    assert workspace.pdk.sdc.read_bytes() == original
+    if custom_suffix is not None:
+        assert loaded.pdk.sdc is not None
+        for phase in ("pre_CTS", "post_CTS"):
+            wrapper = loaded.directory / "origin" / phase / f"{loaded.pdk.sdc.name}.ecc.tcl"
+            assert str(loaded.pdk.sdc) in wrapper.read_text()
+            assert str(workspace.directory) not in wrapper.read_text()
 
 
 @pytest.mark.parametrize("override_keys", [("liberty",), ("signoff",), ("liberty", "signoff")])

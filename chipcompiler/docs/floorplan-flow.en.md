@@ -21,9 +21,9 @@ The split does **not** add an automatic GUI pause protocol.
 
 | Persisted step | Tool | Workspace directory | What it does |
 | --- | --- | --- | --- |
-| `preFloorplan` | ecc | `preFloorplan_ecc/` | Marks the clock net when `clock` is set, builds the initial die/core plan, and runs the simple floorplan. It derives `config/floorplan_ecc_simple.json` from the shared configuration, forces `macro_placer.mode = "auto"`, and clears `file_path`. |
+| `preFloorplan` | ecc | `preFloorplan_ecc/` | Marks the clock net when `clock` is set, builds the initial die/core plan, and runs the simple floorplan. It derives `config/floorplan_ecc_simple.json` from the shared configuration and clears `macro_placer.file_path`. |
 | `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | Runs macro-only placement from the pre-floorplan database, then writes the Tcl macro-location handoff. Manual `macro.placements` skips DreamPlace and uses the Tcl rendered during configuration refresh. |
-| `postFloorplan` | ecc | `postFloorplan_ecc/` | Rewrites the shared `floorplan_ecc.json` to `macro_placer.mode = "file"` with `file_path` pointing at `macro_location.tcl`, then completes floorplanning: tracks, IO pins, tap/endcap cells, PDN, outputs, and analysis. |
+| `postFloorplan` | ecc | `postFloorplan_ecc/` | Sets `macro_placer.file_path` in the shared `floorplan_ecc.json` to `macro_location.tcl`, then completes floorplanning: tracks, IO pins, tap/endcap cells, PDN, outputs, and analysis. |
 
 `Floorplan` remains the shared configuration key; it is not an executable flow
 step. Use the three persisted names above when selecting steps in an existing
@@ -44,7 +44,7 @@ setInstancePlacementStatus -status fixed -name <instance>
 ```
 
 `postFloorplan` passes this file to iFP through `floorplan_ecc.json` with
-`macro_placer.mode = "file"`. An empty file is valid for a design with no hard
+`macro_placer.file_path`. An empty file is valid for a design with no hard
 macros. Every listed instance must exist in the design; old four-column
 location text files are not valid handoffs. The generated orientation values
 are `R0`, `R90`, `R180`, `R270`, `MY`, `MX90`, `MX`, and `MY90`.
@@ -66,6 +66,15 @@ macro placement — `postFloorplan` commits the macros from the file as fixed.
 Removing the last entry clears the parameter and restores the automatic
 DreamPlace behavior. Hand-editing the file is not supported: without
 `macro.placements` set, re-running `macroPlacement` regenerates the handoff.
+
+To make hand placement mandatory, set `macro.manual_placement true` before the
+run (the Studio Flow Setup card exposes it as **Manual macro placement**). At
+`macroPlacement`, ECC verifies that both `macro.placements` and the generated
+`config/macro_location.tcl` contain placements. If either is missing, the step
+stops as incomplete with a message to finish macro placement first; saving the
+layout through Chip Viewer or `ecc macro` and rerunning the step resumes the
+flow. Leave the flag off for designs that should use automatic DreamPlace
+placement.
 
 ## Resuming or re-running stages
 
@@ -94,8 +103,10 @@ See the [CLI User Guide](ecc-user-guide.en.md) for the full selector rules.
 ## Configuration
 
 All floorplan stages share the workspace's `config/floorplan_ecc.json`.
-`preFloorplan` uses a generated simple copy with `macro_placer.mode = "auto"`;
-`postFloorplan` uses the shared file with the macro handoff in `file` mode.
+`preFloorplan` uses a generated simple copy with `macro_placer.file_path = ""`;
+`postFloorplan` uses the shared file with that path set to the macro handoff.
+ECC no longer emits `macro_placer.mode` and removes it when refreshing older
+configs. iFP still accepts legacy `auto`/`file` values; IO placer modes are unchanged.
 Use `ecc param` or `ecc.toml` parameters to change reviewed floorplan settings
 rather than relying on generated per-run values. The
 [Configuration Reference](ecc-config-ref.en.md) lists the supported floorplan

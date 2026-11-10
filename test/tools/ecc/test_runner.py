@@ -1,5 +1,6 @@
 import json
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -21,7 +22,6 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
-from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -162,14 +162,17 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
             calls.append(("destroy_fp",))
 
     floorplan_config = tmp_path / "floorplan_ecc.json"
-    floorplan_config.write_text(
-        json.dumps(
-            {
-                "macro_placer": {"mode": "file", "file_path": "old_locations.txt"},
-                "io_placer": {"mode": "file", "file_path": "io_pins.txt"},
-            }
-        )
+    original_config = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "chipcompiler/tools/ecc/configs/floorplan_ecc.json"
+        ).read_text()
     )
+    original_config["macro_placer"].update(
+        {"mode": "file", "file_path": "old_locations.txt", "macro_placement_halo": 5.0}
+    )
+    original_config["io_placer"].update({"mode": "file", "file_path": "io_pins.txt"})
+    floorplan_config.write_text(json.dumps(original_config))
     simple_floorplan_config = floorplan_config.with_stem("floorplan_ecc_simple")
     macro_location = tmp_path / "macro_location.tcl"
     macro_location.write_text("# macro locations\n")
@@ -206,14 +209,11 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         ("run_simple_fp",),
         ("destroy_fp",),
     ]
-    assert json.loads(simple_floorplan_config.read_text())["macro_placer"] == {
-        "mode": "auto",
-        "file_path": "",
-    }
-    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
-        "mode": "file",
-        "file_path": "old_locations.txt",
-    }
+    expected = deepcopy(original_config)
+    expected["macro_placer"].pop("mode")
+    expected["macro_placer"]["file_path"] = ""
+    assert json.loads(simple_floorplan_config.read_text()) == expected
+    assert json.loads(floorplan_config.read_text()) == original_config
 
     assert ecc_runner.run_post_floorplan(
         workspace=workspace,
@@ -224,10 +224,8 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         ("run_fp",),
         ("destroy_fp",),
     ]
-    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
-        "mode": "file",
-        "file_path": str(macro_location),
-    }
+    expected["macro_placer"]["file_path"] = str(macro_location)
+    assert json.loads(floorplan_config.read_text()) == expected
     assert saved_steps == [StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value]
     assert analyzed_steps == [StepEnum.POST_FLOORPLAN.value]
 
@@ -707,6 +705,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
     )
     step = EccStep(
         output=EccOutput(verilog=netlist),
+        name=StepEnum.SYNTHESIS.value,
         data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
         feature=EccFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
         report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
@@ -739,7 +738,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
                 "report_dir": step.report.dir / "post_synthesis",
                 "feature_dir": step.feature.dir / "post_synthesis",
                 "lib_paths": [liberty],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/pre_CTS" / f"{sdc.name}.ecc.tcl",
                 "max_paths": 1000,
                 "corner": "post_synthesis",
             },
@@ -1043,8 +1042,10 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     step.feature.db.write_text(json.dumps({"Instances": {"iopads": {"num": 1 - io_cell_count}}}))
     monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
     if generated_sdc:
-        create_default_sdc(workspace)
+        workspace.pdk.sdc = None
         generate_timing_scripts(workspace)
+        sdc = workspace.pdk.sdc
+    assert sdc is not None
     original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
@@ -1066,7 +1067,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "sdc_path": (
                 workspace.directory / "origin/post_CTS/MAX_125_RCworst.tcl"
                 if generated_sdc
-                else sdc
+                else workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl"
             ),
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
@@ -1080,7 +1081,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
             "sdc_path": (
-                workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl" if generated_sdc else sdc
+                workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl"
+                if generated_sdc
+                else workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl"
             ),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
@@ -1088,7 +1091,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "corner": "MIN_m40/Cbest",
         },
     ]
-    assert sdc.read_bytes() == original_sdc
     if generated_sdc:
         assert [
             [
@@ -1108,9 +1110,21 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
                 "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
                 f'set corner "{corner}"',
                 f'set rc_para "{rc}"',
+                *(
+                    [
+                        'set virtual_clk_name "VCLK_clk"',
+                        "set data_inputs [remove_from_collection "
+                        "[all_inputs] [get_ports $clk_port_name]]",
+                        "set data_outputs [all_outputs]",
+                    ]
+                    if io_cell_count == 0
+                    else []
+                ),
             ]
             for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
         ]
+    else:
+        assert sdc.read_bytes() == original_sdc
 
 
 def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypatch):

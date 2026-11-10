@@ -129,20 +129,21 @@ def macro_show(args, ctx: CommandContext) -> CommandResult:
 
 
 def _workspace_set(args, ctx: CommandContext, schema, entry: dict) -> CommandResult:
-    from chipcompiler.cli.command_handlers.workspace_params import _mutate
+    from chipcompiler.cli.command_handlers.workspace_params import _load_workspace, _mutate
 
-    written: dict = {}
+    workspace = _load_workspace(ctx)
+    try:
+        current = _workspace_placements(workspace, schema)
+    except CommandError as error:
+        raise ValueError(error.records[0].get("reason", "invalid macro.placements")) from error
+    placements = _upsert(current, entry)
+
+    written: dict = {"placements": placements}
 
     def mutation(workspace):
-        try:
-            current = _workspace_placements(workspace, schema)
-        except CommandError as error:
-            raise ValueError(error.records[0].get("reason", "invalid macro.placements")) from error
-        placements = _upsert(current, entry)
-        written["placements"] = placements
         return set_workspace_param(workspace, schema, placements)
 
-    result = _mutate(ctx, schema, mutation, None, "set")
+    result = _mutate(ctx, schema, mutation, placements, "set")
     _annotate(result, args.instance, written.get("placements"))
     return result
 
@@ -167,13 +168,12 @@ def _workspace_remove(args, ctx: CommandContext, schema) -> CommandResult:
         )
 
     remaining = [entry for entry in current if entry.get("instance") != args.instance]
-    written: dict = {}
+    written: dict = {"placements": remaining}
 
     def mutation(workspace):
-        written["placements"] = remaining
         return set_workspace_param(workspace, schema, remaining)
 
-    result = _mutate(ctx, schema, mutation, None, "set")
+    result = _mutate(ctx, schema, mutation, remaining, "set")
     record = _annotate(result, args.instance, written.get("placements"))
     if record is not None:
         record["status"] = "removed"

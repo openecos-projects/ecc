@@ -174,41 +174,6 @@ def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     assert workspace is None
 
 
-@pytest.mark.parametrize("clock", ["clk", ""])
-def test_create_workspace_generates_default_sdc_from_parameters(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, clock
-):
-    from chipcompiler.data.parameter import Parameters
-    from chipcompiler.data.pdk import PDK
-    from chipcompiler.data.workspace import OriginDesign
-    from chipcompiler.data.workspace.sdc import create_default_sdc
-
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-    parameters = {**default_ics55_parameters, "clock": clock}
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=parameters,
-        pdk_root=str(pdk_root),
-    )
-
-    expected_path = tmp_path / "expected.sdc"
-    create_default_sdc(
-        Workspace(
-            directory=tmp_path,
-            design=OriginDesign(name="gcd", top_module="gcd"),
-            pdk=PDK(sdc=expected_path),
-            parameters=Parameters(data=parameters),
-        )
-    )
-    assert (workspace_dir / "origin" / "gcd.sdc").read_text() == expected_path.read_text()
-
-
 def test_create_workspace_persists_dynamic_flow_steps(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1168,7 +1133,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "die_size": {"width_micron": 100.1, "height_micron": 246.6},
     }
     assert floorplan["macro_placer"] == {
-        "mode": "auto",
         "file_path": "",
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,
@@ -1191,7 +1155,6 @@ def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
     )
     config_path = workspace.config[StepEnum.FLOORPLAN.value]
     floorplan = json_read(config_path)
-    floorplan["macro_placer"].pop("mode")
     floorplan["macro_placer"].pop("file_path")
     floorplan["macro_placer"]["macro_location_path"] = "macro_locations.txt"
     floorplan["io_placer"].pop("mode")
@@ -1202,7 +1165,6 @@ def test_refresh_workspace_config_migrates_legacy_floorplan_schema(
 
     refreshed = json_read(config_path)
     assert refreshed["macro_placer"] == {
-        "mode": "auto",
         "file_path": "",
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,

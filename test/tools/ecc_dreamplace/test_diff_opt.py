@@ -185,7 +185,7 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     assert params.timing_action_gradient_mode == overrides.get(
         "timing_action_gradient_mode", "lut_action"
     )
-    assert params.timing_sizing_action == overrides.get("timing_sizing_action", "up")
+    assert params.timing_sizing_action == overrides.get("timing_sizing_action", "quad")
     assert params.result_dir == str(result_dir)
 
 

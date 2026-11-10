@@ -7,7 +7,6 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
-from chipcompiler.data.workspace.sdc import create_default_sdc
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -31,11 +30,10 @@ def timing_workspace(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(libs=[Path(path) for path in config["liberty"][0]["path"]], sdc=origin / "gcd.sdc"),
+        pdk=PDK(libs=[Path(path) for path in config["liberty"][0]["path"]]),
         config={StepEnum.STA.value: config_path},
         parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
-    create_default_sdc(workspace)
     generate_timing_scripts(workspace)
     return workspace
 
@@ -53,7 +51,7 @@ def native_module():
 
 
 @pytest.mark.parametrize("io_cells", [0, 2])
-def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_workspace, io_cells):
+def test_stage_selection_reuses_resolved_constraints(timing_workspace, io_cells):
     workspace = timing_workspace
     module = Mock(spec=ECCToolsModule)
 
@@ -62,6 +60,7 @@ def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_works
         return True
 
     module.feature_sammry.side_effect = export
+    generate_timing_scripts(workspace, has_io_cells=io_cells > 0)
     files = {
         path: (path.read_bytes(), path.stat().st_mtime_ns)
         for path in (workspace.directory / "origin").rglob("*.tcl")
@@ -82,10 +81,26 @@ def test_stage_selection_reuses_files_and_refreshes_only_io_context(timing_works
             == workspace.directory / "origin" / phase_dir / "TYP_25_TYPICAL.tcl"
         )
     assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in files} == files
-    assert (
-        workspace.directory / "home/timing_io.tcl"
-    ).read_text() == f"set has_io_cells {int(io_cells > 0)}\n"
     module.close.assert_not_called()
+
+
+@pytest.mark.parametrize("io_cells", [0, 2])
+def test_native_preparation_resolves_current_io_branch(timing_workspace, io_cells):
+    workspace = timing_workspace
+    module = Mock(spec=ECCToolsModule)
+
+    def export(json_path):
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": io_cells}}}))
+        return True
+
+    module.feature_sammry.side_effect = export
+    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    build_step_space(step)
+    generate_timing_scripts(workspace, has_io_cells=not bool(io_cells))
+    prepare_timing_context(workspace, step, module)
+    actual = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
+    generate_timing_scripts(workspace, has_io_cells=bool(io_cells))
+    assert actual == {path: path.read_bytes() for path in actual}
 
 
 def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
@@ -106,8 +121,18 @@ def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
 
 
 @pytest.mark.parametrize("suffix", [".sdc", ".tcl"])
-def test_custom_constraints_are_used_unchanged_without_native_probe(
-    timing_workspace, native_module, suffix
+@pytest.mark.parametrize(
+    ("step_name", "phase"),
+    [
+        (StepEnum.PREPLACE, "pre_CTS"),
+        (StepEnum.CTS, "pre_CTS"),
+        (StepEnum.ROUTING, "post_CTS"),
+        (StepEnum.STA, "post_CTS"),
+        (StepEnum.POWER_ANALYSIS, "post_CTS"),
+    ],
+)
+def test_custom_constraints_select_phase_without_native_probe(
+    timing_workspace, native_module, suffix, step_name, phase
 ):
     workspace = timing_workspace
     custom = workspace.directory / f"custom{suffix}"
@@ -115,11 +140,13 @@ def test_custom_constraints_are_used_unchanged_without_native_probe(
     custom.write_bytes(contents)
     workspace.pdk.sdc = custom
     workspace.config.clear()
-    step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
+    step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
     files = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
     generate_timing_scripts(workspace)
     prepare_timing_context(workspace, step, native_module)
-    assert step_tcl_path(workspace, step) == custom
+    expected = workspace.directory / "origin" / phase / f"{custom.name}.ecc.tcl"
+    assert step_tcl_path(workspace, step) == expected
+    assert expected.is_file()
     assert custom.read_bytes() == contents
     assert {path: path.read_bytes() for path in files} == files
     assert native_module.mock_calls == []
@@ -170,8 +197,16 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     assert config_path.read_bytes() == config_before
 
 
-def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_module, monkeypatch):
+@pytest.mark.parametrize("custom", [False, True])
+def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monkeypatch, custom):
     workspace = timing_workspace
+    filename = "TYP_25_TYPICAL.tcl"
+    if custom:
+        workspace.pdk.sdc = workspace.directory / "user.sdc"
+        workspace.pdk.sdc.write_text(
+            "create_clock -period 10 [get_ports clk]\nset_propagated_clock [all_clocks]\n"
+        )
+        filename = "user.sdc.ecc.tcl"
     step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False
@@ -181,7 +216,7 @@ def test_cts_receives_pre_cts_typical_constraints(timing_workspace, native_modul
         db_config="",
         output_dir=step.data.dir,
         lib_paths=workspace.pdk.libs,
-        sdc_path=workspace.directory / "origin/pre_CTS/TYP_25_TYPICAL.tcl",
+        sdc_path=workspace.directory / "origin/pre_CTS" / filename,
     )
 
 

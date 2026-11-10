@@ -14,7 +14,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
-from chipcompiler.data.workspace.timing_constraints import write_timing_io_context
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
     capture_filler_clock_tree,
@@ -809,7 +809,7 @@ def run_filler(
 def run_pre_floorplan(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    """Run the simple floorplan with automatic macro placement enabled."""
+    """Run the simple floorplan without loading macro locations."""
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -831,7 +831,7 @@ def run_pre_floorplan(
             floorplan_path.with_stem(f"{floorplan_path.stem}_simple")
         )
         simple_floorplan = json_read(floorplan_config)
-        simple_floorplan["macro_placer"]["mode"] = "auto"
+        simple_floorplan["macro_placer"].pop("mode", None)
         simple_floorplan["macro_placer"]["file_path"] = ""
         json_write(simple_floorplan_config, simple_floorplan)
 
@@ -865,7 +865,7 @@ def run_post_floorplan(
 
         floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         floorplan = json_read(floorplan_config)
-        floorplan["macro_placer"]["mode"] = "file"
+        floorplan["macro_placer"].pop("mode", None)
         floorplan["macro_placer"]["file_path"] = os.fspath(
             workspace.config.get("macro_location", "")
         )
@@ -1192,7 +1192,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
         raise RuntimeError("Cannot export current iDB IO-cell count for signoff SDC")
     has_io_cells = json_read(step.feature.db or "")["Instances"]["iopads"]["num"] > 0
-    write_timing_io_context(workspace, has_io_cells=has_io_cells)
+    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
 
     for signoff_item in signoff_items:
         corner_name = signoff_item["corner"]

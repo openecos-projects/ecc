@@ -605,11 +605,25 @@ abc -D "$abc_delay_target" \
   -script "$strategy_script" \
   -showtmp
 
-# technology mapping for constant hi- and/or lo-drivers
-hilomap -singleton -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
+# Lower existing tie cells too, so mapped-netlist inputs get the same policy.
+set tie_map "${tmp_dir}/tie_cells.v"
+set tie_map_file [open $tie_map "w"]
+foreach {cell port value} [list \
+    $tie_high_cell $tie_high_port 1 \
+    $tie_low_cell $tie_low_port 0] {
+  puts $tie_map_file [format {
+module \%s (output \%s );
+  assign \%s = 1'b%s;
+endmodule
+} $cell $port $port $value]
+}
+close $tie_map_file
+techmap -map $tie_map
 
-# replace undef values with defined constants
+# Resolve undefined bits and constant aliases before creating one tie per load.
 setundef -zero
+opt_clean -purge
+hilomap -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 
 # Multiple clean passes to catch all redundant logic
 opt_clean -purge

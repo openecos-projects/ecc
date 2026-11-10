@@ -93,9 +93,10 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
 
       - name: List revision.toml
         id: resolve
@@ -709,7 +710,7 @@ jobs:
     runs-on: ecc-nightly-runner-0
     outputs:
       designs: ${{ steps.list.outputs.designs }}
-      designs_dir: ${{ steps.source.outputs.designs_dir }}
+      designs_dir: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
     steps:
       - name: Restore E2E designs from cache
         id: source
@@ -748,14 +749,16 @@ jobs:
           root-marker: lit.cfg.py
 
       - name: Locate staged E2E designs directory
+        id: locate
         if: steps.source.outputs.hit == 'false'
         run: echo "designs_dir=/mnt/arc-stage/runs/${GITHUB_RUN_ID}/e2e-designs" >> "$GITHUB_OUTPUT"
 
       - name: List designs
         id: list
         env:
-          DESIGNS_DIR: ${{ steps.source.outputs.designs_dir }}
+          DESIGNS_DIR: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
         run: |
+          set -euo pipefail
           # xtea disabled everywhere for now: real run shows hold WNS < 0,
           # which would keep its strict signoff gates red until tuned. All
           # other designs, including the memory-heavy BM64, run on the
@@ -764,10 +767,11 @@ jobs:
           designs="$(find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
             | jq -R . | jq -cs .)"
+          jq -e 'length > 0' <<< "${designs}" >/dev/null
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
 
   e2e-packaged-flow:
-    name: E2E Packaged Flow (${{ matrix.design }})
+    name: E2E (${{ matrix.design }})
     needs: [verify-e2e-deps, e2e-designs]
     strategy:
       fail-fast: false
@@ -832,9 +836,10 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
 
       - name: Cache Nix store
         uses: DeterminateSystems/magic-nix-cache-action@v15
@@ -863,6 +868,14 @@ jobs:
             --design "${{ matrix.design }}" \
             --out-root "$RUNNER_TEMP/e2e"
 
+      - name: Export signoff product CSVs
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
+          bash nix/scripts/signoff_csv/export.sh \
+            --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
+            --out-dir "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
+
       - name: Export signoff package
         shell: bash
         run: |
@@ -889,6 +902,16 @@ jobs:
             "${nixpkgs}#jq" \
             -c bash nix/scripts/signoff-lit.sh designs --filter "${{ matrix.design }}"
 
+      - name: Upload signoff product CSVs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-signoff-csv-${{ matrix.design }}
+          path: ${{ runner.temp }}/e2e-product-csv/${{ matrix.design }}/
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Upload e2e workspaces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -897,6 +920,79 @@ jobs:
           if-no-files-found: ignore
           path: |
             ${{ runner.temp }}/e2e
+
+  signoff-csv:
+    name: Signoff CSV collector
+    needs: [e2e-packaged-flow, e2e-designs]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify signoff CSV failure modes
+        run: bash .github/scripts/signoff-csv-test.sh
+
+      - name: Download E2E signoff CSV artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: e2e-signoff-csv-*
+          path: signoff-artifacts
+
+      - name: Link previous successful summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.head_ref || github.ref_name }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if ! response="$(
+            gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs" \
+              -f event="${GITHUB_EVENT_NAME}" \
+              -f branch="${HEAD_BRANCH}" \
+              -f status=success \
+              -f per_page=100
+          )"; then
+            printf '## Previous successful CI\n\nThe previous successful run could not be retrieved.\n\n' \
+              >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          previous_run="$(
+            jq -r --arg repository "${HEAD_REPOSITORY}" --argjson current "${CURRENT_RUN_ID}" \
+              '[.workflow_runs[] | select(
+                .id != $current and .head_repository.full_name == $repository
+              )][0] | if . then [.id, .html_url] | @tsv else empty end' <<< "${response}"
+          )"
+          if [[ -n "${previous_run}" ]]; then
+            IFS=$'\t' read -r previous_run_id previous_run_url <<< "${previous_run}"
+            printf '## Previous successful CI\n\n[Actions run #%s](%s)\n\n' \
+              "${previous_run_id}" "${previous_run_url}" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            printf '## Previous successful CI\n\nNo previous successful run was found for this source branch.\n\n' \
+              >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Publish signoff CSV job summary
+        if: always()
+        env:
+          EXPECTED_DESIGNS: ${{ needs.e2e-designs.outputs.designs }}
+        run: node .github/scripts/signoff-csv-summary.js
+
+      - name: Upload CSV evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-signoff-csv
+          path: signoff-artifacts/
+          if-no-files-found: ignore
+          retention-days: 90
 
   lint:
     needs: check-version
@@ -949,9 +1045,10 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v19
+        uses: DeterminateSystems/nix-installer-action@v22
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          summarize: false
           extra-conf: |
             extra-substituters = https://cache.ani.llc
             extra-trusted-public-keys = cache.ani.llc:8nINs8lCCU0Yoed1KMjLj6fCHpMmrY+sFuhGTdxLB88=

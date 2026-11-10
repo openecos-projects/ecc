@@ -95,6 +95,7 @@ runs:
 
         "$SMOKE_DIR/ecc" --help
         "$SMOKE_DIR/ecc" --version
+        "$SMOKE_DIR/ecc" --show-completion > /dev/null
         version_json="$("$SMOKE_DIR/ecc" version --json)"
         printf '%s\n' "$version_json"
         grep -q '"cli_contract": 1' <<<"$version_json"

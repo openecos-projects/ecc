@@ -44,7 +44,7 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-useOpenSTA" in cmd_text
     assert "-def input.def" in cmd_text
     assert "-v input.v" in cmd_text
-    assert "-sdc clock.sdc" in cmd_text
+    assert f"-sdc {workspace.directory / 'origin/post_CTS/clock.sdc.ecc.tcl'}" in cmd_text
     assert "-asap7" not in cmd_text
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
@@ -424,7 +424,7 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
         "-top gcd",
         f"-def {step.input.def_}",
         f"-v {step.input.verilog}",
-        f"-sdc {workspace.pdk.sdc}",
+        f"-sdc {workspace.directory / 'origin/post_CTS/main_clock.sdc.ecc.tcl'}",
         "-outputPath .",
         f"-def_out_path {expected_def_out}",
         f"-verilog_out_path {expected_verilog_out}",

@@ -146,7 +146,6 @@ class DreamplaceModule:
             params.enable_fillers = 0
             params.random_center_init_flag = 0
             params.auto_adjust_bins = 1
-            params.cell_padding_x = 0
             params.post_legalization_adaptive_padding_flag = 0
 
         if mode in (

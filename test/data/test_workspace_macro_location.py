@@ -3,11 +3,18 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data import create_workspace, load_workspace, refresh_workspace_config
+from chipcompiler.data import (
+    Workspace,
+    create_workspace,
+    load_workspace,
+    refresh_workspace_config,
+)
 from chipcompiler.data.parameter import Parameters, load_parameter, save_parameter
 from chipcompiler.data.workspace.macro_location import (
     MACRO_LOCATION_MARKER,
     MACRO_ORIENTATIONS,
+    manual_macro_location_ready,
+    manual_placement_required,
     parse_macro_location_tcl,
     prune_macro_location_tcl,
     render_macro_location_tcl,
@@ -259,3 +266,24 @@ def test_macro_placements_round_trip_through_params_toml(tmp_path):
     assert save_parameter(Parameters(path=parameters_path, data=deepcopy(data)))
 
     assert load_parameter(parameters_path).data == data
+
+
+def test_manual_macro_location_gate_requires_placements_and_parseable_tcl(tmp_path):
+    tcl = tmp_path / "macro_location.tcl"
+    workspace = Workspace(
+        directory=tmp_path,
+        config={"macro_location": tcl},
+        parameters=Parameters(data={"macro": {"manual_placement": True}}),
+    )
+
+    assert manual_placement_required(workspace) is True
+    assert manual_macro_location_ready(workspace) is False
+
+    workspace.parameters.data["macro"]["placements"] = deepcopy(PLACEMENTS)
+    assert manual_macro_location_ready(workspace) is False
+
+    tcl.write_text(render_macro_location_tcl(PLACEMENTS))
+    assert manual_macro_location_ready(workspace) is True
+
+    tcl.write_text("placeInstance u0 bad 2 R0\n")
+    assert manual_macro_location_ready(workspace) is False
