@@ -128,7 +128,7 @@ def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
         (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),
-        (StepEnum.DIFF_SIZING.value, "dreamplace"),
+        (SkippableStepEnum.DIFF_SIZING.value, "dreamplace"),
     ]
 
 

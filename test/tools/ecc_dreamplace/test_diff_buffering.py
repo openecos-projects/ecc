@@ -140,7 +140,7 @@ def test_placement_range_connects_diff_opt_to_sizing():
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
         (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),
-        (StepEnum.DIFF_SIZING.value, "dreamplace"),
+        (SkippableStepEnum.DIFF_SIZING.value, "dreamplace"),
     ]
 
 

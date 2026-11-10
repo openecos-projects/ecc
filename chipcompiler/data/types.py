@@ -39,11 +39,8 @@ class StepEnum(StepBaseEnum):
     PRE_FLOORPLAN = "preFloorplan"
     MACRO_PLACEMENT = "macroPlacement"
     POST_FLOORPLAN = "postFloorplan"
-    PREPLACE = "preplace"
     PLACEMENT = "place"
     DIFF_BUFFERING = "diff_buffering"
-    DIFF_SIZING = "diff_sizing"
-    CTS = "CTS"
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
@@ -64,14 +61,21 @@ class StepEnum(StepBaseEnum):
 class SkippableStepEnum(StepBaseEnum):
     """Optional flow steps a project may exclude from its ledger.
 
-    These are check/optimization steps whose outputs downstream steps can
-    do without; persisted string values match the former StepEnum members.
+    LEC / postRouteLec / Timing optimization are check/optimization steps
+    whose outputs downstream steps can do without. Pre-place sizing, CTS,
+    and post-placement sizing are placement/timing optimization steps that
+    are only omitted when ``flow.no_clock`` is set — ``resolve_skip_steps``
+    enforces that gate so a clocked design cannot drop them by accident.
+    Persisted string values match the former StepEnum members.
     """
 
     LEC = "lec"
     DIFF_OPT = "diff_opt"
+    PREPLACE = "preplace"
+    DIFF_SIZING = "diff_sizing"
     POST_ROUTE_LEC = "postRouteLec"
     TIMING_OPT = "Timing optimization"
+    CTS = "CTS"
 
     def is_skippable(self) -> bool:
         return True
@@ -113,12 +117,12 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(FlowStepCategory.PNR),
     SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
+    SkippableStepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
@@ -177,6 +181,17 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 # New flows skip synthesis LEC and placement-parasitic diff_opt by default.
 # An explicit skip list replaces this policy; existing ledgers are preserved.
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value)
+
+# Clockless designs have no clock tree or timing closure target, so every
+# placement/CTS timing optimization stage is omitted from the effective skip
+# policy when ``flow.no_clock`` is enabled (or inferred from empty materials).
+NO_CLOCK_SKIP_STEPS: Final = (
+    SkippableStepEnum.DIFF_OPT.value,
+    SkippableStepEnum.PREPLACE.value,
+    SkippableStepEnum.DIFF_SIZING.value,
+    SkippableStepEnum.CTS.value,
+    SkippableStepEnum.TIMING_OPT.value,
+)
 
 
 class ToolName(StrEnum):
