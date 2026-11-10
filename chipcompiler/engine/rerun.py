@@ -127,6 +127,15 @@ def invalidate_from(flow: "EngineFlow", name: str) -> list[str]:
     return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index:]]
 
 
+def invalidate_after(flow: "EngineFlow", name: str) -> list[str]:
+    """Persist an invalidated suffix without touching the named step."""
+    index = _require_step_index(flow, name)
+    if index + 1 >= len(flow.workspace.flow.data.get("steps", [])):
+        return []
+    _invalidate_suffix(flow, index + 1)
+    return [step["name"] for step in flow.workspace.flow.data.get("steps", [])[index + 1 :]]
+
+
 def run_only(
     flow: "EngineFlow",
     name: str,

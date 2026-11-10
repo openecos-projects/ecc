@@ -51,6 +51,13 @@ def apply_cmd(
     project: ProjectOption = None,
     workspace: WorkspaceOption = None,
     step: Annotated[str | None, typer.Option("--step")] = None,
+    commit_step_output: Annotated[
+        bool,
+        typer.Option(
+            "--commit-step-output",
+            help="Keep the successful --step output current and invalidate only its suffix",
+        ),
+    ] = False,
     expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
@@ -64,6 +71,7 @@ def apply_cmd(
         unsets=tuple(unsets or ()),
         workspace=workspace,
         step=step,
+        commit_step_output=commit_step_output,
         expected_revision=expected_revision,
         command_id=command_id,
         no_wait=no_wait,

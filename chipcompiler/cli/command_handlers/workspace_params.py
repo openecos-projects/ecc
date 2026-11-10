@@ -204,7 +204,7 @@ def _mutate(
         with workspace_lock(Path(ctx.run_dir)):
             workspace = _load_workspace(ctx)
             if (Path(ctx.run_dir) / "home" / "engineering-snapshot.json").is_file():
-                return _mutate_via_engine(ctx, workspace, schema, requested_value, status)
+                return _mutate_via_engine(ctx, workspace, schema, mutation, requested_value, status)
             try:
                 result = mutation(workspace)
             except ValueError as exc:
@@ -276,7 +276,7 @@ def _mutate(
     return CommandResult.ok([record])
 
 
-def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: str):
+def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object, status: str):
     from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
     from chipcompiler.engine import update_workspace_step_configuration
     from chipcompiler.engine.snapshot import read_engineering_snapshot
@@ -288,7 +288,11 @@ def _mutate_via_engine(ctx, workspace, schema, requested_value: object, status: 
     if status == "unset" and existing is None:
         return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
     if status == "set":
-        value = requested_value
+        if requested_value is None:
+            mutation(workspace)
+            value = workspace_param_value(workspace, schema)
+        else:
+            value = requested_value
     else:
         if existing is None:
             return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])

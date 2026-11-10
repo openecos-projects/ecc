@@ -2,7 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.data import load_workspace, save_parameter
+from chipcompiler.data import StateEnum, load_workspace, save_parameter
 from chipcompiler.data.param_keys import display_key_for, knob_id_for
 from chipcompiler.data.parameter_schema import (
     list_schemas,
@@ -20,7 +20,7 @@ from chipcompiler.data.workspace_parameters import (
 )
 from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
 from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.rerun import invalidate_from
+from chipcompiler.engine.rerun import invalidate_after, invalidate_from
 from chipcompiler.engine.snapshot import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
@@ -71,9 +71,10 @@ def apply_workspace_parameters(
     unsets: tuple[str, ...],
     *,
     step_id: str | None = None,
+    commit_step_output: bool = False,
     command_id: str = "",
 ):
-    """Atomically apply a validated batch of Workspace-local parameters."""
+    """Atomically apply and verify a validated batch of Workspace parameters."""
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
         raise WorkspaceLifecycleError("workspace_missing", f"Workspace not found: {target}")
@@ -85,6 +86,7 @@ def apply_workspace_parameters(
             sets,
             unsets,
             step_id=step_id,
+            commit_step_output=commit_step_output,
             command_id=command_id,
         ),
     )
@@ -99,6 +101,79 @@ def _prune_macro_location_after_write(workspace, written: set[str]) -> None:
         prune_macro_location_tcl(workspace)
 
 
+def _verify_published_macro_location(workspace) -> None:
+    """Ensure the committed parameters and the postFloorplan handoff agree."""
+    from chipcompiler.data.workspace.macro_location import (
+        macro_placements,
+        parse_macro_location_tcl,
+        render_macro_location_tcl,
+    )
+
+    expected = macro_placements(workspace)
+    target = workspace.config.get("macro_location")
+    path = Path(target) if target else None
+    if not expected:
+        if path is None or not path.is_file():
+            return
+        try:
+            actual = parse_macro_location_tcl(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError) as exc:
+            raise WorkspaceLifecycleError(
+                "step_output_invalid",
+                f"Published macro location handoff is invalid: {exc}",
+            ) from exc
+        if not actual:
+            return
+        raise WorkspaceLifecycleError(
+            "step_output_mismatch",
+            "Published macro location handoff does not match macro.placements",
+            {"expectedCount": 0, "actualCount": len(actual)},
+        )
+
+    if path is None or not path.is_file():
+        raise WorkspaceLifecycleError(
+            "step_output_not_published",
+            "Workspace has no published macro location handoff",
+            {"expectedCount": len(expected)},
+        )
+    try:
+        actual = parse_macro_location_tcl(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise WorkspaceLifecycleError(
+            "step_output_invalid",
+            f"Published macro location handoff is invalid: {exc}",
+        ) from exc
+
+    # The handoff is the canonical physical representation; compare against
+    # the same render/parse round-trip used to produce it rather than rejecting
+    # harmless float formatting differences in the parameter value.
+    try:
+        expected = parse_macro_location_tcl(render_macro_location_tcl(expected))
+    except ValueError as exc:
+        raise WorkspaceLifecycleError(
+            "step_output_invalid",
+            f"macro.placements cannot be rendered to a handoff: {exc}",
+        ) from exc
+
+    def identity(entries: list[dict]) -> list[tuple[str, float, float, str]]:
+        return sorted(
+            (
+                str(entry["instance"]),
+                float(entry["x"]),
+                float(entry["y"]),
+                str(entry["orientation"]),
+            )
+            for entry in entries
+        )
+
+    if identity(actual) != identity(expected):
+        raise WorkspaceLifecycleError(
+            "step_output_mismatch",
+            "Published macro location handoff does not match macro.placements",
+            {"expectedCount": len(expected), "actualCount": len(actual)},
+        )
+
+
 def _apply_workspace_parameters(
     target: Path,
     expected_workspace_revision: int,
@@ -106,6 +181,7 @@ def _apply_workspace_parameters(
     unsets: tuple[str, ...],
     *,
     step_id: str | None,
+    commit_step_output: bool,
     command_id: str,
 ):
     set_keys = set(sets)
@@ -118,7 +194,12 @@ def _apply_workspace_parameters(
         )
     fingerprint = workspace_command_fingerprint(
         "parameter_apply",
-        {"sets": sets, "unsets": sorted(unset_keys), "stepId": step_id},
+        {
+            "sets": sets,
+            "unsets": sorted(unset_keys),
+            "stepId": step_id,
+            "commitStepOutput": commit_step_output,
+        },
         {},
         expected_workspace_revision,
     )
@@ -138,8 +219,9 @@ def _apply_workspace_parameters(
         )
 
     allowed: set[str] | None = None
+    step: str | None = None
     if step_id is not None:
-        _step, step_schemas = _step_catalog(workspace, step_id)
+        step, step_schemas = _step_catalog(workspace, step_id)
         allowed = {schema.param for schema in step_schemas}
 
     schemas = {}
@@ -165,9 +247,41 @@ def _apply_workspace_parameters(
         schema = schemas[parameter]
         normalized, type_error = validate_schema_type(value, schema)
         errors = [type_error] if type_error else validate_value(normalized, schema)
+        if parameter == "macro.placements" and isinstance(normalized, list):
+            from chipcompiler.data.workspace.macro_location import validate_placements
+
+            errors.extend(validate_placements(normalized))
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
         normalized_sets[parameter] = normalized
+
+    first_step = _earliest_flow_step(workspace, affected_steps) if affected_steps else None
+    if commit_step_output:
+        if step is None or first_step is None:
+            raise WorkspaceLifecycleError(
+                "step_output_commit_requires_step",
+                "commit_step_output requires parameters scoped to a Flow Step",
+            )
+        if normalize_flow_step(step).casefold() != normalize_flow_step(first_step).casefold():
+            raise WorkspaceLifecycleError(
+                "step_output_scope_mismatch",
+                "Published step output must belong to the earliest affected Flow Step",
+                {"step": step, "firstAffectedStep": first_step},
+            )
+        selected = next(
+            (
+                item
+                for item in workspace.flow.steps()
+                if str(item.get("name", "")).casefold() == first_step.casefold()
+            ),
+            None,
+        )
+        if selected is None or selected.get("state") != StateEnum.Success.value:
+            raise WorkspaceLifecycleError(
+                "step_output_not_published",
+                f"Flow Step output is not committed successfully: {first_step}",
+                {"step": first_step, "state": selected.get("state") if selected else None},
+            )
 
     changed = False
     existing_overrides = {item["key"] for item in workspace_param_diff(workspace)}
@@ -182,6 +296,8 @@ def _apply_workspace_parameters(
             changed = True
 
     if not changed:
+        if commit_step_output and "macro.placements" in (set_keys | unset_keys):
+            _verify_published_macro_location(workspace)
         write_workspace_command(
             target,
             command_id,
@@ -198,7 +314,9 @@ def _apply_workspace_parameters(
     refresh_workspace_config(workspace)
     sync_flow_options_projection(workspace, persist=True)
     _prune_macro_location_after_write(workspace, set_keys)
-    if not affected_steps:
+    if commit_step_output and "macro.placements" in (set_keys | unset_keys):
+        _verify_published_macro_location(workspace)
+    if first_step is None:
         updated = refresh_engineering_snapshot(
             workspace,
             workspace_id=snapshot["workspaceId"],
@@ -212,14 +330,29 @@ def _apply_workspace_parameters(
             updated["workspaceRevision"],
         )
         return _load_committed_workspace(target)
-    first_step = _earliest_flow_step(workspace, affected_steps)
-    invalidate_from(EngineFlow(workspace), first_step)
-    updated = invalidate_engineering_snapshot(
-        workspace,
-        workspace_id=snapshot["workspaceId"],
-        cause="workspace.parameters_applied",
-        first_invalidated_step=first_step,
-    )
+    if commit_step_output:
+        invalidated = invalidate_after(EngineFlow(workspace), first_step)
+        if invalidated:
+            updated = invalidate_engineering_snapshot(
+                workspace,
+                workspace_id=snapshot["workspaceId"],
+                cause="workspace.published_step_parameters_applied",
+                first_invalidated_step=invalidated[0],
+            )
+        else:
+            updated = refresh_engineering_snapshot(
+                workspace,
+                workspace_id=snapshot["workspaceId"],
+                cause="workspace.published_step_parameters_applied",
+            )
+    else:
+        invalidate_from(EngineFlow(workspace), first_step)
+        updated = invalidate_engineering_snapshot(
+            workspace,
+            workspace_id=snapshot["workspaceId"],
+            cause="workspace.parameters_applied",
+            first_invalidated_step=first_step,
+        )
     write_workspace_command(
         target,
         command_id,

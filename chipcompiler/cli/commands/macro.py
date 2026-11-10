@@ -119,6 +119,13 @@ def import_cmd(
     expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    commit_step_output: Annotated[
+        bool,
+        typer.Option(
+            "--commit-step-output",
+            help="Keep the successful macroPlacement output current and invalidate only its suffix",
+        ),
+    ] = False,
     plain: PlainOption = False,
 ) -> None:
     """Import a macro_location.tcl file as the manual macro placements.
@@ -135,7 +142,11 @@ def import_cmd(
       refreshed.
     - `--workspace NAME`: written to `home/params.toml`, the Tcl file is
       regenerated immediately, and `macroPlacement` and its suffix are
-      marked pending. An empty file clears the placements.
+      marked pending. With `--commit-step-output`, the imported placements
+      replace the current successful `macroPlacement` output and only its
+      suffix is marked pending. The generated handoff is verified against
+      the committed placements before the transaction completes. An empty
+      file clears the placements.
 
     ```bash
     ecc macro import config/macro_location.tcl --workspace baseline
@@ -149,6 +160,7 @@ def import_cmd(
         expected_revision=expected_revision,
         command_id=command_id,
         no_wait=no_wait,
+        commit_step_output=commit_step_output,
     )
     _finish_macro("import", command_input, macro_import_handler)
 

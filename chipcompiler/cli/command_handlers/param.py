@@ -426,8 +426,17 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
         values = _parse_parameter_values(parsed_sets, ctx)
     except ValueError as exc:
         return CommandResult.err([error_record("invalid_parameter_patch", reason=str(exc))])
+    if args.commit_step_output and args.step is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "invalid_parameter_scope",
+                    reason="--commit-step-output requires --step and --workspace",
+                )
+            ]
+        )
     if args.workspace is None:
-        if args.step is not None or args.expected_revision is not None:
+        if args.step is not None or args.commit_step_output or args.expected_revision is not None:
             return CommandResult.err(
                 [
                     error_record(
@@ -495,6 +504,7 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
                 values,
                 args.unsets,
                 step_id=args.step,
+                commit_step_output=args.commit_step_output,
                 command_id=args.command_id,
             )
             committed = read_engineering_snapshot_from_directory(ctx.run_dir)

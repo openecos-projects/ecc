@@ -155,6 +155,450 @@ def test_workspace_parameter_batch_rejects_step_mismatch_without_writes(
     assert read_engineering_snapshot(workspace) == before_snapshot
 
 
+def test_published_step_parameter_update_preserves_current_step(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    placements = [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]
+
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": placements},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-1",
+    )
+
+    states = {step["name"]: step["state"] for step in updated.flow.steps()}
+    committed = read_engineering_snapshot(updated)
+    assert states["macroPlacement"] == "Success"
+    assert states["postFloorplan"] == "Unstart"
+    assert committed["flow"] == updated.flow.data
+    assert committed["stalePredecessor"]["invalidatedStepIds"][0] == "postFloorplan"
+    assert updated.parameters.data["macro"]["placements"] == placements
+    from chipcompiler.data.workspace.macro_location import parse_macro_location_tcl
+
+    macro_location_path = updated.config["macro_location"]
+    assert parse_macro_location_tcl(macro_location_path.read_text()) == placements
+
+
+def test_published_macro_parameter_update_rejects_mismatched_handoff_without_writes(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    before_params = (workspace.directory / "home" / "params.toml").read_bytes()
+    before_snapshot = (workspace.directory / "home" / "engineering-snapshot.json").read_bytes()
+    before_flow = (workspace.directory / "home" / "flow.json").read_bytes()
+    macro_location_path = workspace.config["macro_location"]
+    before_macro_location = macro_location_path.read_bytes()
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda _workspace: None)
+
+    with pytest.raises(WorkspaceLifecycleError) as rejected:
+        apply_workspace_parameters(
+            workspace.directory,
+            initial["workspaceRevision"],
+            {
+                "macro.placements": [
+                    {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
+                ]
+            },
+            (),
+            step_id="macroPlacement",
+            commit_step_output=True,
+            command_id="published-macro-mismatch",
+        )
+
+    assert rejected.value.code == "step_output_mismatch"
+    assert (workspace.directory / "home" / "params.toml").read_bytes() == before_params
+    assert (
+        workspace.directory / "home" / "engineering-snapshot.json"
+    ).read_bytes() == before_snapshot
+    assert (workspace.directory / "home" / "flow.json").read_bytes() == before_flow
+    assert macro_location_path.read_bytes() == before_macro_location
+
+
+@pytest.mark.parametrize(
+    ("handoff", "expected_code"),
+    [
+        (None, "step_output_not_published"),
+        ("placeInstance u_ram0 10 nope R0\n", "step_output_invalid"),
+        (
+            "placeInstance u_ram0 10 20 R0\nplaceInstance u_stale 1 2 R90\n",
+            "step_output_mismatch",
+        ),
+    ],
+)
+def test_published_macro_parameter_update_rejects_invalid_handoff_without_writes(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, handoff, expected_code
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    macro_location_path = workspace.config["macro_location"]
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda _workspace: None)
+    if handoff is None:
+        macro_location_path.unlink()
+    else:
+        macro_location_path.write_text(handoff)
+    before_params = (workspace.directory / "home" / "params.toml").read_bytes()
+    before_snapshot = (workspace.directory / "home" / "engineering-snapshot.json").read_bytes()
+    before_flow = (workspace.directory / "home" / "flow.json").read_bytes()
+    before_macro_location = (
+        macro_location_path.read_bytes() if macro_location_path.exists() else None
+    )
+
+    with pytest.raises(WorkspaceLifecycleError) as rejected:
+        apply_workspace_parameters(
+            workspace.directory,
+            initial["workspaceRevision"],
+            {
+                "macro.placements": [
+                    {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
+                ]
+            },
+            (),
+            step_id="macroPlacement",
+            commit_step_output=True,
+            command_id=f"published-macro-invalid-{expected_code}",
+        )
+
+    assert rejected.value.code == expected_code
+    assert (workspace.directory / "home" / "params.toml").read_bytes() == before_params
+    assert (
+        workspace.directory / "home" / "engineering-snapshot.json"
+    ).read_bytes() == before_snapshot
+    assert (workspace.directory / "home" / "flow.json").read_bytes() == before_flow
+    assert (
+        macro_location_path.read_bytes() if macro_location_path.exists() else None
+    ) == before_macro_location
+
+
+def test_published_macro_parameter_update_accepts_rendered_float_precision(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    placements = [{"instance": "u_ram0", "x": 10.123456789, "y": 20.987654321, "orientation": "R0"}]
+
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": placements},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-precision",
+    )
+
+    from chipcompiler.data.workspace.macro_location import (
+        parse_macro_location_tcl,
+        render_macro_location_tcl,
+    )
+
+    assert updated.parameters.data["macro"]["placements"] == placements
+    assert parse_macro_location_tcl(
+        updated.config["macro_location"].read_text()
+    ) == parse_macro_location_tcl(render_macro_location_tcl(placements))
+
+
+def test_published_macro_parameter_update_publishes_mixed_orientations(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.data.workspace.macro_location import (
+        MACRO_ORIENTATIONS,
+        parse_macro_location_tcl,
+    )
+
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    placements = [
+        {
+            "instance": f"u_macro_{index}",
+            "x": 10.0 + index,
+            "y": 20.0 + index,
+            "orientation": orientation,
+        }
+        for index, orientation in enumerate(sorted(MACRO_ORIENTATIONS))
+    ]
+
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": placements},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-orientations",
+    )
+
+    states = {step["name"]: step["state"] for step in updated.flow.steps()}
+    assert updated.parameters.data["macro"]["placements"] == placements
+    assert parse_macro_location_tcl(updated.config["macro_location"].read_text()) == placements
+    assert states["macroPlacement"] == "Success"
+    assert states["postFloorplan"] == "Unstart"
+
+
+def test_published_macro_parameter_update_rejects_duplicate_instances(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    before_params = (workspace.directory / "home" / "params.toml").read_bytes()
+    before_snapshot = (workspace.directory / "home" / "engineering-snapshot.json").read_bytes()
+
+    with pytest.raises(WorkspaceLifecycleError) as rejected:
+        apply_workspace_parameters(
+            workspace.directory,
+            initial["workspaceRevision"],
+            {
+                "macro.placements": [
+                    {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"},
+                    {"instance": "u_ram0", "x": 30.0, "y": 40.0, "orientation": "R90"},
+                ]
+            },
+            (),
+            step_id="macroPlacement",
+            commit_step_output=True,
+            command_id="published-macro-duplicate",
+        )
+
+    assert rejected.value.code == "invalid_parameter"
+    assert "duplicates instance u_ram0" in str(rejected.value)
+    assert (workspace.directory / "home" / "params.toml").read_bytes() == before_params
+    assert (
+        workspace.directory / "home" / "engineering-snapshot.json"
+    ).read_bytes() == before_snapshot
+
+
+def test_published_macro_parameter_update_checks_unchanged_handoff(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    placements = [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": placements},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-initial",
+    )
+    updated.config["macro_location"].write_text("# stale handoff\n")
+
+    with pytest.raises(WorkspaceLifecycleError) as rejected:
+        apply_workspace_parameters(
+            workspace.directory,
+            read_engineering_snapshot(updated)["workspaceRevision"],
+            {"macro.placements": placements},
+            (),
+            step_id="macroPlacement",
+            commit_step_output=True,
+            command_id="published-macro-unchanged",
+        )
+
+    assert rejected.value.code == "step_output_mismatch"
+
+
+def test_published_macro_parameter_update_can_clear_all_placements(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    placements = [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]
+    published = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": placements},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-before-clear",
+    )
+
+    cleared = apply_workspace_parameters(
+        workspace.directory,
+        read_engineering_snapshot(published)["workspaceRevision"],
+        {"macro.placements": []},
+        (),
+        step_id="macroPlacement",
+        commit_step_output=True,
+        command_id="published-macro-clear",
+    )
+
+    states = {step["name"]: step["state"] for step in cleared.flow.steps()}
+    assert cleared.parameters.data["macro"]["placements"] == []
+    assert cleared.config["macro_location"].read_text().strip() == (
+        "# Auto-generated macro location file"
+    )
+    assert states["macroPlacement"] == "Success"
+    assert states["postFloorplan"] == "Unstart"
+
+
+def test_published_step_parameter_update_requires_success_without_writes(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:2]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+    before_params = (workspace.directory / "home" / "params.toml").read_bytes()
+    before_snapshot = (workspace.directory / "home" / "engineering-snapshot.json").read_bytes()
+
+    with pytest.raises(WorkspaceLifecycleError) as rejected:
+        apply_workspace_parameters(
+            workspace.directory,
+            initial["workspaceRevision"],
+            {
+                "macro.placements": [
+                    {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
+                ]
+            },
+            (),
+            step_id="macroPlacement",
+            commit_step_output=True,
+            command_id="published-macro-2",
+        )
+
+    assert rejected.value.code == "step_output_not_published"
+    assert (workspace.directory / "home" / "params.toml").read_bytes() == before_params
+    assert (
+        workspace.directory / "home" / "engineering-snapshot.json"
+    ).read_bytes() == before_snapshot
+
+
+def test_macro_placements_without_output_commit_invalidates_current_step(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
+    flow = EngineFlow(workspace)
+    for step in flow.workspace.flow.data.get("steps", [])[:3]:
+        step["state"] = "Success"
+    assert flow.save()
+    initial = read_engineering_snapshot(workspace)
+    create_engineering_snapshot(
+        workspace,
+        workspace_id=initial["workspaceId"],
+        workspace_revision=initial["workspaceRevision"],
+    )
+
+    updated = apply_workspace_parameters(
+        workspace.directory,
+        initial["workspaceRevision"],
+        {"macro.placements": [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]},
+        (),
+        step_id="macroPlacement",
+        command_id="ordinary-macro-1",
+    )
+
+    states = {step["name"]: step["state"] for step in updated.flow.steps()}
+    assert states["macroPlacement"] == "Unstart"
+    assert states["postFloorplan"] == "Unstart"
+
+
 def test_workspace_configuration_update_rolls_back_refresh_failure(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch
 ):

@@ -44,6 +44,7 @@ def manual_placement_required(workspace: "Workspace") -> bool:
 def validate_placements(placements: list[dict]) -> list[str]:
     """Return one error message per invalid placement entry."""
     errors = []
+    instances: set[str] = set()
     for index, entry in enumerate(placements):
         if not isinstance(entry, dict):
             errors.append(f"placement #{index + 1} is not an object")
@@ -51,6 +52,12 @@ def validate_placements(placements: list[dict]) -> list[str]:
         instance = entry.get("instance")
         if not isinstance(instance, str) or not instance.strip():
             errors.append(f"placement #{index + 1} has an empty instance name")
+        elif any(character.isspace() for character in instance):
+            errors.append(f"placement #{index + 1} instance name contains whitespace")
+        elif instance in instances:
+            errors.append(f"placement #{index + 1} duplicates instance {instance}")
+        else:
+            instances.add(instance)
         for key in ("x", "y"):
             value = entry.get(key)
             if (
