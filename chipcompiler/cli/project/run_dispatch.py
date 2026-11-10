@@ -257,6 +257,20 @@ def dispatch_project_run(
     from chipcompiler.cli.project import migrate_fs
 
     def existing_workspace_run() -> CommandResult:
+        # When execute_flow is False (e.g., workspace create on existing target),
+        # return success without resuming the flow (#393).
+        if not execute_flow:
+            return CommandResult.ok(
+                warning_records
+                + [
+                    {
+                        "workspace_id": run_name,
+                        "status": "refreshed",
+                        "workspace": run_dir,
+                        "run": disclosure_cmd("ecc run", ctx.project, run_name),
+                    }
+                ]
+            )
         return run_existing_workspace(
             command_input,
             ctx,
