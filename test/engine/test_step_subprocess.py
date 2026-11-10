@@ -397,7 +397,7 @@ def test_failed_worker_reloads_subflow_for_interrupted_finalization(monkeypatch,
     assert "code -11" in result.error
     assert step.subflow.steps == [{"name": "load", "state": "Ongoing"}]
 
-    finalize_interrupted_subflow(None, step, "0:0:1", 0.0)
+    finalize_interrupted_subflow(step, "0:0:1", 0.0)
 
     assert json.loads(subflow_path.read_text(encoding="utf-8"))["steps"] == [
         {"name": "load", "state": "Incomplete", "runtime": "0:0:1", "peak memory (mb)": 0.0}

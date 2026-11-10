@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
+from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.data.workspace.flow_types import ChecklistStatus, FlowStepEntry
 
 logger = logging.getLogger(__name__)
@@ -108,14 +109,24 @@ def reset_unfinished_terminal_state(flow, workspace_step, step_tag) -> None:
         old_step.pop("resource_observation", None)
 
 
-def finalize_interrupted_subflow(observer, workspace_step, runtime, peak_memory_mb) -> None:
+def finalize_interrupted_subflow(workspace_step, runtime, peak_memory_mb) -> list[dict]:
+    """Mark the step's running subflow stages Incomplete; return them for the observer."""
     try:
         from chipcompiler.engine.subflow_events import finalize_interrupted_subflow as finalize
 
-        for subflow_step in finalize(workspace_step, runtime, peak_memory_mb):
-            notify_flow_observer(observer, "on_subflow_stage", workspace_step, subflow_step)
+        return finalize(workspace_step, runtime, peak_memory_mb)
     except (Exception, SystemExit):
         logger.exception("Failed to finalize subflow after %s", workspace_step.name)
+        return []
+
+
+def notify_subflow_stages(observer, workspace_step, subflow_steps: list[dict]) -> None:
+    """Publish finalized subflow stages; the engine calls this outside the ledger lock."""
+    try:
+        for subflow_step in subflow_steps:
+            notify_flow_observer(observer, "on_subflow_stage", workspace_step, subflow_step)
+    except (Exception, SystemExit):
+        logger.exception("Failed to publish the subflow of %s", workspace_step.name)
 
 
 def refresh_signoff_checklist(workspace, workspace_step) -> None:
@@ -170,12 +181,13 @@ def notify_step_completed(
         notify_flow_observer(observer, "on_step_completed", workspace_step, state, error)
     except (Exception, SystemExit):
         if previous_step is not None:
-            current = flow.get_step(workspace_step.name, workspace_step.tool)
-            if current is not None:
-                current.clear()
-                current.update(deepcopy(previous_step))
-                if not flow.save():
-                    raise RuntimeError(
-                        "failed to roll back flow state after completion commit failure"
-                    ) from None
+            with ledger_lock(flow.workspace.flow):
+                current = flow.get_step(workspace_step.name, workspace_step.tool)
+                if current is not None:
+                    current.clear()
+                    current.update(deepcopy(previous_step))
+                    if not flow.save():
+                        raise RuntimeError(
+                            "failed to roll back flow state after completion commit failure"
+                        ) from None
         raise
