@@ -80,11 +80,8 @@ SCHEMAS = (
         ("signoff",),
         [
             {
-                "MAX": ["Cworst", "RCworst"],
-                "WCL": ["Cworst", "RCworst"],
                 "TYP": ["TYPICAL"],
                 "MIN": ["Cworst", "RCworst", "Cbest", "RCbest"],
-                "ML": ["Cworst", "RCworst", "Cbest", "RCbest"],
             }
         ],
         applies="sta",

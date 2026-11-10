@@ -157,7 +157,7 @@ def test_copied_workspace_uses_its_own_timing_input(
 
 
 @pytest.mark.parametrize("override_keys", [("liberty",), ("signoff",), ("liberty", "signoff")])
-def test_selected_sta_corners_do_not_reduce_generated_constraint_sets(
+def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
     tmp_path,
     minimal_ics55_pdk_factory,
     default_ics55_parameters,
@@ -196,6 +196,11 @@ def test_selected_sta_corners_do_not_reduce_generated_constraint_sets(
         for corner, rc_corners in group.items()
         for rc in rc_corners
     }
+    if "signoff" in overrides:
+        expected_scripts.update(
+            workspace.directory / "origin" / phase / f"MAX_{temperatures['MAX']}_Cworst.tcl"
+            for phase in ("pre_CTS", "post_CTS")
+        )
     expected_sta = deepcopy(template | overrides)
     for library in expected_sta["liberty"]:
         library["path"] = [str(pdk_root / path.lstrip("/")) for path in library["path"]]

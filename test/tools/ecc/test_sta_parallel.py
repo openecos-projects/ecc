@@ -145,8 +145,10 @@ def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatc
     assert sta.sta_workers(workspace, step) == 1
     monkeypatch.setenv("ECOS_AGENT_STA_WORKERS", "4")
     for value in (1, 2, 3, 4, 13):
-        config_path.write_text(json.dumps(_sta_config(max_parallel_corners=value)))
-        assert sta.sta_workers(workspace, step) == value
+        config = _sta_config(max_parallel_corners=value)
+        config_path.write_text(json.dumps(config))
+        corner_count = sum(len(rcs) for group in config["signoff"] for rcs in group.values())
+        assert sta.sta_workers(workspace, step) == min(value, corner_count)
     for value in (0, -1, True, 2.5, "2"):
         config_path.write_text(json.dumps({"max_parallel_corners": value}))
         with pytest.raises(ValueError, match="positive integer"):
@@ -200,7 +202,8 @@ def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
 @pytest.mark.parametrize("workers", [1, 2, 3, 4, 13])
 def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
     config_path = tmp_path / "sta.json"
-    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=workers)))
+    config = _sta_config(max_parallel_corners=workers)
+    config_path.write_text(json.dumps(config))
     workspace: Any = SimpleNamespace(config={"sta": config_path})
     step: Any = SimpleNamespace(name="sta", tool="ecc")
     monkeypatch.setattr(sta.sys, "platform", "linux")
@@ -211,7 +214,8 @@ def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
     monkeypatch.setattr(sta.runner, "run_sta", lambda **_: calls.append(1) or True)
     monkeypatch.setattr(sta, "run_parallel_sta", lambda *args: calls.append(args[-1]) or True)
     assert sta.runner.run_step(workspace, step) is True
-    assert calls == [workers]
+    corner_count = sum(len(rcs) for group in config["signoff"] for rcs in group.values())
+    assert calls == [min(workers, corner_count)]
 
 
 @pytest.mark.parametrize("fail", [False, True])

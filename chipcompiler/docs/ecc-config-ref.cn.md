@@ -884,7 +884,11 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
 | `liberty[].path` | H7CR + H7CL + H7CH | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
-| `signoff[0]` | MAX:[Cworst,RCworst]；WCL:[Cworst,RCworst]；TYP:[TYPICAL]；MIN/ML:[Cworst,RCworst,Cbest,RCbest] | 签核要跑的「liberty corner × RC corner」组合，共 13 个分析 corner |
+| `signoff[0]` | TYP:[TYPICAL]；MIN:[Cworst,RCworst,Cbest,RCbest] | 默认签核要跑的「liberty corner × RC corner」组合，共 5 个分析 corner |
+
+默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
+`liberty` 中保留 MAX/WCL/ML 库组，供显式覆盖 `sta.signoff` 时选择；这不会让最终 STA
+自动检查这些库组，也不改变综合、CTS、Sizer 等前序阶段的用库。
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
 
@@ -894,7 +898,7 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 `ff_1p32_3p63v_0c`。其余三个 IO 库（`ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、
 `ff_1p32_3p63_m40c`）时序表有误，配置刷新时直接报错。IO 库表征温度可以与 corner
 温度不同，例如 MIN 的标准单元用 -40°C 库，IO 用 0°C 库；标准单元库、SPEF 温度及
-上述 13 个分析 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
+已配置的签核 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
 标准单元库。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
