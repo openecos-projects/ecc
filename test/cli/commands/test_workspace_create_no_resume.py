@@ -22,18 +22,14 @@ def test_repeated_workspace_create_does_not_resume_flow(
     workspace_dir = os.path.join(project_dir, "test-ws")
 
     # First create: should call engine to create workspace
-    rc1 = cli_main.run(
-        ["workspace", "create", "test-ws", "--project", project_dir, "--plain"]
-    )
+    rc1 = cli_main.run(["workspace", "create", "test-ws", "--project", project_dir, "--plain"])
     assert rc1 == 0, capsys.readouterr().out
     records1 = plain_records(capsys.readouterr().out)
     assert records1[-1]["status"] == "refreshed"
     assert records1[-1]["workspace_id"] == "test-ws"
 
     # Register the workspace in manifest
-    manifest_stubs.write(
-        project_path, [manifest_stubs.entry(project_path, "test-ws")]
-    )
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "test-ws")])
 
     # Create a flow.json to simulate existing workspace with incomplete steps
     home = Path(workspace_dir) / "home"
@@ -54,9 +50,7 @@ def test_repeated_workspace_create_does_not_resume_flow(
     flow_mocks.flow.instances = []
 
     # Second create: should NOT resume the flow, should return immediately
-    rc2 = cli_main.run(
-        ["workspace", "create", "test-ws", "--project", project_dir, "--plain"]
-    )
+    rc2 = cli_main.run(["workspace", "create", "test-ws", "--project", project_dir, "--plain"])
     assert rc2 == 0, capsys.readouterr().out
     records2 = plain_records(capsys.readouterr().out)
     assert records2[-1]["status"] == "refreshed"
@@ -70,4 +64,3 @@ def test_repeated_workspace_create_does_not_resume_flow(
     # Verify flow.json is unchanged (no steps were executed)
     flow_data = json.loads(flow_json.read_text())
     assert flow_data["steps"][1]["state"] == "Pending", "Flow should not have resumed"
-
