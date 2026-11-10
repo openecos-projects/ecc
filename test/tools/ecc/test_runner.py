@@ -945,9 +945,11 @@ def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(spef=tmp_path / "design.spef"),
     )
 
-    items = ecc_runner.collect_sta_signoff_items(workspace)
+    step = _sta_step_with_request(tmp_path, {})
+    items = ecc_runner.collect_sta_signoff_items(workspace, step)
 
     assert [(item["corner"], item["rcx_corner"]) for item in items] == [
         ("TYP", "TYPICAL"),

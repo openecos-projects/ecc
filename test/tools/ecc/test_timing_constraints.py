@@ -235,6 +235,21 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
     workspace.pdk.mapping_file = workspace.directory / "layer.map"
     step = build_step(workspace, StepEnum.HARDEN.value, input_def=None, input_verilog=None)
     build_step_space(step)
+    assert step.directory is not None
+    write_request(
+        StepRequest(
+            workspace_directory=workspace.directory,
+            step=StepEnum.HARDEN.value,
+            tool="ecc",
+            step_directory=step.directory.name,
+            attempt_id="attempt-harden",
+            inputs=StepInputs(),
+            design_source=None,
+            upstream={AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+            final_step=False,
+            layout_image=False,
+        )
+    )
     monkeypatch.setattr(runner, "EccSubFlow", Mock())
     monkeypatch.setattr(runner, "get_eda_instance", lambda **_: native_module)
     monkeypatch.setattr(runner, "run_analysis", lambda **_: None)
