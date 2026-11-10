@@ -73,7 +73,11 @@ def derive_workspace(
             "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
         )
 
-    locks = sorted((source, target), key=str)
+    # Blocking acquisition uses a stable path order so two derives can never
+    # deadlock. A non-blocking acquisition never waits, so it cannot deadlock
+    # either; it takes the source lock first so a busy source fails before the
+    # target's sibling lock file is created (#400).
+    locks = sorted((source, target), key=str) if blocking else (source, target)
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         if target.exists():
             if command_id and command_retry_matches(target, command_id, fingerprint):
