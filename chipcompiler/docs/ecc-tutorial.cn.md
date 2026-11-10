@@ -511,7 +511,7 @@ $ ecc report summary
   view: cat default/signoff/gcd_design_summary.txt
 ```
 
-本次 gcd 运行的报告节选（完整报告 `cat` 上面那个文件）：
+以下是采用旧版 13 场景配置的 gcd 报告节选；当前默认最终 STA 为 TYP 的 1 个场景和 MIN 的 4 个场景。实际报告可 `cat` 上面那个文件：
 
 ```
 [ 1. PHYSICAL & AREA METRICS ]

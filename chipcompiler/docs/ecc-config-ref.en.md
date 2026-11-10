@@ -935,7 +935,15 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
 | `liberty[].path` | H7CR + H7CL + H7CH | Liberty files for this corner (PDK-relative paths auto-expanded) |
-| `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
+| `signoff[0]` | TYP:[TYPICAL]; MIN:[Cworst,RCworst,Cbest,RCbest] | Default "liberty corner × RC corner" combinations for signoff — 5 analysis corners in total |
+
+Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
+(FF, 1.32 V, -40°C). The `liberty` catalog retains MAX/WCL/ML for explicit
+`sta.signoff` overrides; retaining these groups does not enable their analysis
+or change the libraries used by synthesis, CTS, Sizer, or other earlier stages.
+Harden and powerAnalysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
+SDC; `signoff` list order does not change that selection. If a `sta.signoff`
+override omits TYP/TYPICAL, these steps fail instead of silently using another corner.
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
 
@@ -947,8 +955,8 @@ MAX/WCL use `ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML use
 `ff_1p32_3p63_125c` and `ff_1p32_3p63_m40c`) have invalid timing tables and fail
 config refresh. IO characterization temperatures may differ from the corner
 temperature; for example, MIN uses -40°C standard-cell libraries alongside the
-0°C IO library. Standard-cell libraries, SPEF temperatures and the 13 analysis
-corners are unaffected. A `sta.liberty` setting replaces the entire default
+0°C IO library. Standard-cell libraries, SPEF temperatures and the configured
+signoff corners are unaffected. A `sta.liberty` setting replaces the entire default
 list, so the standard-cell libraries must be listed as well.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
@@ -960,7 +968,7 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
 
 Power is produced by the separate `powerAnalysis` iPW step, not by each STA
-corner. Its native outputs are
+corner. It uses the TYP/TYPICAL signoff item's Liberty and SPEF. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
 copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
@@ -997,7 +1005,7 @@ not by itself stop the remaining flow.
 
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden writes the timing LIB from the TYP/TYPICAL signoff item's Liberty and SPEF. Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
 
 ## 15. ECC CLI configuration commands by step
 
