@@ -165,6 +165,17 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
     return items
 
 
+def _typical_signoff_item(signoff_items: list[dict]) -> dict | None:
+    return next(
+        (
+            item
+            for item in signoff_items
+            if item.get("corner") == "TYP" and item.get("rcx_corner") == "TYPICAL"
+        ),
+        None,
+    )
+
+
 def _existing_input_path(path: Path | None) -> str | None:
     if not path:
         return None
@@ -912,7 +923,10 @@ def run_harden(
         if not signoff_items:
             workspace.logger.error("No signoff STA items found")
             return False
-        signoff_item = signoff_items[0]
+        signoff_item = _typical_signoff_item(signoff_items)
+        if signoff_item is None:
+            workspace.logger.error("No TYP/TYPICAL signoff STA item found for harden")
+            return False
         sta_config = _workspace_sta_config_path(workspace)
         if sta_config is None:
             workspace.logger.error("workspace STA config path is not configured")
@@ -1031,9 +1045,15 @@ def run_power_analysis(
         )
         return False
 
-    # iPW produces one report, so use the first user-configured STA signoff
-    # item and preserve the same Liberty/SDC/SPEF initialization sequence.
-    power_item = signoff_items[0]
+    # iPW produces one report, so use the same TYP/TYPICAL scenario as the SDC.
+    power_item = _typical_signoff_item(signoff_items)
+    if power_item is None:
+        workspace.logger.error("No TYP/TYPICAL signoff STA item found for power analysis")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
     liberty_files = power_item["liberty_files"]
     spef_file = power_item["spef_file"]
     if not workspace.pdk.sdc or not os.path.exists(workspace.pdk.sdc):

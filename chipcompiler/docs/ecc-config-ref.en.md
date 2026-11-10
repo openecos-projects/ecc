@@ -941,6 +941,9 @@ Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
 (FF, 1.32 V, -40°C). The `liberty` catalog retains MAX/WCL/ML for explicit
 `sta.signoff` overrides; retaining these groups does not enable their analysis
 or change the libraries used by synthesis, CTS, Sizer, or other earlier stages.
+Harden and powerAnalysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
+SDC; `signoff` list order does not change that selection. If a `sta.signoff`
+override omits TYP/TYPICAL, these steps fail instead of silently using another corner.
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
 
@@ -965,7 +968,7 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
 
 Power is produced by the separate `powerAnalysis` iPW step, not by each STA
-corner. Its native outputs are
+corner. It uses the TYP/TYPICAL signoff item's Liberty and SPEF. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
 copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
@@ -1002,7 +1005,7 @@ not by itself stop the remaining flow.
 
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden writes the timing LIB from the TYP/TYPICAL signoff item's Liberty and SPEF. Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
 
 ## 15. ECC CLI configuration commands by step
 

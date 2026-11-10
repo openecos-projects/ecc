@@ -889,6 +889,9 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
 `liberty` 中保留 MAX/WCL/ML 库组，供显式覆盖 `sta.signoff` 时选择；这不会让最终 STA
 自动检查这些库组，也不改变综合、CTS、Sizer 等前序阶段的用库。
+Harden 与 powerAnalysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
+`signoff` 列表顺序不会改变该选择。若覆盖 `sta.signoff` 后不含 TYP/TYPICAL，
+这两个步骤会失败，而不会静默改用其他 corner。
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
 
@@ -910,7 +913,7 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | hold 报告（同上拆分，非签核必需） |
 
 功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
-产生。其原生输出为
+产生。该步骤使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF。其原生输出为
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
 `powerAnalysis_ecc/report/powerAnalysis.rpt`，并从报告生成
@@ -940,7 +943,7 @@ iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位
 
 ## 14. harden（ecc-tools）
 
-无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
+无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF 生成时序 LIB。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
 
 ## 15. 各步骤的 ECC CLI 配置命令
 

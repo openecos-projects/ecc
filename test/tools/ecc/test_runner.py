@@ -857,6 +857,27 @@ def test_sta_entry_workspace_uses_declared_spef(tmp_path):
     assert [item["spef_file"] for item in items] == [str(declared_spef)]
 
 
+def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
+    template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
+    sta_config.parent.mkdir()
+    sta_config.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [(item["corner"], item["rcx_corner"]) for item in items] == [
+        ("TYP", "TYPICAL"),
+        ("MIN", "Cworst"),
+        ("MIN", "RCworst"),
+        ("MIN", "Cbest"),
+        ("MIN", "RCbest"),
+    ]
+
+
 def _make_rcx_step(tmp_path):
     return EccStep(
         name=StepEnum.RCX.value,

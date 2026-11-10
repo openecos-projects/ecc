@@ -197,6 +197,34 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     assert config_path.read_bytes() == config_before
 
 
+def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
+    timing_workspace, native_module, monkeypatch
+):
+    workspace = timing_workspace
+    config_path = workspace.config[StepEnum.STA.value]
+    config = json.loads(config_path.read_text())
+    config["signoff"] = [{"MAX": ["Cworst"]}, {"TYP": ["TYPICAL"]}]
+    config_path.write_text(json.dumps(config))
+    workspace.pdk.mapping_file = workspace.directory / "layer.map"
+    step = build_step(workspace, StepEnum.HARDEN.value, input_def=None, input_verilog=None)
+    build_step_space(step)
+    monkeypatch.setattr(runner, "EccSubFlow", Mock())
+    monkeypatch.setattr(runner, "get_eda_instance", lambda **_: native_module)
+    monkeypatch.setattr(runner, "run_analysis", lambda **_: None)
+
+    assert runner.run_harden(workspace, step) is True
+
+    typical = next(item for item in config["liberty"] if item["corner"] == "TYP")
+    timing_model = native_module.write_timing_model.call_args.kwargs
+    assert timing_model["lib_paths"] == typical["path"]
+    assert timing_model["spef_path"] == str(
+        workspace.directory / "RCX_ecc" / "output" / "gcd_TYPICAL_25C.spef"
+    )
+    assert timing_model["sdc_path"] == (
+        workspace.directory / "origin" / "post_CTS" / "TYP_25_TYPICAL.tcl"
+    )
+
+
 @pytest.mark.parametrize("custom", [False, True])
 def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monkeypatch, custom):
     workspace = timing_workspace
