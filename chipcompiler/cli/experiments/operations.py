@@ -27,7 +27,12 @@ from chipcompiler.cli.inspection.evidence_summary import (
     step_status,
 )
 from chipcompiler.data import ADVISORY_FLOW_STEPS
-from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
+from chipcompiler.project.manifest import (
+    CONFIG_FILENAME,
+    MANIFEST_FILENAME,
+    ManifestError,
+    load_manifest,
+)
 
 SCHEMA_VERSION = 1
 
@@ -92,6 +97,30 @@ def project_path(value: str | None) -> Path:
         if (candidate / MANIFEST_FILENAME).exists() or (candidate / CONFIG_FILENAME).exists():
             return candidate
     return path
+
+
+def undeclared_workspace_reason(project: Path, workspace_name: str) -> str | None:
+    """Explain why *workspace_name* is not a workspace of a manifest project.
+
+    Returns None when the workspace is declared in ``project.json`` (by id or
+    by path), or when the project has no readable manifest to check against.
+    The text matches what ``status`` and ``check`` report (#396).
+    """
+    if not (project / MANIFEST_FILENAME).is_file():
+        return None
+    try:
+        manifest = load_manifest(str(project))
+    except ManifestError:
+        return None
+    if manifest.find_workspace(workspace_name) is not None:
+        return None
+    target = os.path.realpath(workspace_path(project, workspace_name))
+    if any(os.path.realpath(item.workspace_path) == target for item in manifest.workspaces):
+        return None
+    ids = ", ".join(item.workspace_id for item in manifest.active_workspaces()) or "(none)"
+    return (
+        f"workspace_not_declared: unknown workspace {workspace_name!r}; declared workspaces: {ids}"
+    )
 
 
 def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:

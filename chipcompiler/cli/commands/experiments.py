@@ -21,6 +21,7 @@ from chipcompiler.cli.experiments.operations import (
     read_package,
     run_sweep,
     sweep_matrix,
+    undeclared_workspace_reason,
     verify_package,
     verify_sweep,
 )
@@ -38,7 +39,16 @@ def diagnose_run(
     workspace: Annotated[str, typer.Option("--workspace")] = "default",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    result = diagnose_workspace(project_path(project), workspace)
+    project_root = project_path(project)
+    reason = undeclared_workspace_reason(project_root, workspace)
+    if reason is not None:
+        if json_output:
+            error = {"status": "error", "error": "workspace_not_declared", "reason": reason}
+            typer.echo(json.dumps(error, indent=2, sort_keys=True))
+        else:
+            typer.echo(reason, err=True)
+        raise typer.Exit(1)
+    result = diagnose_workspace(project_root, workspace)
     if json_output:
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
