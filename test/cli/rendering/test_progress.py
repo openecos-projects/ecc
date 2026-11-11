@@ -1,3 +1,4 @@
+import copy
 import io
 import os
 import re
@@ -18,7 +19,7 @@ from chipcompiler.cli.rendering.progress import (
     RunProgressRenderer,
     format_error_context,
     latest_log_line,
-    run_flow_with_progress,
+    run_progress_event_sink,
     run_with_step_progress,
     sanitize_log_line,
     should_enable_run_progress,
@@ -27,6 +28,7 @@ from chipcompiler.cli.rendering.progress import (
     truncate_to_width,
 )
 from chipcompiler.data import LogPaths, StateEnum
+from chipcompiler.engine import ExecutionPlan, execute
 from chipcompiler.utility.log import redirect_stdio_to_file
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
@@ -644,11 +646,10 @@ class TestPreserveCliStdio:
         assert "after stderr" not in log_file.read_text()
 
 
-# -- run_flow_with_progress --
+# -- fresh run progress (engine execution under the progress sink) --
 
 
-def _make_ws(directory="/tmp", log_section_fn=None):
-    section_fn = log_section_fn or (lambda self, msg: None)
+def _make_ws(directory="/tmp"):
     return type(
         "WS",
         (),
@@ -660,7 +661,7 @@ def _make_ws(directory="/tmp", log_section_fn=None):
                 {
                     "info": lambda *a, **k: None,
                     "warning": lambda *a, **k: None,
-                    "log_section": section_fn,
+                    "log_section": lambda self, msg: None,
                     "log_separator": lambda *a, **k: None,
                 },
             )(),
@@ -676,19 +677,38 @@ def _make_step(name, tool, log_file=""):
 
 
 def _make_flow(ws, steps, run_step_fn):
+    """A flow whose ``run_steps`` reports steps to the observer like EngineFlow."""
+
+    def run_steps(self, *, rerun=False, observer: Any = None, require_full_ledger=True):
+        for step in steps:
+            observer.on_step_started(step)
+            state = run_step_fn(self, step)
+            observer.on_step_completed(step, state)
+            if state != StateEnum.Success:
+                return False
+        return True
+
     return type(
         "EF",
         (),
         {
             "workspace": ws,
             "workspace_steps": steps,
-            "init_db_engine": lambda self: None,
-            "run_step": run_step_fn,
+            "run_steps": run_steps,
         },
     )()
 
 
-class TestRunFlowWithProgress:
+def run_fresh_with_progress(flow, ctx, project, stderr):
+    """The terminal path of a fresh ``ecc run``: engine execution under the sink."""
+    with (
+        progress.preserve_cli_stdio(),
+        run_progress_event_sink(flow, ctx, project, stderr) as sink,
+    ):
+        return execute(flow, ExecutionPlan(intent="run"), event_sink=sink).succeeded
+
+
+class TestFreshRunProgress:
     @pytest.fixture(autouse=True)
     def _disable_snapshot_sink(self, monkeypatch):
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
@@ -701,57 +721,11 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         output = "".join(buf.written)
         assert "✓ synthesis (yosys)" in output
         assert "status=success" not in output
-
-    def test_skipped_step_is_rendered_and_flow_continues(self):
-        calls = []
-
-        def fake_run_step(self, s):
-            calls.append(s.name)
-            return StateEnum.Skipped if s.name == "postRouteLec" else StateEnum.Success
-
-        flow = _make_flow(
-            _make_ws(),
-            [
-                _make_step("postRouteLec", "kepler_formal"),
-                _make_step("Synthesis", "yosys"),
-            ],
-            fake_run_step,
-        )
-
-        buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
-
-        assert result is True
-        assert calls == ["postRouteLec", "Synthesis"]
-        output = "".join(buf.written)
-        assert "- postroutelec (kepler_formal) skipped" in output
-        assert "✗ postroutelec" not in output
-        assert "✓ synthesis (yosys)" in output
-
-    def test_stops_on_failure(self):
-        call_count = [0]
-
-        def fake_run_step(self, s):
-            call_count[0] += 1
-            if s.name == "Synthesis":
-                return StateEnum.Success
-            return StateEnum.Imcomplete
-
-        flow = _make_flow(
-            _make_ws(),
-            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
-            fake_run_step,
-        )
-
-        buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
-        assert result is False
-        assert call_count[0] == 2
 
     def test_summary_includes_inspect_detail_line(self):
         flow = _make_flow(
@@ -761,7 +735,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), "myproject", buf)
+        run_fresh_with_progress(flow, _make_ctx(), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
         assert "  inspect: ecc log synthesis --project myproject\n" in plain
 
@@ -776,7 +750,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        run_fresh_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "  log:" in output
 
@@ -789,7 +763,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(run_id="sweeps/s1/r4"), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(run_id="sweeps/s1/r4"), None, buf)
 
         assert result is True
         plain = _strip_ansi("".join(buf.written))
@@ -803,7 +777,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
+        run_fresh_with_progress(flow, _make_ctx(run_id="exp1"), "myproject", buf)
         plain = _strip_ansi("".join(buf.written))
         assert "  inspect: ecc log synthesis --project myproject --workspace exp1\n" in plain
 
@@ -818,7 +792,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
         assert "> synthesis (yosys)\n" in plain
@@ -832,7 +806,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        run_fresh_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "[run]" in output
         assert "workspace=" in output
@@ -848,7 +822,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         output = "".join(buf.written)
         synth_summary = output.find("✓ synthesis")
@@ -869,7 +843,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
         assert "✗ floorplan (ecc)" in plain
@@ -890,7 +864,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
         assert "Synthesizing module top" in plain
@@ -913,101 +887,15 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
         assert "  log: running synthesis, waiting for step log" in plain
 
-    def test_log_section_markers_emitted(self, tmp_path):
-        sections = []
-        flow = _make_flow(
-            _make_ws(str(tmp_path), log_section_fn=lambda self, msg: sections.append(msg)),
-            [_make_step("Synthesis", "yosys")],
-            lambda self, s: StateEnum.Success,
-        )
-
-        buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
-
-        assert "yosys - begin step - Synthesis" in sections
-        assert "yosys - end step - Synthesis" in sections
-        assert sections.index("yosys - begin step - Synthesis") < sections.index(
-            "yosys - end step - Synthesis"
-        )
-
-    def test_log_section_markers_around_run_step(self, tmp_path):
-        call_order = []
-
-        def fake_run_step(self, s):
-            call_order.append(("run_step", s.name))
-            return StateEnum.Success
-
-        flow = _make_flow(
-            _make_ws(
-                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
-            ),
-            [_make_step("Floorplan", "ecc")],
-            fake_run_step,
-        )
-
-        buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
-
-        begin_idx = call_order.index(("section", "ecc - begin step - Floorplan"))
-        run_idx = call_order.index(("run_step", "Floorplan"))
-        end_idx = call_order.index(("section", "ecc - end step - Floorplan"))
-        assert begin_idx < run_idx < end_idx
-
-    def test_run_step_does_not_initialize_parent_db(self, tmp_path, monkeypatch):
-        from chipcompiler.engine import EngineDB
-        from chipcompiler.tools.ecc.module import ECCToolsModule
-
-        call_order = []
-        redirects = []
-        monkeypatch.setattr(
-            progress,
-            "redirect_stdio_to_file",
-            lambda path: redirects.append(path),
-            raising=False,
-        )
-
-        def fail_native_init(*_args, **_kwargs):
-            raise AssertionError("parent native DB initialization must not run")
-
-        monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
-        monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
-
-        def fake_init_db_engine():
-            raise AssertionError("parent DB initialization must not run")
-
-        def fake_run_step(self, s):
-            call_order.append(("run_step", s.name))
-            return StateEnum.Success
-
-        flow = _make_flow(
-            _make_ws(
-                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
-            ),
-            [_make_step("Synthesis", "yosys")],
-            fake_run_step,
-        )
-        monkeypatch.setattr(flow, "init_db_engine", fake_init_db_engine)
-
-        buf = FakeTTYStderr(isatty_value=True)
-        assert run_flow_with_progress(flow, _make_ctx(), None, buf) is True
-
-        begin_idx = call_order.index(("section", "yosys - begin step - Synthesis"))
-        run_idx = call_order.index(("run_step", "Synthesis"))
-        end_idx = call_order.index(("section", "yosys - end step - Synthesis"))
-        assert begin_idx < run_idx < end_idx
-        assert redirects == []
-
     def test_restores_progress_output_after_run_step_redirects_stdio(self, tmp_path, capfd):
         log_file = tmp_path / "place.log"
-        call_order = []
 
         def fake_run_step(self, s):
-            call_order.append(("run_step", s.name))
             redirected = redirect_stdio_to_file(str(log_file))
             print("raw tool stdout")
             sys.stderr.write("Plotting array maps: 57%\n")
@@ -1016,14 +904,12 @@ class TestRunFlowWithProgress:
             return StateEnum.Success
 
         flow = _make_flow(
-            _make_ws(
-                str(tmp_path), log_section_fn=lambda self, msg: call_order.append(("section", msg))
-            ),
+            _make_ws(str(tmp_path)),
             [_make_step("placement", "dreamplace", str(log_file))],
             fake_run_step,
         )
 
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", sys.stderr)
         print("after progress stdout")
         sys.stderr.write("after progress stderr\n")
 
@@ -1046,37 +932,6 @@ class TestRunFlowWithProgress:
         assert "after progress stdout" not in step_log
         assert "after progress stderr" not in step_log
 
-        begin_idx = call_order.index(("section", "dreamplace - begin step - placement"))
-        run_idx = call_order.index(("run_step", "placement"))
-        end_idx = call_order.index(("section", "dreamplace - end step - placement"))
-        assert begin_idx < run_idx < end_idx
-
-    def test_progress_does_not_initialize_parent_db_for_any_step(self, tmp_path, monkeypatch):
-        synth_log = tmp_path / "synth.log"
-        floorplan_log = tmp_path / "floorplan.log"
-        init_calls = []
-
-        def fake_run_step(self, s):
-            return StateEnum.Success
-
-        flow = _make_flow(
-            _make_ws(str(tmp_path)),
-            [
-                _make_step("Synthesis", "yosys", str(synth_log)),
-                _make_step("Floorplan", "ecc", str(floorplan_log)),
-            ],
-            fake_run_step,
-        )
-        monkeypatch.setattr(flow, "init_db_engine", lambda: init_calls.append("init_db_engine"))
-
-        buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
-
-        assert result is True
-        assert init_calls == []
-        assert not synth_log.exists()
-        assert not floorplan_log.exists()
-
     def test_monitor_cleanup_on_run_step_exception(self, tmp_path):
         def raising_run_step(self, s):
             raise RuntimeError("tool crashed")
@@ -1089,7 +944,7 @@ class TestRunFlowWithProgress:
 
         buf = FakeTTYStderr(isatty_value=True)
         with pytest.raises(RuntimeError, match="tool crashed"):
-            run_flow_with_progress(flow, _make_ctx(), None, buf)
+            run_fresh_with_progress(flow, _make_ctx(), None, buf)
 
         output = "".join(buf.written)
         assert "\r\x1b[K" in output
@@ -1105,7 +960,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        run_fresh_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         assert "\x1b[36m" in output  # cyan for step header
 
@@ -1117,7 +972,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=False)
-        run_flow_with_progress(flow, _make_ctx(), None, buf)
+        run_fresh_with_progress(flow, _make_ctx(), None, buf)
         output = "".join(buf.written)
         for code in (BOLD, CYAN, GREEN, RED, DIM):
             assert code not in output
@@ -1131,22 +986,17 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
-            assert rerun is False
-            observer.on_step_completed(step, StateEnum.Success)
-            return StateEnum.Success
-
         flow = _make_flow(
             _make_ws(str(tmp_path)),
             [
                 _make_step("Synthesis", "yosys"),
                 _make_step("Floorplan", "ecc"),
             ],
-            fake_run_step,
+            lambda self, step: StateEnum.Success,
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
 
         assert result is True
         assert committed == [
@@ -1161,10 +1011,8 @@ class TestRunFlowWithProgress:
         )
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
-        def fake_run_step(self, step, *, rerun=False, observer: Any = None):
-            state = StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
-            observer.on_step_completed(step, state)
-            return state
+        def fake_run_step(self, step):
+            return StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
 
         flow = _make_flow(
             _make_ws(),
@@ -1173,7 +1021,7 @@ class TestRunFlowWithProgress:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), None, buf)
 
         assert result is False
         assert committed == [
@@ -1293,7 +1141,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
         assert "error:" in plain
@@ -1311,7 +1159,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is True
         plain = _strip_ansi("".join(buf.written))
         assert "error:" not in plain
@@ -1325,7 +1173,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
         assert "error:" not in plain
@@ -1344,7 +1192,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
         assert "For more log info:" not in plain
@@ -1360,7 +1208,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         plain = _strip_ansi("".join(buf.written))
         assert "log:" in plain
@@ -1377,7 +1225,7 @@ class TestFailureContextIntegration:
         )
 
         buf = FakeTTYStderr(isatty_value=True)
-        result = run_flow_with_progress(flow, _make_ctx(), "myproj", buf)
+        result = run_fresh_with_progress(flow, _make_ctx(), "myproj", buf)
         assert result is False
         raw = "".join(buf.written)
 
@@ -1486,3 +1334,144 @@ class TestRunWithStepProgress:
 
         assert result == "result"
         assert calls == [{}]
+
+
+class TestRunProgressEventSinkInterleaving:
+    """Steps of a parallel analysis wave start and complete interleaved."""
+
+    @pytest.fixture
+    def monitors(self, monkeypatch):
+        events: list[tuple[str, str]] = []
+
+        def start(renderer, log_path, step_name, **_kwargs):
+            events.append(("monitor", step_name))
+            return step_name, step_name
+
+        def stop(stop_event, _monitor, timeout=2.0):
+            events.append(("stop", stop_event))
+
+        monkeypatch.setattr(progress, "_start_log_monitor", start)
+        monkeypatch.setattr(progress, "_stop_log_monitor", stop)
+        return events
+
+    def _sink(self, tmp_path, *, delegate=None):
+        stream = FakeTTYStderr(isatty_value=True)
+        workspace: Any = _make_ws(str(tmp_path))
+        workspace.flow.data["steps"] = [
+            {"name": "drc", "runtime": "0:0:7"},
+            {"name": "lvs", "runtime": "0:1:2"},
+        ]
+        sink = progress.RunProgressEventSink(
+            RunProgressRenderer(stream),
+            workspace,
+            project="myproj",
+            run_id=None,
+            delegate=delegate,
+        )
+        return sink, stream
+
+    def test_live_log_follows_most_recent_running_step(self, tmp_path, monitors):
+        sink, stream = self._sink(tmp_path)
+        drc = _make_step("drc", "ecc", str(tmp_path / "drc.log"))
+        lvs = _make_step("lvs", "ecc", str(tmp_path / "lvs.log"))
+
+        sink.on_step_started(drc)
+        sink.on_step_started(lvs)
+        sink.on_step_completed(drc, StateEnum.Success)
+        sink.on_step_completed(lvs, StateEnum.Success)
+        sink.close()
+
+        assert monitors == [
+            ("monitor", "drc"),
+            ("stop", "drc"),
+            ("monitor", "lvs"),
+            # drc completes while lvs is still running: the line stays on lvs
+            ("stop", "lvs"),
+            ("monitor", "lvs"),
+            ("stop", "lvs"),
+        ]
+        plain = _strip_ansi("".join(stream.written))
+        assert plain.count("> drc (ecc)\n") == 1
+        assert plain.count("> lvs (ecc)\n") == 1
+        assert "✓ drc (ecc) 0:00:07\n" in plain
+        assert "✓ lvs (ecc) 0:01:02\n" in plain
+
+    def test_live_log_returns_to_earlier_step_when_latest_completes(self, tmp_path, monitors):
+        sink, _stream = self._sink(tmp_path)
+        drc = _make_step("drc", "ecc", str(tmp_path / "drc.log"))
+        lvs = _make_step("lvs", "ecc", str(tmp_path / "lvs.log"))
+
+        sink.on_step_started(drc)
+        sink.on_step_started(lvs)
+        sink.on_step_completed(lvs, StateEnum.Success)
+        sink.on_step_completed(drc, StateEnum.Success)
+
+        assert monitors == [
+            ("monitor", "drc"),
+            ("stop", "drc"),
+            ("monitor", "lvs"),
+            ("stop", "lvs"),
+            ("monitor", "drc"),
+            ("stop", "drc"),
+        ]
+
+    def test_failed_sibling_renders_its_own_block_and_keeps_other_running(self, tmp_path, monitors):
+        sink, stream = self._sink(tmp_path)
+        drc_log = tmp_path / "drc.log"
+        drc_log.write_text("Error: violations found\n")
+        drc = _make_step("drc", "ecc", str(drc_log))
+        lvs = _make_step("lvs", "ecc", str(tmp_path / "lvs.log"))
+
+        sink.on_step_started(drc)
+        sink.on_step_started(lvs)
+        sink.on_step_completed(drc, StateEnum.Imcomplete)
+
+        plain = _strip_ansi("".join(stream.written))
+        assert "✗ drc (ecc) incomplete 0:00:07\n" in plain
+        assert "error: drc.log\n" in plain
+        assert "lvs (ecc)" not in plain.split("✗ drc")[1]
+        assert monitors[-1] == ("monitor", "lvs")
+
+    def test_a_restarted_forked_monitor_never_runs_into_the_next_completion(
+        self, tmp_path, monkeypatch
+    ):
+        def start(renderer, log_path, step_name, **_kwargs):
+            # A forked monitor writes through its own copy of the renderer.
+            copy.copy(renderer).running(f"tail of {step_name}")
+            return step_name, step_name
+
+        monkeypatch.setattr(progress, "_start_log_monitor", start)
+        monkeypatch.setattr(progress, "_stop_log_monitor", lambda *_args, **_kwargs: None)
+        sink, stream = self._sink(tmp_path)
+        drc = _make_step("drc", "ecc", str(tmp_path / "drc.log"))
+        lvs = _make_step("lvs", "ecc", str(tmp_path / "lvs.log"))
+
+        sink.on_step_started(drc)
+        sink.on_step_started(lvs)
+        sink.on_step_completed(lvs, StateEnum.Success)  # the monitor restarts on drc
+        sink.on_step_completed(drc, StateEnum.Success)
+
+        written = stream.written
+        completion = next(i for i, text in enumerate(written) if text.startswith("✓ drc"))
+        assert (written[completion - 2 : completion], written[completion]) == (
+            ["\r\x1b[K  log: tail of drc", "\r\x1b[K\n"],
+            "✓ drc (ecc) 0:00:07\n",
+        )
+
+    def test_delegate_still_sees_every_event(self, tmp_path, monitors):
+        delegate = RecordingEventSink()
+        sink, _stream = self._sink(tmp_path, delegate=delegate)
+        drc = _make_step("drc", "ecc")
+        lvs = _make_step("lvs", "ecc")
+
+        sink.on_step_started(drc)
+        sink.on_step_started(lvs)
+        sink.on_step_completed(lvs, StateEnum.Success)
+        sink.on_step_completed(drc, StateEnum.Success)
+
+        assert delegate.calls == [
+            ("step_started", "drc"),
+            ("step_started", "lvs"),
+            ("step_completed", "lvs", "Success", None),
+            ("step_completed", "drc", "Success", None),
+        ]

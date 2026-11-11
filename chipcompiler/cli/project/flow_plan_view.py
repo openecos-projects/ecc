@@ -11,8 +11,15 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 from chipcompiler.data.flow_check import Severity
+from chipcompiler.data.flow_needs import StepNeeds, plan_needs
 from chipcompiler.data.flow_plan import FlowPlan, PlannedStep
-from chipcompiler.data.types import DesignState, PlacementLegality, flow_step_policy
+from chipcompiler.data.flow_stages import StepStage, plan_stages
+from chipcompiler.data.types import (
+    DesignState,
+    FlowStepCategory,
+    PlacementLegality,
+    flow_step_policy,
+)
 
 ProblemKind = Literal["flow_violation", "flow_input"]
 ProblemSeverity = Literal["error", "warning"]
@@ -32,6 +39,18 @@ class StepRow:
     requires: tuple[str, ...]
     uses: tuple[str, ...]
     provides: tuple[str, ...]
+    #: Steps of one stage can run in parallel; ``label`` is ``stage`` plus ``slot``.
+    #: A disabled step has no stage (``None``, empty ``slot`` and ``label``).
+    stage: int | None
+    slot: str
+    label: str
+    parallel_with: tuple[str, ...]
+    #: Producers the step follows, nearest first (see :class:`StepNeeds`).
+    after: tuple[str, ...]
+    #: Capability -> producer step (``None``: no enabled step provides it).
+    needs: tuple[tuple[str, str | None], ...]
+    #: A checker that provides nothing: it only reports.
+    check: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +71,9 @@ class PlanView:
     flow: str
     steps: tuple[StepRow, ...]
     problems: tuple[PlanProblem, ...]
+    #: The project's ``[flow] max_parallel_steps``: at most this many steps of
+    #: one stage run at once.
+    max_parallel_steps: int
 
     @property
     def enabled_count(self) -> int:
@@ -75,10 +97,20 @@ class PlanView:
         )
 
 
-def plan_view(plan: FlowPlan, *, flow: str, input_errors: Sequence[str] = ()) -> PlanView:
+def plan_view(
+    plan: FlowPlan, *, flow: str, max_parallel_steps: int, input_errors: Sequence[str] = ()
+) -> PlanView:
     """The view of *plan*; *input_errors* are entry inputs ``ecc.toml`` lacks."""
+    stages = plan_stages(plan.steps)
+    needs = plan_needs(plan.steps)
     steps = tuple(
-        _step_row(position, step, final=position == len(plan.steps))
+        _step_row(
+            position,
+            step,
+            stages[position - 1],
+            needs[position - 1],
+            final=position == len(plan.steps),
+        )
         for position, step in enumerate(plan.steps, start=1)
     )
     problems = [
@@ -97,7 +129,9 @@ def plan_view(plan: FlowPlan, *, flow: str, input_errors: Sequence[str] = ()) ->
         PlanProblem(kind="flow_input", severity="error", step=entry, reason=reason)
         for reason in input_errors
     )
-    return PlanView(flow=flow, steps=steps, problems=tuple(problems))
+    return PlanView(
+        flow=flow, steps=steps, problems=tuple(problems), max_parallel_steps=max_parallel_steps
+    )
 
 
 def view_records(view: PlanView) -> list[Record]:
@@ -110,6 +144,7 @@ def view_records(view: PlanView) -> list[Record]:
             "enabled_count": view.enabled_count,
             "step_count": len(view.steps),
             "skip_steps": list(view.skip_steps),
+            "max_parallel_steps": view.max_parallel_steps,
         }
     ]
     records.extend(
@@ -124,6 +159,13 @@ def view_records(view: PlanView) -> list[Record]:
             "requires": list(step.requires),
             "uses": list(step.uses),
             "provides": list(step.provides),
+            "stage": step.stage,
+            "slot": step.slot,
+            "label": step.label,
+            "parallel_with": list(step.parallel_with),
+            "after": list(step.after),
+            "needs": dict(step.needs),
+            "check": step.check,
         }
         for step in view.steps
     )
@@ -152,7 +194,7 @@ def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
         if kind == "flow_step":
             steps.append(
                 StepRow(
-                    position=_int(record, "position"),
+                    position=record_int(record, "position"),
                     step=record_str(record, "step"),
                     tool=record_str(record, "tool"),
                     enabled=_bool(record, "enabled"),
@@ -161,6 +203,13 @@ def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
                     requires=record_strings(record, "requires"),
                     uses=record_strings(record, "uses"),
                     provides=record_strings(record, "provides"),
+                    stage=_optional_int(record, "stage"),
+                    slot=record_str(record, "slot"),
+                    label=record_str(record, "label"),
+                    parallel_with=record_strings(record, "parallel_with"),
+                    after=record_strings(record, "after"),
+                    needs=_needs(record, "needs"),
+                    check=_bool(record, "check"),
                 )
             )
         elif kind == "flow_violation" or kind == "flow_input":
@@ -183,11 +232,16 @@ def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
         else:
             raise ValueError(f"unexpected flow plan record: {kind!r}")
     return PlanView(
-        flow=record_str(records[0], "flow"), steps=tuple(steps), problems=tuple(problems)
+        flow=record_str(records[0], "flow"),
+        steps=tuple(steps),
+        problems=tuple(problems),
+        max_parallel_steps=record_int(records[0], "max_parallel_steps"),
     )
 
 
-def _step_row(position: int, step: PlannedStep, *, final: bool) -> StepRow:
+def _step_row(
+    position: int, step: PlannedStep, stage: StepStage, needs: StepNeeds, *, final: bool
+) -> StepRow:
     policy = flow_step_policy(step.name)
     provides: set[str] = {str(item) for item in policy.provides}
     if policy.legality is PlacementLegality.LEGALIZED:
@@ -202,6 +256,13 @@ def _step_row(position: int, step: PlannedStep, *, final: bool) -> StepRow:
         requires=tuple(sorted(str(item) for item in policy.requires)),
         uses=tuple(sorted(str(item) for item in policy.uses)),
         provides=tuple(sorted(provides)),
+        stage=stage.stage,
+        slot=stage.slot,
+        label=stage.label,
+        parallel_with=stage.parallel_with,
+        after=needs.after,
+        needs=needs.producers,
+        check=policy.category is FlowStepCategory.CHECKER and not provides,
     )
 
 
@@ -219,11 +280,16 @@ def record_str(record: Mapping[str, object], key: str) -> str:
     return value
 
 
-def _int(record: Mapping[str, object], key: str) -> int:
+def record_int(record: Mapping[str, object], key: str) -> int:
+    """The integer field *key*; raises ``ValueError`` when absent or not an integer."""
     value = _field(record, key)
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError(f"{key} must be an integer, not {value!r}")
     return value
+
+
+def _optional_int(record: Mapping[str, object], key: str) -> int | None:
+    return None if _field(record, key) is None else record_int(record, key)
 
 
 def _bool(record: Mapping[str, object], key: str) -> bool:
@@ -244,3 +310,18 @@ def record_strings(record: Mapping[str, object], key: str) -> tuple[str, ...]:
             raise ValueError(f"{key} entries must be strings, not {item!r}")
         items.append(item)
     return tuple(items)
+
+
+def _needs(record: Mapping[str, object], key: str) -> tuple[tuple[str, str | None], ...]:
+    """The capability -> producer mapping field *key*; raises ``ValueError`` otherwise."""
+    value = _field(record, key)
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} must be an object, not {value!r}")
+    pairs: list[tuple[str, str | None]] = []
+    for capability, producer in cast("dict[object, object]", value).items():
+        if not isinstance(capability, str):
+            raise ValueError(f"{key} capabilities must be strings, not {capability!r}")
+        if producer is not None and not isinstance(producer, str):
+            raise ValueError(f"{key} producers must be strings or null, not {producer!r}")
+        pairs.append((capability, producer))
+    return tuple(pairs)

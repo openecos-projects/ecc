@@ -37,6 +37,7 @@ def test_toggles_write_every_flow_key_explicitly(capsys, create_cli_project):
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
         "skip_steps": ["lec", "CTS"],
+        "max_parallel_steps": 4,
         "enabled": ["diff_opt"],
         "disabled": ["CTS"],
     }
@@ -53,6 +54,7 @@ def test_toggles_write_every_flow_key_explicitly(capsys, create_cli_project):
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
         "skip_steps": ["lec", "CTS"],
+        "max_parallel_steps": 4,
     }
     assert {key: value for key, value in after.items() if key != "flow"} == {
         key: value for key, value in before.items() if key != "flow"
@@ -101,6 +103,124 @@ def test_a_project_without_a_preset_is_not_edited(capsys, create_cli_project):
         }
     ]
     with open(toml_path) as f:
+        assert f.read() == before
+
+
+def _declare_max_parallel_steps(project_dir, value):
+    # [flow] is the last table of the project fixture.
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write(f"max_parallel_steps = {value}\n")
+
+
+def test_max_parallel_steps_alone_is_written_and_the_rest_of_ecc_toml_stays(
+    capsys, create_cli_project
+):
+    project_dir = create_cli_project()
+    before = _toml(project_dir)
+
+    rc, records = _edit(capsys, project_dir, "--max-parallel-steps", "1", "--yes")
+
+    assert rc == 0
+    assert records == [
+        {
+            "record": "flow_edit",
+            "status": "written",
+            "path": os.path.join(project_dir, "ecc.toml"),
+            "preset": "rtl2gds",
+            "lec_engine": "kepler_formal",
+            "skip_steps": ["lec", "diff_opt"],
+            "max_parallel_steps": 1,
+            "enabled": [],
+            "disabled": [],
+        }
+    ]
+    after = _toml(project_dir)
+    assert after["flow"] == {
+        "preset": "rtl2gds",
+        "lec_engine": "kepler_formal",
+        "skip_steps": ["lec", "diff_opt"],
+        "max_parallel_steps": 1,
+    }
+    assert {key: value for key, value in after.items() if key != "flow"} == {
+        key: value for key, value in before.items() if key != "flow"
+    }
+
+
+def test_toggles_keep_the_projects_current_max_parallel_steps(capsys, create_cli_project):
+    project_dir = create_cli_project()
+    _declare_max_parallel_steps(project_dir, 2)
+
+    rc, records = _edit(capsys, project_dir, "--disable", "CTS", "--yes")
+
+    assert rc == 0
+    assert records[0]["max_parallel_steps"] == 2
+    assert _toml(project_dir)["flow"]["max_parallel_steps"] == 2
+
+
+def test_the_flag_and_toggles_are_written_together(capsys, create_cli_project):
+    project_dir = create_cli_project()
+
+    rc, records = _edit(
+        capsys, project_dir, "--disable", "CTS", "--max-parallel-steps", "3", "--yes"
+    )
+
+    assert rc == 0
+    assert (records[0]["disabled"], records[0]["max_parallel_steps"]) == (["CTS"], 3)
+    flow = _toml(project_dir)["flow"]
+    assert (flow["skip_steps"], flow["max_parallel_steps"]) == (["lec", "diff_opt", "CTS"], 3)
+
+
+def test_max_parallel_steps_without_a_terminal_needs_yes(capsys, create_cli_project):
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
+        before = f.read()
+
+    rc, records = _edit(capsys, project_dir, "--max-parallel-steps", "2")
+
+    assert rc == 1
+    assert [record["error"] for record in records] == ["flow_edit_requires_confirmation"]
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
+        assert f.read() == before
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "two"])
+def test_an_invalid_max_parallel_steps_is_rejected_and_nothing_is_written(
+    capsys, create_cli_project, value
+):
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
+        before = f.read()
+
+    rc = cli_main.run(
+        ["flow", "edit", "--project", project_dir, "--max-parallel-steps", value, "--yes"]
+    )
+
+    assert rc == 2
+    assert "Invalid value for '--max-parallel-steps'" in capsys.readouterr().err
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
+        assert f.read() == before
+
+
+def test_the_flag_with_a_selection_missing_required_data_is_not_written(capsys, create_cli_project):
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
+        before = f.read()
+
+    rc, records = _edit(
+        capsys,
+        project_dir,
+        "--disable",
+        "legalization",
+        "--disable",
+        "TimingOpt",
+        "--max-parallel-steps",
+        "2",
+        "--yes",
+    )
+
+    assert rc == 1
+    assert [record["error"] for record in records] == ["flow_selection_invalid"]
+    with open(os.path.join(project_dir, "ecc.toml")) as f:
         assert f.read() == before
 
 
@@ -168,6 +288,52 @@ def test_terminal_selection_is_written_once_confirmed(
     assert rc == 0
     assert "✔ wrote [flow] to" in capsys.readouterr().out
     assert _toml(project_dir)["flow"]["skip_steps"] == ["diff_opt"]
+
+
+def test_the_checkbox_saves_the_chosen_max_parallel_steps(capsys, monkeypatch, create_cli_project):
+    project_dir = create_cli_project()
+    # Lower the value twice, save, confirm.
+    _scripted_terminal(monkeypatch, ["\x1b[D\x1b[D", "\r", "y"])
+
+    rc = cli_main.run(["flow", "edit", "--project", project_dir])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "  max_parallel_steps = 2" in out.splitlines()
+    assert _toml(project_dir)["flow"] == {
+        "preset": "rtl2gds",
+        "lec_engine": "kepler_formal",
+        "skip_steps": ["lec", "diff_opt"],
+        "max_parallel_steps": 2,
+    }
+
+
+@pytest.mark.parametrize("keys", [["\r", "y"], ["\x1b[B ", "\r", "y"]])
+def test_the_checkbox_keeps_the_current_value_unless_asked(
+    capsys, monkeypatch, create_cli_project, keys
+):
+    project_dir = create_cli_project()
+    _declare_max_parallel_steps(project_dir, 3)
+    _scripted_terminal(monkeypatch, keys)
+
+    rc = cli_main.run(["flow", "edit", "--project", project_dir])
+
+    assert rc == 0
+    assert "  max_parallel_steps = 3" in capsys.readouterr().out.splitlines()
+    assert _toml(project_dir)["flow"]["max_parallel_steps"] == 3
+
+
+@pytest.mark.parametrize("answer", ["y", "n"])
+def test_the_terminal_flag_change_is_confirmed_before_it_is_written(
+    capsys, monkeypatch, create_cli_project, answer
+):
+    project_dir = create_cli_project()
+    _scripted_terminal(monkeypatch, [answer])
+
+    rc = cli_main.run(["flow", "edit", "--project", project_dir, "--max-parallel-steps", "2"])
+
+    assert rc == 0
+    assert _toml(project_dir)["flow"].get("max_parallel_steps") == (2 if answer == "y" else None)
 
 
 @pytest.mark.parametrize(
@@ -246,7 +412,7 @@ def test_plain_records_state_the_written_selection(capsys, create_cli_project):
     assert capsys.readouterr().out.splitlines() == [
         f"record=flow_edit status=written path={os.path.join(project_dir, 'ecc.toml')} "
         "preset=rtl2gds lec_engine=kepler_formal skip_steps=\"['lec', 'diff_opt', 'CTS']\" "
-        "enabled=[] disabled=['CTS']",
+        "max_parallel_steps=4 enabled=[] disabled=['CTS']",
         *(
             f"kind=warning warning=flow_step_degraded step={step} missing=['clock_tree'] "
             f"fixes=['CTS'] reason=\"{step} runs with degraded results without clock_tree; "

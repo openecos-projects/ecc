@@ -22,6 +22,7 @@ from .step import (
 from .types import (
     ADVISORY_FLOW_STEPS,
     DEFAULT_LEC_ENGINE,
+    DEFAULT_MAX_PARALLEL_STEPS,
     DEFAULT_SKIP_STEPS,
     FINISHED_STEP_STATES,
     FLOW_STEP_CATEGORIES,
@@ -120,6 +121,7 @@ __all__ = [
     "step_directory_for_tool",
     "create_workspace",
     "load_workspace",
+    "DEFAULT_MAX_PARALLEL_STEPS",
     "DEFAULT_SKIP_STEPS",
     "Workspace",
     "WorkspaceStep",

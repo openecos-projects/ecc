@@ -180,7 +180,12 @@ def _flow_option(flow_config: FlowConfig | None, key: str) -> str | None:
 
 
 def write_flow_selection(
-    config_path: str, *, preset: str, lec_engine: str, skip_steps: Sequence[str]
+    config_path: str,
+    *,
+    preset: str,
+    lec_engine: str,
+    skip_steps: Sequence[str],
+    max_parallel_steps: int,
 ) -> None:
     """Declare the whole selection in ``ecc.toml`` ``[flow]``, comments kept.
 
@@ -196,6 +201,7 @@ def write_flow_selection(
         ("preset", preset),
         ("lec_engine", lec_engine),
         ("skip_steps", list(skip_steps)),
+        ("max_parallel_steps", max_parallel_steps),
     ):
         text = set_scoped_key(text, "flow", name, value)
     write_text_atomic(Path(config_path), text)

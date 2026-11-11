@@ -15,6 +15,7 @@ def build_project_config_items(
         _resolve_path,
         find_config_path,
         load_project_config,
+        resolve_max_parallel_steps,
         resolve_pdk_root,
         validate_project_config,
     )
@@ -99,6 +100,15 @@ def build_project_config_items(
         entries.append(("flow.skip_steps", None, list(DEFAULT_SKIP_STEPS), "default"))
     else:
         entries.append(("flow.skip_steps", declared, declared, source))
+
+    entries.append(
+        (
+            "flow.max_parallel_steps",
+            cfg.flow_max_parallel_steps,
+            resolve_max_parallel_steps(cfg),
+            "ecc.toml" if "flow.max_parallel_steps" in explicit else "default",
+        )
+    )
 
     inspect = disclosure_cmd("ecc config", project, run_id)
 

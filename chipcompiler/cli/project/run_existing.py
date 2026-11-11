@@ -394,6 +394,7 @@ def _execute_existing_run(
                 ]
             )
 
+        from chipcompiler.cli.project.config import resolve_max_parallel_steps
         from chipcompiler.cli.rendering.progress import (
             preserve_cli_stdio,
             run_with_step_progress,
@@ -425,6 +426,7 @@ def _execute_existing_run(
                 process_context = nullcontext()
             with process_context:
                 engine_flow = EngineFlow(workspace=workspace)
+                engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
                 flow_ok = True
                 explicit_selector = (
                     command_input.only is not None or command_input.from_step is not None

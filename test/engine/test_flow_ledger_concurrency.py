@@ -1,13 +1,16 @@
-"""Steps of a parallel checker wave share one ledger without losing each other's commits."""
+"""Steps of a parallel analysis wave share one ledger without losing each other's commits."""
 
 import threading
 import time
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 import chipcompiler.engine.flow as engine_flow
 from chipcompiler.data import StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.data.workspace.flow_types import load_flow_document
 from chipcompiler.engine import EngineFlow
 from chipcompiler.engine.step_execution import StepExecutionResult
@@ -128,8 +131,144 @@ def test_wave_steps_commit_and_refresh_one_at_a_time(tmp_path, monkeypatch):
     _quiet_completion(monkeypatch, refresh)
     monkeypatch.setattr(engine_flow, "execute_tool_step", execution)
     monkeypatch.setattr(EngineFlow, "_checker_parallelism", lambda _self, steps: len(steps))
+    steps = [_step(name) for name in names]
 
-    states = flow._run_checker_batch([_step(name) for name in names], rerun=False)
+    outcomes = flow._run_wave(steps, rerun=False)
 
-    assert (states, overlapped) == ([StateEnum.Success, StateEnum.Success], [])
+    assert (outcomes, overlapped) == ([(step, StateEnum.Success) for step in steps], [])
     assert [record["state"] for record in _on_disk(flow)] == ["Success", "Success"]
+
+
+def _held_by_caller(flow: EngineFlow) -> bool:
+    """Whether the calling thread holds the ledger lock: another thread cannot take it."""
+    taken = threading.Event()
+
+    def take():
+        with ledger_lock(flow.workspace.flow):
+            taken.set()
+
+    threading.Thread(target=take, daemon=True).start()
+    return not taken.wait(timeout=0.2)
+
+
+def test_the_completion_callback_and_its_rollback_are_one_ledger_transaction(tmp_path, monkeypatch):
+    flow = _flow(tmp_path, ["lvs"])
+    held = []
+
+    class _FailingCommit:
+        fatal_observer = True
+
+        def on_step_completed(self, _step, _state, _error=None):
+            held.append(_held_by_caller(flow))
+            raise RuntimeError("snapshot commit failed")
+
+    _quiet_completion(monkeypatch)
+    monkeypatch.setattr(engine_flow, "execute_tool_step", _finished)
+
+    with pytest.raises(RuntimeError, match="snapshot commit failed"):
+        flow.run_step(_step("lvs"), observer=_FailingCommit())
+
+    (on_disk,) = _on_disk(flow)
+    assert (held, on_disk["state"]) == ([True], "Ongoing")
+
+
+class _LedgerReader:
+    """A run observer that reads the ledger from its callbacks."""
+
+    fatal_observer = True
+
+    def __init__(self, flow: EngineFlow):
+        self.flow = flow
+        self.lvs_committing = threading.Event()
+        self.published: list[dict[str, str]] = []
+        self.during_lvs_commit: dict[str, str] = {}
+
+    def states(self) -> dict[str, str]:
+        steps = {name: self.flow.get_step(name, "ecc") or {} for name in ("lvs", "drc")}
+        return {name: step.get("state", "") for name, step in steps.items()}
+
+
+def test_a_sibling_never_publishes_a_state_that_is_rolled_back(tmp_path, monkeypatch):
+    # lvs's snapshot commit fails and rolls lvs back to Ongoing. drc finishes
+    # while that commit runs: it must neither persist beside it nor publish
+    # the lvs Success that is about to be withdrawn.
+    flow = _flow(tmp_path, ["lvs", "drc"])
+    observer: Any = _LedgerReader(flow)
+
+    def on_step_completed(step, _state, _error=None):
+        if step.name == "lvs":
+            observer.lvs_committing.set()
+            time.sleep(0.3)  # room for drc to complete beside the commit
+            observer.during_lvs_commit = observer.states()
+            raise RuntimeError("snapshot commit failed")
+        observer.published.append(observer.states())
+
+    observer.on_step_completed = on_step_completed
+
+    drc_running = threading.Event()
+
+    def execution(_workspace, step, *_args, **_kwargs):
+        if step.name == "lvs":
+            assert drc_running.wait(timeout=5)
+        else:
+            drc_running.set()
+            assert observer.lvs_committing.wait(timeout=5)
+        return _finished()
+
+    _quiet_completion(monkeypatch)
+    monkeypatch.setattr(engine_flow, "execute_tool_step", execution)
+    monkeypatch.setattr(EngineFlow, "_checker_parallelism", lambda _self, steps: len(steps))
+
+    with pytest.raises(RuntimeError, match="snapshot commit failed"):
+        flow._run_wave([_step("lvs"), _step("drc")], rerun=False, observer=observer)
+
+    assert (observer.during_lvs_commit, observer.published) == (
+        {"lvs": "Success", "drc": "Ongoing"},
+        [{"lvs": "Ongoing", "drc": "Success"}],
+    )
+    assert [record["state"] for record in _on_disk(flow)] == ["Ongoing", "Success"]
+
+
+def test_a_callback_reading_the_ledger_does_not_block_a_completing_sibling(tmp_path, monkeypatch):
+    # lvs completes while drc's start callback is running and reads the ledger
+    # under its lock: one lock for both, so neither waits on the other forever.
+    flow = _flow(tmp_path, ["lvs", "drc"])
+    observer: Any = _LedgerReader(flow)
+    drc_starting, lvs_completing = threading.Event(), threading.Event()
+
+    def on_step_started(step):
+        if step.name == "drc":
+            drc_starting.set()
+            lvs_completing.wait(timeout=0.5)
+            with ledger_lock(flow.workspace.flow):
+                observer.published.append(observer.states())
+
+    def on_step_completed(_step, _state, _error=None):
+        observer.published.append(observer.states())
+
+    observer.on_step_started = on_step_started
+    observer.on_step_completed = on_step_completed
+
+    def execution(_workspace, step, *_args, **_kwargs):
+        if step.name == "lvs":
+            assert drc_starting.wait(timeout=5)
+        return _finished()
+
+    def refresh(_workspace, step):
+        if step.name == "lvs":
+            lvs_completing.set()
+
+    _quiet_completion(monkeypatch, refresh)
+    monkeypatch.setattr(engine_flow, "execute_tool_step", execution)
+    monkeypatch.setattr(EngineFlow, "_checker_parallelism", lambda _self, steps: len(steps))
+    steps = [_step("lvs"), _step("drc")]
+    outcomes: list = []
+    wave = threading.Thread(
+        target=lambda: outcomes.append(flow._run_wave(steps, rerun=False, observer=observer)),
+        daemon=True,
+    )
+
+    wave.start()
+    wave.join(timeout=10)
+
+    assert (wave.is_alive(), outcomes) == (False, [[(step, StateEnum.Success) for step in steps]])

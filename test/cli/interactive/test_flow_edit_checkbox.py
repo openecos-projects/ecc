@@ -6,7 +6,12 @@ import pytest
 from rich.console import Console
 from rich.text import Text
 
-from chipcompiler.cli.interactive.flow_edit import confirm_write, edit_selection, split_keys
+from chipcompiler.cli.interactive.flow_edit import (
+    EditedSelection,
+    confirm_write,
+    edit_selection,
+    split_keys,
+)
 from chipcompiler.cli.project.flow_plan_view import PlanView, plan_view
 from chipcompiler.data import DEFAULT_SKIP_STEPS
 from chipcompiler.data.flow_plan import plan_flow, preset_chain
@@ -14,6 +19,8 @@ from chipcompiler.rtl2gds import rtl2gds_step_names
 
 _DOWN = "\x1b[B"
 _UP = "\x1b[A"
+_LEFT = "\x1b[D"
+_RIGHT = "\x1b[C"
 _SPACE = " "
 _ENTER = "\r"
 
@@ -25,21 +32,27 @@ def _redrawing_terminal(monkeypatch):
     monkeypatch.setenv("TERM", "xterm-256color")
 
 
-def _view_of(skip: tuple[str, ...]) -> PlanView:
-    return plan_view(plan_flow(preset_chain("rtl2gds"), skip_steps=skip), flow="rtl2gds")
+def _view_of_project(max_parallel_steps: int, **bounds):
+    def view_of(skip: tuple[str, ...]) -> PlanView:
+        plan = plan_flow(preset_chain("rtl2gds"), skip_steps=skip, **bounds)
+        return plan_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
+
+    return view_of
+
+
+_view_of = _view_of_project(4)
 
 
 def _screen():
     screen = io.StringIO()
-    return screen, Console(file=screen, force_terminal=True, width=140)
+    # Tall enough that live redraws are never cropped to the terminal height.
+    return screen, Console(file=screen, force_terminal=True, width=140, height=60)
 
 
-def _edit(keys, skip=DEFAULT_SKIP_STEPS):
+def _edit(keys, skip=DEFAULT_SKIP_STEPS, view_of=_view_of):
     screen, console = _screen()
     scripted = iter(keys)
-    result = edit_selection(
-        skip, view_of=_view_of, console=console, read_key=lambda: next(scripted)
-    )
+    result = edit_selection(skip, view_of=view_of, console=console, read_key=lambda: next(scripted))
     return result, screen.getvalue()
 
 
@@ -50,14 +63,14 @@ def _moves_to(step: str) -> list[str]:
 def test_space_toggles_the_step_under_the_cursor_and_enter_saves():
     result, output = _edit([*_moves_to("CTS"), _SPACE, _ENTER])
 
-    assert result == (*DEFAULT_SKIP_STEPS, "CTS")
+    assert result == EditedSelection((*DEFAULT_SKIP_STEPS, "CTS"), 4)
     assert "route runs with degraded results without clock_tree; enable CTS" in output
 
 
 def test_the_flow_target_stays_enabled():
     result, output = _edit([_UP, _SPACE, _ENTER])
 
-    assert result == DEFAULT_SKIP_STEPS
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 4)
     assert "Harden ends the flow and stays enabled" in output
 
 
@@ -74,6 +87,87 @@ def test_a_selection_missing_required_data_cannot_be_saved():
 @pytest.mark.parametrize("keys", [["q"], ["\x1b"]])
 def test_cancel_keys_leave_the_selection_unsaved(keys):
     assert _edit(keys)[0] is None
+
+
+@pytest.mark.parametrize(
+    ("keys", "value"),
+    [
+        ([_LEFT], 3),
+        (["\x1bOD", "\x1bOD"], 2),
+        (["-", "-", "-"], 1),
+        ([_RIGHT], 5),
+        (["\x1bOC"], 5),
+        (["+"], 5),
+        # Windows scan codes: \xe0 K is left, \xe0 M is right.
+        (["\xe0", "K", "\xe0", "K"], 2),
+        (["\xe0", "M"], 5),
+        # Anywhere in the list, with toggles in between.
+        ([_DOWN, _LEFT, _DOWN, _RIGHT, _RIGHT], 5),
+    ],
+)
+def test_left_and_right_change_the_value_wherever_the_cursor_is(keys, value):
+    result, _output = _edit([*keys, _ENTER])
+
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, value)
+
+
+def test_the_value_stays_within_one_and_the_largest_stage():
+    # The largest stage of the default flow is 13a..13e: five steps.
+    lowered, _ = _edit([_LEFT] * 6 + [_ENTER])
+    raised, _ = _edit([_RIGHT] * 6 + [_ENTER])
+
+    assert (lowered, raised) == (
+        EditedSelection(DEFAULT_SKIP_STEPS, 1),
+        EditedSelection(DEFAULT_SKIP_STEPS, 5),
+    )
+
+
+def test_a_value_above_the_default_and_every_stage_is_kept_and_can_be_lowered():
+    view_of = _view_of_project(8)
+
+    kept, _ = _edit([_RIGHT, _ENTER], view_of=view_of)
+    lowered, _ = _edit([_LEFT, _ENTER], view_of=view_of)
+
+    assert (kept, lowered) == (
+        EditedSelection(DEFAULT_SKIP_STEPS, 8),
+        EditedSelection(DEFAULT_SKIP_STEPS, 7),
+    )
+
+
+def test_the_default_bounds_the_value_when_no_stage_is_parallel():
+    view_of = _view_of_project(4, start="Synthesis", end="preFloorplan")
+
+    result, _output = _edit([_RIGHT, _ENTER], view_of=view_of)
+
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 4)
+
+
+def test_toggles_alone_keep_the_value_the_editor_started_with():
+    result, _output = _edit([_DOWN, _SPACE, _ENTER], view_of=_view_of_project(2))
+
+    assert result == EditedSelection(("diff_opt",), 2)
+
+
+def test_the_legend_and_key_hint_follow_the_value():
+    _result, output = _edit([_LEFT, _LEFT, _LEFT, _ENTER])
+
+    assert "↑/↓ move · space toggle · ←/→ parallel steps · enter save · q cancel" in output
+    assert "┐…┘ same number = can run in parallel, up to 4 at once" in output
+    assert "┐…┘ same number = can run in parallel, up to 2 at once" in output
+    assert "┐…┘ same number = independent steps; run one at a time (max_parallel_steps = 1)" in (
+        output
+    )
+
+
+def test_the_value_is_shown_when_no_stage_has_parallel_steps():
+    view_of = _view_of_project(4, start="Synthesis", end="preFloorplan")
+
+    result, output = _edit([_LEFT, _ENTER], view_of=view_of)
+
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 3)
+    assert "max_parallel_steps = 4" in output
+    assert "max_parallel_steps = 3" in output
+    assert "┐…┘" not in output
 
 
 def test_interrupt_cancels():
@@ -121,7 +215,7 @@ def test_windows_arrow_keys_move_the_cursor():
     # \xe0 + P is the Windows down arrow: enable lec (row 2), then save.
     result, _output = _edit(["\xe0", "P", _SPACE, _ENTER])
 
-    assert result == ("diff_opt",)
+    assert result == EditedSelection(("diff_opt",), 4)
 
 
 @pytest.mark.parametrize(
