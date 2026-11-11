@@ -415,17 +415,13 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         return StateEnum.Imcomplete if step.name == advisory else StateEnum.Success
 
     monkeypatch.setattr(flow, "run_step", run_step)
-    if parallel:
-        # Isolate batch dispatch from the subprocess/native-tool implementation.
-        monkeypatch.setattr(
-            flow, "_can_parallelize_checker_batch", lambda step, *_: step.name == advisory
-        )
-        monkeypatch.setattr(flow, "_analysis_wave_end", lambda index: index + 1)
-        monkeypatch.setattr(
-            flow, "_run_checker_batch", lambda steps, **kw: [run_step(step) for step in steps]
-        )
+    # One wave of both steps, run on two workers, or one step per wave.
+    monkeypatch.setattr(
+        flow, "_analysis_wave_end", lambda steps, index: len(steps) if parallel else index + 1
+    )
+    monkeypatch.setattr(flow, "_checker_parallelism", lambda steps: len(steps))
     assert flow.run_steps() is True
-    assert executed == [advisory, StepEnum.HARDEN.value]
+    assert sorted(executed) == sorted([advisory, StepEnum.HARDEN.value])
 
 
 # ---------------------------------------------------------------------------

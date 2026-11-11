@@ -1,12 +1,10 @@
 """Shared EngineFlow completion hooks."""
 
 import logging
-from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
-from chipcompiler.data.workspace.flow_types import ChecklistStatus, FlowStepEntry
+from chipcompiler.data.workspace.flow_types import ChecklistStatus
 
 logger = logging.getLogger(__name__)
 
@@ -120,15 +118,6 @@ def finalize_interrupted_subflow(workspace_step, runtime, peak_memory_mb) -> lis
         return []
 
 
-def notify_subflow_stages(observer, workspace_step, subflow_steps: list[dict]) -> None:
-    """Publish finalized subflow stages; the engine calls this outside the ledger lock."""
-    try:
-        for subflow_step in subflow_steps:
-            notify_flow_observer(observer, "on_subflow_stage", workspace_step, subflow_step)
-    except (Exception, SystemExit):
-        logger.exception("Failed to publish the subflow of %s", workspace_step.name)
-
-
 def refresh_signoff_checklist(workspace, workspace_step) -> None:
     """Replace step/home checklists after the step's terminal flow state is saved."""
     try:
@@ -151,43 +140,3 @@ def refresh_qor_report(workspace, step_tag: str) -> None:
         refresh_workspace_qor_report(workspace)
     except Exception:
         workspace.logger.exception("[QOR] %s failed to refresh the workspace QoR report", step_tag)
-
-
-def notify_flow_observer(observer, method_name: str, *args) -> None:
-    """Keep optional GUI observers outside the flow engine's failure domain."""
-    if observer is None:
-        return
-    callback = getattr(observer, method_name, None)
-    if not callable(callback):
-        return
-    try:
-        callback(*args)
-    except (Exception, SystemExit):
-        if getattr(observer, "fatal_observer", False):
-            raise
-        logger.exception("flow observer callback failed: %s", method_name)
-
-
-def notify_step_completed(
-    flow,
-    observer,
-    workspace_step,
-    state,
-    error,
-    previous_step: FlowStepEntry | None,
-) -> None:
-    """Publish completion and restore Ongoing state when a fatal commit fails."""
-    try:
-        notify_flow_observer(observer, "on_step_completed", workspace_step, state, error)
-    except (Exception, SystemExit):
-        if previous_step is not None:
-            with ledger_lock(flow.workspace.flow):
-                current = flow.get_step(workspace_step.name, workspace_step.tool)
-                if current is not None:
-                    current.clear()
-                    current.update(deepcopy(previous_step))
-                    if not flow.save():
-                        raise RuntimeError(
-                            "failed to roll back flow state after completion commit failure"
-                        ) from None
-        raise

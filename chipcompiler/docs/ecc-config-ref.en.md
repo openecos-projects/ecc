@@ -534,8 +534,18 @@ provides:
 `ecc flow plan` lists the preset's steps and checks a selection
 (`--enable`/`--disable` try one without writing `ecc.toml`); `ecc flow edit`
 picks the steps in a terminal checkbox list, or applies `--enable`/`--disable`
-directly, and after confirmation (or with `--yes`) rewrites `[flow]` with
-`preset`, `lec_engine`, and `skip_steps` stated explicitly. See the user guide §8.6.
+(and `--max-parallel-steps N`) directly, and after confirmation (or with `--yes`)
+rewrites `[flow]` with `preset`, `lec_engine`, `skip_steps`, and
+`max_parallel_steps` stated explicitly. See the user guide §8.6.
+
+`ecc.toml` `[flow] max_parallel_steps` is a positive integer (default 4) that caps
+how many independent steps of one stage (the `#` column of `ecc flow plan`) `ecc run`
+executes at once; `1` runs them one at a time. The engine's memory throttle (at
+least 4 GB budgeted per step, 20% of the available memory kept in reserve) can lower
+the number further. It is read at run time only: it is never stored in a workspace
+(`home/params.toml` and `home/flow.json` do not carry it) and never changes which
+steps an existing workspace counts as selected. `ecc config` shows it as
+`flow.max_parallel_steps`.
 
 When enabled, `diff_opt` reads the preceding
 DEF/Verilog using placement parasitics only. It runs discrete candidate buffering
@@ -1204,4 +1214,4 @@ This section targets automation agents and batch scripts; it sets the boundaries
 
 Before tuning parameters, check which fields are actually public — run `ecc param list --all`, `ecc param show`, or the installed version's `--help` — then change them with `ecc param set` or `ecc param unset` in the scope that owns them. As a rule, do not edit `home/params.toml`, generated JSON/Tcl, or internal templates by hand. The one exception is the QoR reference's `qor_profile` and `qor_power_budget_w`: both are workspace parameters outside the CLI schema, and they must still follow the QoR document's semantics and revalidation rules. `run --set` only applies when creating a new workspace, and the override must be recorded as part of the candidate's provenance. When changing parameters on an existing workspace, first work out which steps are invalidated and what range must be rerun.
 
-A field mentioned in documentation but absent from the current public schema is not a usable interface. Configure flow policy through the project `ecc.toml` `[flow]` keys (`preset`, optional `start`/`end`, `skip_steps`, `lec_engine`), not by hand-editing persisted workspace `home/params.toml` or `home/flow.json`; likewise do not hand-write QoR profiles/budgets or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.
+A field mentioned in documentation but absent from the current public schema is not a usable interface. Configure flow policy through the project `ecc.toml` `[flow]` keys (`preset`, optional `start`/`end`, `skip_steps`, `lec_engine`, `max_parallel_steps`), not by hand-editing persisted workspace `home/params.toml` or `home/flow.json`; likewise do not hand-write QoR profiles/budgets or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.

@@ -27,6 +27,8 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 
 class AgentEngineFlow(EngineFlow):
     step_worker_module = "agent.step_worker"
+    # The agent's operation observer tracks one current step; keep waves sequential.
+    max_parallel_steps = 1
 
     def build_default_steps(self):
         super().build_default_steps()

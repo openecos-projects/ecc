@@ -340,6 +340,7 @@ class TestWorkspaceRun:
             resume=False,
             bounded_through=None,
             event_sinks=[],
+            max_parallel_steps=[],
             result=StepRunResult(ok=True, executed=("place",)),
         )
 
@@ -373,16 +374,19 @@ class TestWorkspaceRun:
 
         def run_only(flow, name, *, force=False, event_sink=None):
             seen.only = (name, force)
+            seen.max_parallel_steps.append(flow.max_parallel_steps)
             seen.event_sinks.append(event_sink)
             return seen.result
 
         def run_from(flow, name, *, through=None, event_sink=None):
             seen.from_step = name
+            seen.max_parallel_steps.append(flow.max_parallel_steps)
             seen.event_sinks.append(event_sink)
             return seen.result
 
         def run_resume(flow, *, through=None, event_sink=None):
             seen.resume = True
+            seen.max_parallel_steps.append(flow.max_parallel_steps)
             seen.event_sinks.append(event_sink)
             return seen.result
 
@@ -465,6 +469,41 @@ class TestWorkspaceRun:
         assert rc == 0
         assert workspace_mocks.from_step == "CTS"
         assert workspace_mocks.executable == {"CTS"}
+
+    @pytest.mark.parametrize(
+        "selectors",
+        [["--resume"], ["--from", "CTS"], ["--only", "place", "--force"]],
+    )
+    @pytest.mark.parametrize("declared", [None, 2])
+    def test_the_engine_gets_the_projects_max_parallel_steps(
+        self, workspace_mocks, selectors, declared
+    ):
+        from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
+
+        if declared is not None:
+            with open(os.path.join(workspace_mocks.project, "ecc.toml"), "a") as f:
+                f.write(f"max_parallel_steps = {declared}\n")
+
+        rc = cli_main.run(
+            ["run", "--project", workspace_mocks.project, "--workspace", "workspace", *selectors]
+        )
+
+        assert rc == 0
+        assert workspace_mocks.max_parallel_steps == [declared or DEFAULT_MAX_PARALLEL_STEPS]
+
+    def test_an_invalid_max_parallel_steps_fails_before_the_engine_runs(
+        self, workspace_mocks, capsys
+    ):
+        with open(os.path.join(workspace_mocks.project, "ecc.toml"), "a") as f:
+            f.write("max_parallel_steps = 0\n")
+
+        rc = cli_main.run(
+            ["run", "--project", workspace_mocks.project, "--workspace", "workspace", "--resume"]
+        )
+
+        assert rc == 1
+        assert "flow.max_parallel_steps must be an integer >= 1" in capsys.readouterr().out
+        assert workspace_mocks.max_parallel_steps == []
 
     @pytest.mark.parametrize(
         "selectors",

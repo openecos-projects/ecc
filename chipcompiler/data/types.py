@@ -339,6 +339,10 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 # An explicit skip list replaces this policy; existing ledgers are preserved.
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value)
 
+# Upper bound on independent analysis steps a run executes at once; the
+# project ``[flow] max_parallel_steps`` key overrides it for a run.
+DEFAULT_MAX_PARALLEL_STEPS: Final = 4
+
 
 class ToolName(StrEnum):
     """Tool names a flow step (or the image backend) can bind to."""

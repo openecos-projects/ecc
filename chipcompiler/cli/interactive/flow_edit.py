@@ -3,13 +3,15 @@
 
 The plan is recomputed after every toggle and redrawn with its problems, so a
 selection that leaves a step without required design data cannot be saved.
-The saved selection is then confirmed before ecc.toml is written.
+``←``/``→`` change ``max_parallel_steps``, which only the legend depends on. The
+saved selection is then confirmed before ecc.toml is written.
 """
 
 import os
 import sys
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass, replace
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -17,6 +19,7 @@ from rich.text import Text
 
 from chipcompiler.cli.project.flow_plan_view import PlanView
 from chipcompiler.cli.rendering.flow_selection_view import flow_selection_view
+from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
 
 #: Reads the next key presses (one or more); see :func:`terminal_keys`.
 KeyReader = Callable[[], str]
@@ -25,31 +28,50 @@ ViewOf = Callable[[tuple[str, ...]], PlanView]
 
 _UP = frozenset({"\x1b[A", "\x1bOA", "k"})
 _DOWN = frozenset({"\x1b[B", "\x1bOB", "j"})
+_LEFT = frozenset({"\x1b[D", "\x1bOD", "-"})
+_RIGHT = frozenset({"\x1b[C", "\x1bOC", "+"})
 _TOGGLE = frozenset({" ", "x"})
 _SAVE = frozenset({"\r", "\n"})
 _CANCEL = frozenset({"q", "\x1b", "\x03", "\x04"})
 #: Windows reports arrows as a prefix key followed by the scan code.
 _WINDOWS_PREFIX = frozenset({"\x00", "\xe0"})
-_WINDOWS_ARROWS = {"H": "\x1b[A", "P": "\x1b[B"}
-_KEYS = "↑/↓ move · space toggle · enter save · q cancel"
+_WINDOWS_ARROWS = {"H": "\x1b[A", "P": "\x1b[B", "K": "\x1b[D", "M": "\x1b[C"}
+_KEYS = "↑/↓ move · space toggle · ←/→ parallel steps · enter save · q cancel"
 _YES = frozenset({"y", "Y"})
 #: Enter keeps ecc.toml as it is: writing needs an explicit ``y``.
 _NO = frozenset({"n", "N", *_SAVE, *_CANCEL})
 _CONFIRM_KEYS = "y write · n/enter/q cancel"
 
 
+@dataclass(frozen=True, slots=True)
+class EditedSelection:
+    """What the checkbox saved: the skipped steps and ``max_parallel_steps``."""
+
+    skip_steps: tuple[str, ...]
+    max_parallel_steps: int
+
+
 def edit_selection(
     skip_steps: Sequence[str], *, view_of: ViewOf, console: Console, read_key: KeyReader
-) -> tuple[str, ...] | None:
-    """Toggle steps until saved (the new skip list) or cancelled (None)."""
+) -> EditedSelection | None:
+    """Toggle steps and ``max_parallel_steps`` until saved or cancelled (None).
+
+    The value starts as the first view's ``max_parallel_steps``.
+    """
     skip = tuple(skip_steps)
     view = view_of(skip)
+    started = view.max_parallel_steps
+    parallel = started
     cursor = 0
     notice = ""
 
     def render() -> RenderableType:
-        footer = f"{_KEYS}\n{notice}" if notice else _KEYS
-        return flow_selection_view(view, cursor=cursor, footer=footer)
+        shown = replace(view, max_parallel_steps=parallel)
+        footer = [_KEYS, notice] if notice else [_KEYS]
+        if not any(step.parallel_with for step in view.steps):
+            # No legend states the value, so say it here.
+            footer.insert(0, f"max_parallel_steps = {parallel}")
+        return flow_selection_view(shown, cursor=cursor, footer="\n".join(footer))
 
     pending: list[str] = []
     with Live(render(), console=console, auto_refresh=False, transient=True) as live:
@@ -74,9 +96,15 @@ def edit_selection(
                 else:
                     skip = _toggled(skip, row.step, [step.step for step in view.steps])
                     view = view_of(skip)
+            elif key in _LEFT:
+                parallel = max(parallel - 1, 1)
+            elif key in _RIGHT:
+                # A larger value than any stage (or the default) could never matter.
+                bound = max(DEFAULT_MAX_PARALLEL_STEPS, _largest_stage(view), started)
+                parallel = parallel + 1 if parallel < bound else parallel
             elif key in _SAVE:
                 if not view.blocks_saving:
-                    return skip
+                    return EditedSelection(skip, parallel)
                 notice = "resolve the errors before saving"
             elif key in _CANCEL:
                 return None
@@ -152,6 +180,11 @@ def split_keys(chunk: str) -> list[str]:
             keys.append(char)
             index += 1
     return keys
+
+
+def _largest_stage(view: PlanView) -> int:
+    """The most steps one stage of *view* can run at once."""
+    return max((len(step.parallel_with) + 1 for step in view.steps), default=1)
 
 
 def _toggled(skip: tuple[str, ...], name: str, order: Sequence[str]) -> tuple[str, ...]:

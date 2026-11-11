@@ -216,6 +216,7 @@ def execute_fresh_run(
 
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project.config import (
+        resolve_max_parallel_steps,
         resolve_pdk_overrides,
         resolve_pdk_root,
         resolve_rtl,
@@ -494,6 +495,7 @@ def execute_fresh_run(
         # can never race this ledger or its outputs.
         try:
             engine_flow = EngineFlow(workspace=workspace)
+            engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
                 # No-arg preset builders stay canonical; the configured LEC
@@ -618,9 +620,11 @@ def execute_fresh_run(
             from contextlib import nullcontext
 
             from chipcompiler.cli.rendering.progress import (
-                run_flow_with_progress,
+                preserve_cli_stdio,
+                run_progress_event_sink,
                 should_enable_run_progress,
             )
+            from chipcompiler.engine import ExecutionPlan, execute
 
             if workspace_registered:
                 from chipcompiler.cli.project.run_process import managed_run_process
@@ -635,12 +639,15 @@ def execute_fresh_run(
             else:
                 process_context = nullcontext()
             with process_context:
+                plan = ExecutionPlan(intent="run")
                 if should_enable_run_progress(ctx, sys.stderr):
-                    flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+                    with (
+                        preserve_cli_stdio(),
+                        run_progress_event_sink(engine_flow, ctx, project, sys.stderr) as sink,
+                    ):
+                        flow_ok = execute(engine_flow, plan, event_sink=sink).succeeded
                 else:
-                    from chipcompiler.engine import ExecutionPlan, execute
-
-                    flow_ok = execute(engine_flow, ExecutionPlan(intent="run")).succeeded
+                    flow_ok = execute(engine_flow, plan).succeeded
 
             if not flow_ok:
                 failure_records = [

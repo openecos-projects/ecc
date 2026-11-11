@@ -30,6 +30,7 @@ def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_pro
         "enabled_count": 21,
         "step_count": 23,
         "skip_steps": list(DEFAULT_SKIP_STEPS),
+        "max_parallel_steps": 4,
     }
     steps = _records(records, "flow_step")
     assert [step["step"] for step in steps if not step["enabled"]] == list(DEFAULT_SKIP_STEPS)
@@ -44,9 +45,87 @@ def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_pro
         "requires": ["legal"],
         "uses": ["clock_tree"],
         "provides": ["routed"],
+        "stage": 11,
+        "slot": "",
+        "label": "11",
+        "parallel_with": [],
+        "after": ["Timing optimization", "CTS"],
+        "needs": {"clock_tree": "CTS", "legal": "Timing optimization"},
+        "check": False,
     }
     assert [step["step"] for step in steps if step["target"]] == ["Harden"]
     assert _records(records, "flow_violation") == []
+
+
+def test_a_disabled_step_has_a_null_stage_and_the_later_stages_renumber(capsys, create_cli_project):
+    rc, records = _plan(capsys, create_cli_project(), "--disable", "drc")
+
+    assert rc == 0
+    steps = {step["step"]: step for step in _records(records, "flow_step")}
+    assert steps["drc"] == {
+        "record": "flow_step",
+        "position": 16,
+        "step": "drc",
+        "tool": "ecc",
+        "enabled": False,
+        "optional": False,
+        "target": False,
+        "requires": ["filled"],
+        "uses": [],
+        "provides": [],
+        "stage": None,
+        "slot": "",
+        "label": "",
+        "parallel_with": [],
+        "after": ["filler"],
+        "needs": {"filled": "filler"},
+        "check": True,
+    }
+    assert steps["lvs"]["parallel_with"] == ["antennaCheck", "postRouteLec", "RCX"]
+    assert steps["Harden"]["stage"] == 16
+
+
+def _declare_max_parallel_steps(project_dir, value):
+    # [flow] is the last table of the project fixture.
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write(f"max_parallel_steps = {value}\n")
+
+
+def test_the_summary_reports_the_projects_max_parallel_steps(capsys, create_cli_project):
+    project_dir = create_cli_project()
+    _declare_max_parallel_steps(project_dir, 2)
+
+    rc, records = _plan(capsys, project_dir)
+
+    assert rc == 0
+    assert records[0] == {
+        "record": "flow_plan",
+        "flow": "rtl2gds",
+        "status": "ok",
+        "enabled_count": 21,
+        "step_count": 23,
+        "skip_steps": list(DEFAULT_SKIP_STEPS),
+        "max_parallel_steps": 2,
+    }
+
+
+@pytest.mark.parametrize(
+    ("value", "legend"),
+    [
+        (None, "┐…┘ same number = can run in parallel, up to 4 at once"),
+        (3, "┐…┘ same number = can run in parallel, up to 3 at once"),
+        (1, "┐…┘ same number = independent steps; run one at a time (max_parallel_steps = 1)"),
+    ],
+)
+def test_the_table_legend_states_the_projects_value(capsys, create_cli_project, value, legend):
+    project_dir = create_cli_project()
+    if value is not None:
+        _declare_max_parallel_steps(project_dir, value)
+
+    rc = cli_main.run(["flow", "plan", "--project", project_dir])
+
+    assert rc == 0
+    assert legend in capsys.readouterr().out.splitlines()
 
 
 def test_overrides_are_checked_without_writing_the_project(capsys, create_cli_project):

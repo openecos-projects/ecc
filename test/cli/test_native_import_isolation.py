@@ -21,7 +21,7 @@ from chipcompiler.cli.app import app
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.rendering import progress
 from chipcompiler.data import EccStep, Workspace
-from chipcompiler.engine import step_execution
+from chipcompiler.engine import ExecutionPlan, execute, step_execution
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.step_execution import StepExecutionResult
 
@@ -61,7 +61,8 @@ with tempfile.TemporaryDirectory() as directory:
         run_id="default",
         output_mode=OutputMode.TEXT,
     )
-    assert progress.run_flow_with_progress(flow, context, None, sys.stderr) is True
+    with progress.run_progress_event_sink(flow, context, None, sys.stderr) as sink:
+        assert execute(flow, ExecutionPlan(intent="run"), event_sink=sink).succeeded is True
 
 print("native-import-isolation-ok")
 """

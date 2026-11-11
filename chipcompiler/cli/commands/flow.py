@@ -103,6 +103,14 @@ def edit_cmd(
     disable: Annotated[
         list[str] | None, _step_toggle("--disable", "Skip STEP (repeatable)")
     ] = None,
+    max_parallel_steps: Annotated[
+        int | None,
+        typer.Option(
+            "--max-parallel-steps",
+            min=1,
+            help="Run at most N steps of one stage at once (1: one at a time)",
+        ),
+    ] = None,
     yes: Annotated[
         bool, typer.Option("--yes", "-y", help="Write ecc.toml without asking to confirm")
     ] = False,
@@ -112,16 +120,17 @@ def edit_cmd(
 ) -> None:
     """Choose the project's flow steps and write them to ecc.toml [flow].
 
-    Without --enable/--disable, opens a checkbox list in the terminal. The
-    changes are shown for confirmation before writing, unless --yes is given
-    (required without a terminal). The preset, LEC engine and skip_steps are
-    always written explicitly.
+    Without --enable/--disable/--max-parallel-steps, opens a checkbox list in
+    the terminal. The changes are shown for confirmation before writing, unless
+    --yes is given (required without a terminal). The preset, LEC engine,
+    skip_steps and max_parallel_steps are always written explicitly.
     """
     command_input = FlowEditInput(
         output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         enable=tuple(enable or ()),
         disable=tuple(disable or ()),
+        max_parallel_steps=max_parallel_steps,
         yes=yes,
     )
     execute_command("flow", command_input, flow_edit, render_key="flow:edit")

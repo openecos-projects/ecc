@@ -2,7 +2,8 @@ import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum, is_finished_step_state
+from chipcompiler.data import StateEnum, is_finished_step_state
+from chipcompiler.engine.observers import event_sink_for_workspace, execution_observer
 
 
 @dataclass(frozen=True)
@@ -47,24 +48,29 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
         if not selected_ids:
             succeeded = bool(_invoke(flow.run_steps, rerun=rerun, observer=observer))
         else:
-            succeeded = True
+            steps = []
             for step_id in selected_ids:
-                observer.raise_if_cancelled()
                 step = _find_step(flow, step_id)
                 if step is None:
                     raise ValueError(f"step not found: {step_id}")
-                state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
-                state_value = getattr(state, "value", state)
-                if state_value != StateEnum.Success.value and not (
-                    step.name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
-                ):
-                    succeeded = False
-                    break
+                steps.append(step)
+            # The flow groups the selection into analysis waves and runs it.
+            succeeded = bool(flow.run_steps(steps=steps, rerun=rerun, observer=observer))
     except BaseException as exc:
         _notify_execution(event_sink, "on_execution_finished", "interrupted", str(exc))
         raise
-    executed_steps = tuple(getattr(observer, "executed_steps", ()))
-    failed_step = None if succeeded else getattr(observer, "failed_step", None)
+    # Steps of a parallel wave complete in any order; report them in flow order.
+    order = selected_ids or tuple(
+        getattr(step, "name", None) for step in getattr(flow, "workspace_steps", ())
+    )
+    rank = {step_id: position for position, step_id in enumerate(order)}
+
+    def in_flow_order(names) -> tuple[str, ...]:
+        return tuple(sorted(names, key=lambda name: rank.get(name, len(rank))))
+
+    executed_steps = in_flow_order(getattr(observer, "executed_steps", ()))
+    failed_steps = () if succeeded else in_flow_order(getattr(observer, "failed_steps", ()))
+    failed_step = failed_steps[0] if failed_steps else None
     state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
     result = ExecutionResult(
         succeeded=succeeded,
@@ -108,103 +114,6 @@ def _is_completed(flow: Any) -> bool:
     return bool(steps) and all(
         isinstance(step, dict) and is_finished_step_state(step.get("state")) for step in steps
     )
-
-
-class ExecutionObserver:
-    def __init__(self, delegate: Any):
-        self.delegate = delegate
-        self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
-        self.executed_steps: list[str] = []
-        self.failed_step: str | None = None
-
-    def on_step_completed(self, step: Any, state: Any, error: str | None = None) -> None:
-        name = getattr(step, "name", None)
-        if isinstance(name, str) and name:
-            if getattr(state, "value", state) == StateEnum.Success.value:
-                self.executed_steps.append(name)
-            elif self.failed_step is None and not (
-                name in ADVISORY_FLOW_STEPS
-                and getattr(state, "value", state) == StateEnum.Imcomplete.value
-            ):
-                self.failed_step = name
-        self._delegate_call("on_step_completed", step, state, error)
-
-    @property
-    def runtime_operation(self):
-        return getattr(self.delegate, "runtime_operation", None)
-
-    @property
-    def execution(self):
-        return getattr(self.delegate, "execution", None)
-
-    def raise_if_cancelled(self) -> None:
-        self._delegate_call("raise_if_cancelled")
-
-    def on_step_started(self, step: Any) -> None:
-        self._delegate_call("on_step_started", step)
-
-    def on_step_skipped(self, step: Any) -> None:
-        self._delegate_call("on_step_skipped", step)
-
-    def on_subflow_stage(self, step: Any, subflow_step: Any) -> None:
-        self._delegate_call("on_subflow_stage", step, subflow_step)
-
-    def on_step_diagnostic(self, step: Any, diagnostic: dict[str, Any]) -> None:
-        self._delegate_call("on_step_diagnostic", step, diagnostic)
-
-    def on_rerun_prepared(self, *args, **kwargs) -> None:
-        self._delegate_call("on_rerun_prepared", *args, **kwargs)
-
-    def wait_for_step_rendered(self, step: Any, state: Any) -> bool:
-        result = self._delegate_call("wait_for_step_rendered", step, state)
-        return True if result is None else bool(result)
-
-    def _delegate_call(self, name: str, *args, **kwargs):
-        callback = getattr(self.delegate, name, None)
-        if callable(callback):
-            return callback(*args, **kwargs)
-        return None
-
-
-class _EngineeringCommitSink:
-    fatal_observer = True
-
-    def __init__(self, workspace: Any):
-        from chipcompiler.engine.snapshot import ensure_engineering_snapshot
-
-        self.workspace = workspace
-        self.snapshot = ensure_engineering_snapshot(workspace)
-
-    def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
-        from chipcompiler.engine.snapshot import commit_engineering_snapshot
-
-        self.snapshot = commit_engineering_snapshot(
-            self.workspace,
-            workspace_id=self.snapshot["workspaceId"],
-            cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
-        )
-
-    @property
-    def execution(self) -> dict[str, Any] | None:
-        run_id = getattr(self.workspace, "_ecc_run_id", None)
-        if isinstance(run_id, str) and run_id:
-            return {"schema_version": 1, "run_id": run_id}
-        return None
-
-    def raise_if_cancelled(self) -> None:
-        event = getattr(self.workspace, "_ecc_cancel_event", None)
-        if event is not None and event.is_set():
-            raise RuntimeError("run cancelled at a step boundary")
-
-
-def event_sink_for_workspace(workspace: Any) -> _EngineeringCommitSink | None:
-    if getattr(workspace, "directory", None):
-        return _EngineeringCommitSink(workspace)
-    return None
-
-
-def execution_observer(event_sink: Any) -> ExecutionObserver:
-    return ExecutionObserver(event_sink)
 
 
 def invoke_engine(callback, *args, rerun: bool = False, observer: Any = None):

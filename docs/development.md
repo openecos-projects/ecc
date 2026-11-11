@@ -855,11 +855,15 @@ required design data, optional design data, and what it provides
 - Skipping a signoff checker (drc, lvs, sta) means no signoff evidence:
   `ecc signoff check` reports that gate as `unknown`, never pass.
 
-`ecc flow plan` shows the selection as a checklist and checks it
-(`--enable`/`--disable` try one without writing `ecc.toml`); `ecc flow edit`
-picks the steps in a terminal checkbox list (or applies `--enable`/`--disable`)
-and, once confirmed (or with `--yes`), writes `[flow]` `preset`, `lec_engine`,
-and `skip_steps` explicitly. Like
+`ecc flow plan` shows the selection as a table and checks it
+(`--enable`/`--disable` try one without writing `ecc.toml`). Its `flow_step`
+records carry `stage`, `slot`, `label`, `parallel_with`, `after`, `needs` and
+`check` besides the step's capabilities; the user guide (`ecc flow plan`)
+defines them. `ecc flow edit`
+picks the steps in a terminal checkbox list (or applies `--enable`/`--disable`,
+and `--max-parallel-steps N`) and, once confirmed (or with `--yes`), writes
+`[flow]` `preset`, `lec_engine`, `skip_steps` and `max_parallel_steps`
+explicitly. Like
 `ecc param`, both read the selection from `ecc.toml`. `ecc init` writes:
 
 ```toml
@@ -872,6 +876,27 @@ lec_engine = "kepler_formal"
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
 ```
+
+`[flow] max_parallel_steps` (positive integer, default
+`DEFAULT_MAX_PARALLEL_STEPS` = 4; `ecc init` does not write it) is not part of
+the selection: `ecc run` applies it to `EngineFlow.max_parallel_steps` on fresh,
+resumed and `--from` runs, as the cap on independent analysis steps of one
+stage that run at once (`1`: one at a time; the engine's memory throttle can
+lower it further). It is never stored in a workspace, so it never makes an
+existing workspace count as a different selection (the
+`workspace_flow_mismatch` check ignores it). `flow plan` shows it in the `flow_plan` summary and the legend,
+`ecc config` as `flow.max_parallel_steps`.
+
+In the engine, `EngineFlow.run_steps` runs every selection wave by wave through
+`chipcompiler/engine/wave.py::run_wave`, one failure policy for one worker or
+several: outcomes stay paired with their steps in flow order, a blocking
+failure or an exception stops queued steps before they start, every started
+step is waited for before an exception propagates, and Ctrl-C interrupts the
+running steps before the wave waits for them. Sibling steps share a
+`WaveObserver` (`chipcompiler/engine/observers.py`) whose callbacks run under
+the ledger lock, and `EngineFlow.run_step` persists a terminal state, publishes
+its completion (the snapshot commit) and rolls back a failed commit in one
+ledger transaction, so the ledger lock is the only lock to order.
 
 ### Reports
 

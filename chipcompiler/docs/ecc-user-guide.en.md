@@ -308,6 +308,9 @@ lec_engine = "kepler_formal"
 # Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
+# Run-time only: at most this many independent steps of one stage run at once
+# (default 4; 1 = one at a time). See section 8.6.
+max_parallel_steps = 4
 ```
 
 ## 4. check — validate the project configuration
@@ -720,7 +723,7 @@ ecc process reconcile [--run-id ID] [--no-wait] [--project DIR] [--workspace NAM
 ```
 
 - `inspect` reports the live runtime-process entry for the selected workspace (or one `--run-id`): run id, runtime id, pid, and log path — or `process_not_found` when the registered identity is stale and nothing live holds the workspace lock.
-- `cancel` requests cancellation of the registered run: by default it sends a graceful, pid-verified cancel signal that takes effect at the next step boundary; `--force` sends SIGTERM to the run's whole process group (the run must still own its independent process group, otherwise `process_identity_changed`).
+- `cancel` requests cancellation of the registered run: by default it sends a pid-verified cancel signal; no further step starts, and every step still running (all running steps of a parallel stage) has its tool process stopped and is recorded `incomplete`, after which the run ends; `--force` sends SIGTERM to the run's whole process group (the run must still own its independent process group, otherwise `process_identity_changed`).
 - `reconcile` repairs the persisted flow after a crashed or killed run: steps whose subprocess died without a terminal state are recovered to a consistent state and the stale registered entry is cleared; the record lists `recovered_steps`. Use it when a `workspace_busy` or stale-process error no longer reflects reality.
 
 All three accept the standard `--project`/`--workspace` selectors; `--no-wait` on reconcile skips blocking on the manifest lock (returning `workspace_busy` instead of waiting).
@@ -1025,7 +1028,7 @@ ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
 ecc flow plan [--enable STEP]... [--disable STEP]... [--project DIR] [--plain|--json]
-ecc flow edit [--enable STEP]... [--disable STEP]... [--yes] [--project DIR] [--plain|--json]
+ecc flow edit [--enable STEP]... [--disable STEP]... [--max-parallel-steps N] [--yes] [--project DIR] [--plain|--json]
 ```
 
 `flow list` prints every registered flow preset and its ordered steps (`rtl2gds`, `syn_sta`,
@@ -1094,27 +1097,77 @@ data, and what it provides:
 - Existing workspace ledgers are never re-filtered; a new selection applies to the next fresh
   or `--overwrite` run.
 
-`flow plan` is read-only. It shows the preset's steps as a checklist — checkbox, position,
-step, tool, the design data the step needs (optional inputs dimmed) and gives, and `optional`
-/ `target` tags — followed by errors and warnings. `--enable`/`--disable` try a selection
-without writing `ecc.toml`. It exits 1 when an enabled step lacks required design data or an
-entry input is missing from `ecc.toml` (`step_input_missing: preFloorplan requires
-design.netlist`). `--json` emits one `flow_plan` summary (`flow`, `status` ok|warning|error,
-`enabled_count`, `step_count`, `skip_steps`), one `flow_step` per step (`position`, `step`,
-`tool`, `enabled`, `optional`, `target`, `requires`, `uses`, `provides`), plus
-`flow_violation` (`severity`, `step`, `missing`, `fixes`, `reason`) and `flow_input`
-(`severity`, `step`, `reason`) records.
+**Parallel steps (`[flow] max_parallel_steps`).** Steps that share a stage number (the `#`
+column of `flow plan`) are independent analysis steps, and `ecc run` runs them in parallel: on
+a fresh run, on resume and with `--from`. Runs started from ECOS Studio are `ecc run` runs, so
+the project's value applies to them too; Studio shows one of the running steps as the current
+one. `max_parallel_steps` is the most of them that run at once. It is a positive integer
+(default 4); `1` runs them one at a time. The engine's memory throttle still applies below it:
+it budgets at least 4 GB per step and keeps 20% of the available memory (at least 1 GB) in
+reserve, so a run can use fewer workers than the setting allows. The value is read from
+`ecc.toml` at run time only: it is never stored in a workspace and never changes which steps an
+existing workspace counts as selected, so editing it affects the next `ecc run` and nothing that
+already ran. `ecc config` shows it as `flow.max_parallel_steps`. When a step of a stage fails
+(other than an advisory step, `antennaCheck` or `emir`, ending `incomplete`), its siblings already
+running finish, none of the stage's remaining steps starts, and the run stops after the stage;
+the reported failed step is the first failed one in flow order. Ctrl-C starts no further step
+and stops the tools of every running one; as for a single interrupted step, they stay `ongoing`
+and the next `ecc run` resumes them (`ecc process cancel` instead records them `incomplete`).
+In terminal progress, every started step prints a header
+(`> step (tool)`) and every finished step a completion line (`✓ step (tool) runtime`), so the
+lines of sibling steps interleave.
+
+`flow plan` is read-only. It shows the preset's steps as a table — checkbox, stage `#`, step,
+tool, `After`, `Gives` and tags — followed by errors and warnings. `--enable`/`--disable` try
+a selection without writing `ecc.toml`. It exits 1 when an enabled step lacks required design
+data or an entry input is missing from `ecc.toml` (`step_input_missing: preFloorplan requires
+design.netlist`).
+
+- `#` is the stage. Steps that share a number can run in parallel: they get letter suffixes
+  (`13a`…`13e`), a bracket (`┐ │ ┘`) and a legend line under the table. Parallel execution is what
+  the engine *may* do, not a promise. Stages are computed from the enabled steps only, the
+  way a fresh run groups them, so toggling a step renumbers the stages after it and a disabled step
+  has an empty `#` (inside a stage its row keeps the bracket line). `position` is the stable index
+  in the chain. Identify steps by name, not by number (`--enable`/`--disable`,
+  `ecc run --from/--only`). The legend states the project's `max_parallel_steps`: `┐…┘ same number
+  = can run in parallel, up to N at once`, or, when it is 1, `┐…┘ same number = independent steps;
+  run one at a time (max_parallel_steps = 1)`. The stage labels and brackets show either way.
+- `After` names the enabled steps a step takes design data from, nearest first. Optional inputs are
+  dimmed; a need that no enabled step provides is shown as `(name)`, e.g. `(rtl)`. A producer is
+  left out when another listed step already passes on everything this step takes from it (`sta`
+  lists `RCX`, which follows `filler`, but not `filler`).
+- `Gives` lists what the step provides. The tag `check` marks a checker that provides nothing: it
+  only reports. `optional` and `target` are as before.
+
+`--json` emits one `flow_plan` summary (`flow`, `status` ok|warning|error, `enabled_count`,
+`step_count`, `skip_steps`, `max_parallel_steps`), one `flow_step` per step (`position`, `step`, `tool`, `enabled`,
+`optional`, `target`, `requires`, `uses`, `provides`, `stage`, `slot`, `label`, `parallel_with`,
+`after`, `needs`, `check`), plus `flow_violation` (`severity`, `step`, `missing`, `fixes`,
+`reason`) and `flow_input` (`severity`, `step`, `reason`) records. `stage` is the number (`null` for a disabled step), `slot`
+the letter (empty when the step is alone), `label` their concatenation, `parallel_with` the other
+steps of the stage, and `needs` maps each required or used capability to its producer step
+(`null` when no enabled step provides it).
+
+Text output piped to a file or another program is not folded to a terminal width; each
+cell stays on one line.
 
 ```console
-$ ecc flow plan --disable CTS
-rtl2gds · 20 of 23 steps enabled
+$ ecc flow plan
+rtl2gds · 21 of 23 steps enabled
+     #      Step                 Tool           After                         Gives
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ...
- [ ]   10  CTS     ...
+[✔]  11     route                ecc            Timing optimization, CTS      routed
+[✔]  12     filler               ecc            route                         filled
+[✔]  13a ┐  lvs                  ecc            filler                                                 check
+[✔]  13b │  drc                  ecc            filler                                                 check
+[✔]  13c │  antennaCheck         ecc            filler                                                 check
+[✔]  13d │  postRouteLec         kepler_formal  filler, Synthesis                                      check · optional
+[✔]  13e ┘  RCX                  ecc            filler                        parasitics
+[✔]  14a ┐  sta                  ecc            RCX, CTS                                               check
   ...
- [✔]   13  route   ecc   legal, clock_tree   routed
-  ...
-! warning: route runs with degraded results without clock_tree; enable CTS
-...                                   # likewise for sta, powerAnalysis, Harden
+┐…┘ same number = can run in parallel, up to 4 at once
+✔ every enabled step has the design data it requires
 
 $ ecc flow plan --disable legalization --disable TimingOpt     # exit 1
   ...
@@ -1123,16 +1176,19 @@ $ ecc flow plan --disable legalization --disable TimingOpt     # exit 1
 
 `flow edit` without flags opens an interactive checkbox list in the terminal (it needs a TTY
 that can redraw, so not `TERM=dumb`, and text output; otherwise it fails with
-`flow_edit_requires_terminal`): `↑/↓` or `j/k` move, `space` toggles, `enter` saves,
-`q`/`esc` cancels. Every toggle is re-checked live, a selection with errors cannot be saved,
+`flow_edit_requires_terminal`): `↑/↓` or `j/k` move, `space` toggles, `←/→` (or `-`/`+`)
+lower and raise `max_parallel_steps` from anywhere in the list, `enter` saves, `q`/`esc`
+cancels. The value stays between 1 and the larger of 4, the biggest stage of the current view
+and the value the editor started with. The legend redraws with it; when no stage has parallel
+steps, a line under the table shows it instead. Every toggle is re-checked live, a selection with errors cannot be saved,
 and the final step is shown as `target` and cannot be unchecked (a policy that skips it, such
 as `synthesis_lec` under the default policy, which skips `lec`, is edited with it checked). With
-`--enable`/`--disable` it applies the toggles without the list; an invalid selection is reported before anything
-else. Before writing, `flow edit` shows the new selection and its warnings and asks to
+`--enable`/`--disable`/`--max-parallel-steps N` (N >= 1) it applies the changes without the list; an invalid selection is reported before anything
+else. The value changes only when asked to: `--disable CTS --yes` writes the project's current value. Before writing, `flow edit` shows the new selection and its warnings and asks to
 confirm: `y` writes, `n`/`enter`/`q` keep `ecc.toml` unchanged. `--yes` writes without
-asking; without a terminal, `--enable`/`--disable` need `--yes` (otherwise
-`flow_edit_requires_confirmation`). It writes `ecc.toml` `[flow]` `preset`, `lec_engine`, and
-`skip_steps` explicitly (defaults included, comments preserved) so the file alone states the
+asking; without a terminal, `--enable`/`--disable`/`--max-parallel-steps` need `--yes` (otherwise
+`flow_edit_requires_confirmation`). It writes `ecc.toml` `[flow]` `preset`, `lec_engine`,
+`skip_steps` and `max_parallel_steps` explicitly (defaults included, comments preserved) so the file alone states the
 selection, then reports warnings: `flow_step_degraded`, `flow_input_missing`,
 `workspace_flow_mismatch` (an existing workspace whose ledger the new selection contradicts;
 rerun it with `ecc run --workspace <id> --overwrite`, or run the selection in a new
@@ -1147,6 +1203,7 @@ $ ecc flow edit --disable CTS --enable diff_opt --yes
 ✔ wrote [flow] to /tmp/gcd/ecc.toml
   preset = rtl2gds · lec_engine = kepler_formal
   skip_steps = lec, CTS
+  max_parallel_steps = 4
   enabled: diff_opt
   disabled: CTS
 ! warning: route runs with degraded results without clock_tree; enable CTS

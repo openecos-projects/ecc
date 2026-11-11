@@ -129,7 +129,7 @@ def test_checkers_run_past_blocked_checklist_and_gate_next_pnr_step(
         executed.append((step.name, blocked_by))
         return StateEnum.Invalid if blocked_by is not None else StateEnum.Success
 
-    monkeypatch.setattr(engine_flow, "_can_parallelize_checker_batch", lambda *_args: False)
+    monkeypatch.setattr(engine_flow, "_analysis_wave_end", lambda _steps, index: index + 1)
     monkeypatch.setattr(engine_flow, "run_step", run_step)
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
 
@@ -186,7 +186,7 @@ def test_run_steps_never_initializes_native_db_or_redirects_in_parent(monkeypatc
 
 
 def test_run_step_without_runtime_operation_marker_does_not_expand_function(monkeypatch, tmp_path):
-    from chipcompiler.engine.execution import ExecutionObserver
+    from chipcompiler.engine.observers import ExecutionObserver
 
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
@@ -1898,17 +1898,12 @@ def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
         for record in flow.workspace.flow.steps()
     ]
     dispatched = []
-    monkeypatch.setattr(
-        flow,
-        "run_step",
-        lambda step, **_kwargs: dispatched.append([step.name]) or StateEnum.Success,
-    )
 
-    def run_batch(steps, **_kwargs):
+    def run_wave(steps, **_kwargs):
         dispatched.append([step.name for step in steps])
-        return [StateEnum.Success for _ in steps]
+        return [(step, StateEnum.Success) for step in steps]
 
-    monkeypatch.setattr(flow, "_run_checker_batch", run_batch)
+    monkeypatch.setattr(flow, "_run_wave", run_wave)
     monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
 
     assert flow.run_steps() is True

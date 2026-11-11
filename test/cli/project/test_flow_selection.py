@@ -96,15 +96,20 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
     )
 
     write_flow_selection(
-        str(config_path), preset="rtl2gds", lec_engine="kepler_formal", skip_steps=["lec", "CTS"]
+        str(config_path),
+        preset="rtl2gds",
+        lec_engine="kepler_formal",
+        skip_steps=["lec", "CTS"],
+        max_parallel_steps=2,
     )
 
-    # Declared keys change in place; the undeclared lec_engine opens [flow].
+    # Declared keys change in place; the undeclared keys open [flow].
     assert config_path.read_text() == (
         "# project notes\n"
         "[design]\n"
         'name = "gcd"  # the top\n'
         "\n[flow]\n"
+        "max_parallel_steps = 2\n"
         'lec_engine = "kepler_formal"\n'
         "# preset: rtl2gds | syn_sta | synthesis_lec\n"
         'preset = "rtl2gds"\n'
@@ -121,13 +126,47 @@ def test_written_selection_adds_a_missing_flow_section(tmp_path):
     config_path.write_text('[design]\nname = "gcd"\n')
 
     write_flow_selection(
-        str(config_path), preset="rtl2gds", lec_engine="kepler_formal", skip_steps=[]
+        str(config_path),
+        preset="rtl2gds",
+        lec_engine="kepler_formal",
+        skip_steps=[],
+        max_parallel_steps=4,
     )
 
     assert config_path.read_text() == (
         '[design]\nname = "gcd"\n'
         "\n[flow]\n"
+        "max_parallel_steps = 4\n"
         "skip_steps = []\n"
         'lec_engine = "kepler_formal"\n'
         'preset = "rtl2gds"\n'
+    )
+
+
+def test_a_declared_max_parallel_steps_changes_in_place(tmp_path):
+    config_path = tmp_path / "ecc.toml"
+    config_path.write_text(
+        "[flow]\n"
+        'preset = "rtl2gds"\n'
+        'lec_engine = "kepler_formal"\n'
+        "skip_steps = []\n"
+        "# one at a time\n"
+        "max_parallel_steps = 1\n"
+    )
+
+    write_flow_selection(
+        str(config_path),
+        preset="rtl2gds",
+        lec_engine="kepler_formal",
+        skip_steps=[],
+        max_parallel_steps=3,
+    )
+
+    assert config_path.read_text() == (
+        "[flow]\n"
+        'preset = "rtl2gds"\n'
+        'lec_engine = "kepler_formal"\n'
+        "skip_steps = []\n"
+        "# one at a time\n"
+        "max_parallel_steps = 3\n"
     )

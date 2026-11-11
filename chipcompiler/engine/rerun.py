@@ -4,7 +4,8 @@
 Selection primitives behind ``ecc run --workspace``: resume from the first
 non-successful step, re-execute a step and its persisted suffix, or run
 exactly one step. Everything here drives an ``EngineFlow`` that was loaded
-from an existing workspace; execution itself stays in ``EngineFlow.run_step``.
+from an existing workspace; execution itself, including the parallel analysis
+waves, stays in ``EngineFlow.run_steps``.
 """
 
 import shutil
@@ -16,7 +17,6 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     is_finished_step_state,
-    log_flow,
 )
 from chipcompiler.data.handshake import (
     HandshakeError,
@@ -268,21 +268,15 @@ def _run_selected(
         def get_workspace_step(self, step_id):
             return flow.get_workspace_step(step_id)
 
-        def run_step(self, workspace_step, *, rerun=False, observer=None):
-            output_dir = output_dirs[workspace_step.name]
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+        def run_steps(self, *, steps, rerun=False, observer=None):
+            # Wave grouping, dispatch and the begin/end step sections belong to
+            # the flow; each step's output is reset right before it runs.
+            return flow.run_steps(
+                steps=steps,
+                rerun=rerun,
+                observer=observer,
+                prepare_step=lambda step: _reset_output_dir(output_dirs[step.name]),
             )
-            _reset_output_dir(output_dir)
-            if _callable_accepts_keyword(flow.run_step, "observer"):
-                state = flow.run_step(workspace_step, rerun=rerun, observer=observer)
-            else:
-                state = flow.run_step(workspace_step, rerun=rerun)
-            log_flow(workspace=flow.workspace)
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
-            return state
 
     from chipcompiler.engine.execution import ExecutionPlan, execute
 
@@ -305,19 +299,6 @@ def _run_selected(
             if result.succeeded
             else tuple(output_dirs)[min(len(executed), len(output_dirs) - 1)]
         ),
-    )
-
-
-def _callable_accepts_keyword(callback, keyword: str) -> bool:
-    import inspect
-
-    try:
-        parameters = inspect.signature(callback).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
     )
 
 

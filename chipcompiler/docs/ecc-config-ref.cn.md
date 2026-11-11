@@ -511,8 +511,15 @@ skip_steps = ["lec"]  # 开启 diff_opt；默认值为 ["lec", "diff_opt"]
   `unknown`，绝不会报 pass。
 
 `ecc flow plan` 列出 preset 的步骤并检查所选组合（`--enable`/`--disable` 只试算，不写入
-`ecc.toml`）；`ecc flow edit` 在终端勾选列表中选择步骤，或直接应用 `--enable`/`--disable`，经确认
-（或带 `--yes`）后把 `[flow]` 的 `preset`、`lec_engine`、`skip_steps` 显式写回。详见用户指南 §8.6。
+`ecc.toml`）；`ecc flow edit` 在终端勾选列表中选择步骤，或直接应用 `--enable`/`--disable`
+（以及 `--max-parallel-steps N`），经确认（或带 `--yes`）后把 `[flow]` 的 `preset`、`lec_engine`、
+`skip_steps`、`max_parallel_steps` 显式写回。详见用户指南 §8.6。
+
+`ecc.toml` 的 `[flow] max_parallel_steps` 取正整数（默认 4），限制 `ecc run` 同时执行同一阶段
+（`ecc flow plan` 的 `#` 列）内多少个互相独立的步骤；`1` 表示逐个运行。引擎的内存限流（每个步骤至少
+预留 4 GB，并保留 20% 的可用内存作为余量）可能把并行数进一步压低。该值只在运行时读取：不会写入
+workspace（`home/params.toml` 与 `home/flow.json` 都不含它），也不会改变已有 workspace 被视为选择了
+哪些步骤。`ecc config` 会以 `flow.max_parallel_steps` 显示它。
 
 启用后，`diff_opt` 从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
@@ -1131,4 +1138,4 @@ ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --o
 
 调参之前，先用 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 确认哪些字段是公开的，再按字段所属的 scope 用 `ecc param set` / `ecc param unset` 修改。一般不要直接编辑 `home/params.toml`、生成的 JSON/Tcl 或内部模板。唯一的例外是 QoR 参考中列出的 `qor_profile` 和 `qor_power_budget_w`：它们是 workspace 参数，不在 CLI schema 里，但仍要遵守 QoR 文档中的语义和复验要求。`run --set` 只对新 workspace 生效，并且要记录到候选实验的来源信息（provenance）里；在已有 workspace 上改参数时，先确认哪些步骤会失效、需要重跑哪些范围。
 
-文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。流程策略应通过项目 `ecc.toml` 的 `[flow]` 键配置（`preset`、可选的 `start`/`end`、`skip_steps`、`lec_engine`），不要手改已持久化的 workspace `home/params.toml` 或 `home/flow.json`；同样不要手写 QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。
+文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。流程策略应通过项目 `ecc.toml` 的 `[flow]` 键配置（`preset`、可选的 `start`/`end`、`skip_steps`、`lec_engine`、`max_parallel_steps`），不要手改已持久化的 workspace `home/params.toml` 或 `home/flow.json`；同样不要手写 QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。

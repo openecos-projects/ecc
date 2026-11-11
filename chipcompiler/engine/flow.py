@@ -3,12 +3,13 @@
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 from pathlib import Path
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
+    DEFAULT_MAX_PARALLEL_STEPS,
     LEC_STEP_TOOLS,
     EccOutput,
     FlowStepCategory,
@@ -41,15 +42,6 @@ from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
 )
 from chipcompiler.engine.flow_completion import (
-    notify_flow_observer as _notify_flow_observer,
-)
-from chipcompiler.engine.flow_completion import (
-    notify_step_completed,
-)
-from chipcompiler.engine.flow_completion import (
-    notify_subflow_stages as _notify_subflow_stages,
-)
-from chipcompiler.engine.flow_completion import (
     refresh_qor_report as _refresh_qor_report,
 )
 from chipcompiler.engine.flow_completion import (
@@ -60,6 +52,13 @@ from chipcompiler.engine.flow_completion import (
 )
 from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
 from chipcompiler.engine.memory import read_memory_status
+from chipcompiler.engine.observers import (
+    WaveObserver,
+    notify_flow_observer,
+    notify_step_completed,
+    notify_subflow_stages,
+    raise_if_cancelled,
+)
 from chipcompiler.engine.signoff import (
     SignoffPackageCollector,
     SignoffPackageOptions,
@@ -70,18 +69,19 @@ from chipcompiler.engine.step_execution import (
     execute_tool_step,
     record_tool_failure,
 )
+from chipcompiler.engine.wave import run_wave
 from chipcompiler.utility import file_digest
 
 logger = logging.getLogger(__name__)
 
-#: Checker-batch memory policy: fallback step estimate, minimum estimate,
-#: available-memory reserve fraction, observed-peak multiplier and worker cap.
+#: Analysis-wave memory policy: fallback step estimate, minimum estimate,
+#: available-memory reserve fraction and observed-peak multiplier. The worker
+#: cap is ``EngineFlow.max_parallel_steps``.
 _CHECKER_DEFAULT_STEP_MB = 1024.0
 _CHECKER_MIN_STEP_MB = 4096.0
 _CHECKER_MIN_RESERVE_MB = 1024.0
 _CHECKER_MEMORY_RESERVE_FRACTION = 0.20
 _CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
-_CHECKER_MAX_WORKERS = 4
 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
@@ -104,8 +104,21 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
 )
 
 
+def _stops_flow(step: WorkspaceStep, state: StateEnum) -> bool:
+    """Whether *step* ending in *state* stops the flow.
+
+    An Incomplete step is an infrastructure or check failure and blocks the
+    flow, except an advisory step's, whose result the flow reports and passes.
+    """
+    if state == StateEnum.Imcomplete:
+        return step.name not in ADVISORY_FLOW_STEPS
+    return state != StateEnum.Success
+
+
 class EngineFlow:
     step_worker_module = STEP_WORKER_MODULE
+    #: Most independent analysis steps one run executes at once.
+    max_parallel_steps: int = DEFAULT_MAX_PARALLEL_STEPS
 
     def __init__(self, workspace: Workspace, engine_db: EngineDB | None = None):
         self.workspace = workspace
@@ -533,73 +546,50 @@ class EngineFlow:
         return json_write(file_path=feature_path, data=payload)
 
     def run_steps(
-        self, *, rerun: bool = False, observer=None, require_full_ledger: bool = True
+        self,
+        *,
+        rerun: bool = False,
+        observer=None,
+        require_full_ledger: bool = True,
+        steps: Sequence[WorkspaceStep] | None = None,
+        prepare_step: Callable[[WorkspaceStep], None] | None = None,
     ) -> bool:
         """
-        run all flow steps
+        run all flow steps, or the ordered subset *steps* of them
 
+        The steps run wave by wave (see ``chipcompiler.engine.wave``): no step
+        starts after a blocking failure, and the flow stops after the wave
+        that had one.
+
+        steps: created workspace steps to run, in flow order. A subset may start
+        in the middle of an analysis wave or skip steps; the selected members
+        of a wave still run in parallel. The ledger-completeness check does not
+        apply to a subset.
+        prepare_step: called with each step right before it runs, on the
+        thread that runs it.
         require_full_ledger: verify at the end that every persisted ledger
         step had a workspace step. Callers that intentionally bind execution
         to a range narrower than the persisted ledger pass False.
         """
 
+        selection = self.workspace_steps if steps is None else list(steps)
         index = 0
-        while index < len(self.workspace_steps):
-            workspace_step = self.workspace_steps[index]
-            if self._can_parallelize_checker_batch(workspace_step, index, observer):
-                batch_end = self._analysis_wave_end(index)
-                states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
-                for batch_step, state in zip(
-                    self.workspace_steps[index:batch_end], states, strict=True
-                ):
-                    log_flow(workspace=self.workspace)
-                    if state != StateEnum.Success and not (
-                        batch_step.name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
-                    ):
-                        return False
-                index = batch_end
-                continue
-
-            _notify_flow_observer(observer, "raise_if_cancelled")
-            self.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+        while index < len(selection):
+            end = self._analysis_wave_end(selection, index)
+            outcomes = self._run_wave(
+                selection[index:end], rerun=rerun, observer=observer, prepare_step=prepare_step
             )
-            state = (
-                self.run_step(workspace_step, rerun=rerun)
-                if observer is None
-                else self.run_step(workspace_step, rerun=rerun, observer=observer)
-            )
-
-            log_flow(workspace=self.workspace)
-            self.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
-
-            match state:
-                case StateEnum.Success:
-                    pass
-                case StateEnum.Invalid:
-                    return False
-                case StateEnum.Unstart:
-                    return False
-                case StateEnum.Imcomplete:
-                    if workspace_step.name in ADVISORY_FLOW_STEPS:
-                        self.workspace.logger.warning(
-                            "[FLOW] advisory step %s is incomplete; continuing flow",
-                            workspace_step.name,
-                        )
-                    else:
-                        # An Incomplete step is an infrastructure or check
-                        # failure: it blocks the flow.
-                        return False
-                case StateEnum.Pending:
-                    return False
-                case StateEnum.Ongoing:
-                    return False
-            index += 1
+            if any(state is None or _stops_flow(step, state) for step, state in outcomes):
+                return False
+            for step, state in outcomes:
+                if state == StateEnum.Imcomplete:
+                    self.workspace.logger.warning(
+                        "[FLOW] advisory step %s is incomplete; continuing flow", step.name
+                    )
+            index = end
 
         total_steps = len(self.workspace.flow.data.get("steps", []))
-        if require_full_ledger and len(self.workspace_steps) < total_steps:
+        if steps is None and require_full_ledger and len(self.workspace_steps) < total_steps:
             self.workspace.logger.error(
                 "Flow incomplete: %d of %d steps were created; remaining steps could not be set up",
                 len(self.workspace_steps),
@@ -615,36 +605,30 @@ class EngineFlow:
             return False
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
-    def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        """Whether the analysis wave starting at *index* runs in parallel.
+    def _analysis_wave_end(self, steps: Sequence[WorkspaceStep], index: int) -> int:
+        """The end (exclusive) in *steps* of the analysis wave of *steps[index]*.
 
-        Runs observed for progress (the GUI) stay sequential.
+        *steps* are created steps in flow order, all of them or a selection of
+        them. The wave is decided on the ledger; its members are the following
+        entries of *steps* that sit inside it, so a selection starting mid-wave
+        or skipping a member still groups the rest.
         """
-        return observer is None and self._analysis_wave_end(index) - index > 1
-
-    def _analysis_wave_end(self, index: int) -> int:
-        """The end (exclusive) of the analysis wave of created steps at *index*."""
         records = self.workspace.flow.steps()
-        step = self.workspace_steps[index]
-        start = next(
-            (
-                position
-                for position, record in enumerate(records)
-                if record.get("name") == step.name and record.get("tool") == step.tool
-            ),
-            None,
-        )
+        positions: dict[tuple[object, object], int] = {}
+        for position, record in enumerate(records):
+            positions.setdefault((record.get("name"), record.get("tool")), position)
+        step = steps[index]
+        start = positions.get((step.name, step.tool))
         if start is None:
             return index + 1
-        end = index
-        for record in records[start : analysis_wave_end(records, start)]:
-            if end >= len(self.workspace_steps):
+        wave_end = analysis_wave_end(records, start)
+        end, previous = index + 1, start
+        while end < len(steps):
+            position = positions.get((steps[end].name, steps[end].tool))
+            if position is None or not previous < position < wave_end:
                 break
-            created = self.workspace_steps[end]
-            if (created.name, created.tool) != (record.get("name"), record.get("tool")):
-                break
-            end += 1
-        return max(end, index + 1)
+            end, previous = end + 1, position
+        return end
 
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
         available_mb = read_memory_status().available_mb
@@ -654,7 +638,7 @@ class EngineFlow:
         estimate_mb = max(estimates, default=_CHECKER_DEFAULT_STEP_MB)
         reserve_mb = max(_CHECKER_MIN_RESERVE_MB, available_mb * _CHECKER_MEMORY_RESERVE_FRACTION)
         capacity = int(max(0.0, available_mb - reserve_mb) // estimate_mb)
-        return max(1, min(len(steps), capacity, _CHECKER_MAX_WORKERS))
+        return max(1, min(len(steps), capacity, self.max_parallel_steps))
 
     def _step_memory_estimate_mb(self, workspace_step: WorkspaceStep) -> float:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
@@ -722,19 +706,60 @@ class EngineFlow:
                 return str(prerequisite.get("name") or "previous step")
         return None
 
-    def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
-        workers = self._checker_parallelism(steps)
-        self.workspace.logger.info(
-            "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
-            len(steps),
-            workers,
-            read_memory_status().available_mb,
+    def _run_wave(
+        self,
+        steps: list[WorkspaceStep],
+        *,
+        rerun: bool,
+        observer=None,
+        prepare_step: Callable[[WorkspaceStep], None] | None = None,
+    ) -> list[tuple[WorkspaceStep, StateEnum | None]]:
+        """Run one analysis wave, or one step, with ``run_wave``'s failure policy.
+
+        Each step is paired with its state, or with None when it never started.
+        A wave of several steps runs up to ``_checker_parallelism`` of them at
+        once; their begin/end log sections would interleave, so they log the
+        flow once after the wave instead.
+        """
+        workers = 1
+        if len(steps) > 1:
+            workers = self._checker_parallelism(steps)
+            self.workspace.logger.info(
+                "[FLOW] analysis wave size=%d workers=%d available_memory_mb=%.1f",
+                len(steps),
+                workers,
+                read_memory_status().available_mb,
+            )
+        sequential = workers == 1
+        wave_observer = None if sequential else WaveObserver(observer, self.workspace.flow)
+        step_observer = observer if wave_observer is None else wave_observer
+
+        def run_one(step: WorkspaceStep) -> StateEnum:
+            raise_if_cancelled(step_observer)
+            if sequential:
+                self.workspace.logger.log_section(f"{step.tool} - begin step - {step.name}")
+            if prepare_step is not None:
+                prepare_step(step)
+            state = (
+                self.run_step(step, rerun=rerun)
+                if step_observer is None
+                else self.run_step(step, rerun=rerun, observer=step_observer)
+            )
+            if sequential:
+                log_flow(workspace=self.workspace)
+                self.workspace.logger.log_section(f"{step.tool} - end step - {step.name}")
+            return state
+
+        outcomes = run_wave(
+            steps,
+            run_one,
+            workers=workers,
+            stops_flow=_stops_flow,
+            interrupt=None if wave_observer is None else wave_observer.interrupt,
         )
-        if workers == 1:
-            return [self.run_step(step, rerun=rerun) for step in steps]
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="checker") as executor:
-            futures = [executor.submit(self.run_step, step, rerun=rerun) for step in steps]
-            return [future.result() for future in futures]
+        if not sequential:
+            log_flow(workspace=self.workspace)
+        return outcomes
 
     def run_step(
         self,
@@ -746,10 +771,13 @@ class EngineFlow:
         """
         run single step
 
-        A parallel checker wave runs this on several threads over one ledger.
+        A parallel analysis wave runs this on several threads over one ledger.
         Every ledger read-modify-write, and every refresh that renders the
-        ledger into checklists and reports, holds the ledger lock; only the tool
-        execution and the observer callbacks run outside it.
+        ledger into checklists and reports, holds the ledger lock; so does the
+        completion transaction (terminal state, completion callback, rollback).
+        Only the tool execution runs outside it. The wave's observer takes the
+        same lock for each callback (``WaveObserver``), so there is one lock to
+        order and none can invert.
         """
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
         ledger = self.workspace.flow
@@ -764,7 +792,7 @@ class EngineFlow:
         if already_succeeded:
             self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
             self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
-            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+            notify_flow_observer(observer, "on_step_skipped", workspace_step)
             with ledger_lock(ledger):
                 _refresh_qor_report(self.workspace, step_tag)
             return StateEnum.Success
@@ -813,7 +841,7 @@ class EngineFlow:
                 ):
                     raise RuntimeError(f"failed to persist ongoing state for {step_tag}")
             previous_step = deepcopy(flow_step) if flow_step is not None else None
-        _notify_flow_observer(observer, "on_step_started", workspace_step)
+        notify_flow_observer(observer, "on_step_started", workspace_step)
 
         try:
             execution = execute_tool_step(
@@ -842,8 +870,12 @@ class EngineFlow:
         completed = False
         interrupted_stages: list[dict] = []
         placement_only = self._is_placement_only_step(workspace_step)
-        try:
-            with ledger_lock(ledger):
+        # One ledger transaction persists the terminal state, publishes the
+        # completion (the snapshot commit) and rolls the state back when that
+        # commit fails: a sibling step of a parallel wave never publishes a
+        # snapshot holding a state that is then rolled back.
+        with ledger_lock(ledger):
+            try:
                 try:
                     if resources is not None:
                         current = self.get_step(workspace_step.name, workspace_step.tool)
@@ -915,22 +947,21 @@ class EngineFlow:
                         _refresh_signoff_checklist(self.workspace, workspace_step)
                         _sync_step_checklist(self, workspace_step)
                         completed = True
-        finally:
-            try:
-                self.clear_db_engine_after_step(workspace_step, state)
-            except (Exception, SystemExit):
-                logger.exception("Failed to release DB engine after %s", step_tag)
-            # Observers run outside the ledger lock.
-            _notify_subflow_stages(observer, workspace_step, interrupted_stages)
-            if completed:
-                notify_step_completed(
-                    self,
-                    observer,
-                    workspace_step,
-                    state,
-                    step_error,
-                    previous_step,
-                )
+            finally:
+                try:
+                    self.clear_db_engine_after_step(workspace_step, state)
+                except (Exception, SystemExit):
+                    logger.exception("Failed to release DB engine after %s", step_tag)
+                notify_subflow_stages(observer, workspace_step, interrupted_stages)
+                if completed:
+                    notify_step_completed(
+                        self,
+                        observer,
+                        workspace_step,
+                        state,
+                        step_error,
+                        previous_step,
+                    )
 
         self.workspace.logger.info(
             "[RESULT] %s state=%s runtime=%s mem=%sMB",

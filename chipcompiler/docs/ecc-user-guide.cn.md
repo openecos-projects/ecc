@@ -365,6 +365,9 @@ lec_engine = "kepler_formal"
 # Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["lec", "diff_opt"]
+# 仅在运行时生效：同一阶段内互相独立的步骤，同时最多运行这么多个
+# （默认 4；1 表示逐个运行）。见 8.6 节。
+max_parallel_steps = 4
 ```
 
 ## 4. check — 校验项目配置
@@ -777,7 +780,8 @@ ecc process reconcile [--run-id ID] [--no-wait] [--project DIR] [--workspace NAM
 
 - `inspect` 报告所选 workspace（或某个 `--run-id`）的存活运行进程条目：run id、runtime id、
   pid 和日志路径；登记的身份已失效且没有存活进程持有 workspace 锁时报 `process_not_found`。
-- `cancel` 请求取消登记的 run：默认发送经 pid 校验的优雅取消信号，在下一个步骤边界生效；
+- `cancel` 请求取消登记的 run：默认发送经 pid 校验的取消信号；此后不再启动任何步骤，仍在运行的步骤
+  （并行阶段中所有正在运行的步骤）会停止其工具进程并记为 `incomplete`，随后 run 结束；
   `--force` 向 run 的整个进程组发送 SIGTERM（run 必须仍拥有独立进程组，否则报
   `process_identity_changed`）。
 - `reconcile` 在 run 崩溃或被杀后修复持久化 flow：把没有终态的步骤恢复到一致状态并清除
@@ -1036,7 +1040,7 @@ ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
 ecc flow plan [--enable STEP]... [--disable STEP]... [--project DIR] [--plain|--json]
-ecc flow edit [--enable STEP]... [--disable STEP]... [--yes] [--project DIR] [--plain|--json]
+ecc flow edit [--enable STEP]... [--disable STEP]... [--max-parallel-steps N] [--yes] [--project DIR] [--plain|--json]
 ```
 
 `flow list` 以 `flow_step` 记录输出每个已注册 flow preset 及其有序步骤
@@ -1100,25 +1104,68 @@ $ ecc flow list --json
   `unknown`，绝不会报 pass。
 - 已有 workspace 的 ledger 不会被重新过滤；新的选择只作用于下一次新建或 `--overwrite` 运行。
 
-`flow plan` 为只读命令：以清单形式列出 preset 的步骤——勾选框、序号、步骤、工具、该步骤需要
-（可选输入以暗色显示）与产出的设计数据，以及 `optional`/`target` 标记——随后列出错误与警告。
-`--enable`/`--disable` 用于试算一个选择，不写入 `ecc.toml`。启用的步骤缺少必需设计数据，或
-`ecc.toml` 缺少入口输入（如 `step_input_missing: preFloorplan requires design.netlist`）时退出码
-为 1。`--json` 输出一条 `flow_plan` 汇总（`flow`、`status` ok|warning|error、`enabled_count`、
-`step_count`、`skip_steps`），每个步骤一条 `flow_step`（`position`、`step`、`tool`、`enabled`、
-`optional`、`target`、`requires`、`uses`、`provides`），以及 `flow_violation`（`severity`、
-`step`、`missing`、`fixes`、`reason`）与 `flow_input`（`severity`、`step`、`reason`）记录。
+**并行步骤（`[flow] max_parallel_steps`）。** 阶段号相同的步骤（`flow plan` 的 `#` 列）是互相独立的
+分析步骤，`ecc run` 会并行运行它们：新建运行、恢复运行和带 `--from` 的运行都是如此。从 ECOS Studio
+发起的运行同样是 `ecc run`，因此也采用项目里的这个值；Studio 会把正在运行的步骤之一显示为当前步骤。
+`max_parallel_steps` 就是这些步骤同时运行的上限，取正整数，默认 4；`1` 表示逐个运行。引擎的内存
+限流仍在这个上限之下起作用：它为每个步骤至少预留 4 GB，并保留 20% 的可用内存（至少 1 GB）作为余量，
+所以实际并行数可能比设置值更小。该值只在运行时从 `ecc.toml` 读取，不会写入 workspace，也不会改变已有
+workspace 被视为选择了哪些步骤；修改它只影响下一次 `ecc run`，不影响已经运行过的内容。`ecc config`
+会以 `flow.max_parallel_steps` 显示它。同一阶段中某个步骤失败时（advisory 步骤 `antennaCheck`、`emir` 以 `incomplete`
+结束除外），已在运行的同阶段步骤会运行完，该阶段其余步骤不再启动，run 在该阶段之后停止；报告的失败步骤是
+按 flow 顺序第一个失败的步骤。Ctrl-C 不再启动新步骤，并停止所有正在运行的步骤的工具进程；与单独运行时被中断
+的步骤一样，它们保持 `ongoing`，下一次 `ecc run` 会续跑它们（`ecc process cancel` 则把它们记为 `incomplete`）。
+终端进度会为每个开始的步骤打印一行标题（`> step (tool)`），
+为每个完成的步骤打印一行完成信息（`✓ step (tool) runtime`），所以同阶段步骤的输出行会交错出现。
+
+`flow plan` 为只读命令：以表格列出 preset 的步骤——勾选框、阶段号 `#`、步骤、工具、`After`、
+`Gives` 与标记——随后列出错误与警告。`--enable`/`--disable` 用于试算一个选择，不写入
+`ecc.toml`。启用的步骤缺少必需设计数据，或 `ecc.toml` 缺少入口输入（如
+`step_input_missing: preFloorplan requires design.netlist`）时退出码为 1。
+
+- `#` 是阶段号。编号相同的步骤可以并行：它们带字母后缀（`13a`…`13e`）和一条括号线
+  （`┐ │ ┘`），表格下方附一行图例。并行只是引擎*可以*这样做，并不保证一定并行。阶段只按已启用的
+  步骤计算，与一次新运行的分组一致，因此启用或禁用某个步骤会让其后的阶段重新编号；被禁用的步骤
+  `#` 列为空（若落在某个并行阶段内，该行仍保留括号线）。`position` 是步骤在链中的固定序号。
+  请始终用步骤名而不是编号指定步骤（`--enable`/`--disable`、`ecc run --from/--only`）。
+  图例会写明项目的 `max_parallel_steps`：值大于 1 时为 `┐…┘ same number = can run in parallel, up to N at once`，
+  值为 1 时为 `┐…┘ same number = independent steps; run one at a time (max_parallel_steps = 1)`。
+  无论取值如何，阶段编号和括号线都照常显示。
+- `After` 列出该步骤从哪些已启用的步骤获取设计数据，离它最近的排在最前。可选输入以暗色显示；
+  没有任何已启用步骤能提供的需求写成 `(名称)`，例如 `(rtl)`。如果该步骤从某个上游取得的数据，
+  已经由列表里另一个上游转手提供，这个上游就不再重复列出（`sta` 只列 `RCX`，不列 `RCX` 已经
+  跟随的 `filler`，但仍列出 `CTS`）。
+- `Gives` 是该步骤产出的设计数据。`check` 标记表示只做检查、不产出任何数据的步骤；`optional`
+  与 `target` 含义不变。
+
+`--json` 输出一条 `flow_plan` 汇总（`flow`、`status` ok|warning|error、`enabled_count`、
+`step_count`、`skip_steps`、`max_parallel_steps`），每个步骤一条 `flow_step`（`position`、`step`、`tool`、`enabled`、
+`optional`、`target`、`requires`、`uses`、`provides`、`stage`、`slot`、`label`、
+`parallel_with`、`after`、`needs`、`check`），以及 `flow_violation`（`severity`、`step`、
+`missing`、`fixes`、`reason`）与 `flow_input`（`severity`、`step`、`reason`）记录。其中
+`stage` 是阶段号（被禁用的步骤为 `null`），`slot` 是字母后缀（步骤独占一个阶段时为空），`label` 是两者拼接，
+`parallel_with` 是同一阶段的其他步骤，`needs` 把每个必需或可选的数据映射到提供它的步骤
+（没有已启用步骤能提供时为 `null`）。
+
+文本输出被重定向到文件或管道时，不会按终端宽度折行，每个单元格保持在一行内。
 
 ```console
-$ ecc flow plan --disable CTS
-rtl2gds · 20 of 23 steps enabled
+$ ecc flow plan
+rtl2gds · 21 of 23 steps enabled
+     #      Step                 Tool           After                         Gives
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ...
- [ ]   10  CTS     ...
+[✔]  11     route                ecc            Timing optimization, CTS      routed
+[✔]  12     filler               ecc            route                         filled
+[✔]  13a ┐  lvs                  ecc            filler                                                 check
+[✔]  13b │  drc                  ecc            filler                                                 check
+[✔]  13c │  antennaCheck         ecc            filler                                                 check
+[✔]  13d │  postRouteLec         kepler_formal  filler, Synthesis                                      check · optional
+[✔]  13e ┘  RCX                  ecc            filler                        parasitics
+[✔]  14a ┐  sta                  ecc            RCX, CTS                                               check
   ...
- [✔]   13  route   ecc   legal, clock_tree   routed
-  ...
-! warning: route runs with degraded results without clock_tree; enable CTS
-...                                   # sta、powerAnalysis、Harden 同理
+┐…┘ same number = can run in parallel, up to 4 at once
+✔ every enabled step has the design data it requires
 
 $ ecc flow plan --disable legalization --disable TimingOpt     # 退出码 1
   ...
@@ -1127,13 +1174,15 @@ $ ecc flow plan --disable legalization --disable TimingOpt     # 退出码 1
 
 `flow edit` 不带参数时在终端打开交互式勾选列表（需要可重绘的 TTY，即不能是 `TERM=dumb`，
 且为文本输出，否则报 `flow_edit_requires_terminal`）：`↑/↓` 或 `j/k` 移动，`space` 切换，
-`enter` 保存，`q`/`esc` 取消。每次切换都会实时重新检查，有错误的选择无法保存；最后一步显示为
+`←/→`（或 `-`/`+`）在列表任意位置减小/增大 `max_parallel_steps`，`enter` 保存，`q`/`esc` 取消。
+该值取 1 到「4、当前视图中最大的阶段、编辑开始时的值」三者最大值之间；图例会随之重绘，没有并行阶段时
+改为在表格下方用一行显示该值。每次切换都会实时重新检查，有错误的选择无法保存；最后一步显示为
 `target`，不能取消勾选（跳过它的策略，例如默认策略下跳过 `lec` 的 `synthesis_lec`，编辑时它保持
-勾选）。带 `--enable`/`--disable` 时不打开列表、直接应用这些切换，无效的选择
-会最先报告。写入前，`flow edit` 会显示新的选择及其警告并请求确认：`y` 写入，`n`/`enter`/`q`
-保持 `ecc.toml` 不变。`--yes` 跳过确认直接写入；没有终端时，`--enable`/`--disable` 必须带
+勾选）。带 `--enable`/`--disable`/`--max-parallel-steps N`（N >= 1）时不打开列表、直接应用这些修改，
+无效的选择会最先报告。只有明确指定时才会改变该值：`--disable CTS --yes` 写入的是项目当前的值。写入前，`flow edit` 会显示新的选择及其警告并请求确认：`y` 写入，`n`/`enter`/`q`
+保持 `ecc.toml` 不变。`--yes` 跳过确认直接写入；没有终端时，`--enable`/`--disable`/`--max-parallel-steps` 必须带
 `--yes`（否则报 `flow_edit_requires_confirmation`）。写入时把 `ecc.toml` `[flow]` 的
-`preset`、`lec_engine` 和 `skip_steps` 全部显式写出（包括默认值，保留注释），使该文件本身即可
+`preset`、`lec_engine`、`skip_steps` 和 `max_parallel_steps` 全部显式写出（包括默认值，保留注释），使该文件本身即可
 说明所选步骤，随后报告警告：`flow_step_degraded`、`flow_input_missing`、
 `workspace_flow_mismatch`（已有 workspace 的 ledger 与新选择矛盾；用
 `ecc run --workspace <id> --overwrite` 重跑，或用 `ecc run --workspace <new id>` 在新
@@ -1148,6 +1197,7 @@ $ ecc flow edit --disable CTS --enable diff_opt --yes
 ✔ wrote [flow] to /tmp/gcd/ecc.toml
   preset = rtl2gds · lec_engine = kepler_formal
   skip_steps = lec, CTS
+  max_parallel_steps = 4
   enabled: diff_opt
   disabled: CTS
 ! warning: route runs with degraded results without clock_tree; enable CTS

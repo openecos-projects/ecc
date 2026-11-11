@@ -42,6 +42,7 @@ class FlowEditInput:
     project: ProjectOptions = ProjectOptions()
     enable: tuple[str, ...] = ()
     disable: tuple[str, ...] = ()
+    max_parallel_steps: int | None = None
     yes: bool = False
 
 

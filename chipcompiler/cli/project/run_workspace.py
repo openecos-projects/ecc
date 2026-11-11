@@ -69,6 +69,7 @@ def _execute_workspace_run(
     run_log,
     ctx,
 ) -> CommandResult:
+    from chipcompiler.cli.project.config import resolve_max_parallel_steps
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
@@ -86,6 +87,14 @@ def _execute_workspace_run(
 
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}] + warnings)
+
+    # The run's project config; None for a manifest project that declares no
+    # ecc.toml, where the code default applies. Resolved before anything is
+    # locked or registered, so an unusable value is a plain config error.
+    try:
+        max_parallel_steps = resolve_max_parallel_steps(getattr(ctx, "config", None))
+    except ValueError as exc:
+        return error("config_error", reason=str(exc))
 
     workspace_path = os.path.abspath(workspace_path)
 
@@ -223,6 +232,7 @@ def _execute_workspace_run(
                 process_context = nullcontext()
             with process_context:
                 engine_flow = EngineFlow(workspace=workspace)
+                engine_flow.max_parallel_steps = max_parallel_steps
                 if not engine_flow.has_init():
                     return run_failed("missing_flow")
 
