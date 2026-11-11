@@ -95,12 +95,14 @@ class FlowStepPolicy:
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
     ``input_source`` declares the default edge; an explicit ledger
-    ``input_step`` still overrides it.
+    ``input_step`` still overrides it. ``depends_on`` adds artifact-producing
+    predecessors that must finish before a concurrent checker starts.
     """
 
     category: FlowStepCategory
     input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
+    depends_on: tuple[str, ...] = ()
 
 
 # Every flow step is declared here; a step missing from this table fails the
@@ -131,7 +133,11 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         FlowStepCategory.CHECKER, FlowInputSource.FILLER
     ),
     StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.STA.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        depends_on=(StepEnum.RCX.value,),
+    ),
     StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
     StepEnum.EMIR.value: FlowStepPolicy(
         FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
