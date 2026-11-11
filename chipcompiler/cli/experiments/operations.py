@@ -31,7 +31,7 @@ from chipcompiler.project.manifest import (
     CONFIG_FILENAME,
     MANIFEST_FILENAME,
     ManifestError,
-    load_manifest,
+    classify_project,
 )
 
 SCHEMA_VERSION = 1
@@ -99,32 +99,49 @@ def project_path(value: str | None) -> Path:
     return path
 
 
-def undeclared_workspace_reason(project: Path, workspace_name: str) -> str | None:
-    """Explain why *workspace_name* is not a workspace of a manifest project.
+def select_diagnose_workspace(
+    project: Path, selector: str | None
+) -> tuple[str, Path | None, str | None]:
+    """Select the workspace ``diagnose run`` reads: (name, directory, error).
 
-    Returns None when the workspace is declared in ``project.json`` (by id or
-    by path), or when the project has no readable manifest to check against.
-    The text matches what ``status`` and ``check`` report (#396).
+    A manifest project uses the same selection rules as ``status`` and
+    ``check`` (#396): an omitted selector picks the only active workspace, an
+    id resolves to its declared directory, an absolute path must be declared,
+    and an unreadable manifest is an error. The error text is "kind: reason".
+    Other projects keep the directory convention ``<project>/<name>``.
     """
-    if not (project / MANIFEST_FILENAME).is_file():
-        return None
-    try:
-        manifest = load_manifest(str(project))
-    except ManifestError:
-        return None
-    if manifest.find_workspace(workspace_name) is not None:
-        return None
-    target = os.path.realpath(workspace_path(project, workspace_name))
-    if any(os.path.realpath(item.workspace_path) == target for item in manifest.workspaces):
-        return None
-    ids = ", ".join(item.workspace_id for item in manifest.active_workspaces()) or "(none)"
-    return (
-        f"workspace_not_declared: unknown workspace {workspace_name!r}; declared workspaces: {ids}"
+    from chipcompiler.cli.core.invocation import _resolve_manifest_workspace
+    from chipcompiler.cli.project.workspace_location import (
+        WorkspacePathError,
+        canonical_explicit_workspace_path,
     )
 
+    if classify_project(str(project)) != "manifest":
+        return selector or "default", None, None
+    name, declared_path = selector, None
+    if selector is not None and os.path.isabs(selector):
+        try:
+            declared_path = canonical_explicit_workspace_path(selector, str(project))
+        except WorkspacePathError as exc:
+            return selector, None, f"{exc.code}: {exc}"
+        name = os.path.basename(declared_path)
+    try:
+        directory, workspace_id, error = _resolve_manifest_workspace(
+            str(project),
+            name,
+            allow_create=False,
+            workspace_path=declared_path,
+            path_selector=declared_path is not None,
+        )
+    except ManifestError as exc:
+        return selector or "default", None, f"manifest_invalid: {exc}"
+    return workspace_id or selector or "default", Path(directory), error
 
-def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
-    workspace = workspace_path(project, workspace_name)
+
+def diagnose_workspace(
+    project: Path, workspace_name: str, workspace_dir: Path | None = None
+) -> dict[str, Any]:
+    workspace = workspace_dir or workspace_path(project, workspace_name)
     flow_value = load_json(workspace / "home" / "flow.json", {})
     checklist_value = load_json(workspace / "home" / "checklist.json", {})
     qor_value = load_json(workspace / "home" / "qor_report.json", {})

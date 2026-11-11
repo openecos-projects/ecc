@@ -1,89 +1,152 @@
 import json
-from types import SimpleNamespace
 
 import pytest
 from typer.testing import CliRunner
 
 from chipcompiler.cli.app import app
 from chipcompiler.cli.experiments import operations
-from chipcompiler.project.manifest import MANIFEST_FILENAME, ManifestError
+from chipcompiler.project.manifest import MANIFEST_FILENAME
+
+FAILED_FLOW = {"steps": [{"name": "Synthesis", "tool": "yosys", "state": "Failed"}]}
+
+
+def _write_manifest(project, workspaces):
+    document = {
+        "schema_version": 1,
+        "design_name": "gcd",
+        "root_path": str(project),
+        "workspaces": [
+            {"workspace_id": name, "workspace_path": str(path)} for name, path in workspaces
+        ],
+    }
+    (project / MANIFEST_FILENAME).write_text(json.dumps(document))
 
 
 @pytest.fixture
-def manifest_project(tmp_path, monkeypatch):
-    """A project whose manifest declares one workspace, ``probe``."""
+def manifest_project(tmp_path):
+    """A manifest project that declares one workspace, ``probe``."""
     project = tmp_path / "project"
     (project / "probe" / "home").mkdir(parents=True)
-    (project / MANIFEST_FILENAME).write_text("{}")
-    declared = SimpleNamespace(
-        workspace_id="probe", workspace_path=str(project / "probe"), status="active"
-    )
-    manifest = SimpleNamespace(
-        workspaces=(declared,),
-        active_workspaces=lambda: [declared],
-        find_workspace=lambda name: declared if name == "probe" else None,
-    )
-    monkeypatch.setattr(operations, "load_manifest", lambda _project: manifest)
+    _write_manifest(project, [("probe", project / "probe")])
     return project
 
 
-def _diagnose(project, workspace, *flags):
-    return CliRunner().invoke(
-        app, ["diagnose", "run", "--project", str(project), "--workspace", workspace, *flags]
-    )
+@pytest.fixture
+def external_workspace(tmp_path, manifest_project):
+    """Declare ``ext``, whose directory is outside the project and has a failed flow."""
+    outside = tmp_path / "outside"
+    (outside / "home").mkdir(parents=True)
+    (outside / "home" / "flow.json").write_text(json.dumps(FAILED_FLOW))
+    _write_manifest(manifest_project, [("probe", manifest_project / "probe"), ("ext", outside)])
+    return outside
 
 
-def test_undeclared_workspace_reason_names_the_declared_workspaces(manifest_project):
-    reason = operations.undeclared_workspace_reason(manifest_project, "nosuch")
+def _diagnose(project, *args):
+    return CliRunner().invoke(app, ["diagnose", "run", "--project", str(project), *args])
 
-    assert reason == (
+
+def _error(result):
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error"
+    return payload
+
+
+def test_undeclared_workspace_is_rejected_like_status(manifest_project):
+    result = _diagnose(manifest_project, "--workspace", "nosuch", "--json")
+
+    assert result.exit_code == 1
+    payload = _error(result)
+    assert payload["error"] == "workspace_not_declared"
+    assert payload["reason"] == (
         "workspace_not_declared: unknown workspace 'nosuch'; declared workspaces: probe"
     )
 
 
-def test_declared_workspace_is_accepted_by_id_and_by_path(manifest_project):
-    assert operations.undeclared_workspace_reason(manifest_project, "probe") is None
-    assert (
-        operations.undeclared_workspace_reason(manifest_project, str(manifest_project / "probe"))
-        is None
-    )
-
-
-def test_project_without_manifest_is_not_checked(tmp_path):
-    assert operations.undeclared_workspace_reason(tmp_path, "nosuch") is None
-
-
-def test_unreadable_manifest_is_not_checked(tmp_path, monkeypatch):
-    (tmp_path / MANIFEST_FILENAME).write_text("{broken")
-
-    def fail(_project):
-        raise ManifestError("invalid project manifest")
-
-    monkeypatch.setattr(operations, "load_manifest", fail)
-
-    assert operations.undeclared_workspace_reason(tmp_path, "nosuch") is None
-
-
-def test_diagnose_run_json_rejects_undeclared_workspace(manifest_project):
-    result = _diagnose(manifest_project, "nosuch", "--json")
+def test_undeclared_workspace_text_output_goes_to_stderr(manifest_project):
+    result = _diagnose(manifest_project, "--workspace", "nosuch")
 
     assert result.exit_code == 1
-    payload = json.loads(result.stdout)
-    assert payload["status"] == "error"
-    assert payload["error"] == "workspace_not_declared"
-    assert "declared workspaces: probe" in payload["reason"]
+    assert "workspace_not_declared" in result.stderr
+    assert result.stdout == ""
 
 
-def test_diagnose_run_text_rejects_undeclared_workspace(manifest_project):
-    result = _diagnose(manifest_project, "nosuch")
-
-    assert result.exit_code == 1
-    assert "workspace_not_declared" in result.output
-    assert "status:" not in result.output
-
-
-def test_diagnose_run_still_reports_a_declared_workspace(manifest_project):
-    result = _diagnose(manifest_project, "probe", "--json")
+def test_omitted_workspace_selects_the_only_declared_workspace(manifest_project):
+    result = _diagnose(manifest_project, "--json")
 
     assert result.exit_code == 0
-    assert json.loads(result.stdout)["status"] == "attention"
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "attention"
+    assert payload["workspace"] == str(manifest_project / "probe")
+
+
+def test_declared_workspace_keeps_its_diagnosis_and_exit_code(manifest_project):
+    (manifest_project / "probe" / "home" / "flow.json").write_text(json.dumps(FAILED_FLOW))
+
+    result = _diagnose(manifest_project, "--workspace", "probe", "--json")
+
+    assert result.exit_code == 6
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "failed"
+    assert payload["workspace"] == str(manifest_project / "probe")
+    assert payload["next_actions"] == [
+        f"ecc report checklist --project {manifest_project} --workspace probe",
+        f"ecc run --project {manifest_project} --workspace probe --resume",
+    ]
+
+
+def test_explicit_default_is_still_checked_against_the_manifest(manifest_project):
+    result = _diagnose(manifest_project, "--workspace", "default", "--json")
+
+    assert result.exit_code == 1
+    assert _error(result)["error"] == "workspace_not_declared"
+
+
+def test_omitted_workspace_is_required_when_several_are_declared(
+    manifest_project, external_workspace
+):
+    result = _diagnose(manifest_project, "--json")
+
+    assert result.exit_code == 1
+    assert _error(result)["error"] == "workspace_required"
+
+
+def test_declared_id_reads_the_declared_directory(manifest_project, external_workspace):
+    by_id = _diagnose(manifest_project, "--workspace", "ext", "--json")
+    by_path = _diagnose(manifest_project, "--workspace", str(external_workspace), "--json")
+
+    assert by_id.exit_code == by_path.exit_code == 6
+    for result in (by_id, by_path):
+        payload = json.loads(result.stdout)
+        assert payload["status"] == "failed"
+        assert payload["workspace"] == str(external_workspace)
+        assert payload["flow"]["failed_steps"] == ["Synthesis"]
+    assert "--workspace ext" in json.loads(by_id.stdout)["next_actions"][0]
+
+
+def test_undeclared_absolute_path_is_rejected(tmp_path, manifest_project):
+    stray = tmp_path / "stray"
+    stray.mkdir()
+
+    result = _diagnose(manifest_project, "--workspace", str(stray), "--json")
+
+    assert result.exit_code == 1
+    assert _error(result)["error"] == "workspace_not_declared"
+
+
+def test_unreadable_manifest_is_reported(manifest_project):
+    (manifest_project / MANIFEST_FILENAME).write_text("{broken")
+
+    result = _diagnose(manifest_project, "--workspace", "probe", "--json")
+
+    assert result.exit_code == 1
+    assert _error(result)["error"] == "manifest_invalid"
+
+
+def test_project_without_manifest_keeps_directory_convention(tmp_path):
+    assert operations.select_diagnose_workspace(tmp_path, None) == ("default", None, None)
+    assert operations.select_diagnose_workspace(tmp_path, "ws_1") == ("ws_1", None, None)
+
+    result = _diagnose(tmp_path, "--workspace", "ws_1", "--json")
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["workspace"] == str(tmp_path / "ws_1")
