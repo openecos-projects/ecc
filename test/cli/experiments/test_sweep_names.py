@@ -28,7 +28,16 @@ def test_sweep_root_rejects_absolute_path(tmp_path):
 def _create(project, name):
     return CliRunner().invoke(
         app,
-        ["sweep", "create", "--project", str(project), "--name", name, "--param", "a.b=1,2"],
+        [
+            "sweep",
+            "create",
+            "--project",
+            str(project),
+            "--name",
+            name,
+            "--param",
+            "place.target_density=0.5,0.6",
+        ],
     )
 
 
