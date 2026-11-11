@@ -108,11 +108,11 @@ def build_rtl2gds_flow(
     steps.append((StepEnum.PRE_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((StepEnum.POST_FLOORPLAN, ToolName.ECC.value, StateEnum.Unstart))
-    steps.append((StepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.PREPLACE, ToolName.SIZER.value, StateEnum.Unstart))
     steps.append((StepEnum.PLACEMENT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
-    steps.append((StepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value, StateEnum.Unstart))
+    steps.append((SkippableStepEnum.CTS, ToolName.ECC.value, StateEnum.Unstart))
     steps.append((StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value, StateEnum.Unstart))
     steps.append((SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value, StateEnum.Unstart))
     steps.append((StepEnum.ROUTING, ToolName.ECC.value, StateEnum.Unstart))
@@ -148,16 +148,16 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
         "macroplace": StepEnum.MACRO_PLACEMENT.value,
         "macroplacement": StepEnum.MACRO_PLACEMENT.value,
         "postfloorplan": StepEnum.POST_FLOORPLAN.value,
-        "preplace": StepEnum.PREPLACE.value,
-        "preplaceopt": StepEnum.PREPLACE.value,
-        "preplaceoptimization": StepEnum.PREPLACE.value,
+        "preplace": SkippableStepEnum.PREPLACE.value,
+        "preplaceopt": SkippableStepEnum.PREPLACE.value,
+        "preplaceoptimization": SkippableStepEnum.PREPLACE.value,
         "place": StepEnum.PLACEMENT.value,
         "placement": StepEnum.PLACEMENT.value,
         "diffbuffering": StepEnum.DIFF_BUFFERING.value,
         "diffopt": SkippableStepEnum.DIFF_OPT.value,
         "diffoptimization": SkippableStepEnum.DIFF_OPT.value,
-        "diffsizing": StepEnum.DIFF_SIZING.value,
-        "cts": StepEnum.CTS.value,
+        "diffsizing": SkippableStepEnum.DIFF_SIZING.value,
+        "cts": SkippableStepEnum.CTS.value,
         "legal": StepEnum.LEGALIZATION.value,
         "legalization": StepEnum.LEGALIZATION.value,
         "timingopt": SkippableStepEnum.TIMING_OPT.value,
