@@ -182,6 +182,17 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
 # An explicit skip list replaces this policy; existing ledgers are preserved.
 DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value)
 
+# Clockless designs have no clock tree or timing closure target, so every
+# placement/CTS timing optimization stage is omitted from the effective skip
+# policy when ``flow.no_clock`` is enabled (or inferred from empty materials).
+NO_CLOCK_SKIP_STEPS: Final = (
+    SkippableStepEnum.DIFF_OPT.value,
+    SkippableStepEnum.PREPLACE.value,
+    SkippableStepEnum.DIFF_SIZING.value,
+    SkippableStepEnum.CTS.value,
+    SkippableStepEnum.TIMING_OPT.value,
+)
+
 
 class ToolName(StrEnum):
     """Tool names a flow step (or the image backend) can bind to."""
