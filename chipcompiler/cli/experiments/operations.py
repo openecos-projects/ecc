@@ -27,12 +27,7 @@ from chipcompiler.cli.inspection.evidence_summary import (
     step_status,
 )
 from chipcompiler.data import ADVISORY_FLOW_STEPS
-from chipcompiler.project.manifest import (
-    CONFIG_FILENAME,
-    MANIFEST_FILENAME,
-    ManifestError,
-    classify_project,
-)
+from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 
 SCHEMA_VERSION = 1
 
@@ -115,6 +110,7 @@ def select_diagnose_workspace(
         WorkspacePathError,
         canonical_explicit_workspace_path,
     )
+    from chipcompiler.project.manifest import ManifestError, classify_project
 
     if classify_project(str(project)) != "manifest":
         return selector or "default", None, None
