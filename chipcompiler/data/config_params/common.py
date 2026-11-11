@@ -23,6 +23,7 @@ class ParamSchema:
     choices: tuple[str, ...] | None = None
     unit: str | None = None
     example: str | None = None
+    output_only: bool = False
 
     @property
     def has_direct_target(self) -> bool:

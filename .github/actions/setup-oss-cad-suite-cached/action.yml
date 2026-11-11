@@ -1,0 +1,45 @@
+name: Setup OSS CAD Suite Cached
+description: Restore or download an immutable OSS CAD Suite release and verify its archive and Yosys runtime.
+inputs:
+  version:
+    description: OSS CAD Suite release date (YYYY-MM-DD).
+    required: true
+  sha256:
+    description: Expected SHA-256 of the original release archive.
+    required: true
+  github-token:
+    description: Token used by the upstream setup action.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore OSS CAD Suite cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/oss-cad-suite
+        key: oss-cad-suite-${{ inputs.sha256 }}
+
+    - name: Setup OSS CAD Suite
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      uses: YosysHQ/setup-oss-cad-suite@v4
+      with:
+        version: ${{ inputs.version }}
+        github-token: ${{ inputs.github-token }}
+
+    - name: Verify OSS CAD Suite archive
+      if: ${{ steps.cache.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        printf '%s  %s\n' '${{ inputs.sha256 }}' "$RUNNER_TEMP/oss-cad-suite.tgz" | sha256sum -c -
+
+    - name: Add cached OSS CAD Suite to PATH
+      if: ${{ steps.cache.outputs.cache-hit == 'true' }}
+      shell: bash
+      run: echo "$RUNNER_TEMP/oss-cad-suite/bin" >> "$GITHUB_PATH"
+
+    - name: Verify Yosys
+      shell: bash
+      run: |
+        yosys -V
+        yosys -p "plugin -i slang"

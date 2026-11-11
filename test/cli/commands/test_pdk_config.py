@@ -134,6 +134,36 @@ class TestPdkShow:
         assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
         assert record["root"] == str(env_dir)
 
+    def test_show_rejects_missing_repo_default_without_displaying_path(
+        self, tmp_path, capsys, monkeypatch, plain_records
+    ):
+        from chipcompiler.cli.command_handlers import pdk
+
+        project_dir = tmp_path / "not-a-project"
+        project_dir.mkdir()
+        missing_root = tmp_path / "repo/pdk/icsprout55-pdk"
+        monkeypatch.setattr(
+            pdk,
+            "__file__",
+            str(tmp_path / "repo/ecc/chipcompiler/cli/command_handlers/pdk.py"),
+        )
+        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
+        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
+
+        rc = cli_main.run(["pdk", "show", "--project", str(project_dir), "--plain"])
+
+        output = capsys.readouterr().out
+        assert rc == 1
+        assert plain_records(output) == [
+            {
+                "kind": "error",
+                "error": "pdk_root_unavailable",
+                "reason": "no PDK root is configured and the repository default is unavailable",
+                "set_root": "ecc pdk set-root <path>",
+            }
+        ]
+        assert str(missing_root) not in output
+
     def test_show_flags_missing_root(
         self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):

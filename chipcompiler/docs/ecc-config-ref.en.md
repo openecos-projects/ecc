@@ -223,13 +223,63 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 
 Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
+Set `macro.manual_placement true` (parameter id `macro.manual_placement`, exposed under Floorplan in Studio; for example `ecc param set macro.manual_placement true --workspace default`) to make `macroPlacement` a hard manual-placement gate. With the flag enabled, the step stops as incomplete unless `macro.placements` is non-empty and the generated `config/macro_location.tcl` contains parseable placements. Complete the layout in Chip Viewer or run an `ecc macro` command, then rerun the step. The gate applies even to a design without hard macros, so leave it off unless hand placement is required.
+
 The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
 
 ### 1.6 Auto-generated SDC
 
-When `[design].sdc` is absent, workspace creation writes `origin/<design>.sdc`; a user-provided SDC is copied instead and is never regenerated. ECC recognizes its own file by the first-line `# Auto-generated SDC file` marker and refreshes only such generated files when parameters change.
+When `[design].sdc` is absent, workspace creation generates the complete corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`, without a standalone `origin/<design>.sdc`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. A user-provided full SDC or Tcl is copied without changing its bytes or generating automatic design constraints. ECC creates `<filename>.ecc.tcl` wrappers in both phase directories: each sources the copied input, then applies `remove_propagated_clock [all_clocks]` through CTS, or `set_propagated_clock [all_clocks]` after CTS. ECC recognizes its generated corner constraints by the first-line `# ECC-generated SDC file` marker and refreshes them when parameters change.
 
-The current generator creates the real clock from `design.clock_port` (or a virtual clock when no port is available) at `design.frequency_mhz`, sets input/output delay to 0, applies setup uncertainty at 1.5% and hold uncertainty at 0.5% of the period, caps clock transition at 0.15 ns and input transition at 0.20 ns, applies `set_max_fanout` from `cts.max_fanout`, and adds the PDK's output-load constraint when `sdc_load > 0`.
+The generated Tcl defines primary clocks from `params.sdc.clock_list`, together with the scenario's IO constraints, OCV derates, setup/hold uncertainty, transition limits, and fanout constraints. After loading the design, Python emits only the IO rules selected by the actual iDB's IO-cell presence; no companion `timing_io.tcl` or Tcl branch selects the IO mode. Initial files contain an explicit preparation error until the design is loaded; timing preparation replaces them with complete constraints before execution. Clockless designs do not acquire an invented clock. For the same corner, pre-CTS and post-CTS rules are identical except that post-CTS adds `set_propagated_clock [all_clocks]`.
+
+### 1.7 Five user-written timing inputs
+
+New `ecc init` projects include `[params.sdc]` with an active `clk`/100 MHz row and commented examples for the four optional fields. Write each input between triple **single** quotes to preserve Tcl backslashes, line continuations and `$variables`; do not wrap it in `set clock_list {...}` or another Tcl variable assignment. Substitute real design objects and interface requirements for all example names and values.
+
+```toml
+[params.sdc]
+# 1. Primary clocks: one port/pin and corner:MHz pairs per line.
+# Required in new projects: uncomment/edit at least one row; cover every PVT corner.
+# The first row's TYP frequency supplies single-primary-clock flow metadata.
+clock_list = '''
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+clk_aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25
+'''
+
+# 2. Generated clocks: uncomment only after checking the real source/target.
+generated_clock_txt = '''
+# create_generated_clock -name CLK_div2 -divide_by 2 \
+#     -source [get_ports clk] [get_pins u_div/clk_reg/Q]
+'''
+
+# 3. Group only truly asynchronous domains, including their derived clocks.
+# Without IO cells, also include each port's VCLK interface clock.
+clk_group_txt = '''
+# set_clock_groups -asynchronous \
+#     -group {CLK_clk VCLK_clk} -group {CLK_clk_aux VCLK_clk_aux}
+'''
+
+# 4. User IO rules run after automatic IO rules; these ns values are examples.
+io_constraint_txt = '''
+# set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]
+# set_output_delay 0.0625 -max -clock CLK_clk [get_ports data_out*]
+'''
+
+# 5. Exceptions require a design/protocol justification.
+timing_exception_txt = '''
+# set_false_path -from [get_ports reset_n]
+# set_multicycle_path -setup 3 -end -to [get_ports data_out*]
+# set_multicycle_path -hold 2 -end -to [get_ports data_out*]
+'''
+```
+
+- Both `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` and `origin/post_CTS/...` receive these inputs. Clock MHz supports decimals and is selected by each file's PVT corner; only post-CTS adds propagated clocks.
+- Primary targets resolve as ports first, then pins. Names are `CLK_<port>`; a hierarchical pin replaces `/`, `.`, `[` with `_` and removes `]`, e.g. `u_pll/Q` becomes `CLK_u_pll_Q`. The full hierarchy is retained.
+- Execution order: primary clocks (plus port-based virtual clocks when there are no IO cells), generated clocks, groups, automatic IO, user IO, user exceptions, golden limits, and post-CTS propagation. The four Tcl bodies execute verbatim and can use `$corner` and `$rc_para`. Whether IO commands replace or add delays depends on their options.
+- New project templates omit `design.clock_port` / `frequency_mhz`: fill `clock_list` instead. Its first row and TYP frequency supply single-primary-clock flow metadata; generated constraints still use every row's scenario frequency. Empty/comment-only lists fail before a new run rather than using the init manifest's clock defaults. Legacy projects with explicit clock metadata and complete `design.sdc` inputs remain supported; a complete file still overrides all five inputs. This does not add multi-clock optimization to every native tool.
+- ECC can calculate declared primary-clock periods directly. With generated-clock Tcl, constraints use `get_attribute` and `foreach_in_collection` to obtain each clock's actual period. **The currently tested iSTA lacks these commands: generated-clock mode is not native end-to-end validated.** Do not substitute a primary period for derived periods. Other commands in user Tcl also require support in the consuming tool.
+- Edited project TOML is read when creating a new workspace. Existing workspaces use their own `home/params.toml`; change one with `ecc param set sdc.io_constraint_txt 'set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]' --project "$PROJECT_DIR" --workspace "$WORKSPACE"`. This refreshes its configuration. A plain `--resume` does not re-import these fields from project TOML.
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -242,7 +292,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
-| `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | Timing constraints (auto-generated or user-provided) |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | Default timing entry (generated Tcl or user-provided full constraints) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
 | `LayerSettings.routing_layer_1st` | `MET2` | parameter `route.bottom_layer` | First usable routing layer (affects database layer settings) |
@@ -292,7 +342,7 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with `macro_placer.mode = "auto"` and an empty `file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` rewrites the shared config to `macro_placer.mode = "file"` with that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis.
+Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
 
 ### ifp (the iFP floorplan engine)
 
@@ -518,9 +568,10 @@ Existing workspace ledgers retain the stored `diff_buffering` alias; new
 workspaces run `diff_opt` followed by `diff_sizing` when it is enabled.
 
 Placement sizing windows and `diff_opt` sizing phases also default to LUT
-actions. `place.timing_sizing_action="up"` restricts them to `size_up` or
-`vt_speedup`. Their round counts, shared budgets and coefficients retain
-their own configuration. Set this parameter to `quad` or `down` explicitly
+actions. `place.timing_sizing_action="quad"` selects among all four directions
+(`size_up`, `size_down`, `vt_slowdown`, `vt_speedup`). Their round counts,
+shared budgets and coefficients retain
+their own configuration. Set this parameter to `up` or `down` explicitly
 to select another action family. Standalone `diff_sizing` uses its own phase
 chain, whose explicit action takes precedence.
 
@@ -567,17 +618,17 @@ of sizeable instances, in `(0, 100]` (for example, `1` means 1% and `0.1`
 means 0.1%). Each phase uses its own round budget and coefficients, and phases
 run in list order. The stage iteration is set to the sum of phase rounds.
 For standalone `diff_sizing` in `lut_action` mode, the default `null` expands
-to one `up` phase: 50 rounds with a shared 1% budget per round for
-`size_up`/`vt_speedup`. Its coefficients come from `diff_sizing_coefficients`
+to one `quad` phase: 50 rounds with a shared 1% budget per round across all
+four directions. Its coefficients come from `diff_sizing_coefficients`
 (default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
 
 ```toml
 [params.place]
-diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
 An explicit phase chain uses its own coefficients and budgets; configure
-`quad` explicitly to select among all four directions.
+`up` or `down` explicitly to restrict the action directions.
 `timing_action_gradient_mode=off` keeps the legacy path and does not accept
 an action phase chain.
 
@@ -849,7 +900,7 @@ Both steps use the engine-neutral result contract `output/<design>_<step>_result
 | Item | Content |
 |---|---|
 | `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`). |
-| `postRouteLec` input | The synthesis-mapped netlist is the golden side and the `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
+| `postRouteLec` input | Golden priority: explicit step override → `design.golden_netlist` → synthesis-mapped netlist → original input. The `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
 | Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
 
 Enable the synthesis LEC and optionally pin the engine with:
@@ -877,14 +928,22 @@ Output SPEFs are named `<design>_<RCcorner>_<temp>C.spef` (e.g. `gcd_Cworst_125C
 
 ## 13. sta (ecc-tools)
 
-Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → liberty list) and `signoff` (the signoff corner combinations); relative liberty paths are expanded to absolute PDK paths on config refresh. Sub-phases: load data → run sta. The `STA max paths` parameter (default 1000) is passed to the engine directly at runtime and does not land in this file.
+Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → liberty list) and `signoff` (the signoff corner combinations). Relative Liberty paths and the template's legacy `/IP/...` paths are resolved under the PDK root on config refresh; other absolute paths, including external macro libraries, remain unchanged. Sub-phases: load data → run sta. The `STA max paths` parameter (default 1000) is passed to the engine directly at runtime and does not land in this file.
 
 | Field | Example (gcd@ics55) | Meaning |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
 | `liberty[].path` | H7CR + H7CL + H7CH | Liberty files for this corner (PDK-relative paths auto-expanded) |
-| `signoff[0]` | MAX:[Cworst,RCworst]; WCL:[Cworst,RCworst]; TYP:[TYPICAL]; MIN/ML:[Cworst,RCworst,Cbest,RCbest] | "liberty corner × RC corner" combinations to run for signoff — 13 analysis corners in total |
+| `signoff[0]` | TYP:[TYPICAL]; MIN:[Cworst,RCworst,Cbest,RCbest] | Default "liberty corner × RC corner" combinations for signoff — 5 analysis corners in total |
+
+Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
+(FF, 1.32 V, -40°C). The `liberty` catalog retains MAX/WCL/ML for explicit
+`sta.signoff` overrides; retaining these groups does not enable their analysis
+or change the libraries used by synthesis, CTS, Sizer, or other earlier stages.
+Harden and powerAnalysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
+SDC; `signoff` list order does not change that selection. If a `sta.signoff`
+override omits TYP/TYPICAL, these steps fail instead of silently using another corner.
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
 
@@ -896,8 +955,8 @@ MAX/WCL use `ss_1p08_2p97_125c`, TYP uses `tt_1p2_3p3_25c`, and MIN/ML use
 `ff_1p32_3p63_125c` and `ff_1p32_3p63_m40c`) have invalid timing tables and fail
 config refresh. IO characterization temperatures may differ from the corner
 temperature; for example, MIN uses -40°C standard-cell libraries alongside the
-0°C IO library. Standard-cell libraries, SPEF temperatures and the 13 analysis
-corners are unaffected. A `sta.liberty` setting replaces the entire default
+0°C IO library. Standard-cell libraries, SPEF temperatures and the configured
+signoff corners are unaffected. A `sta.liberty` setting replaces the entire default
 list, so the standard-cell libraries must be listed as well.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
@@ -909,7 +968,7 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
 
 Power is produced by the separate `powerAnalysis` iPW step, not by each STA
-corner. Its native outputs are
+corner. It uses the TYP/TYPICAL signoff item's Liberty and SPEF. Its native outputs are
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
 copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
@@ -946,7 +1005,7 @@ not by itself stop the remaining flow.
 
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden writes the timing LIB from the TYP/TYPICAL signoff item's Liberty and SPEF. Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
 
 ## 15. ECC CLI configuration commands by step
 

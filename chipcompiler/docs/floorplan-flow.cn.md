@@ -19,9 +19,9 @@ flowchart LR
 
 | 持久化步骤名 | 工具 | workspace 目录 | 工作内容 |
 | --- | --- | --- | --- |
-| `preFloorplan` | ecc | `preFloorplan_ecc/` | 设置 `clock` 时先标记时钟网络，再建立初始 die/core 规划并执行 simple floorplan。它从共享配置生成 `config/floorplan_ecc_simple.json`，强制 `macro_placer.mode = "auto"` 并清空 `file_path`。 |
+| `preFloorplan` | ecc | `preFloorplan_ecc/` | 设置 `clock` 时先标记时钟网络，再建立初始 die/core 规划并执行 simple floorplan。它从共享配置生成 `config/floorplan_ecc_simple.json`，并清空 `macro_placer.file_path`。 |
 | `macroPlacement` | DreamPlace | `macroPlacement_dreamplace/` | 基于 pre-floorplan 数据库运行仅宏单元摆放，然后写出 Tcl 宏位置交接文件。若设置了手工 `macro.placements`，则跳过 DreamPlace，使用配置刷新时渲染的 Tcl。 |
-| `postFloorplan` | ecc | `postFloorplan_ecc/` | 把共享 `floorplan_ecc.json` 改写为 `macro_placer.mode = "file"`，并令 `file_path` 指向 `macro_location.tcl`；随后完成 tracks、IO pin、tap/endcap、PDN、输出和分析。 |
+| `postFloorplan` | ecc | `postFloorplan_ecc/` | 令共享 `floorplan_ecc.json` 的 `macro_placer.file_path` 指向 `macro_location.tcl`；随后完成 tracks、IO pin、tap/endcap、PDN、输出和分析。 |
 
 `Floorplan` 仍只是共享配置键，不是可执行的 flow 步骤。在已有 workspace 上选择
 步骤时，请使用上表中的三个持久化名称。
@@ -40,7 +40,7 @@ setInstancePlacementStatus -status fixed -name <instance>
 ```
 
 `postFloorplan` 会通过 `floorplan_ecc.json`，以
-`macro_placer.mode = "file"` 将此文件交给 iFP。没有硬宏的设计可以使用空文件；
+`macro_placer.file_path` 将此文件交给 iFP。没有硬宏的设计可以使用空文件；
 文件中列出的每个实例都必须存在于当前设计中，旧的四列 location 文本格式不能作为
 交接文件使用。生成的方向值为 `R0`、`R90`、`R180`、`R270`、`MY`、`MX90`、`MX`
 和 `MY90`。
@@ -59,6 +59,13 @@ ecc macro show
 DreamPlace 宏摆放，由 `postFloorplan` 依据该文件将宏以 fixed 状态提交。删除
 最后一个条目会清空参数并恢复 DreamPlace 自动摆放。不支持手工编辑该文件：未设置
 `macro.placements` 时，重新运行 `macroPlacement` 会重新生成交接文件。
+
+若要求必须手摆宏，请在运行前设置 `macro.manual_placement true`（Studio 的
+Flow Setup 卡片中显示为 **Manual macro placement**）。执行到 `macroPlacement`
+时，ECC 会检查 `macro.placements` 与生成的 `config/macro_location.tcl` 是否
+都包含摆放；任一缺失都会把该步骤标记为未完成并提示先完成宏摆放。通过 Chip
+Viewer 保存布局或执行 `ecc macro` 后重跑该步骤即可继续。应使用 DreamPlace 自动
+摆放的设计不要启用此开关。
 
 ## 恢复与重跑
 
@@ -85,8 +92,9 @@ ecc run --workspace default --from postFloorplan --to postFloorplan
 ## 配置
 
 三个 floorplan 阶段共享 workspace 的 `config/floorplan_ecc.json`。
-`preFloorplan` 使用派生出的简单配置，令 `macro_placer.mode = "auto"`；
-`postFloorplan` 使用共享配置，并在 `file` 模式下读取宏位置交接文件。
+`preFloorplan` 使用派生出的简单配置，令 `macro_placer.file_path = ""`；
+`postFloorplan` 使用共享配置，将该路径设为宏位置交接文件。
+ECC 不再生成 `macro_placer.mode`，刷新旧配置时会移除该字段；iFP 仍兼容旧 `auto`/`file` 值，IO placer 的模式不变。
 请通过 `ecc param` 或 `ecc.toml` 参数修改已审核的 floorplan 设置，不要依赖每次
 运行生成的字段。可调参数和 JSON 字段见
 [配置参考](ecc-config-ref.cn.md)。

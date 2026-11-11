@@ -67,6 +67,14 @@ class ChipviewInput:
 
 
 @dataclass(frozen=True)
+class DefviewInput:
+    output: OutputOptions
+    project: ProjectOptions
+    def_path: str
+    workspace: str | None = None
+
+
+@dataclass(frozen=True)
 class GdsViewInput:
     output: OutputOptions
     project: ProjectOptions
@@ -298,6 +306,7 @@ class ParamApplyInput:
     unsets: tuple[str, ...] = ()
     workspace: str | None = None
     step: str | None = None
+    commit_step_output: bool = False
     expected_revision: int | None = None
     command_id: str = ""
     no_wait: bool = False
@@ -485,6 +494,7 @@ class MacroImportInput:
     expected_revision: int | None = None
     command_id: str = ""
     no_wait: bool = False
+    commit_step_output: bool = False
 
 
 def output_options(*, plain: bool = False, json_output: bool = False) -> OutputOptions:

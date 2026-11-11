@@ -246,6 +246,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("param:catalog", OutputMode.PLAIN): _render_line_records,
     ("param:workspace:list", OutputMode.PLAIN): _render_line_records,
     ("flow:list", OutputMode.PLAIN): _render_line_records,
+    ("flow:show", OutputMode.PLAIN): _render_line_records,
     ("param:show", OutputMode.TEXT): _plain_text(render_param_show_text),
     ("param:set", OutputMode.TEXT): _plain_text(render_param_set_text),
     ("param:unset", OutputMode.TEXT): _plain_text(render_param_set_text),

@@ -54,8 +54,6 @@ from .flow_data import (
 from .flow_types import FlowDocument, FlowStepEntry, load_flow_document
 from .layout import EccData, WorkspaceStepBase
 from .macro_location import refresh_generated_macro_location
-from .sdc import create_default_sdc as create_default_sdc
-from .sdc import refresh_generated_sdc
 
 # The shared step type used as the annotation/constructor across the codebase.
 WorkspaceStep = WorkspaceStepBase
@@ -516,27 +514,27 @@ def _has_new_floorplan_schema(config: dict) -> bool:
         and isinstance(die_builder, dict)
         and all(key in die_builder for key in ("mode", "margin", "die_util", "die_size"))
         and isinstance(macro_placer, dict)
-        and all(key in macro_placer for key in ("mode", "file_path"))
+        and "file_path" in macro_placer
         and isinstance(io_placer, dict)
         and all(key in io_placer for key in ("mode", "file_path"))
     )
 
 
 def _refresh_sta_config(workspace: Workspace) -> None:
-    import os
-
     from chipcompiler.utility import json_read_strict, json_write
 
     sta_path = workspace.config[f"{StepEnum.STA.value}"]
     sta = json_read_strict(sta_path)
     if not isinstance(sta, dict):
         raise TypeError(f"STA config must be a JSON object: {sta_path}")
-    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
     for liberty in sta.get("liberty", []):
+        # /IP/... is the legacy PDK-relative spelling in STA templates.
+        # Preserve other absolute paths, including external macro libraries.
         liberty["path"] = [
-            path
-            if path == pdk_root or path.startswith(f"{pdk_root}{os.sep}")
-            else str((workspace.pdk.root or Path("")) / path.lstrip(os.sep))
+            str(
+                (workspace.pdk.root or Path(""))
+                / (path.lstrip("/") if path.startswith("/IP/") else path)
+            )
             for path in liberty.get("path", [])
         ]
     errors = invalid_io_liberty_errors(
@@ -559,6 +557,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     floorplan = json_read(config_path) if Path(config_path).exists() else {}
     if not _has_new_floorplan_schema(floorplan):
         floorplan = default_floorplan
+    floorplan["macro_placer"].pop("mode", None)
 
     ifp = floorplan.setdefault("ifp", {})
     default_ifp = default_floorplan.get("ifp", {})
@@ -705,7 +704,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    refresh_generated_sdc(workspace)
     refresh_generated_macro_location(workspace)
 
     db = json_read(workspace.config["db"])
@@ -794,6 +792,13 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     # explicit sta.liberty parameters carry the same PDK-relative defaults,
     # and re-applying them above must not resurrect unexpanded paths.
     _refresh_sta_config(workspace)
+    from .timing_constraints import generate_timing_scripts
+
+    generate_timing_scripts(workspace)
+    db = json_read(workspace.config["db"])
+    db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
+    if not json_write(workspace.config["db"], db):
+        raise OSError(f"Failed to write DB config: {workspace.config['db']}")
     record_derived_config(workspace)
 
 
@@ -1172,6 +1177,9 @@ def create_workspace(
         from .flow_ledger import save_ledger
 
         workspace.flow.data = dynamic_flow_data
+        from .flow_options import sync_flow_options_projection
+
+        sync_flow_options_projection(workspace)
         from ..workspace_config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)

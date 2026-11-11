@@ -106,9 +106,7 @@ def test_floorplan_stages_preserve_requested_geometry(
     assert ecc_runner.run_post_floorplan(workspace, post)
     expected_config = deepcopy(simple_config)
     expected_config["ifp"]["temp_directory_path"] = str(post.data.workdir_for(post.name))
-    expected_config["macro_placer"].update(
-        {"mode": "file", "file_path": str(workspace.config["macro_location"])}
-    )
+    expected_config["macro_placer"].update({"file_path": str(workspace.config["macro_location"])})
     assert json_read(floorplan_path) == expected_config
     assert workspace.parameters.data == expected_parameters
     assert load_parameter(workspace.parameters.path).data == expected_parameters
@@ -120,3 +118,24 @@ def test_floorplan_stages_preserve_requested_geometry(
     build_step_config(workspace, pre)
     assert ecc_runner.run_pre_floorplan(workspace, pre)
     assert json_read(floorplan_path.with_stem(f"{floorplan_path.stem}_simple")) == simple_config
+
+
+@pytest.mark.parametrize("legacy_mode", [None, "file"])
+def test_floorplan_refresh_preserves_custom_settings(floorplan_workspace, legacy_mode):
+    workspace = floorplan_workspace
+    config_path = workspace.config[StepEnum.FLOORPLAN.value]
+    config = json_read(config_path)
+    config["macro_placer"].pop("mode", None)
+    config["macro_placer"].update(
+        {"file_path": "manual.tcl", "macro_placement_halo": 5.0, "macro_routing_halo": 7.0}
+    )
+    config["io_placer"].update({"mode": "file", "file_path": "io.txt"})
+    config["pdn_generator"]["rail"][0]["width_micron"] = 0.18
+    expected = deepcopy(config)
+    if legacy_mode is not None:
+        config["macro_placer"]["mode"] = legacy_mode
+    json_write(config_path, config)
+
+    refresh_workspace_config(workspace)
+
+    assert json_read(config_path) == expected

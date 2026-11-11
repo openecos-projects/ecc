@@ -109,14 +109,26 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         overrides=parameters.data.get("pdk_overrides", {}),
         validate=not read_only,
     )
-    sdc_path = list(origin_dir.rglob("*.sdc"))
-    if sdc_path:
-        pdk.sdc = sdc_path[0]
+    db_json = json_read(workspace.config.get("db", ""))
+    configured_sdc = db_json.get("INPUT", {}).get("sdc_path", "")
+    if configured_sdc:
+        pdk.sdc = Path(configured_sdc)
+        # A copied/derived workspace must use its own frozen timing inputs.
+        local_sdc = origin_dir / pdk.sdc.name
+        if pdk.sdc.parent.name in {"pre_CTS", "post_CTS"}:
+            local_sdc = origin_dir / pdk.sdc.parent.name / pdk.sdc.name
+        if local_sdc.is_file():
+            pdk.sdc = local_sdc
+        elif not pdk.sdc.is_absolute():
+            pdk.sdc = workspace_dir / pdk.sdc
+    else:
+        sdc_path = list(origin_dir.rglob("*.sdc"))
+        if sdc_path:
+            pdk.sdc = sdc_path[0]
     spef_path = list(origin_dir.rglob("*.spef"))
     if spef_path:
         pdk.spef = spef_path[0]
 
-    db_json = json_read(workspace.config.get("db", ""))
     if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
         pdk.tech = Path(db_json["INPUT"]["tech_lef_path"])
     if db_json.get("INPUT", {}).get("lef_paths", []) != []:
@@ -163,6 +175,9 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         workspace.design.input_filelist = filelist_path
 
     workspace.flow.path = home_dir / "flow.json"
+    from .flow_options import sync_flow_options_projection
+
+    sync_flow_options_projection(workspace, persist=not read_only)
     if read_only:
         workspace.logger = Logger(name=parameters.data["design"])
     else:

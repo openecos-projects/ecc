@@ -3,13 +3,22 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data import create_workspace, load_workspace, refresh_workspace_config
+from chipcompiler.data import (
+    Workspace,
+    create_workspace,
+    load_workspace,
+    refresh_workspace_config,
+)
 from chipcompiler.data.parameter import Parameters, load_parameter, save_parameter
 from chipcompiler.data.workspace.macro_location import (
     MACRO_LOCATION_MARKER,
+    MACRO_ORIENTATIONS,
+    manual_macro_location_ready,
+    manual_placement_required,
     parse_macro_location_tcl,
     prune_macro_location_tcl,
     render_macro_location_tcl,
+    validate_placements,
 )
 
 PLACEMENTS = [
@@ -57,6 +66,49 @@ def test_parse_macro_location_tcl_round_trips_both_producers():
     assert parse_macro_location_tcl(save_macro_tcl_handoff) == PLACEMENTS
     assert parse_macro_location_tcl(render_macro_location_tcl(PLACEMENTS)) == PLACEMENTS
     assert parse_macro_location_tcl(f"{MACRO_LOCATION_MARKER}\n\n") == []
+
+
+def test_macro_location_round_trips_all_orientations_and_multiple_instances():
+    placements = [
+        {
+            "instance": f"u_macro_{index}",
+            "x": index * 10.25,
+            "y": index * 20.5,
+            "orientation": orientation,
+        }
+        for index, orientation in enumerate(sorted(MACRO_ORIENTATIONS))
+    ]
+
+    rendered = render_macro_location_tcl(placements)
+    parsed = parse_macro_location_tcl(rendered)
+
+    assert parsed == placements
+    assert parse_macro_location_tcl(render_macro_location_tcl(parsed)) == parsed
+
+
+@pytest.mark.parametrize(
+    ("placements", "reason"),
+    [
+        (
+            [
+                {"instance": "u_ram0", "x": 1, "y": 2, "orientation": "R0"},
+                {"instance": "u_ram0", "x": 3, "y": 4, "orientation": "R90"},
+            ],
+            "duplicates instance u_ram0",
+        ),
+        (
+            [{"instance": "u ram0", "x": 1, "y": 2, "orientation": "R0"}],
+            "instance name contains whitespace",
+        ),
+    ],
+)
+def test_validate_placements_rejects_ambiguous_instance_names(placements, reason):
+    assert any(reason in error for error in validate_placements(placements))
+
+
+def test_parse_macro_location_tcl_rejects_duplicate_instances():
+    with pytest.raises(ValueError, match="duplicates instance u_ram0"):
+        parse_macro_location_tcl("placeInstance u_ram0 1 2 R0\nplaceInstance u_ram0 3 4 R90\n")
 
 
 @pytest.mark.parametrize(
@@ -214,3 +266,24 @@ def test_macro_placements_round_trip_through_params_toml(tmp_path):
     assert save_parameter(Parameters(path=parameters_path, data=deepcopy(data)))
 
     assert load_parameter(parameters_path).data == data
+
+
+def test_manual_macro_location_gate_requires_placements_and_parseable_tcl(tmp_path):
+    tcl = tmp_path / "macro_location.tcl"
+    workspace = Workspace(
+        directory=tmp_path,
+        config={"macro_location": tcl},
+        parameters=Parameters(data={"macro": {"manual_placement": True}}),
+    )
+
+    assert manual_placement_required(workspace) is True
+    assert manual_macro_location_ready(workspace) is False
+
+    workspace.parameters.data["macro"]["placements"] = deepcopy(PLACEMENTS)
+    assert manual_macro_location_ready(workspace) is False
+
+    tcl.write_text(render_macro_location_tcl(PLACEMENTS))
+    assert manual_macro_location_ready(workspace) is True
+
+    tcl.write_text("placeInstance u0 bad 2 R0\n")
+    assert manual_macro_location_ready(workspace) is False

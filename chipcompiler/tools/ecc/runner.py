@@ -14,7 +14,12 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
+from chipcompiler.tools.ecc.clock_tree import (
+    capture_filler_clock_tree,
+    clock_tree_stage_for_step,
+)
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
@@ -42,6 +47,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     sta_power_summary_payload,
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
+from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.tools.ecc.utility import is_eda_exist
 from chipcompiler.utility import json_read, json_write
 
@@ -157,6 +163,17 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                 )
 
     return items
+
+
+def _typical_signoff_item(signoff_items: list[dict]) -> dict | None:
+    return next(
+        (
+            item
+            for item in signoff_items
+            if item.get("corner") == "TYP" and item.get("rcx_corner") == "TYPICAL"
+        ),
+        None,
+    )
 
 
 def _existing_input_path(path: Path | None) -> str | None:
@@ -306,6 +323,7 @@ def get_eda_instance(
             output_dir=step.data.dir or "",
             feature_dir=step.feature.dir or "",
         )
+        prepare_timing_context(workspace, step, ecc_module)
 
     return ecc_module
 
@@ -378,6 +396,10 @@ def run_sta_without_spef(
         if sta_config is None:
             raise ValueError("workspace STA config path is not configured")
 
+        prepare_timing_context(workspace, step, ecc_module)
+        sdc_path = step_tcl_path(workspace, step)
+        assert sdc_path is not None  # The source constraint was validated above.
+
         ecc_module.run_timing(
             config=sta_config,
             work_dir=work_dir,
@@ -405,6 +427,7 @@ def save_data(
     ecc_module: ECCToolsModule,
     *,
     feature_step: bool = True,
+    clock_tree_graph: dict | None = None,
 ) -> bool:
     """
     module is ecc module from db engine,
@@ -417,9 +440,13 @@ def save_data(
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
-        snapshot_options = {"include_drc": True} if step.name == StepEnum.DRC.value else {}
+        clock_tree_stage = clock_tree_stage_for_step(workspace, step.name)
         if not ecc_module.geometry_snapshot_save(
-            output_dir=geometry_dir, thumbnail_path=step.output.image, **snapshot_options
+            output_dir=geometry_dir,
+            thumbnail_path=step.output.image,
+            include_drc=step.name == StepEnum.DRC.value,
+            clock_tree_stage=clock_tree_stage,
+            clock_tree_graph=clock_tree_graph,
         ):
             workspace.logger.error("Failed to write geometry snapshot for %s", step.name)
             return False
@@ -565,6 +592,12 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        ecc_module.update_sta_data_config(
+            db_config=workspace.config.get("db", ""),
+            output_dir=step.data.dir or "",
+            lib_paths=[*workspace.pdk.libs],
+            sdc_path=step_tcl_path(workspace, step) or "",
+        )
         if not ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
@@ -572,6 +605,30 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             workspace.logger.error("CTS failed")
             sub_flow.update_step(step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete)
             return False
+
+        clock_tree_graph: dict | None = None
+        if clock_tree_stage_for_step(workspace, step.name) is not None:
+            getter = getattr(ecc_module, "clock_tree_graph", None)
+            if callable(getter):
+                try:
+                    captured = getter()
+                except Exception as exc:
+                    workspace.logger.warning(
+                        "CTS clock graph capture failed; geometry will keep topology only: %s",
+                        exc,
+                    )
+                else:
+                    if isinstance(captured, dict):
+                        clock_tree_graph = captured
+                    else:
+                        workspace.logger.warning(
+                            "Native CTS clock graph API returned invalid data; "
+                            "geometry will keep topology only"
+                        )
+            else:
+                workspace.logger.warning(
+                    "Native CTS clock graph API is unavailable; geometry will keep topology only"
+                )
 
         ecc_module.report_cts(output=(step.data.steps or {}).get(StepEnum.CTS.value, ""))
 
@@ -583,7 +640,12 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             workspace.logger.error("Failed to persist CTS timing feature facts")
             return False
 
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            clock_tree_graph=clock_tree_graph,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -727,11 +789,26 @@ def run_filler(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_filler.value, state=StateEnum.Success)
 
+        clock_tree_graph = None
+        if clock_tree_stage_for_step(workspace, step.name) == "filler":
+            try:
+                clock_tree_graph = capture_filler_clock_tree(workspace, step, ecc_module)
+            except Exception as exc:
+                workspace.logger.warning(
+                    "filler clock-tree timing capture failed; geometry will keep topology only: %s",
+                    exc,
+                )
+
         ecc_module.gds_save(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file or "",
         )
-        reslut = save_data(workspace=workspace, step=step, ecc_module=ecc_module)
+        reslut = save_data(
+            workspace=workspace,
+            step=step,
+            ecc_module=ecc_module,
+            clock_tree_graph=clock_tree_graph,
+        )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
@@ -743,7 +820,7 @@ def run_filler(
 def run_pre_floorplan(
     workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
 ) -> bool:
-    """Run the simple floorplan with automatic macro placement enabled."""
+    """Run the simple floorplan without loading macro locations."""
     reslut = False
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
 
@@ -765,7 +842,7 @@ def run_pre_floorplan(
             floorplan_path.with_stem(f"{floorplan_path.stem}_simple")
         )
         simple_floorplan = json_read(floorplan_config)
-        simple_floorplan["macro_placer"]["mode"] = "auto"
+        simple_floorplan["macro_placer"].pop("mode", None)
         simple_floorplan["macro_placer"]["file_path"] = ""
         json_write(simple_floorplan_config, simple_floorplan)
 
@@ -799,7 +876,7 @@ def run_post_floorplan(
 
         floorplan_config = os.fspath(workspace.config.get(StepEnum.FLOORPLAN.value, ""))
         floorplan = json_read(floorplan_config)
-        floorplan["macro_placer"]["mode"] = "file"
+        floorplan["macro_placer"].pop("mode", None)
         floorplan["macro_placer"]["file_path"] = os.fspath(
             workspace.config.get("macro_location", "")
         )
@@ -846,7 +923,10 @@ def run_harden(
         if not signoff_items:
             workspace.logger.error("No signoff STA items found")
             return False
-        signoff_item = signoff_items[0]
+        signoff_item = _typical_signoff_item(signoff_items)
+        if signoff_item is None:
+            workspace.logger.error("No TYP/TYPICAL signoff STA item found for harden")
+            return False
         sta_config = _workspace_sta_config_path(workspace)
         if sta_config is None:
             workspace.logger.error("workspace STA config path is not configured")
@@ -858,7 +938,7 @@ def run_harden(
             config=sta_config,
             output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
             lib_paths=signoff_item["liberty_files"],
-            sdc_path=workspace.pdk.sdc or "",
+            sdc_path=step_tcl_path(workspace, step) or "",
             spef_path=signoff_item["spef_file"],
             design_name=workspace.design.name,
         )
@@ -965,9 +1045,15 @@ def run_power_analysis(
         )
         return False
 
-    # iPW produces one report, so use the first user-configured STA signoff
-    # item and preserve the same Liberty/SDC/SPEF initialization sequence.
-    power_item = signoff_items[0]
+    # iPW produces one report, so use the same TYP/TYPICAL scenario as the SDC.
+    power_item = _typical_signoff_item(signoff_items)
+    if power_item is None:
+        workspace.logger.error("No TYP/TYPICAL signoff STA item found for power analysis")
+        sub_flow.update_step(
+            step_name=EccSubFlowEnum.run_power_analysis.value,
+            state=StateEnum.Imcomplete,
+        )
+        return False
     liberty_files = power_item["liberty_files"]
     spef_file = power_item["spef_file"]
     if not workspace.pdk.sdc or not os.path.exists(workspace.pdk.sdc):
@@ -1029,7 +1115,7 @@ def run_power_analysis(
     if not ecc_module.init_pw(
         output_dir=power_data_dir,
         lib_paths=liberty_files,
-        sdc_path=workspace.pdk.sdc,
+        sdc_path=step_tcl_path(workspace, step) or "",
         spef_path=spef_file,
     ):
         workspace.logger.error("Failed to initialize power analysis")
@@ -1122,6 +1208,12 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)
         return False
 
+    # Use the current iDB's instantiated PAD cells, not loaded IO libraries or stale features.
+    if not ecc_module.feature_sammry(json_path=step.feature.db or ""):
+        raise RuntimeError("Cannot export current iDB IO-cell count for signoff SDC")
+    has_io_cells = json_read(step.feature.db or "")["Instances"]["iopads"]["num"] > 0
+    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
+
     for signoff_item in signoff_items:
         corner_name = signoff_item["corner"]
         temperature = signoff_item["temperature"]
@@ -1175,6 +1267,13 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         corner = f"{report_dir.parent.name}/{report_dir.name}"
+        sdc_path = step_tcl_path(
+            workspace,
+            step,
+            corner=corner_name,
+            rc=rcx_corner_name,
+        )
+        assert sdc_path is not None  # The source constraint was validated above.
 
         ecc_module.run_timing(
             config=sta_config,
@@ -1182,7 +1281,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             report_dir=report_dir,
             feature_dir=feature_dir,
             lib_paths=liberty_files,
-            sdc_path=workspace.pdk.sdc,
+            sdc_path=sdc_path,
             spef_path=spef_file,
             output_modes=("report", "structured"),
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),

@@ -3,15 +3,16 @@ import pytest
 from chipcompiler.cli import main as cli_main
 
 
-def test_param_list_synthesis_includes_global_parameters(capsys, create_cli_project, plain_records):
+def test_param_list_synthesis_includes_global_parameters(
+    capsys, create_cli_project, plain_records, synthesis_parameter_ids
+):
     project_dir = create_cli_project()
     rc = cli_main.run(["param", "list", "--step", "synthesis", "--project", project_dir, "--plain"])
 
     assert rc == 0
-    assert [record["param"] for record in plain_records(capsys.readouterr().out)] == [
-        "design.frequency_mhz",
-        "flow.run_analysis",
-    ]
+    assert [
+        record["param"] for record in plain_records(capsys.readouterr().out)
+    ] == synthesis_parameter_ids
 
 
 def test_param_set_rejects_parameter_outside_project_flow(

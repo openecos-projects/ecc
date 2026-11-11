@@ -51,6 +51,15 @@ def macro_remove(args, ctx: CommandContext) -> CommandResult:
 @command_handler
 def macro_import(args, ctx: CommandContext) -> CommandResult:
     schema = lookup_schema(MACRO_PARAM)
+    if args.commit_step_output and args.workspace is None:
+        return CommandResult.err(
+            [
+                error_record(
+                    "invalid_parameter_scope",
+                    reason="--commit-step-output requires --workspace and --step output",
+                )
+            ]
+        )
 
     try:
         text = _read_import_text(args.path)
@@ -120,20 +129,21 @@ def macro_show(args, ctx: CommandContext) -> CommandResult:
 
 
 def _workspace_set(args, ctx: CommandContext, schema, entry: dict) -> CommandResult:
-    from chipcompiler.cli.command_handlers.workspace_params import _mutate
+    from chipcompiler.cli.command_handlers.workspace_params import _load_workspace, _mutate
 
-    written: dict = {}
+    workspace = _load_workspace(ctx)
+    try:
+        current = _workspace_placements(workspace, schema)
+    except CommandError as error:
+        raise ValueError(error.records[0].get("reason", "invalid macro.placements")) from error
+    placements = _upsert(current, entry)
+
+    written: dict = {"placements": placements}
 
     def mutation(workspace):
-        try:
-            current = _workspace_placements(workspace, schema)
-        except CommandError as error:
-            raise ValueError(error.records[0].get("reason", "invalid macro.placements")) from error
-        placements = _upsert(current, entry)
-        written["placements"] = placements
         return set_workspace_param(workspace, schema, placements)
 
-    result = _mutate(ctx, schema, mutation, None, "set")
+    result = _mutate(ctx, schema, mutation, placements, "set")
     _annotate(result, args.instance, written.get("placements"))
     return result
 
@@ -158,13 +168,12 @@ def _workspace_remove(args, ctx: CommandContext, schema) -> CommandResult:
         )
 
     remaining = [entry for entry in current if entry.get("instance") != args.instance]
-    written: dict = {}
+    written: dict = {"placements": remaining}
 
     def mutation(workspace):
-        written["placements"] = remaining
         return set_workspace_param(workspace, schema, remaining)
 
-    result = _mutate(ctx, schema, mutation, None, "set")
+    result = _mutate(ctx, schema, mutation, remaining, "set")
     record = _annotate(result, args.instance, written.get("placements"))
     if record is not None:
         record["status"] = "removed"
@@ -190,6 +199,16 @@ def _workspace_placements(workspace, schema) -> list:
 def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
     snapshot_path = Path(ctx.run_dir) / "home" / "engineering-snapshot.json"
     if not snapshot_path.is_file():
+        if args.commit_step_output:
+            return CommandResult.err(
+                [
+                    error_record(
+                        "step_output_not_published",
+                        param=MACRO_PARAM,
+                        reason="Workspace has no published macroPlacement output",
+                    )
+                ]
+            )
         from chipcompiler.cli.command_handlers.workspace_params import _mutate
 
         def mutation(workspace):
@@ -221,6 +240,8 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                 expected,
                 {MACRO_PARAM: placements},
                 (),
+                step_id="macroPlacement" if args.commit_step_output else None,
+                commit_step_output=args.commit_step_output,
                 command_id=args.command_id or str(uuid.uuid4()),
             )
             committed = read_engineering_snapshot_from_directory(ctx.run_dir)

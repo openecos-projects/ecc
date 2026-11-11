@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.data.parameter import Parameters
 
 
@@ -33,6 +34,7 @@ def _workspace(workspace_dir):
         ),
         config={},
         flow=SimpleNamespace(
+            path=parameters_path.parent / "flow.json",
             data={
                 "steps": [
                     {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
@@ -44,7 +46,7 @@ def _workspace(workspace_dir):
                     },
                     {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                 ]
-            }
+            },
         ),
     )
 
@@ -249,6 +251,108 @@ def test_macro_set_workspace_persists_and_invalidates_suffix(
     assert "workspace_param_overrides" in workspace.parameters.path.read_text()
 
 
+def test_macro_set_snapshot_workspace_passes_placements_to_engine(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text("{}")
+    workspace.parameters.data["macro"] = {
+        "placements": [{"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"}]
+    }
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+    captured = {}
+
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+        captured["value"] = requested_value
+        captured["status"] = status
+        return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.workspace_params._mutate_via_engine",
+        fake_engine_mutation,
+    )
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "set",
+            "u_ram0",
+            "--x",
+            "10",
+            "--y",
+            "20",
+            "--orient",
+            "R0",
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["status"] == "set"
+    assert captured["status"] == "set"
+    assert captured["value"] == [
+        {"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"},
+        {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"},
+    ]
+
+
+def test_macro_remove_snapshot_workspace_passes_remaining_to_engine(
+    capsys, create_cli_project, monkeypatch, plain_records
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    workspace = _workspace(workspace_dir)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text("{}")
+    workspace.parameters.data["macro"] = {
+        "placements": [
+            {"instance": "u_old", "x": 1.0, "y": 2.0, "orientation": "R0"},
+            {"instance": "u_keep", "x": 3.0, "y": 4.0, "orientation": "MX"},
+        ]
+    }
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
+    captured = {}
+
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+        captured["value"] = requested_value
+        captured["status"] = status
+        return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
+
+    monkeypatch.setattr(
+        "chipcompiler.cli.command_handlers.workspace_params._mutate_via_engine",
+        fake_engine_mutation,
+    )
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "remove",
+            "u_old",
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["status"] == "removed"
+    assert captured["status"] == "set"
+    assert captured["value"] == [
+        {"instance": "u_keep", "x": 3.0, "y": 4.0, "orientation": "MX"},
+    ]
+
+
 def test_macro_remove_workspace_absent_instance_is_noop(
     capsys, create_cli_project, monkeypatch, plain_records
 ):
@@ -401,6 +505,133 @@ def test_macro_import_workspace_replaces_placements_and_invalidates_suffix(
         "Unstart",
         "Unstart",
     ]
+
+
+def test_macro_import_workspace_can_commit_published_step_output(
+    capsys, create_cli_project, monkeypatch, plain_records, tmp_path
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    (workspace_dir / "home").mkdir(parents=True)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text(
+        json.dumps({"workspaceRevision": 4})
+    )
+    handoff = tmp_path / "macro_location.tcl"
+    handoff.write_text("placeInstance u_a 10 20.5 R0\n")
+    calls = []
+
+    def apply_workspace_parameters(*args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        "chipcompiler.engine.apply_workspace_parameters", apply_workspace_parameters
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.read_engineering_snapshot_from_directory",
+        lambda _directory: {"workspaceRevision": 4},
+    )
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "import",
+            str(handoff),
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--expected-revision",
+            "4",
+            "--command-id",
+            "macro-publish-1",
+            "--commit-step-output",
+            "--plain",
+        ]
+    )
+
+    assert rc == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["status"] == "imported"
+    assert len(calls) == 1
+    resolved_workspace_dir = Path(calls[0][0][0])
+    assert resolved_workspace_dir.name == "baseline"
+    assert resolved_workspace_dir.is_dir()
+    assert calls == [
+        (
+            (
+                str(resolved_workspace_dir),
+                4,
+                {
+                    "macro.placements": [
+                        {"instance": "u_a", "x": 10.0, "y": 20.5, "orientation": "R0"}
+                    ]
+                },
+                (),
+            ),
+            {
+                "command_id": "macro-publish-1",
+                "commit_step_output": True,
+                "step_id": "macroPlacement",
+            },
+        )
+    ]
+
+
+def test_macro_import_rejects_published_output_commit_without_workspace(
+    capsys, create_cli_project, plain_records, tmp_path
+):
+    project_dir = create_cli_project()
+    before = (Path(project_dir) / "ecc.toml").read_bytes()
+    handoff = tmp_path / "macro_location.tcl"
+    handoff.write_text("placeInstance u_a 10 20.5 R0\n")
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "import",
+            str(handoff),
+            "--project",
+            project_dir,
+            "--commit-step-output",
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["error"] == "invalid_parameter_scope"
+    assert (Path(project_dir) / "ecc.toml").read_bytes() == before
+
+
+def test_macro_import_rejects_published_output_commit_without_snapshot(
+    capsys, create_cli_project, plain_records, tmp_path
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    (workspace_dir / "home").mkdir(parents=True)
+    _write_manifest(project_dir)
+    handoff = tmp_path / "macro_location.tcl"
+    handoff.write_text("placeInstance u_a 10 20.5 R0\n")
+
+    rc = cli_main.run(
+        [
+            "macro",
+            "import",
+            str(handoff),
+            "--workspace",
+            "baseline",
+            "--project",
+            project_dir,
+            "--commit-step-output",
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    record = plain_records(capsys.readouterr().out)[0]
+    assert record["error"] == "step_output_not_published"
+    assert not (workspace_dir / "home" / "params.toml").exists()
 
 
 def test_macro_import_empty_handoff_clears_project_placements(

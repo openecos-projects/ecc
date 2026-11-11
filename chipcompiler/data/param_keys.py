@@ -59,6 +59,8 @@ DISPLAY_KEY_MAP: dict[str, str] = {
     "sta_max_parallel_corners": "sta.max_parallel_corners",
     "target_density": "place.target_density",
     "target_overflow": "place.target_overflow",
+    "clock_tree": "geometry.clock_tree",
+    "manual_macro_placement": "macro.manual_placement",
 }
 
 DIE_AREA_MODE_TO_DIE_BUILDER_MODE: dict[str, str] = {

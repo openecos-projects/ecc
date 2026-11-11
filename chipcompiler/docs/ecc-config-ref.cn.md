@@ -224,13 +224,63 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 `ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
+设置 `macro.manual_placement true`（参数 ID 为 `macro.manual_placement`，在 Studio 中位于 Floorplan 配置下；例如 `ecc param set macro.manual_placement true --workspace default`）可把 `macroPlacement` 变成强制手摆检查点。启用后，只有当 `macro.placements` 非空且生成的 `config/macro_location.tcl` 包含可解析的摆放时该步骤才继续；否则步骤以未完成状态中断。请先在 Chip Viewer 完成并保存宏摆放，或执行 `ecc macro` 命令，再重跑该步骤。该检查对没有硬宏的设计同样生效，因此仅在确实需要手摆宏时启用。
+
 交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
 
 ### 1.6 自动生成的 SDC
 
-未声明 `[design].sdc` 时，workspace 创建过程会写出 `origin/<design>.sdc`；用户提供的 SDC 则只复制、不重新生成。ECC 通过首行 `# Auto-generated SDC file` 标记识别自己生成的文件，参数变化时也只刷新带该标记的 SDC。
+未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 保持原始字节，不自动生成设计约束；ECC 在两个阶段目录中生成 `<文件名>.ecc.tcl` 入口，先 `source` 复制的原文件，再于 CTS 及之前执行 `remove_propagated_clock [all_clocks]`，于 CTS 之后执行 `set_propagated_clock [all_clocks]`。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的 corner 约束，参数变化时刷新这些文件。
 
-当前生成器按 `design.frequency_mhz` 为 `design.clock_port` 创建真实时钟（无端口时创建虚拟时钟），把输入/输出 delay 设为 0，分别按周期的 1.5% 和 0.5% 设置 setup/hold uncertainty，把时钟 transition 上限设为 0.15 ns、输入 transition 上限设为 0.20 ns，按 `cts.max_fanout` 写入 `set_max_fanout`，并在 PDK 的 `sdc_load > 0` 时增加输出负载约束。
+生成的 Tcl 按 `params.sdc.clock_list` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
+
+### 1.7 用户填写的五组时序输入
+
+`ecc init` 生成的 `ecc.toml` 已包含 `[params.sdc]`：默认生效的 `clk`/100 MHz 时钟行，以及另外四组可选输入的注释示例。把内容写入三单引号之间，**不要额外包一层 `set clock_list {...}` 等 Tcl 变量赋值**。三单引号保留 Tcl 的反斜杠、换行及 `$变量`，示例中的端口、引脚、时钟名和延迟需按设计修改。
+
+```toml
+[params.sdc]
+# 1. 主时钟：每行一个端口或内部引脚，以及各 corner 的 MHz。
+# 新项目必填：取消注释并修改至少一行，覆盖所有 PVT corner；支持小数 MHz。
+# 第一行的 TYP 频率也用于流程中只接受单个主时钟的内部参数。
+clock_list = '''
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+clk_aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25
+'''
+
+# 2. 派生时钟：取消下面示例的注释前，先确认源和目标引脚存在。
+generated_clock_txt = '''
+# create_generated_clock -name CLK_div2 -divide_by 2 \
+#     -source [get_ports clk] [get_pins u_div/clk_reg/Q]
+'''
+
+# 3. 时钟分组：只对真正异步的时钟域设置，并包含各自派生时钟。
+# 无 IO cell 时，还应把 VCLK_<端口> 放入对应组。
+clk_group_txt = '''
+# set_clock_groups -asynchronous \
+#     -group {CLK_clk VCLK_clk} -group {CLK_clk_aux VCLK_clk_aux}
+'''
+
+# 4. 用户 IO 约束：在自动 IO 约束之后执行。下面的 ns 数值仅为示例。
+io_constraint_txt = '''
+# set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]
+# set_output_delay 0.0625 -max -clock CLK_clk [get_ports data_out*]
+'''
+
+# 5. 时序例外：需有设计依据，不要机械地把所有复位路径设为 false path。
+timing_exception_txt = '''
+# set_false_path -from [get_ports reset_n]
+# set_multicycle_path -setup 3 -end -to [get_ports data_out*]
+# set_multicycle_path -hold 2 -end -to [get_ports data_out*]
+'''
+```
+
+- 生成位置仍为 `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` 与 `origin/post_CTS/...`。两套都写入上述输入，主时钟频率按文件对应的 corner 选择；只有 post-CTS 额外开启传播时钟。
+- 主时钟先查端口，再查内部引脚。端口时钟名是 `CLK_<端口>`；含 `/` 的内部引脚名会将 `/`、`.`、`[` 替换为 `_`，去掉 `]`，例如 `u_pll/Q` → `CLK_u_pll_Q`。完整层次名保留，避免截断后重名。
+- 执行顺序：主时钟（无 IO cell 时为端口主时钟建立虚拟时钟）→ 派生时钟 → 分组 → 自动 IO 约束 → 用户 IO 约束 → 时序例外 → golden 电气/时序约束 → post-CTS 传播时钟。四段 Tcl 原样执行，可使用 `$corner`、`$rc_para`；是否覆盖或叠加已有 IO 延迟取决于命令选项。
+- 新项目模板不再包含 `design.clock_port` / `frequency_mhz`，只需填写 `clock_list`。第一行及其 TYP 频率提供流程所需的单主时钟元数据；生成的约束仍按各行、各 corner 选择频率。留空或仅注释会在新运行开始前报错，不会暗中使用初始化 manifest 的默认时钟。旧项目显式填写的时钟元数据和完整 `design.sdc` 输入仍兼容，完整文件仍优先于这五项；这不代表每个原生工具都已支持多时钟优化。
+- 仅主时钟的周期可由 ECC 直接计算；有派生时钟 Tcl 时，脚本用 `get_attribute` 和 `foreach_in_collection` 查询各时钟实际周期。**当前测试的 iSTA 不提供这两个命令，派生时钟模式尚不能据此宣称原生全流程通过**；不要用主时钟周期代替派生时钟周期。用户 Tcl 使用的其他命令也须由具体工具支持。
+- 修改项目 `ecc.toml` 后，使用新 workspace 读取新配置；已有 workspace 使用自己的 `home/params.toml`。可以用 `ecc param set sdc.io_constraint_txt 'set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]' --project "$PROJECT_DIR" --workspace "$WORKSPACE"` 修改已有 workspace 并刷新配置。单纯 `--resume` 不会重新导入项目 TOML 的五项输入。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -243,7 +293,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
-| `INPUT.sdc_path` | `origin/gcd.sdc` | workspace | 时序约束（自动生成或用户提供） |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认时序入口（生成的 Tcl 或用户提供的完整约束） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
 | `LayerSettings.routing_layer_1st` | `MET2` | 参数 `route.bottom_layer` | 首个可用绕线层（影响数据库层设置） |
@@ -288,7 +338,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.mode = "auto"`、`file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 把共享配置改为 `macro_placer.mode = "file"` 并指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。
+配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
 
 ### ifp（iFP 布图引擎）
 
@@ -498,8 +548,8 @@ buffering-only `diff_opt` 的兼容别名。
 启用 `diff_opt` 时执行 `diff_opt → diff_sizing` 两个独立步骤。
 
 placement 的 sizing 窗口和 `diff_opt` 的 `sz` 阶段也默认使用 LUT action，
-并以 `place.timing_sizing_action="up"` 限制为 `size_up`/`vt_speedup` 二选一。
-轮数、共享预算和系数沿用各自配置；该参数可显式设为 `quad` 或 `down`。
+并以 `place.timing_sizing_action="quad"` 在四个方向（`size_up`、`size_down`、`vt_slowdown`、`vt_speedup`）中选一。
+轮数、共享预算和系数沿用各自配置；该参数可显式设为 `up` 或 `down`。
 独立 `diff_sizing` 使用自己的 phase 链，其显式 action 优先。
 
 独立 S50 的连续 sizing step 数由 `place.diff_sizing_continuous_steps` 控制，默认值为 0。
@@ -536,16 +586,16 @@ snapshot + RRR3 路径。显式设置 `place.timing_rc_mode` 也会作为该步�
 `selection_percent` 是每轮参与选择的 sizeable instance 百分比，范围 `(0, 100]`；
 例如 `1` 表示 1%，`0.1` 表示 0.1%。每个 phase 使用自己的轮数和系数，phase
 按列表顺序执行；stage iteration 会自动等于各 phase 轮数之和。默认 `null`
-在独立 `diff_sizing` 的 `lut_action` 模式下展开为单个 `up` phase：50 轮，
-每轮 `size_up`/`vt_speedup` 共享 1% 预算，系数读取 `diff_sizing_coefficients`
+在独立 `diff_sizing` 的 `lut_action` 模式下展开为单个 `quad` phase：50 轮，
+每轮四方向共享 1% 预算，系数读取 `diff_sizing_coefficients`
 （默认 `[500, 5, 1, 1]`）。生成的步骤配置等价于：
 
 ```toml
 [params.place]
-diff_sizing_optimization_flows = [["up", 50, [500, 5, 1, 1], 1.0]]
+diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
-显式提供 phase 链时使用链内的系数和预算；如需四方向选择，可显式配置 `quad`。
+显式提供 phase 链时使用链内的系数和预算；如需限制方向，可显式配置 `up` 或 `down`。
 `timing_action_gradient_mode=off` 仍使用原有路径，不能指定 action phase 链。
 
 自定义链示例：
@@ -800,7 +850,7 @@ check_antenna -step_json /path/to/antennaCheck.step.json
 | 项 | 内容 |
 |---|---|
 | `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`）。 |
-| `postRouteLec` 输入 | 综合映射网表为 golden，`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
+| `postRouteLec` 输入 | golden 优先级：步骤显式覆盖 → `design.golden_netlist` → 综合映射网表 → 原始输入。`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
 | 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。 |
 
 启用综合级 LEC 并可选地固定引擎：
@@ -827,14 +877,21 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 
 ## 13. sta（ecc-tools）
 
-配置 `sta_ecc.json`，由 `liberty`（corner → liberty 列表）与 `signoff`（签核 corner 组合）两部分构成；liberty 相对路径在配置刷新时展开为 PDK 绝对路径。子阶段：load data → run sta。`STA max paths` 参数（默认 1000）在运行时直接传入引擎，不落此文件。
+配置 `sta_ecc.json`，由 `liberty`（corner → liberty 列表）与 `signoff`（签核 corner 组合）两部分构成。Liberty 相对路径及模板沿用的 `/IP/...` 路径在配置刷新时按 PDK 根目录展开；其他绝对路径保持不变，包括 PDK 外部的宏单元库。子阶段：load data → run sta。`STA max paths` 参数（默认 1000）在运行时直接传入引擎，不落此文件。
 
 | 字段 | 示例（gcd@ics55） | 含义 |
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
 | `liberty[].path` | H7CR + H7CL + H7CH | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
-| `signoff[0]` | MAX:[Cworst,RCworst]；WCL:[Cworst,RCworst]；TYP:[TYPICAL]；MIN/ML:[Cworst,RCworst,Cbest,RCbest] | 签核要跑的「liberty corner × RC corner」组合，共 13 个分析 corner |
+| `signoff[0]` | TYP:[TYPICAL]；MIN:[Cworst,RCworst,Cbest,RCbest] | 默认签核要跑的「liberty corner × RC corner」组合，共 5 个分析 corner |
+
+默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
+`liberty` 中保留 MAX/WCL/ML 库组，供显式覆盖 `sta.signoff` 时选择；这不会让最终 STA
+自动检查这些库组，也不改变综合、CTS、Sizer 等前序阶段的用库。
+Harden 与 powerAnalysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
+`signoff` 列表顺序不会改变该选择。若覆盖 `sta.signoff` 后不含 TYP/TYPICAL，
+这两个步骤会失败，而不会静默改用其他 corner。
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
 
@@ -844,7 +901,7 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 `ff_1p32_3p63v_0c`。其余三个 IO 库（`ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、
 `ff_1p32_3p63_m40c`）时序表有误，配置刷新时直接报错。IO 库表征温度可以与 corner
 温度不同，例如 MIN 的标准单元用 -40°C 库，IO 用 0°C 库；标准单元库、SPEF 温度及
-上述 13 个分析 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
+已配置的签核 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
 标准单元库。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
@@ -856,7 +913,7 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | hold 报告（同上拆分，非签核必需） |
 
 功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
-产生。其原生输出为
+产生。该步骤使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF。其原生输出为
 `powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
 `powerAnalysis_ecc/report/powerAnalysis.rpt`，并从报告生成
@@ -886,7 +943,7 @@ iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位
 
 ## 14. harden（ecc-tools）
 
-无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
+无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF 生成时序 LIB。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
 
 ## 15. 各步骤的 ECC CLI 配置命令
 

@@ -512,7 +512,7 @@ $ ecc report summary
   view: cat default/signoff/gcd_design_summary.txt
 ```
 
-Excerpts from this gcd run (full report: `cat` the file above):
+The excerpt below uses the earlier 13-scenario gcd configuration; final STA now defaults to 1 TYP and 4 MIN scenarios. For your actual report, `cat` the file above:
 
 ```
 [ 1. PHYSICAL & AREA METRICS ]

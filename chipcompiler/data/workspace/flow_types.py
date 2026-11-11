@@ -40,6 +40,7 @@ class FlowDocument(TypedDict, total=False):
 
     steps: list[FlowStepEntry]
     schema_version: int
+    options: dict
 
 
 def load_flow_document(path: Path | None) -> FlowDocument:

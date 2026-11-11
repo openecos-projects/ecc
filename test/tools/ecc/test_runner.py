@@ -1,4 +1,6 @@
 import json
+import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -20,6 +22,7 @@ from chipcompiler.data import (
     StepInput,
     Workspace,
 )
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -159,14 +162,17 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
             calls.append(("destroy_fp",))
 
     floorplan_config = tmp_path / "floorplan_ecc.json"
-    floorplan_config.write_text(
-        json.dumps(
-            {
-                "macro_placer": {"mode": "file", "file_path": "old_locations.txt"},
-                "io_placer": {"mode": "file", "file_path": "io_pins.txt"},
-            }
-        )
+    original_config = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "chipcompiler/tools/ecc/configs/floorplan_ecc.json"
+        ).read_text()
     )
+    original_config["macro_placer"].update(
+        {"mode": "file", "file_path": "old_locations.txt", "macro_placement_halo": 5.0}
+    )
+    original_config["io_placer"].update({"mode": "file", "file_path": "io_pins.txt"})
+    floorplan_config.write_text(json.dumps(original_config))
     simple_floorplan_config = floorplan_config.with_stem("floorplan_ecc_simple")
     macro_location = tmp_path / "macro_location.tcl"
     macro_location.write_text("# macro locations\n")
@@ -203,14 +209,11 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         ("run_simple_fp",),
         ("destroy_fp",),
     ]
-    assert json.loads(simple_floorplan_config.read_text())["macro_placer"] == {
-        "mode": "auto",
-        "file_path": "",
-    }
-    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
-        "mode": "file",
-        "file_path": "old_locations.txt",
-    }
+    expected = deepcopy(original_config)
+    expected["macro_placer"].pop("mode")
+    expected["macro_placer"]["file_path"] = ""
+    assert json.loads(simple_floorplan_config.read_text()) == expected
+    assert json.loads(floorplan_config.read_text()) == original_config
 
     assert ecc_runner.run_post_floorplan(
         workspace=workspace,
@@ -221,10 +224,8 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
         ("run_fp",),
         ("destroy_fp",),
     ]
-    assert json.loads(floorplan_config.read_text())["macro_placer"] == {
-        "mode": "file",
-        "file_path": str(macro_location),
-    }
+    expected["macro_placer"]["file_path"] = str(macro_location)
+    assert json.loads(floorplan_config.read_text()) == expected
     assert saved_steps == [StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value]
     assert analyzed_steps == [StepEnum.POST_FLOORPLAN.value]
 
@@ -263,6 +264,9 @@ class FakeCtsModule:
     def update_step_paths(self, **kwargs):
         self.calls.append(("update_step_paths", kwargs))
 
+    def update_sta_data_config(self, **kwargs):
+        self.calls.append(("update_sta_data_config", kwargs))
+
     def report_cts(self, **kwargs):
         self.calls.append(("report_cts", kwargs))
 
@@ -280,6 +284,8 @@ class SnapshotSaveEccModule:
         self.geometry_output = None
         self.geometry_includes_drc = None
         self.geometry_thumbnail = None
+        self.clock_tree_stage = None
+        self.clock_tree_graph = None
 
     def def_save(self, **_kwargs):
         return True
@@ -290,10 +296,20 @@ class SnapshotSaveEccModule:
     def save_data(self, **_kwargs):
         return True
 
-    def geometry_snapshot_save(self, output_dir, *, include_drc=False, thumbnail_path=None):
+    def geometry_snapshot_save(
+        self,
+        output_dir,
+        *,
+        include_drc=False,
+        thumbnail_path=None,
+        clock_tree_stage=None,
+        clock_tree_graph=None,
+    ):
         self.geometry_output = output_dir
         self.geometry_includes_drc = include_drc
         self.geometry_thumbnail = thumbnail_path
+        self.clock_tree_stage = clock_tree_stage
+        self.clock_tree_graph = clock_tree_graph
         if not self.write_snapshot:
             return False
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -578,6 +594,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     }
     assert [call[0] for call in module.calls] == [
         "update_step_paths",
+        "update_sta_data_config",
         "run_cts",
         "report_cts",
         "feature_cts_map",
@@ -606,12 +623,61 @@ def test_run_cts_stops_when_native_run_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(ecc_runner, "run_analysis", analysis)
 
     assert ecc_runner.run_cts(workspace, step, module) is False
-    assert [call[0] for call in module.calls] == ["update_step_paths", "run_cts"]
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "update_sta_data_config",
+        "run_cts",
+    ]
     sub_flow.update_step.assert_any_call(
         step_name=EccSubFlowEnum.run_CTS.value, state=StateEnum.Imcomplete
     )
     save.assert_not_called()
     analysis.assert_not_called()
+
+
+def test_run_cts_captures_clock_graph_before_saving_geometry(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.CTS.value: tmp_path / "config" / "cts.json"},
+    )
+    step = build_step(
+        workspace=workspace,
+        step_name=StepEnum.CTS.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    build_step_space(step)
+    graph = {"timing_source": "cts_fast_sta", "clocks": [{"name": "clk"}]}
+
+    class ClockGraphCtsModule(FakeCtsModule):
+        def clock_tree_graph(self):
+            self.calls.append(("clock_tree_graph", {}))
+            return graph
+
+    module: Any = ClockGraphCtsModule({})
+    save = Mock(return_value=True)
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "save_data", save)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **kwargs: None)
+
+    assert ecc_runner.run_cts(workspace, step, module) is True
+
+    save.assert_called_once()
+    assert save.call_args.kwargs["clock_tree_graph"] is graph
+    assert [call[0] for call in module.calls] == [
+        "update_step_paths",
+        "update_sta_data_config",
+        "run_cts",
+        "clock_tree_graph",
+        "report_cts",
+        "feature_cts_map",
+        "feature_cts_timing",
+    ]
 
 
 def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_feature(
@@ -639,6 +705,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
     )
     step = EccStep(
         output=EccOutput(verilog=netlist),
+        name=StepEnum.SYNTHESIS.value,
         data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
         feature=EccFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
         report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
@@ -671,7 +738,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
                 "report_dir": step.report.dir / "post_synthesis",
                 "feature_dir": step.feature.dir / "post_synthesis",
                 "lib_paths": [liberty],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/pre_CTS" / f"{sdc.name}.ecc.tcl",
                 "max_paths": 1000,
                 "corner": "post_synthesis",
             },
@@ -790,6 +857,27 @@ def test_sta_entry_workspace_uses_declared_spef(tmp_path):
     assert [item["spef_file"] for item in items] == [str(declared_spef)]
 
 
+def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
+    template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
+    sta_config.parent.mkdir()
+    sta_config.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [(item["corner"], item["rcx_corner"]) for item in items] == [
+        ("TYP", "TYPICAL"),
+        ("MIN", "Cworst"),
+        ("MIN", "RCworst"),
+        ("MIN", "Cbest"),
+        ("MIN", "RCbest"),
+    ]
+
+
 def _make_rcx_step(tmp_path):
     return EccStep(
         name=StepEnum.RCX.value,
@@ -904,7 +992,11 @@ def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
     } in sub_flow.updates
 
 
-def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, monkeypatch):
+@pytest.mark.parametrize("generated_sdc", [False, True])
+@pytest.mark.parametrize("io_cell_count", [0, 1])
+def test_run_sta_uses_matched_report_and_feature_corner_directories(
+    tmp_path, monkeypatch, generated_sdc, io_cell_count
+):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     max_lib = tmp_path / "pdk" / "max.lib"
@@ -946,7 +1038,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
-        parameters=Parameters(data={"sta_max_paths": 500}),
+        parameters=Parameters(data={"sta_max_paths": 500, "clock": "clk", "frequency_max": 100}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,
     )
@@ -954,9 +1046,28 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
         name=StepEnum.STA.value,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
-        feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
+        feature=EccFeature(
+            dir=tmp_path / "sta_ecc" / "feature",
+            db=tmp_path / "sta_ecc" / "feature" / "sta.db.json",
+        ),
     )
     module = FakeSynthesisStaModule()
+
+    def export_summary(json_path):
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": io_cell_count}}}))
+        return True
+
+    assert step.feature.db is not None
+    step.feature.db.parent.mkdir(parents=True)
+    # The classification must come from a fresh export, not this previous run's data.
+    step.feature.db.write_text(json.dumps({"Instances": {"iopads": {"num": 1 - io_cell_count}}}))
+    monkeypatch.setattr(module, "feature_sammry", export_summary, raising=False)
+    if generated_sdc:
+        workspace.pdk.sdc = None
+        generate_timing_scripts(workspace)
+        sdc = workspace.pdk.sdc
+    assert sdc is not None
+    original_sdc = sdc.read_bytes()
     monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
     monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
     monkeypatch.setattr(ecc_runner, "save_data", lambda **kwargs: True)
@@ -974,7 +1085,11 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                workspace.directory / "origin/post_CTS/MAX_125_RCworst.tcl"
+                if generated_sdc
+                else workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl"
+            ),
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
@@ -986,13 +1101,71 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(tmp_path, mo
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
-            "sdc_path": sdc,
+            "sdc_path": (
+                workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl"
+                if generated_sdc
+                else workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl"
+            ),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
             "corner": "MIN_m40/Cbest",
         },
     ]
+    if generated_sdc:
+        assert [
+            [
+                line
+                for line in re.sub(
+                    r"[ \t]*\\\n[ \t]*", " ", call["sdc_path"].read_text()
+                ).splitlines()
+                if line.startswith("set ")
+            ]
+            for call in calls
+        ] == [
+            [
+                'set top "gcd"',
+                'set clk_port_name "clk"',
+                'set clk_name "CLK_clk"',
+                "set clk_freq_mhz 100.0",
+                "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
+                f'set corner "{corner}"',
+                f'set rc_para "{rc}"',
+                *(
+                    [
+                        'set virtual_clk_name "VCLK_clk"',
+                        "set data_inputs [remove_from_collection "
+                        "[all_inputs] [get_ports $clk_port_name]]",
+                        "set data_outputs [all_outputs]",
+                    ]
+                    if io_cell_count == 0
+                    else []
+                ),
+            ]
+            for corner, rc in (("MAX", "RCworst"), ("MIN", "Cbest"))
+        ]
+    else:
+        assert sdc.read_bytes() == original_sdc
+
+
+def test_run_sta_does_not_reuse_io_count_after_failed_export(tmp_path, monkeypatch):
+    sdc = tmp_path / "gcd.sdc"
+    sdc.write_text("# ECC-generated SDC file\n")
+    db_feature = tmp_path / "sta.db.json"
+    db_feature.write_text(json.dumps({"Instances": {"iopads": {"num": 10}}}))
+    workspace = Workspace(directory=tmp_path, pdk=PDK(sdc=sdc))
+    step = EccStep(name=StepEnum.STA.value, feature=EccFeature(db=db_feature))
+    module = Mock()
+    module.feature_sammry.return_value = False
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **kwargs: module)
+    monkeypatch.setattr(ecc_runner, "collect_sta_signoff_items", lambda _: [{}])
+    monkeypatch.setattr(ecc_runner, "_workspace_sta_config_path", lambda _: "sta.json")
+
+    with pytest.raises(RuntimeError, match="Cannot export current iDB IO-cell count"):
+        ecc_runner.run_sta(workspace, step)
+
+    assert module.run_timing.call_args_list == []
 
 
 def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
@@ -1090,6 +1263,107 @@ def test_run_filler_uses_mj_lifecycle(tmp_path, monkeypatch):
     ]
 
 
+def test_run_filler_captures_clock_tree_before_snapshot(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def __init__(self):
+            self.calls = []
+
+        def init_mj(self, output_dir):
+            self.calls.append(("init_mj", output_dir))
+
+        def run_filler(self, config):
+            self.calls.append(("run_filler", config))
+
+        def destroy_mj(self):
+            self.calls.append(("destroy_mj",))
+
+        def gds_save(self, **kwargs):
+            self.calls.append(("gds_save", kwargs))
+
+    filler_config = tmp_path / "config" / "filler_ecc.json"
+    filler_data_dir = tmp_path / "filler_ecc" / "data" / "mj"
+    workspace = Workspace(
+        directory=tmp_path,
+        logger=_fake_logger(),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.FILLER.value: filler_config},
+    )
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: filler_data_dir}),
+    )
+    module = FakeFillerModule()
+    graph = {"stage": "filler", "clocks": []}
+    saved = {}
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: module)
+    monkeypatch.setattr(ecc_runner, "capture_filler_clock_tree", lambda *_args: graph)
+
+    def save_data(**kwargs):
+        saved.update(kwargs)
+        return True
+
+    monkeypatch.setattr(ecc_runner, "save_data", save_data)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert saved["clock_tree_graph"] is graph
+
+
+def test_run_filler_keeps_topology_when_clock_tree_capture_fails(tmp_path, monkeypatch):
+    class FakeFillerModule:
+        def init_mj(self, output_dir):
+            return None
+
+        def run_filler(self, config):
+            return None
+
+        def destroy_mj(self):
+            return None
+
+        def gds_save(self, **kwargs):
+            return None
+
+    logger: Any = FakeLogger()
+    workspace = Workspace(
+        directory=tmp_path,
+        logger=logger,
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.FILLER.value: tmp_path / "config" / "filler_ecc.json"},
+    )
+    step = EccStep(
+        name=StepEnum.FILLER.value,
+        data=EccData(steps={StepEnum.FILLER.value: tmp_path / "filler_ecc" / "data" / "mj"}),
+    )
+    saved = {}
+
+    def fail_capture(*_args):
+        raise RuntimeError("no TYPICAL SPEF")
+
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(ecc_runner, "get_eda_instance", lambda **_kwargs: FakeFillerModule())
+    monkeypatch.setattr(ecc_runner, "capture_filler_clock_tree", fail_capture)
+
+    def save_data(**kwargs):
+        saved.update(kwargs)
+        return True
+
+    monkeypatch.setattr(ecc_runner, "save_data", save_data)
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_kwargs: None)
+
+    assert ecc_runner.run_filler(workspace, step) is True
+    assert saved["clock_tree_graph"] is None
+    assert logger.warnings
+    assert "topology only" in logger.warnings[0][0]
+
+
 def test_rcx_checklist_strips_top_module_from_spef_corner(tmp_path):
     checklist = EccRcxChecklist.__new__(EccRcxChecklist)
     checklist.workspace = Workspace(
@@ -1129,6 +1403,33 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
     assert module.geometry_thumbnail == step.output.image
     assert step.output.geometry_manifest is not None
     assert step.output.geometry_manifest.is_file()
+
+
+def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+    )
+    step = build_step(workspace, StepEnum.CTS.value, None, None)
+    module: Any = SnapshotSaveEccModule(write_snapshot=True)
+    graph = {"timing_source": "cts_fast_sta", "clocks": []}
+
+    assert (
+        ecc_runner.save_data(
+            workspace,
+            step,
+            module,
+            feature_step=False,
+            clock_tree_graph=graph,
+        )
+        is True
+    )
+    assert module.clock_tree_stage == "CTS"
+    assert module.clock_tree_graph is graph
 
 
 def test_save_data_preserves_core_utilization_parameter(tmp_path, monkeypatch):

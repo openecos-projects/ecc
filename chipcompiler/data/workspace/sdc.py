@@ -1,159 +1,340 @@
-"""Workspace SDC generation and refresh.
+"""Generate pre/post-CTS golden timing-constraint Tcl.
 
-``create_default_sdc`` writes the auto-generated clock constraint file
-from the workspace parameters; ``refresh_generated_sdc`` rewrites only
-files ECC generated (marker-checked), so a user-provided SDC survives
-parameter refreshes untouched.
+The two scenario sets share golden rules; only post-CTS propagates clocks.
+Custom files retain their design constraints; the flow sets clock propagation.
 """
 
+import re
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from chipcompiler.utility.file import write_text_atomic
+
+from .sdc_inputs import PrimaryClock, SdcInputs, clock_frequency
 
 if TYPE_CHECKING:
     from chipcompiler.data import Workspace
 
-_SDC_HEADER = """\
-# ECC-generated SDC file
-
-# -------------------------------------------------
-# SDC version & units
-# -------------------------------------------------
-set sdc_version 2.1
-set_units -time ns -resistance kOhm -capacitance pF -voltage V -current mA
-
-# -------------------------------------------------
-# Clock definition
-# -------------------------------------------------
-"""
-
-_SDC_HEAD_CLOCK = """\
-set clk_name      {clock}
-set clk_port_name {clock}
-set clk_freq_mhz  {freq_mhz}
-set clk_period    [expr {{1000.0 / $clk_freq_mhz}}]
-
-set clk_port [get_ports $clk_port_name]
-create_clock -name $clk_name -period $clk_period $clk_port
-
-set_clock_latency -source 0.5 [get_clocks $clk_name]
-
-# -------------------------------------------------
-# IO Delay
-# -------------------------------------------------
-set data_inputs [remove_from_collection [all_inputs] $clk_port]
-set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
-set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
-set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
-"""
-
-_SDC_HEAD_VIRTUAL_CLOCK = """\
-set clk_name      __VIRTUAL_CLK__
-set clk_freq_mhz  {freq_mhz}
-set clk_period    [expr {{1000.0 / $clk_freq_mhz}}]
-
-create_clock -name $clk_name -period $clk_period
-set_clock_latency -source 0.5 [get_clocks $clk_name]
-
-# -------------------------------------------------
-# IO Delay
-# -------------------------------------------------
-set data_inputs [all_inputs]
-set_input_delay -max 3.0 -clock [get_clocks $clk_name] $data_inputs
-set_input_delay -min 1.0 -clock [get_clocks $clk_name] $data_inputs
-set_output_delay -max 1.0 -clock [get_clocks $clk_name] [all_outputs]
-"""
-
-_SDC_OUTPUT_LOAD = """
-# -------------------------------------------------
-# Output load (pF) - {pdk_name} pdk
-# -------------------------------------------------
-set_load {sdc_load} [all_outputs]
-"""
-
-_SDC_TAIL = """
-# -------------------------------------------------
-# Clock uncertainty & transition
-# -------------------------------------------------
-set_clock_uncertainty -setup 0.20 [all_clocks]
-set_clock_uncertainty -hold  0.25 [get_clocks $clk_name]
-set_clock_transition        0.15 [get_clocks $clk_name]
-set_input_transition        0.20 $data_inputs
-
-# -------------------------------------------------
-# Design-level constraints
-# -------------------------------------------------
-set_max_fanout      {max_fanout}   [current_design]
-set_max_transition [expr {{$clk_period * 0.17}}] -clock_path [get_clocks $clk_name]
-set_max_transition [expr {{$clk_period * 0.34}}] -data_path [get_clocks $clk_name]
-
-# -------------------------------------------------
-# Timing derate (OCV)
-# -------------------------------------------------
-set_timing_derate -early 0.95 -clock
-set_timing_derate -late  1.10 -clock
-set_timing_derate -late  1.10 -data
-"""
+_GENERATED_MARKER = "# ECC-generated SDC file"
 
 
-def create_default_sdc(workspace: "Workspace") -> None:
-    """
-    Create SDC file based on PDK and workspace parameters.
-
-    A design without a clock port gets a virtual clock instead, so
-    downstream tools still have a clock object as timing reference.
-    """
-    parameters = workspace.parameters.data
-    freq_mhz = parameters.get("frequency_max", 100)
-
-    sdc_content = _SDC_HEADER
-    clock = parameters.get("clock", "")
-    if clock:
-        sdc_content += _SDC_HEAD_CLOCK.format(clock=clock, freq_mhz=freq_mhz)
-    else:
-        sdc_content += _SDC_HEAD_VIRTUAL_CLOCK.format(freq_mhz=freq_mhz)
-
-    if workspace.pdk.sdc_load > 0:
-        sdc_content += _SDC_OUTPUT_LOAD.format(
-            pdk_name=workspace.pdk.name, sdc_load=workspace.pdk.sdc_load
-        )
-
-    sdc_content += _SDC_TAIL.format(max_fanout=parameters.get("max_fanout", 32))
-
-    sdc_path = workspace.pdk.sdc
-    if sdc_path is None:
-        return
-    with open(sdc_path, "w") as file:
-        file.write(sdc_content)
+def _section(title: str) -> list[str]:
+    separator = "# " + "-" * 76
+    return ["", separator, f"# {title}", separator]
 
 
-def refresh_generated_sdc(workspace: "Workspace") -> None:
-    """Refresh an existing SDC created by ECC while preserving user SDC files."""
-    sdc_path = workspace.pdk.sdc
-    if sdc_path is None or not sdc_path.is_file():
-        return
+def _tcl_word(value: str) -> str:
+    """Quote one literal Tcl word, including bus indices and hierarchy names."""
+    escapes = str.maketrans(
+        {"\\": "\\\\", '"': '\\"', "$": "\\$", "[": "\\[", "]": "\\]", "\n": "\\n", "\r": "\\r"}
+    )
+    return '"' + value.translate(escapes) + '"'
 
-    try:
-        with sdc_path.open(encoding="utf-8") as file:
-            marker = file.readline().strip()
-            if marker not in {"# ECC-generated SDC file", "# ECC-generated clock-only SDC"}:
-                return
-    except (OSError, UnicodeError):
-        return
 
-    if marker == "# ECC-generated clock-only SDC":
-        parameters = workspace.parameters.data
-        content = "\n".join(
-            (
-                marker,
-                "",
-                f"set clk_name {parameters.get('clock', '')}",
-                f"set clk_port_name {parameters.get('clock', '')}",
-                f"set clk_freq_mhz {parameters.get('frequency_max', 100)}",
-                "set clk_period [expr 1000.0 / $clk_freq_mhz]",
-                "set clk_port [get_ports $clk_port_name]",
-                "create_clock -name $clk_name -period $clk_period $clk_port",
-                "",
+def _clock_variables(clock: PrimaryClock) -> list[str]:
+    return [
+        f"set clk_port_name {_tcl_word(clock.target)}",
+        f"set clk_name {_tcl_word(clock.name)}",
+        f"set clk_freq_mhz {clock.frequency_mhz}",
+        "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
+    ]
+
+
+def _design_constraints(
+    workspace: "Workspace",
+    clocks: tuple[PrimaryClock, ...] | None,
+    *,
+    has_io_cells: bool | None,
+) -> list[str]:
+    lines = [
+        _GENERATED_MARKER,
+        *_section("1. Design and flow context"),
+        f"set top {_tcl_word(workspace.design.top_module or workspace.design.name)}",
+        *_section("2. Primary clock - user design input resolved by ECC"),
+    ]
+    if clocks is not None:
+        for clock in clocks:
+            lines.extend(_clock_variables(clock))
+            lines.extend(
+                [
+                    "set clk_ports [get_ports -quiet $clk_port_name]",
+                    "if {[llength $clk_ports]} {",
+                    "    create_clock -name $clk_name -period $clk_period $clk_ports",
+                ]
             )
+            if has_io_cells is False:
+                lines.append(
+                    f"    create_clock -name {_tcl_word('V' + clock.name)} -period $clk_period"
+                )
+            lines.extend(
+                [
+                    "} else {",
+                    "    create_clock -name $clk_name -period $clk_period "
+                    "[get_pins $clk_port_name]",
+                    "}",
+                ]
+            )
+        return lines
+    clock = workspace.parameters.data.get("clock", "")
+    if clock:
+        frequency = clock_frequency(workspace.parameters.data.get("frequency_max", 100))
+        lines.extend(
+            [
+                f"set clk_port_name {_tcl_word(clock)}",
+                f"set clk_name {_tcl_word(f'CLK_{clock}')}",
+                f"set clk_freq_mhz {frequency}",
+                "set clk_period [expr {1000.0 / $clk_freq_mhz}]",
+                "create_clock -name $clk_name -period $clk_period \\",
+                "    [get_ports $clk_port_name]",
+            ]
         )
-        sdc_path.write_text(content)
+    return lines
+
+
+def is_generated_sdc(path: Path | None) -> bool:
+    if path is None or not path.is_file():
+        return False
+    with path.open("rb") as stream:
+        return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
+
+
+def custom_step_sdc_path(source: Path, directory: Path, *, post_cts: bool) -> Path:
+    """Source user Tcl unchanged, then apply the flow's final clock state."""
+    phase = "post_CTS" if post_cts else "pre_CTS"
+    target = directory / "origin" / phase / f"{source.name}.ecc.tcl"
+    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
+    text = (
+        f"# ECC {phase} entry for user timing constraints\n"
+        f"source {_tcl_word(str(source.absolute()))}\n"
+        f"{command} [all_clocks]\n"
+    )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists() or target.read_text(encoding="utf-8") != text:
+        write_text_atomic(target, text)
+    return target
+
+
+def signoff_sdc_path(
+    workspace: "Workspace",
+    output_path: Path,
+    *,
+    post_cts: bool,
+    corner: str,
+    rc_para: str,
+    has_io_cells: bool | None = None,
+) -> Path:
+    """Write a standalone scenario with IO rules selected from the loaded design."""
+    source = workspace.pdk.sdc
+    if source is not None and not is_generated_sdc(source):
+        return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
+
+    inputs = SdcInputs.from_parameters(workspace.parameters.data)
+    clocks = inputs.clocks(workspace.parameters.data, corner) if inputs.has_clock_inputs else None
+    lines = _design_constraints(workspace, clocks, has_io_cells=has_io_cells)
+    lines.extend(
+        [
+            *_section("3. Signoff scenario - selected by ECC"),
+            f"set corner {_tcl_word(corner)}",
+            f"set rc_para {_tcl_word(rc_para)}",
+        ]
+    )
+    for title, text in (
+        ("3.1 User generated clocks", inputs.generated_clock_txt),
+        ("3.2 User clock groups", inputs.clk_group_txt),
+    ):
+        if text.strip():
+            lines.extend([*_section(title), text])
+    lines.extend(_section("4. IO interface constraints - golden branch selected from iDB"))
+    if has_io_cells is None:
+        lines.append('error "ECC must load the design before selecting timing IO constraints"')
     else:
-        create_default_sdc(workspace)
+        lines.extend(_io_constraints(workspace, corner, has_io_cells=has_io_cells, clocks=clocks))
+
+    for title, text in (
+        ("4.5 User IO constraints", inputs.io_constraint_txt),
+        ("4.6 User timing exceptions", inputs.timing_exception_txt),
+    ):
+        if text.strip():
+            lines.extend([*_section(title), text])
+
+    clock = workspace.parameters.data.get("clock", "")
+    lines.extend(_section("5. OCV derate - first matching golden rule"))
+    slow = re.search(r"(?:MAX|WCL)$", corner) and (
+        rc_para.endswith("worst") or "default" in rc_para
+    )
+    fast = re.search(r"(?:MIN|ML)$", corner)
+    if slow or fast:
+        early_clock = 0.95 if slow else 0.9
+        for delay in ("cell", "net"):
+            for path in ("clock", "data"):
+                for bound in ("late", "early"):
+                    factor = early_clock if (path, bound) == ("clock", "early") else 1.0
+                    lines.append(f"set_timing_derate -{delay}_delay -{path} -{bound} {factor}")
+    else:
+        lines.extend(["set_timing_derate -late 1.0", "set_timing_derate -early 0.95"])
+
+    if clocks is not None:
+        lines.extend(_clock_limits(clocks, inputs, has_io_cells=has_io_cells))
+    elif clock:
+        frequency = clock_frequency(workspace.parameters.data.get("frequency_max", 100))
+        lines.extend(_section("6. Clock uncertainty - setup and hold margins"))
+        if frequency <= 10000:
+            lines.extend(
+                [
+                    "set_clock_uncertainty -setup 0.200 [all_clocks]",
+                    "set_clock_uncertainty -hold 0.1 [all_clocks]",
+                ]
+            )
+        lines.extend(
+            [
+                *_section("7. Maximum transition - scaled by the clock period"),
+                "set_max_transition [expr {$clk_period * 0.17}] \\",
+                "    -clock_path [all_clocks]",
+                "set_max_transition [expr {$clk_period * 0.34}] \\",
+                "    -data_path [all_clocks]",
+            ]
+        )
+    lines.extend(
+        [
+            *_section("8. Design-level electrical constraints"),
+            "set_max_fanout 32 [current_design]",
+        ]
+    )
+    if post_cts:
+        lines.extend(_section("9. Propagated clocks"))
+        lines.append("set_propagated_clock [all_clocks]")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    text = "\n".join(lines) + "\n"
+    if not output_path.exists() or output_path.read_text(encoding="utf-8") != text:
+        write_text_atomic(output_path, text)
+    return output_path
+
+
+def _clock_limits(
+    clocks: tuple[PrimaryClock, ...], inputs: SdcInputs, *, has_io_cells: bool | None
+) -> list[str]:
+    lines = []
+    if inputs.has_generated_clocks:
+        loop = [
+            "foreach_in_collection timing_clock [all_clocks] {",
+            "    set timing_period [get_attribute $timing_clock period]",
+        ]
+    else:
+        lines.append("set timing_clock_periods {}")
+        for clock in clocks:
+            period = 1000.0 / clock.frequency_mhz
+            lines.append(f"lappend timing_clock_periods {_tcl_word(clock.name)} {period}")
+            if has_io_cells is False:
+                lines.extend(
+                    [
+                        f"if {{[llength [get_ports -quiet {_tcl_word(clock.target)}]]}} {{",
+                        f"    lappend timing_clock_periods {_tcl_word('V' + clock.name)} {period}",
+                        "}",
+                    ]
+                )
+        loop = [
+            "foreach {timing_name timing_period} $timing_clock_periods {",
+            "    set timing_clock [get_clocks $timing_name]",
+        ]
+    return [
+        *lines,
+        *_section("6. Clock uncertainty - setup and hold margins"),
+        *loop,
+        "    set timing_frequency [expr {1000.0 / $timing_period}]",
+        "    if {$timing_frequency > 0 && $timing_frequency <= 10000} {",
+        "        set_clock_uncertainty -setup 0.200 $timing_clock",
+        "        set_clock_uncertainty -hold 0.1 $timing_clock",
+        "    }",
+        "}",
+        *_section("7. Maximum transition - scaled by each clock period"),
+        *loop,
+        "    set_max_transition [expr {$timing_period * 0.17}] -clock_path $timing_clock",
+        "    set_max_transition [expr {$timing_period * 0.34}] -data_path $timing_clock",
+        "}",
+    ]
+
+
+def _io_constraints(
+    workspace: "Workspace",
+    corner: str,
+    *,
+    has_io_cells: bool,
+    clocks: tuple[PrimaryClock, ...] | None,
+) -> list[str]:
+    lines = []
+    clock = workspace.parameters.data.get("clock", "")
+    if has_io_cells:
+        lines.extend(["", "# 4.1 Output load"])
+        if re.search(r"WCZ|WCL|MAX", corner):
+            load = 8
+        elif re.search(r"ML|MZ|MIN", corner):
+            load = 6
+        else:
+            load = 7
+        lines.append(f"set_load {load} [all_outputs]")
+    else:
+        if clocks is not None:
+            targets = " ".join(_tcl_word(item.target) for item in clocks)
+            for primary in clocks:
+                lines.extend(_clock_variables(primary))
+                lines.append(f"set virtual_clk_name {_tcl_word('V' + primary.name)}")
+                lines.append("if {[llength [get_ports -quiet $clk_port_name]]} {")
+                lines.extend(
+                    "    " + line if line else ""
+                    for line in _core_delays(f"[get_ports -quiet [list {targets}]]")
+                )
+                lines.append("}")
+        elif clock:
+            lines.extend(
+                [
+                    "",
+                    "# 4.1 Virtual interface clock",
+                    f"set virtual_clk_name {_tcl_word(f'VCLK_{clock}')}",
+                    "create_clock -name $virtual_clk_name -period $clk_period",
+                ]
+            )
+            lines.extend(_core_delays("[get_ports $clk_port_name]"))
+        lines.extend(
+            [
+                "",
+                "# 4.4 Core output load",
+                "set_load -max 0.2 [all_outputs]",
+                "set_load -min 0.1 [all_outputs]",
+            ]
+        )
+
+    return lines
+
+
+def _core_delays(clock_ports: str) -> list[str]:
+    return [
+        "",
+        "# 4.2 IO delay budget",
+        # OpenSTA spells the `direction` property input/output/tristate/bidirect/...;
+        # Cadence-style `in`/`out` matches nothing, and an empty filter result is
+        # silent, so every IO delay below was applied to an empty collection.
+        # all_inputs/all_outputs also keep the multicycle budget on the same ports.
+        f"set data_inputs [remove_from_collection [all_inputs] {clock_ports}]",
+        "set data_outputs [all_outputs]",
+        "",
+        "if {[llength $data_inputs]} {",
+        "    set_input_delay [expr {$clk_period * 0.6}] -max \\",
+        "        -clock $virtual_clk_name -add_delay $data_inputs",
+        "    set_input_delay [expr {$clk_period * 0.3}] -min \\",
+        "        -clock $virtual_clk_name -add_delay $data_inputs",
+        "}",
+        "",
+        "if {[llength $data_outputs]} {",
+        "    set_output_delay [expr {$clk_period * 0.6}] -max \\",
+        "        -clock $virtual_clk_name -add_delay $data_outputs",
+        "    set_output_delay [expr {$clk_period * 0.3}] -min \\",
+        "        -clock $virtual_clk_name -add_delay $data_outputs",
+        "}",
+        "",
+        "# 4.3 Input-to-output multicycles",
+        "set_multicycle_path 4 -setup -end \\",
+        "    -from [all_inputs] -to [all_outputs]",
+        "set_multicycle_path 3 -hold -end \\",
+        "    -from [all_inputs] -to [all_outputs]",
+    ]

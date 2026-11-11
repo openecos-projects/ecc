@@ -203,13 +203,14 @@ def _populate(
 def _default_toml(design_name: str) -> str:
     from chipcompiler.data import DEFAULT_SKIP_STEPS
 
+    from .timing_template import SDC_INPUT_TEMPLATE
+
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
-    return f'''[design]
+    return (
+        f'''[design]
 name = "{design_name}"
 top = "{design_name}"
 rtl = ["rtl/{design_name}.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"
@@ -221,6 +222,8 @@ preset = "rtl2gds"
 # Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
 skip_steps = {skip_steps}
 '''
+        + SDC_INPUT_TEMPLATE
+    )
 
 
 def _load_mpc(command_input: InitInput) -> dict | None:

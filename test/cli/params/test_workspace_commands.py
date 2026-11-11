@@ -32,13 +32,14 @@ def _workspace(workspace_dir):
         ),
         config={},
         flow=SimpleNamespace(
+            path=parameters_path.parent / "flow.json",
             data={
                 "steps": [
                     {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                     {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                     {"name": "route", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                 ]
-            }
+            },
         ),
     )
 
@@ -299,7 +300,7 @@ def test_workspace_param_list_rejects_unknown_step(
 
 
 def test_workspace_param_list_matches_first_step_configuration(
-    capsys, create_cli_project, monkeypatch, plain_records
+    capsys, create_cli_project, monkeypatch, plain_records, synthesis_parameter_ids
 ):
     project_dir = create_cli_project()
     workspace_dir = Path(project_dir) / "baseline"
@@ -324,10 +325,7 @@ def test_workspace_param_list_matches_first_step_configuration(
 
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
-    assert [record["id"] for record in records] == [
-        "design.frequency_mhz",
-        "flow.run_analysis",
-    ]
+    assert [record["id"] for record in records] == synthesis_parameter_ids
     assert records[0]["record"] == "parameter"
     assert records[0]["step_id"] == "Synthesis"
     assert records[0]["type"] == "float"
@@ -336,7 +334,7 @@ def test_workspace_param_list_matches_first_step_configuration(
 
 
 def test_workspace_param_list_hydrates_persisted_flow_ledger(
-    capsys, create_cli_project, monkeypatch, plain_records
+    capsys, create_cli_project, monkeypatch, plain_records, synthesis_parameter_ids
 ):
     project_dir = create_cli_project()
     workspace_dir = Path(project_dir) / "baseline"
@@ -366,8 +364,5 @@ def test_workspace_param_list_hydrates_persisted_flow_ledger(
 
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
-    assert [record["id"] for record in records] == [
-        "design.frequency_mhz",
-        "flow.run_analysis",
-    ]
+    assert [record["id"] for record in records] == synthesis_parameter_ids
     assert records[0]["step_id"] == "Synthesis"

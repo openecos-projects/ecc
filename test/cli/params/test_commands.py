@@ -474,18 +474,26 @@ class TestOutputContracts:
         out = capsys.readouterr().out
         assert "\033[" not in out
 
-    def test_plain_is_line_oriented(self, tmp_path, capsys, create_cli_project):
+    def test_plain_is_line_oriented(
+        self, tmp_path, capsys, create_cli_project, semantic_parameter_ids
+    ):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
         lines = [line for line in out.strip().split("\n") if line.strip()]
-        assert len(lines) == 15
+        assert len(lines) == len(semantic_parameter_ids)
 
 
 class TestConfigResolved:
     def test_config_resolved_includes_param_records(
-        self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
+        self,
+        tmp_path,
+        monkeypatch,
+        capsys,
+        create_cli_project,
+        plain_records,
+        semantic_parameter_ids,
     ):
         project_dir = create_cli_project()
         monkeypatch.setattr(
@@ -502,7 +510,7 @@ class TestConfigResolved:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         param_records = [r for r in records if r.get("kind") == "param"]
-        assert len(param_records) == 15
+        assert [record["key"] for record in param_records] == semantic_parameter_ids
         first_param = param_records[0]
         assert "source" in first_param
         assert "maps_to" in first_param
@@ -565,13 +573,15 @@ class TestPrettyOutput:
         assert "place" in out
         assert "place.target_density" in out
 
-    def test_param_list_plain_is_one_line_per_record(self, tmp_path, capsys, create_cli_project):
+    def test_param_list_plain_is_one_line_per_record(
+        self, tmp_path, capsys, create_cli_project, semantic_parameter_ids
+    ):
         project_dir = create_cli_project()
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         out = capsys.readouterr().out
         lines = [line for line in out.strip().split("\n") if line.strip()]
-        assert len(lines) == 15
+        assert len(lines) == len(semantic_parameter_ids)
         assert "\033[" not in out
 
     def test_param_show_default_is_pretty(self, tmp_path, capsys, create_cli_project):

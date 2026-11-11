@@ -35,9 +35,16 @@ def macro_placements(workspace: "Workspace") -> list[dict]:
     return placements if isinstance(placements, list) else []
 
 
+def manual_placement_required(workspace: "Workspace") -> bool:
+    """Return whether the workspace requires hand-placed macro locations."""
+    macro = workspace.parameters.data.get("macro", {})
+    return isinstance(macro, dict) and macro.get("manual_placement") is True
+
+
 def validate_placements(placements: list[dict]) -> list[str]:
     """Return one error message per invalid placement entry."""
     errors = []
+    instances: set[str] = set()
     for index, entry in enumerate(placements):
         if not isinstance(entry, dict):
             errors.append(f"placement #{index + 1} is not an object")
@@ -45,6 +52,12 @@ def validate_placements(placements: list[dict]) -> list[str]:
         instance = entry.get("instance")
         if not isinstance(instance, str) or not instance.strip():
             errors.append(f"placement #{index + 1} has an empty instance name")
+        elif any(character.isspace() for character in instance):
+            errors.append(f"placement #{index + 1} instance name contains whitespace")
+        elif instance in instances:
+            errors.append(f"placement #{index + 1} duplicates instance {instance}")
+        else:
+            instances.add(instance)
         for key in ("x", "y"):
             value = entry.get(key)
             if (
@@ -144,3 +157,17 @@ def parse_macro_location_tcl(text: str) -> list[dict]:
     if errors:
         raise ValueError("; ".join(errors))
     return placements
+
+
+def manual_macro_location_ready(workspace: "Workspace") -> bool:
+    """Return whether the enabled manual-placement gate has a usable handoff."""
+    if not macro_placements(workspace):
+        return False
+    target = workspace.config.get("macro_location")
+    if not target:
+        return False
+    try:
+        text = Path(target).read_text(encoding="utf-8")
+        return bool(parse_macro_location_tcl(text))
+    except (OSError, ValueError):
+        return False

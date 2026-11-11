@@ -1,6 +1,9 @@
 import json
+from pathlib import Path
 
+from chipcompiler.data import StepEnum, Workspace
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+from chipcompiler.tools.ecc.sta_qor import configured_sta_artifact_directories
 
 
 def _write(path, payload):
@@ -52,3 +55,24 @@ def test_harden_signoff_source_reads_the_step_directory_table(tmp_path):
     assert source["step"] == StepEnum.HARDEN.value
     assert source["available"] is True
     assert source["status"] == "pass"
+
+
+def test_configured_sta_directories_follow_default_five_signoff_corners(tmp_path):
+    template = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
+    config_path = tmp_path / "config" / "sta_ecc.json"
+    config_path.parent.mkdir()
+    config_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: config_path})
+
+    directories = configured_sta_artifact_directories(
+        workspace,
+        tmp_path / "sta_ecc" / "report",
+    )
+
+    assert [corner for corner, _path in directories] == [
+        "TYP_25/TYPICAL",
+        "MIN_m40/Cworst",
+        "MIN_m40/RCworst",
+        "MIN_m40/Cbest",
+        "MIN_m40/RCbest",
+    ]

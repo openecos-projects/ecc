@@ -43,6 +43,11 @@ class FakePowerModule:
             ("update_step_paths", {"output_dir": output_dir, "feature_dir": feature_dir})
         )
 
+    def feature_sammry(self, json_path):
+        self.calls.append(("feature_sammry", json_path))
+        json_path.write_text(json.dumps({"Instances": {"iopads": {"num": 0}}}))
+        return True
+
     def init_pw(self, output_dir, lib_paths, sdc_path, spef_path):
         self.calls.append(
             (
@@ -89,7 +94,14 @@ def _power_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",
-        lambda _workspace: [{"liberty_files": [str(liberty)], "spef_file": str(spef)}],
+        lambda _workspace: [
+            {
+                "corner": "TYP",
+                "rcx_corner": "TYPICAL",
+                "liberty_files": [str(liberty)],
+                "spef_file": str(spef),
+            }
+        ],
     )
     return (
         Workspace(
@@ -146,7 +158,7 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
                 "spef_path": str(spef),
             },
         ),
@@ -173,6 +185,63 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
     assert {record["source"]["path"] for record in power_metrics["metrics"]} == {
         "feature/powerAnalysis.step.json"
     }
+
+
+def test_power_analysis_uses_typical_signoff_item_even_when_configured_later(tmp_path, monkeypatch):
+    power_data_dir = tmp_path / "powerAnalysis_ecc" / "data" / "pw"
+    step: Any = EccStep(
+        name=StepEnum.POWER_ANALYSIS.value,
+        data=EccData(
+            dir=tmp_path / "powerAnalysis_ecc" / "data",
+            steps={StepEnum.POWER_ANALYSIS.value: power_data_dir},
+        ),
+        feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        report=EccReport(
+            dir=tmp_path / "powerAnalysis_ecc" / "report",
+            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        ),
+    )
+    module: Any = FakePowerModule()
+    workspace, max_liberty, sdc, max_spef = _power_workspace(tmp_path, monkeypatch)
+    typical_liberty = tmp_path / "pdk-typ.lib"
+    typical_spef = tmp_path / "design-typ.spef"
+    for path in (typical_liberty, typical_spef):
+        path.write_text("input\n", encoding="utf-8")
+    sdc.write_text("# ECC-generated SDC file\n", encoding="utf-8")
+    monkeypatch.setattr(
+        ecc_runner,
+        "collect_sta_signoff_items",
+        lambda _workspace: [
+            {
+                "corner": "MAX",
+                "rcx_corner": "Cworst",
+                "liberty_files": [str(max_liberty)],
+                "spef_file": str(max_spef),
+            },
+            {
+                "corner": "TYP",
+                "rcx_corner": "TYPICAL",
+                "liberty_files": [str(typical_liberty)],
+                "spef_file": str(typical_spef),
+            },
+        ],
+    )
+    monkeypatch.setattr(ecc_runner, "EccSubFlow", FakeSubFlow)
+    monkeypatch.setattr(
+        ecc_runner,
+        "save_data",
+        lambda **_kwargs: module.calls.append(("save_data",)) or True,
+    )
+    monkeypatch.setattr(ecc_runner, "run_analysis", lambda **_: None)
+
+    assert ecc_runner.run_power_analysis(workspace, step, module) is True
+
+    init_pw = next(arguments for name, arguments in module.calls if name == "init_pw")
+    assert init_pw["lib_paths"] == [str(typical_liberty)]
+    assert init_pw["spef_path"] == str(typical_spef)
+    assert init_pw["sdc_path"] == (
+        workspace.directory / "origin" / "post_CTS" / "TYP_25_TYPICAL.tcl"
+    )
 
 
 def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
@@ -217,7 +286,7 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": sdc,
+                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
                 "spef_path": str(spef),
             },
         ),

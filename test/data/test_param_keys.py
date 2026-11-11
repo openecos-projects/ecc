@@ -68,5 +68,6 @@ def test_parameter_catalog_records_carry_display_key_and_knob_id():
     assert by_id["floorplan.core_util"]["display_key"] == "utilization"
     assert by_id["floorplan.core_util"]["knob_id"] == "floorplan.utilization"
     assert by_id["route.RT.-enable_timing"]["knob_id"] == "route.enable_timing"
+    assert by_id["macro.manual_placement"]["display_key"] == "manual_macro_placement"
     assert by_id["sta.max_paths"]["display_key"] is None
     assert by_id["sta.max_paths"]["knob_id"] is None

@@ -284,6 +284,9 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     # origin_def exists only in the manifest layer (no ecc.toml key), so it
     # always comes from the base — resolved against the project root.
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
+    from chipcompiler.cli.project.config import resolve_clock_list_metadata
+
+    resolve_clock_list_metadata(cfg)
 
 
 def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
@@ -297,7 +300,11 @@ def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
     """
     keys = set(cfg.params_overrides or {})
     keys.update(cli_overrides or {})
-    if "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset()):
+    if "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset()) or (
+        "sdc.clock_list" in cfg.params_overrides
+        and not cfg.design_sdc
+        and not cfg._timing_input_error
+    ):
         keys.add("design.frequency_mhz")
     return frozenset(keys)
 
