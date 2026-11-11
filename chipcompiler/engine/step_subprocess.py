@@ -88,9 +88,9 @@ def execute_step_subprocess(
     try:
         if log_file:
             with open(log_file, "ab") as log_handle:
-                process = _spawn_worker(log_handle)
+                process = _spawn_worker(log_handle, cwd=workspace.directory)
         else:
-            process = _spawn_worker(None)
+            process = _spawn_worker(None, cwd=workspace.directory)
     except OSError as exc:
         return _result(start_time, 0.0, error=f"{step_tag} worker failed to start: {exc}")
 
@@ -177,12 +177,13 @@ def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
     return None
 
 
-def _spawn_worker(log_handle) -> subprocess.Popen:
+def _spawn_worker(log_handle, *, cwd: str | Path | None = None) -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, "-m", "chipcompiler.engine.step_subprocess"],
         stdin=subprocess.PIPE,
         stdout=log_handle,
         stderr=subprocess.STDOUT,
+        cwd=str(cwd) if cwd is not None else None,
         start_new_session=(os.name == "posix"),
     )
 

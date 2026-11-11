@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import Event, Thread
 
@@ -91,7 +92,7 @@ def execute_tool_step(
         if observer is not None:
             workspace._runtime_flow_observer = observer
             observer_installed = True
-        with capture_stdio_to_file(log_file):
+        with _working_directory(workspace.directory), capture_stdio_to_file(log_file):
             try:
                 from chipcompiler.tools import run_step
 
@@ -146,6 +147,17 @@ def execute_tool_step(
         runtime=f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}",
         resource_observation=resource_observation,
     )
+
+
+@contextmanager
+def _working_directory(directory: str | os.PathLike[str]):
+    """Run a tool with the Workspace as its relative-path root."""
+    previous = os.getcwd()
+    os.chdir(directory)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
 
 
 def record_tool_failure(

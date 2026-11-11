@@ -135,6 +135,24 @@ def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
     assert step.output.spef == []
 
 
+def test_step_worker_runs_in_workspace_directory(monkeypatch, tmp_path):
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    result_path.write_text(json.dumps({"done": True, "ok": True, "events": []}))
+    options = {}
+
+    def spawn(*_args, **kwargs):
+        options.update(kwargs)
+        return _FakePopen(poll_script=[0])
+
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    result = step_subprocess.execute_step_subprocess(workspace, step)
+
+    assert result.error is None
+    assert options["cwd"] == workspace.directory
+
+
 def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
     from chipcompiler.tools.ecc import sta_parallel
 
@@ -293,14 +311,17 @@ def test_execute_tool_step_falls_back_in_process(monkeypatch, tmp_path):
     ran = []
     monkeypatch.setattr(
         "chipcompiler.tools.run_step",
-        lambda **kwargs: ran.append(kwargs) or True,
+        lambda **kwargs: ran.append((kwargs, os.getcwd())) or True,
     )
+    workspace = _workspace(tmp_path)
     step = _workspace_step(tmp_path)
     engine_db = _ns(engine=object(), initialization_error=None)
-    result = execute_tool_step(_workspace(tmp_path), step, engine_db)
+    result = execute_tool_step(workspace, step, engine_db)
 
     assert dispatched == []
     assert ran and result.error is None
+    assert ran[0][1] == workspace.directory
+    assert os.getcwd() != workspace.directory
 
 
 class _FakeFlow:
