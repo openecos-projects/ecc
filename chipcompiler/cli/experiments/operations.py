@@ -6,6 +6,7 @@ import io
 import itertools
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -30,6 +31,7 @@ from chipcompiler.data import ADVISORY_FLOW_STEPS
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 
 SCHEMA_VERSION = 1
+_SWEEP_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 
 
 def payload_fingerprint(payload: Any) -> str:
@@ -419,8 +421,22 @@ def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     return result
 
 
+def sweep_root(project: Path, name: str) -> Path:
+    """Return ``<project>/experiments/<name>`` for a sweep name.
+
+    A sweep name is a plain identifier. Path separators, ``..`` and absolute
+    paths are rejected so a sweep can never live outside the project (#394).
+    """
+    if not _SWEEP_NAME.fullmatch(name):
+        raise ValueError(
+            f"invalid sweep name: {name!r} "
+            "(use letters, digits, '_', '-' or '.'; it must not start with '.')"
+        )
+    return project / "experiments" / name
+
+
 def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> dict[str, Any]:
-    root = project / "experiments" / name
+    root = sweep_root(project, name)
     if root.exists():
         raise ValueError(f"sweep already exists: {name}")
     keys = sorted(parameters)
@@ -443,11 +459,11 @@ def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> 
 
 
 def sweep_result(project: Path, name: str) -> Path:
-    return project / "experiments" / name / "results.json"
+    return sweep_root(project, name) / "results.json"
 
 
 def verify_sweep(project: Path, name: str) -> dict[str, Any]:
-    root = project / "experiments" / name
+    root = sweep_root(project, name)
     plan = load_json(root / "sweep.json")
     errors: list[str] = []
     if not isinstance(plan, dict):
@@ -675,7 +691,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
 
 
 def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str, Any]:
-    plan = load_json(project / "experiments" / name / "sweep.json")
+    root = sweep_root(project, name)
+    plan = load_json(root / "sweep.json")
     if not plan:
         raise ValueError(f"sweep does not exist: {name}")
     candidates = plan["candidates"][:max_candidates]
@@ -685,7 +702,7 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
     }
     results = []
     for candidate in candidates:
-        candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
+        candidate_root = root / "candidates" / candidate["id"]
         candidate_project = candidate_root / "project"
         if not candidate_project.exists():
 

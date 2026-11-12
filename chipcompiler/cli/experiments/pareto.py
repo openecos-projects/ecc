@@ -9,7 +9,7 @@ from pathlib import Path
 from chipcompiler.analysis.pareto import Objective, rank_points
 from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from chipcompiler.cli.experiments.candidate_evidence import candidate_evidence
-from chipcompiler.cli.experiments.operations import _json_command, load_json
+from chipcompiler.cli.experiments.operations import _json_command, load_json, sweep_root
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.data.parameter_schema import parse_cli_overrides
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
@@ -17,8 +17,7 @@ from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
 
 
 def sweep_pareto(project: Path, name: str, objective_arguments: list[str]) -> dict:
-    if not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*", name):
-        raise ValueError("Sweep name must be a single safe component")
+    root = sweep_root(project, name)
     objectives = []
     for argument in objective_arguments:
         parts = argument.split(":")
@@ -36,7 +35,6 @@ def sweep_pareto(project: Path, name: str, objective_arguments: list[str]) -> di
             raise ValueError("Objective ID, unit and direction must match the ECC registry")
         objectives.append(objective)
     rank_points({}, objectives)
-    root = project / "experiments" / name
     plan = load_json(root / "sweep.json")
     if not isinstance(plan, dict) or not isinstance(plan.get("candidates"), list):
         raise ValueError("Sweep does not exist or has an invalid plan")
