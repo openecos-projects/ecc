@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import difflib
 import hashlib
 import io
 import itertools
@@ -28,6 +29,7 @@ from chipcompiler.cli.inspection.evidence_summary import (
     step_status,
 )
 from chipcompiler.data import ADVISORY_FLOW_STEPS
+from chipcompiler.data.parameter_schema import is_known_key, list_schemas
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 
 SCHEMA_VERSION = 1
@@ -406,6 +408,25 @@ def package_file_matches(path: str, kind: str) -> bool:
     raise ValueError(f"unknown package file type: {kind}")
 
 
+class UnknownSweepParameterError(ValueError):
+    """A sweep plan names a parameter that is not in the parameter registry."""
+
+
+def check_sweep_parameter_names(parameters: dict[str, list[str]]) -> None:
+    """Reject parameter names that ``ecc run --set`` would not accept (#395)."""
+    unknown = sorted(key for key in parameters if not is_known_key(key))
+    if not unknown:
+        return
+    known = [schema.param for schema in list_schemas()]
+    messages = []
+    for key in unknown:
+        close = difflib.get_close_matches(key, known, n=3)
+        hint = f" (did you mean: {', '.join(close)}?)" if close else ""
+        messages.append(f"unknown_parameter: {key}{hint}")
+    messages.append("Run 'ecc param list' to see valid parameter names.")
+    raise UnknownSweepParameterError("\n".join(messages))
+
+
 def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for value in values:
@@ -439,6 +460,7 @@ def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> 
     root = sweep_root(project, name)
     if root.exists():
         raise ValueError(f"sweep already exists: {name}")
+    check_sweep_parameter_names(parameters)
     keys = sorted(parameters)
     candidates = [
         {"id": f"candidate_{index:04d}", "parameters": dict(zip(keys, values, strict=True))}

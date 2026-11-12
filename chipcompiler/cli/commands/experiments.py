@@ -8,6 +8,7 @@ import typer
 
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.experiments.operations import (
+    UnknownSweepParameterError,
     compare_sweep,
     create_sweep,
     diagnose_workspace,
@@ -178,6 +179,9 @@ def sweep_create(
 ) -> None:
     try:
         result = create_sweep(project_path(project), name, parse_parameters(param))
+    except UnknownSweepParameterError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
