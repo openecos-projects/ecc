@@ -571,7 +571,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
     assert home_checklist["schema_version"] == 3
     assert home_checklist["kind"] == "signoff_checklist"
     flow_items = {item["id"]: item for item in home_checklist["checklist"]}
-    assert flow_items["flow.route.completed"]["state"] == "failed"
+    assert "flow.route.completed" not in flow_items
     assert home_checklist["status"] == "blocked"
 
 

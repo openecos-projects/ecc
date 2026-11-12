@@ -154,7 +154,10 @@ def test_in_process_execution_persists_shared_scope(monkeypatch, tmp_path):
 
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: True)
-    workspace: Any = SimpleNamespace(logger=logging.getLogger("resource-test"))
+    workspace: Any = SimpleNamespace(
+        directory=tmp_path,
+        logger=logging.getLogger("resource-test"),
+    )
     step: Any = SimpleNamespace(name="route", tool="ecc", log=SimpleNamespace(file=""))
 
     engine_db: Any = SimpleNamespace(engine=None)
