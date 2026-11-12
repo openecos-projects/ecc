@@ -98,8 +98,50 @@ def project_path(value: str | None) -> Path:
     return path
 
 
-def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
-    workspace = workspace_path(project, workspace_name)
+def select_diagnose_workspace(
+    project: Path, selector: str | None
+) -> tuple[str, Path | None, str | None]:
+    """Select the workspace ``diagnose run`` reads: (name, directory, error).
+
+    A manifest project uses the same selection rules as ``status`` and
+    ``check`` (#396): an omitted selector picks the only active workspace, an
+    id resolves to its declared directory, an absolute path must be declared,
+    and an unreadable manifest is an error. The error text is "kind: reason".
+    Other projects keep the directory convention ``<project>/<name>``.
+    """
+    from chipcompiler.cli.core.invocation import _resolve_manifest_workspace
+    from chipcompiler.cli.project.workspace_location import (
+        WorkspacePathError,
+        canonical_explicit_workspace_path,
+    )
+    from chipcompiler.project.manifest import ManifestError, classify_project
+
+    if classify_project(str(project)) != "manifest":
+        return selector or "default", None, None
+    name, declared_path = selector, None
+    if selector is not None and os.path.isabs(selector):
+        try:
+            declared_path = canonical_explicit_workspace_path(selector, str(project))
+        except WorkspacePathError as exc:
+            return selector, None, f"{exc.code}: {exc}"
+        name = os.path.basename(declared_path)
+    try:
+        directory, workspace_id, error = _resolve_manifest_workspace(
+            str(project),
+            name,
+            allow_create=False,
+            workspace_path=declared_path,
+            path_selector=declared_path is not None,
+        )
+    except ManifestError as exc:
+        return selector or "default", None, f"manifest_invalid: {exc}"
+    return workspace_id or selector or "default", Path(directory), error
+
+
+def diagnose_workspace(
+    project: Path, workspace_name: str, workspace_dir: Path | None = None
+) -> dict[str, Any]:
+    workspace = workspace_dir or workspace_path(project, workspace_name)
     flow_value = load_json(workspace / "home" / "flow.json", {})
     checklist_value = load_json(workspace / "home" / "checklist.json", {})
     qor_value = load_json(workspace / "home" / "qor_report.json", {})

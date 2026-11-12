@@ -21,6 +21,7 @@ from chipcompiler.cli.experiments.operations import (
     project_path,
     read_package,
     run_sweep,
+    select_diagnose_workspace,
     sweep_matrix,
     sweep_root,
     verify_package,
@@ -37,10 +38,19 @@ diagnose_app = create_app(help="Diagnose workspace flow, checklist, QoR, and rec
 def diagnose_run(
     *,
     project: Annotated[str | None, typer.Option("--project")] = None,
-    workspace: Annotated[str, typer.Option("--workspace")] = "default",
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    result = diagnose_workspace(project_path(project), workspace)
+    project_root = project_path(project)
+    workspace_name, workspace_dir, reason = select_diagnose_workspace(project_root, workspace)
+    if reason is not None:
+        if json_output:
+            error = {"status": "error", "error": reason.partition(":")[0], "reason": reason}
+            typer.echo(json.dumps(error, indent=2, sort_keys=True))
+        else:
+            typer.echo(reason, err=True)
+        raise typer.Exit(1)
+    result = diagnose_workspace(project_root, workspace_name, workspace_dir)
     if json_output:
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
