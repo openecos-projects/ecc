@@ -155,10 +155,13 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
 
     verilog_path = [path for path in origin_dir.rglob("*.v") if path != golden]
     verilog_gz_path = [path for path in origin_dir.rglob("*.v.gz") if path != golden]
+    systemverilog_path = [path for path in origin_dir.rglob("*.sv") if path != golden]
     if verilog_path:
         workspace.design.origin_verilog = verilog_path[0]
     if verilog_gz_path:
         workspace.design.origin_verilog = verilog_gz_path[0]
+    elif systemverilog_path:
+        workspace.design.origin_verilog = systemverilog_path[0]
     if golden is not None:
         workspace.design.golden_verilog = golden
 
