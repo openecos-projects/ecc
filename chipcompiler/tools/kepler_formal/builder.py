@@ -105,6 +105,11 @@ def build_lec_config_yaml(
         ],
         "verilog_design1_top": top_module,
         "verilog_design2_top": top_module,
+        # Post-route netlists flatten or rename internal boundary nets relative
+        # to the golden netlist. Kepler can still align the top-level ports
+        # when this is enabled; without it the comparison aborts before the
+        # solver runs.
+        "allow-boundary-mismatch": True,
         "liberty_files": liberty_files,
         "log_file": str(step.report.miter_log or ""),
     }

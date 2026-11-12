@@ -275,6 +275,8 @@ def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
         "  FILLTAPH7R BNDRY_CAP_1 (  );\n"
         "  FILLER4H7R FILLER4H7R_0 (  );\n"
         "  FILLCAP16H7L DCAP_1 (  );\n"
+        "  P65_1233_FILLER50 IOFIL_E_0 (  );\n"
+        "  P65_1233_CORNER corner_ll (  );\n"
         "endmodule\n"
     )
     physical = physical_cell_names(
@@ -300,6 +302,51 @@ def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
     prepared_gz = prepare_netlist(gz, tmp_path / "golden_compare.v", physical)
     assert prepared_gz == tmp_path / "golden_compare.v"
     assert "module gcd" in prepared_gz.read_text()
+
+
+def test_prepare_netlist_strips_empty_port_connections(tmp_path):
+    netlist = tmp_path / "golden.v"
+    netlist.write_text(
+        "module top;\n"
+        "  PAD_VDD pad0 (.VSS(),\n"
+        "    .VDD1(vdd));\n"
+        "  PAD_VSS pad1 (.VSS1(vss),\n"
+        "    .VDDIO());\n"
+        "  PAD_VDD pad2 (.VSSIO(), .VDD(vdd));\n"
+        "endmodule\n"
+    )
+    target = tmp_path / "golden_compare.v"
+
+    prepared = prepare_netlist(netlist, target, set())
+
+    assert prepared == target
+    text = prepared.read_text()
+    assert ".VSS()" not in text
+    assert ".VDDIO()" not in text
+    assert ".VSSIO()" not in text
+    assert "PAD_VDD pad0 (.VDD1(vdd));" in text
+    assert "PAD_VSS pad1 (.VSS1(vss));" in text
+    assert "PAD_VDD pad2 (.VDD(vdd));" in text
+
+
+def test_prepare_netlist_strips_standard_cell_supply_connections(tmp_path):
+    netlist = tmp_path / "gate.v"
+    netlist.write_text(
+        "module top;\n"
+        "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
+        "  P65_1233_VDD1 pad0 (.VDD1(PLL_AVDD));\n"
+        "  P65_1233_VDD3 pad1 (.VDD(PLL_DVDD));\n"
+        "endmodule\n"
+    )
+    target = tmp_path / "gate_compare.v"
+
+    prepared = prepare_netlist(netlist, target, set())
+
+    assert prepared == target
+    text = prepared.read_text()
+    assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
+    assert ".VDD1(PLL_AVDD)" in text
+    assert ".VDD(PLL_DVDD)" in text
 
 
 def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch):
@@ -499,4 +546,5 @@ def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
         assert enum_name not in rendered
     assert document["verification"] == "lec"
     assert document["verilog_design2_top"] == "gcd"
+    assert document["allow-boundary-mismatch"] is True
     assert all(isinstance(path, str) for pair in document["input_paths"] for path in pair)
