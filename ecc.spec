@@ -70,6 +70,18 @@ LINUX_RUNTIME_LIBS = (
     "/lib/x86_64-linux-gnu/libfreetype.so.6",
 )
 
+XPLACE_RUNTIME_FILES = (
+    "cpp_to_py/__init__.py",
+    "src/core/dct2_fft2.py",
+    "src/core/flute.py",
+    "src/core/route_force.py",
+    "src/core/torch_dct.py",
+    "thirdparty/flute/POST9.dat",
+    "thirdparty/flute/POWV9.dat",
+    "utils/io_parser.py",
+    "utils/logger.py",
+)
+
 HIDDENIMPORTS = [
     "numpy",
     "pandas",
@@ -179,18 +191,36 @@ def collect_dreamplace_thirdparty_files():
 
 
 def collect_xplace_runtime():
-    root = Path(sysconfig.get_path("platlib")) / "thirdparty" / "xplace"
-    datas = []
-    binaries = []
-    if not root.is_dir():
-        return datas, binaries
-    for path in root.rglob("*"):
-        if not path.is_file():
+    candidates = (
+        Path(sysconfig.get_path("platlib")) / "thirdparty" / "xplace",
+        ECC_DIR
+        / "chipcompiler"
+        / "thirdparty"
+        / "ecc-dreamplace"
+        / "thirdparty"
+        / "xplace",
+    )
+    for root in candidates:
+        if not root.is_dir():
             continue
-        destination = str(Path("thirdparty/xplace") / path.relative_to(root).parent)
-        entry = (str(path), destination)
-        (binaries if path.suffix == ".so" else datas).append(entry)
-    return datas, binaries
+        datas = []
+        binaries = []
+        for relpath in XPLACE_RUNTIME_FILES:
+            path = root / relpath
+            if not path.is_file():
+                warnings.warn(
+                    f"Xplace runtime file not found and will not be bundled: {path}",
+                    stacklevel=2,
+                )
+                continue
+            destination = str(Path("thirdparty/xplace") / Path(relpath).parent)
+            datas.append((str(path), destination))
+        cpybin = root / "cpp_to_py" / "cpybin"
+        for path in sorted(cpybin.glob("*.so")):
+            binaries.append((str(path), "thirdparty/xplace/cpp_to_py/cpybin"))
+        if datas or binaries:
+            return datas, binaries
+    return [], []
 
 
 def collect_doc_guides():
