@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
+from chipcompiler.data import Workspace
 from chipcompiler.engine.flow_completion import summarize_step_checklist
 
 
@@ -145,7 +146,7 @@ def test_flow_items_ignore_steps_outside_the_ledger_range():
         design=SimpleNamespace(name="gcd"),
     )
 
-    items = _flow_items(workspace)
+    items = _flow_items(cast(Workspace, workspace))
 
     assert not any(item["step"] == "route" for item in items)
     assert any(item["step"] == "Harden" and item["state"] == "pass" for item in items)

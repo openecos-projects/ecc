@@ -1,8 +1,9 @@
 from threading import Barrier, Event
 from types import SimpleNamespace
+from typing import cast
 
 import chipcompiler.engine.flow as flow_module
-from chipcompiler.data import StateEnum
+from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.data.workspace import Workspace
 from chipcompiler.engine.checker_schedule import checker_dependencies, run_checker_dag
 from chipcompiler.engine.flow import EngineFlow
@@ -86,7 +87,7 @@ def test_checker_parallelism_uses_every_slot_when_memory_allows(monkeypatch, tmp
     monkeypatch.setattr(flow, "_step_memory_estimate_mb", lambda _step: 4096.0)
 
     monkeypatch.setattr(flow_module, "_available_memory_mb", lambda: 128 * 1024)
-    assert flow._checker_parallelism(steps) == len(steps)
+    assert flow._checker_parallelism(cast(list[WorkspaceStep], steps)) == len(steps)
 
     monkeypatch.setattr(flow_module, "_available_memory_mb", lambda: 12 * 1024)
-    assert flow._checker_parallelism(steps) == 2
+    assert flow._checker_parallelism(cast(list[WorkspaceStep], steps)) == 2

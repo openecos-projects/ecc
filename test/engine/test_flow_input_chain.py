@@ -6,7 +6,7 @@ shape every real workspace has, with ``category``) and a legacy ledger without
 module does not assert that they agree.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -408,30 +408,34 @@ def test_skipped_and_waived_checkers_do_not_gate_downstream(tmp_path):
 
     workspace = _workspace(tmp_path)
     flow = EngineFlow(workspace)
-    flow.workspace.flow.data = {
-        "steps": [
-            {"name": "filler", "tool": "ecc", "state": "Success", "category": "PNR"},
-            {
-                "name": "postRouteLec",
-                "tool": "kepler_formal",
-                "state": "Skipped",
-                "category": "CHECKER",
-                "checklist_status": {"status": "skipped", "blocked": False},
-            },
-            {
-                "name": "sta",
-                "tool": "ecc",
-                "state": "Success",
-                "category": "CHECKER",
-                "checklist_status": {"status": "blocked", "blocked": True},
-                "checklist_waiver": {"reason": "accepted for flow completion"},
-            },
-            {"name": "Harden", "tool": "ecc", "state": "Unstart", "category": "PNR"},
-        ]
-    }
+    flow.workspace.flow.data = cast(
+        FlowDocument,
+        {
+            "steps": [
+                {"name": "filler", "tool": "ecc", "state": "Success", "category": "PNR"},
+                {
+                    "name": "postRouteLec",
+                    "tool": "kepler_formal",
+                    "state": "Skipped",
+                    "category": "CHECKER",
+                    "checklist_status": {"status": "skipped", "blocked": False},
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "category": "CHECKER",
+                    "checklist_status": {"status": "blocked", "blocked": True},
+                    "checklist_waiver": {"reason": "accepted for flow completion"},
+                },
+                {"name": "Harden", "tool": "ecc", "state": "Unstart", "category": "PNR"},
+            ]
+        },
+    )
     harden = EccStep(name="Harden", tool="ecc")
 
     assert flow._blocked_checklist_prerequisite(harden) is None
 
-    flow.workspace.flow.data["steps"][2].pop("checklist_waiver")
+    steps = cast(list[dict[str, Any]], flow.workspace.flow.data.get("steps", []))
+    steps[2].pop("checklist_waiver")
     assert flow._blocked_checklist_prerequisite(harden) == "sta"
