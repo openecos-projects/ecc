@@ -91,8 +91,33 @@ def test_is_enabled_env_switch(monkeypatch):
     assert step_subprocess.is_enabled()
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "1")
     assert step_subprocess.is_enabled()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert step_subprocess.is_enabled()
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     assert not step_subprocess.is_enabled()
+
+
+def test_frozen_worker_spawn_uses_cli_entrypoint(monkeypatch):
+    captured = {}
+
+    def fake_popen(command, **_kwargs):
+        captured["command"] = command
+        return _FakePopen()
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", fake_popen)
+
+    step_subprocess._spawn_worker(None)
+
+    assert captured["command"] == [sys.executable, "--step-worker"]
+
+
+def test_cli_dispatches_step_worker(monkeypatch):
+    from chipcompiler.cli import app as app_module
+
+    monkeypatch.setattr(step_subprocess, "main", lambda: 17)
+
+    assert app_module.invoke_typer_app(["--step-worker"]) == 17
 
 
 def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
