@@ -31,7 +31,7 @@ class _CheckerFlow:
         return {}
 
 
-def test_only_sta_depends_on_another_checker():
+def test_checker_dependencies_follow_artifact_handoffs():
     flow = _CheckerFlow(lambda _step, **_kwargs: StateEnum.Success)
 
     dependencies = checker_dependencies(flow, [_step(name) for name in CHECKER_NAMES])
@@ -43,24 +43,30 @@ def test_only_sta_depends_on_another_checker():
         "postRouteLec": frozenset(),
         "RCX": frozenset(),
         "sta": frozenset({"RCX"}),
-        "powerAnalysis": frozenset(),
-        "emir": frozenset(),
+        "powerAnalysis": frozenset({"RCX"}),
+        "emir": frozenset({"powerAnalysis"}),
     }
 
 
-def test_independent_checkers_start_together_and_sta_waits_for_rcx():
-    barrier = Barrier(len(CHECKER_NAMES) - 1)
+def test_checker_waves_follow_artifact_dependencies():
+    first_wave = {"lvs", "drc", "antennaCheck", "postRouteLec", "RCX"}
+    barrier = Barrier(len(first_wave))
     rcx_finished = Event()
+    power_finished = Event()
     started = []
 
     def run_step(step, **_kwargs):
         started.append(step.name)
-        if step.name == "sta":
+        if step.name in first_wave:
+            barrier.wait(timeout=10)
+            if step.name == "RCX":
+                rcx_finished.set()
+        if step.name in {"sta", "powerAnalysis"}:
             assert rcx_finished.is_set()
-            return StateEnum.Success
-        barrier.wait(timeout=10)
-        if step.name == "RCX":
-            rcx_finished.set()
+            if step.name == "powerAnalysis":
+                power_finished.set()
+        if step.name == "emir":
+            assert power_finished.is_set()
         return StateEnum.Success
 
     flow = _CheckerFlow(run_step)
@@ -69,7 +75,9 @@ def test_independent_checkers_start_together_and_sta_waits_for_rcx():
     states = run_checker_dag(flow, steps, rerun=False, observer=None, workers=len(steps))
 
     assert states == [StateEnum.Success] * len(steps)
-    assert started[-1] == "sta"
+    assert started[0:5] == ["lvs", "drc", "antennaCheck", "postRouteLec", "RCX"]
+    assert started[5:7] == ["sta", "powerAnalysis"]
+    assert started[-1] == "emir"
 
 
 def test_checker_parallelism_uses_every_slot_when_memory_allows(monkeypatch, tmp_path):

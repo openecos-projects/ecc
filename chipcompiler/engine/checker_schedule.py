@@ -12,8 +12,9 @@ def checker_dependencies(flow, steps):
     """Return the declared dependencies that must finish before each step.
 
     The batch is anchored at ``filler``, so checkers without an explicit edge
-    start together. Only policy edges (currently ``STA -> RCX``) and ledger
-    ``input_step`` edges serialize execution.
+    start together. Policy edges (``RCX -> STA``, ``RCX -> powerAnalysis``,
+    ``powerAnalysis -> emir``) and ledger ``input_step`` edges serialize
+    execution.
     """
     names = {step.name for step in steps}
     dependencies = {}
@@ -49,9 +50,7 @@ def run_checker_dag(flow, steps, *, rerun: bool, observer, workers: int) -> list
                 capacity = worker_limit - len(active)
                 for step in ready[:capacity]:
                     pending.pop(step.name)
-                    future = executor.submit(
-                        flow.run_step, step, rerun=rerun, observer=observer
-                    )
+                    future = executor.submit(flow.run_step, step, rerun=rerun, observer=observer)
                     active[future] = step
 
             if not active:
@@ -71,6 +70,6 @@ def run_checker_dag(flow, steps, *, rerun: bool, observer, workers: int) -> list
 
 
 def _completed_successfully(step_name: str, state: StateEnum) -> bool:
-    return state == StateEnum.Success or (
+    return state in {StateEnum.Success, StateEnum.Skipped} or (
         step_name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
     )

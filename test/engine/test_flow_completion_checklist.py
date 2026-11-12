@@ -121,3 +121,31 @@ def test_sync_step_checklist_persists_projection(tmp_path):
     assert step_data["checklist_status"]["blocked"] is True
     assert step_data["checklist_status"]["failed_items"] == ["drc"]
     assert flow.saved is True
+
+
+def test_flow_items_ignore_steps_outside_the_ledger_range():
+    from chipcompiler.tools.ecc.signoff_checklist import _flow_items
+
+    steps = [
+        {"name": "filler", "tool": "ecc", "state": "Success"},
+        {"name": "Harden", "tool": "ecc", "state": "Success"},
+    ]
+
+    class Flow:
+        def steps(self):
+            return steps
+
+        def has_step(self, name, tool=None):
+            value = name.value if hasattr(name, "value") else name
+            return any(step["name"] == value for step in steps)
+
+    workspace = SimpleNamespace(
+        flow=Flow(),
+        directory=Path("/tmp/bounded-workspace"),
+        design=SimpleNamespace(name="gcd"),
+    )
+
+    items = _flow_items(workspace)
+
+    assert not any(item["step"] == "route" for item in items)
+    assert any(item["step"] == "Harden" and item["state"] == "pass" for item in items)

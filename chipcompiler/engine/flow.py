@@ -563,7 +563,7 @@ class EngineFlow:
                 states = self._run_checker_batch(batch_steps, rerun=rerun, observer=observer)
                 for batch_step, state in zip(batch_steps, states, strict=True):
                     log_flow(workspace=self.workspace)
-                    if state != StateEnum.Success and not (
+                    if state not in {StateEnum.Success, StateEnum.Skipped} and not (
                         batch_step.name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
                     ):
                         return False
@@ -589,6 +589,8 @@ class EngineFlow:
 
             match state:
                 case StateEnum.Success:
+                    pass
+                case StateEnum.Skipped:
                     pass
                 case StateEnum.Invalid:
                     return False
@@ -714,6 +716,10 @@ class EngineFlow:
                     break
 
         for prerequisite in prerequisites:
+            if prerequisite.get("state") == StateEnum.Skipped.value:
+                continue
+            if prerequisite.get("checklist_waiver"):
+                continue
             checklist = prerequisite.get("checklist_status") or prerequisite.get("checklist")
             if isinstance(checklist, dict) and checklist.get("status") == "blocked":
                 return str(prerequisite.get("name") or "previous step")
@@ -763,6 +769,15 @@ class EngineFlow:
                 _notify_flow_observer(observer, "on_step_skipped", workspace_step)
                 _refresh_qor_report(self.workspace, step_tag)
                 return StateEnum.Success
+
+            if not rerun and self.check_state(
+                name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Skipped
+            ):
+                self.workspace.logger.info("[SKIP] %s is marked Skipped", step_tag)
+                self.clear_db_engine_after_step(workspace_step, StateEnum.Skipped)
+                _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+                _refresh_qor_report(self.workspace, step_tag)
+                return StateEnum.Skipped
 
             _normalize_legacy_terminal_state(self, workspace_step, step_tag)
 

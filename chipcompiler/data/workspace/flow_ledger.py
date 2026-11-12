@@ -23,15 +23,18 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     StateEnum.Unstart.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
+        StateEnum.Skipped.value,
     },
     StateEnum.Pending.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
+        StateEnum.Skipped.value,
     },
     StateEnum.Ongoing.value: {
         StateEnum.Success.value,
         StateEnum.Imcomplete.value,
         StateEnum.Invalid.value,
+        StateEnum.Skipped.value,
     },
     # Terminal states have no outgoing lifecycle transitions. Batch resets
     # (clear_flow_states, suffix invalidation) assign Unstart directly and
@@ -39,6 +42,7 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     StateEnum.Success.value: set(),
     StateEnum.Imcomplete.value: set(),
     StateEnum.Invalid.value: set(),
+    StateEnum.Skipped.value: set(),
 }
 
 _LOCKS: dict[str, threading.RLock] = {}
