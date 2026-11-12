@@ -7,6 +7,7 @@ result without rewriting the checklist: the underlying violation evidence
 stays visible, while the flow gate is allowed to pass it.
 """
 
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -34,6 +35,19 @@ def _persist(flow) -> bool:
     return save_ledger(flow)
 
 
+def _persist_step_update(flow, step: dict, previous_step: dict, failure_message: str) -> None:
+    try:
+        persisted = _persist(flow)
+    except Exception:
+        step.clear()
+        step.update(previous_step)
+        raise
+    if not persisted:
+        step.clear()
+        step.update(previous_step)
+        raise RuntimeError(failure_message)
+
+
 def mark_step_skipped(workspace: Any, name: str, reason: str) -> dict:
     """Persist *name* as deliberately Skipped with an audit reason."""
     if name not in {step.value for step in SkippableStepEnum}:
@@ -42,6 +56,7 @@ def mark_step_skipped(workspace: Any, name: str, reason: str) -> dict:
         raise ValueError("a skip reason is required")
     flow = workspace.flow
     step = _step_record(flow, name)
+    previous_step = deepcopy(step)
     step["state"] = StateEnum.Skipped.value
     step["runtime"] = ""
     step["peak memory (mb)"] = 0
@@ -54,8 +69,7 @@ def mark_step_skipped(workspace: Any, name: str, reason: str) -> dict:
     }
     step["skip_reason"] = reason
     step["skipped_at"] = _timestamp()
-    if not _persist(flow):
-        raise RuntimeError(f"failed to persist skipped state for {name}")
+    _persist_step_update(flow, step, previous_step, f"failed to persist skipped state for {name}")
     return step
 
 
@@ -71,7 +85,9 @@ def waive_checklist(workspace: Any, name: str, reason: str) -> dict:
     step = _step_record(flow, name)
     if flow_category(step) != FlowStepCategory.CHECKER:
         raise ValueError(f"only checker steps can be waived: {name}")
+    previous_step = deepcopy(step)
     step["checklist_waiver"] = {"reason": reason, "created_at": _timestamp()}
-    if not _persist(flow):
-        raise RuntimeError(f"failed to persist checklist waiver for {name}")
+    _persist_step_update(
+        flow, step, previous_step, f"failed to persist checklist waiver for {name}"
+    )
     return step

@@ -67,9 +67,15 @@ def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> t
     is regenerated against these prepared paths right before execution.
     """
     from chipcompiler.tools.kepler_formal.builder import write_step_config
-    from chipcompiler.tools.kepler_formal.netlist_prep import physical_cell_names, prepare_netlist
+    from chipcompiler.tools.kepler_formal.netlist_prep import (
+        liberty_supply_pins,
+        physical_cell_names,
+        prepare_netlist,
+    )
 
-    physical_cells = physical_cell_names(getattr(workspace, "pdk", None))
+    pdk = getattr(workspace, "pdk", None)
+    physical_cells = physical_cell_names(pdk)
+    supply_pins = liberty_supply_pins(getattr(pdk, "libs", None))
     data_dir = (
         Path(step.data.dir) if step.data.dir else require_path(step.directory, "step directory")
     )
@@ -78,11 +84,13 @@ def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> t
         require_path(step.input.golden_verilog, "golden netlist"),
         data_dir / "golden_compare.v",
         physical_cells,
+        supply_pins,
     )
     gate = prepare_netlist(
         require_path(step.input.gate_verilog, "gate netlist"),
         data_dir / "gate_compare.v",
         physical_cells,
+        supply_pins,
     )
     write_step_config(workspace, step, golden_verilog=golden, gate_verilog=gate)
     return golden, gate

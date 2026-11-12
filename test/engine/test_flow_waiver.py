@@ -1,3 +1,4 @@
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -10,8 +11,9 @@ from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
 
 
 class _Flow:
-    def __init__(self, steps):
+    def __init__(self, steps, *, save_result=True):
         self._steps = steps
+        self._save_result = save_result
         self.saves = 0
 
     def steps(self):
@@ -19,12 +21,12 @@ class _Flow:
 
     def save(self):
         self.saves += 1
-        return True
+        return self._save_result
 
 
 class _Workspace:
-    def __init__(self, steps):
-        self.flow = _Flow(steps)
+    def __init__(self, steps, *, save_result=True):
+        self.flow = _Flow(steps, save_result=save_result)
 
 
 def test_mark_step_skipped_records_reason_and_clears_checklist_gate():
@@ -57,6 +59,27 @@ def test_mark_step_skipped_rejects_non_skippable_step():
         mark_step_skipped(workspace, "filler", "not applicable")
 
 
+def test_mark_step_skipped_rolls_back_when_persistence_fails():
+    step = {
+        "name": "postRouteLec",
+        "tool": "kepler_formal",
+        "category": "CHECKER",
+        "state": "Incomplete",
+        "checklist_status": {
+            "status": "blocked",
+            "blocked": True,
+            "failed_items": ["artifact.postroutelec.result"],
+        },
+    }
+    previous = deepcopy(step)
+    workspace = _Workspace([step], save_result=False)
+
+    with pytest.raises(RuntimeError, match="failed to persist skipped state"):
+        mark_step_skipped(workspace, "postRouteLec", "formal difference in input netlist")
+
+    assert step == previous
+
+
 def test_waive_checklist_records_reason_without_touching_blocked_status():
     step = {
         "name": "sta",
@@ -79,6 +102,40 @@ def test_waive_checklist_rejects_pnr_step():
 
     with pytest.raises(ValueError, match="only checker steps"):
         waive_checklist(workspace, "Harden", "not applicable")
+
+
+def test_waive_checklist_rolls_back_when_persistence_fails():
+    step = {
+        "name": "sta",
+        "tool": "ecc",
+        "category": "CHECKER",
+        "state": "Success",
+        "checklist_status": {"status": "blocked", "blocked": True},
+        "checklist_waiver": {"reason": "previous result", "created_at": "2026-01-01T00:00:00Z"},
+    }
+    previous = deepcopy(step)
+    workspace = _Workspace([step], save_result=False)
+
+    with pytest.raises(RuntimeError, match="failed to persist checklist waiver"):
+        waive_checklist(workspace, "sta", "new result")
+
+    assert step == previous
+
+
+def test_skipped_timing_optimization_is_transparent_to_route_input():
+    from chipcompiler.data.workspace.flow_policy import FlowInputResolver
+
+    workspace = _Workspace(
+        [
+            {"name": "legalization", "tool": "dreamplace", "category": "PNR", "state": "Success"},
+            {"name": "Timing optimization", "tool": "sizer", "category": "PNR", "state": "Unstart"},
+            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    )
+
+    mark_step_skipped(workspace, "Timing optimization", "omit optional optimization")
+
+    assert FlowInputResolver(workspace.flow.steps()).input_step_name(2) == "legalization"
 
 
 def _waived_workspace(tmp_path):

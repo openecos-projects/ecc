@@ -20,6 +20,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.kepler_formal.netlist_prep import (
+    liberty_supply_pins,
     physical_cell_names,
     prepare_netlist,
 )
@@ -330,6 +331,15 @@ def test_prepare_netlist_strips_empty_port_connections(tmp_path):
 
 
 def test_prepare_netlist_strips_standard_cell_supply_connections(tmp_path):
+    liberty = tmp_path / "stdcell.lib"
+    liberty.write_text(
+        "library(test) {\n"
+        "  cell (BUFX20H7L) {\n"
+        "    pg_pin (VDD) { pg_type : primary_power; }\n"
+        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
+        "  }\n"
+        "}\n"
+    )
     netlist = tmp_path / "gate.v"
     netlist.write_text(
         "module top;\n"
@@ -340,13 +350,64 @@ def test_prepare_netlist_strips_standard_cell_supply_connections(tmp_path):
     )
     target = tmp_path / "gate_compare.v"
 
-    prepared = prepare_netlist(netlist, target, set())
+    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
 
     assert prepared == target
     text = prepared.read_text()
     assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
     assert ".VDD1(PLL_AVDD)" in text
     assert ".VDD(PLL_DVDD)" in text
+
+
+def test_prepare_netlist_preserves_functional_supply_named_ports(tmp_path):
+    netlist = tmp_path / "golden.v"
+    netlist.write_text(
+        "module leaf(input VDD, output Y); assign Y = VDD; endmodule\n"
+        "module top(input VDD, output Y); leaf u0 (.VDD(VDD), .Y(Y)); endmodule\n"
+    )
+    target = tmp_path / "golden_compare.v"
+
+    prepared = prepare_netlist(netlist, target, set(), {"BUFX20H7L": {"VDD", "VSS"}})
+
+    assert prepared == netlist
+    assert ".VDD(VDD)" in netlist.read_text()
+
+
+def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
+    from chipcompiler.tools.kepler_formal import builder, runner
+
+    workspace = _workspace(tmp_path)
+    workspace.pdk.libs[0].write_text(
+        "library(test) {\n"
+        "  cell (BUFX20H7L) {\n"
+        "    pg_pin (VDD) { pg_type : primary_power; }\n"
+        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
+        "  }\n"
+        "}\n"
+    )
+    netlist_text = (
+        "module gcd(input a, output y);\n"
+        "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
+        "endmodule\n"
+    )
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate.parent.mkdir(parents=True)
+    gate.write_text(netlist_text)
+    golden = gate.with_name("gcd_Synthesis_golden.v")
+    golden.write_text(netlist_text)
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name=SkippableStepEnum.LEC.value,
+        input_def=None,
+        input_verilog=gate,
+        input_db=golden,
+    )
+    builder.build_step_space(step)
+
+    prepared_golden, prepared_gate = runner._prepare_compare_netlists(workspace, step)
+
+    assert "BUFX20H7L u0 (.A(a), .Y(y));" in prepared_golden.read_text()
+    assert "BUFX20H7L u0 (.A(a), .Y(y));" in prepared_gate.read_text()
 
 
 def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch):
