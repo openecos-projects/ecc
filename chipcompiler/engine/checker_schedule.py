@@ -1,6 +1,12 @@
 """Dependency-aware execution of the post-filler checker steps."""
 
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    CancelledError,
+    Future,
+    ThreadPoolExecutor,
+    wait,
+)
 from typing import Any
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum
@@ -58,13 +64,18 @@ def run_checker_dag(flow, steps, *, rerun: bool, observer, workers: int) -> list
             done, _ = wait(tuple(active), return_when=FIRST_COMPLETED)
             for future in done:
                 step = active.pop(future)
-                state = future.result()
+                try:
+                    state = future.result()
+                except CancelledError:
+                    states[step.name] = StateEnum.Unstart
+                    continue
                 states[step.name] = state
                 if not _completed_successfully(step.name, state):
                     failed = True
             if failed:
-                for future in active:
-                    future.cancel()
+                for future in tuple(active):
+                    if future.cancel():
+                        active.pop(future)
 
     return [states.get(step.name, StateEnum.Unstart) for step in steps]
 

@@ -1,6 +1,12 @@
+from types import SimpleNamespace
+
 import pytest
 
+from chipcompiler.data import Workspace
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_waiver import mark_step_skipped, waive_checklist
+from chipcompiler.engine.rerun import invalidate_from
+from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
 
 
 class _Flow:
@@ -73,3 +79,49 @@ def test_waive_checklist_rejects_pnr_step():
 
     with pytest.raises(ValueError, match="only checker steps"):
         waive_checklist(workspace, "Harden", "not applicable")
+
+
+def _waived_workspace(tmp_path):
+    workspace = Workspace(directory=tmp_path)
+    flow = EngineFlow(workspace)
+    flow_path = tmp_path / "home" / "flow.json"
+    flow_path.parent.mkdir()
+    workspace.flow.path = flow_path
+    workspace.flow.data = {
+        "steps": [
+            {
+                "name": "sta",
+                "tool": "ecc",
+                "category": "CHECKER",
+                "state": "Success",
+                "checklist_status": {"status": "blocked", "blocked": True},
+            }
+        ]
+    }
+    waive_checklist(workspace, "sta", "accepted result")
+    return workspace, flow
+
+
+def test_rerun_invalidation_clears_checklist_waiver(tmp_path):
+    workspace, flow = _waived_workspace(tmp_path)
+
+    invalidate_from(flow, "sta")
+
+    assert "checklist_waiver" not in workspace.flow.steps()[0]
+
+
+def test_derived_workspace_reset_clears_checklist_waiver(tmp_path):
+    workspace, flow = _waived_workspace(tmp_path)
+    step = SimpleNamespace(name="sta", tool="ecc")
+
+    prepare_steps_for_rerun(workspace, flow, [step])
+
+    assert "checklist_waiver" not in workspace.flow.steps()[0]
+
+
+def test_full_flow_reset_clears_checklist_waiver(tmp_path):
+    workspace, flow = _waived_workspace(tmp_path)
+
+    flow.clear_states()
+
+    assert "checklist_waiver" not in workspace.flow.steps()[0]

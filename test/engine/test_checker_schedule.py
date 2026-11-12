@@ -1,7 +1,9 @@
+from concurrent.futures import Future
 from threading import Barrier, Event
 from types import SimpleNamespace
 from typing import cast
 
+import chipcompiler.engine.checker_schedule as checker_schedule_module
 import chipcompiler.engine.flow as flow_module
 from chipcompiler.data import StateEnum, WorkspaceStep
 from chipcompiler.data.workspace import Workspace
@@ -54,10 +56,10 @@ def test_checker_waves_follow_artifact_dependencies():
     barrier = Barrier(len(first_wave))
     rcx_finished = Event()
     power_finished = Event()
-    started = []
+    started = set()
 
     def run_step(step, **_kwargs):
-        started.append(step.name)
+        started.add(step.name)
         if step.name in first_wave:
             barrier.wait(timeout=10)
             if step.name == "RCX":
@@ -76,9 +78,47 @@ def test_checker_waves_follow_artifact_dependencies():
     states = run_checker_dag(flow, steps, rerun=False, observer=None, workers=len(steps))
 
     assert states == [StateEnum.Success] * len(steps)
-    assert started[0:5] == ["lvs", "drc", "antennaCheck", "postRouteLec", "RCX"]
-    assert started[5:7] == ["sta", "powerAnalysis"]
-    assert started[-1] == "emir"
+    assert started == set(CHECKER_NAMES)
+
+
+def test_checker_batch_drops_cancelled_futures(monkeypatch):
+    failed = Future()
+    failed.set_result(StateEnum.Imcomplete)
+    cancelled = Future()
+    futures = iter((failed, cancelled))
+
+    class _Executor:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def submit(self, _run_step, _step, **_kwargs):
+            return next(futures)
+
+    wait_calls = 0
+
+    def fake_wait(active, *, return_when):
+        nonlocal wait_calls
+        assert return_when is not None
+        wait_calls += 1
+        if wait_calls == 1:
+            return {failed}, set()
+        return set(active), set()
+
+    monkeypatch.setattr(checker_schedule_module, "ThreadPoolExecutor", _Executor)
+    monkeypatch.setattr(checker_schedule_module, "wait", fake_wait)
+    flow = _CheckerFlow(lambda _step, **_kwargs: StateEnum.Success)
+    steps = [_step("lvs"), _step("drc")]
+
+    states = run_checker_dag(flow, steps, rerun=False, observer=None, workers=2)
+
+    assert states == [StateEnum.Imcomplete, StateEnum.Unstart]
+    assert wait_calls == 1
 
 
 def test_checker_parallelism_uses_every_slot_when_memory_allows(monkeypatch, tmp_path):

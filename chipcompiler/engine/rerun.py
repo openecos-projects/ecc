@@ -214,6 +214,7 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
         step["runtime"] = ""
         step["peak memory (mb)"] = 0
         step.pop("resource_observation", None)
+        step.pop("checklist_waiver", None)
     if not flow.save():
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
 

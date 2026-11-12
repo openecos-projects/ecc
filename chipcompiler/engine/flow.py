@@ -761,23 +761,21 @@ class EngineFlow:
             if self._apply_checklist_gate(workspace_step) is not None:
                 return StateEnum.Invalid
 
-            if not rerun and self.check_state(
-                name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
-            ):
-                self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
-                self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
+            if not rerun:
+                flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+                persisted_state = flow_step.get("state") if flow_step is not None else None
+            else:
+                persisted_state = None
+            if is_finished_step_state(persisted_state):
+                finished_state = StateEnum(str(persisted_state))
+                if finished_state == StateEnum.Skipped:
+                    self.workspace.logger.info("[SKIP] %s is marked Skipped", step_tag)
+                else:
+                    self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
+                self.clear_db_engine_after_step(workspace_step, finished_state)
                 _notify_flow_observer(observer, "on_step_skipped", workspace_step)
                 _refresh_qor_report(self.workspace, step_tag)
-                return StateEnum.Success
-
-            if not rerun and self.check_state(
-                name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Skipped
-            ):
-                self.workspace.logger.info("[SKIP] %s is marked Skipped", step_tag)
-                self.clear_db_engine_after_step(workspace_step, StateEnum.Skipped)
-                _notify_flow_observer(observer, "on_step_skipped", workspace_step)
-                _refresh_qor_report(self.workspace, step_tag)
-                return StateEnum.Skipped
+                return finished_state
 
             _normalize_legacy_terminal_state(self, workspace_step, step_tag)
 

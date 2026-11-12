@@ -79,6 +79,7 @@ def sync_step_checklist(flow, workspace_step) -> ChecklistStatus | None:
     if current is None:
         return projection
     current.pop("checklist", None)
+    current.pop("checklist_waiver", None)
     current["checklist_status"] = projection
     if not flow.save():
         raise RuntimeError(
@@ -104,6 +105,7 @@ def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
         old_step["runtime"] = ""
         old_step["peak memory (mb)"] = 0
         old_step.pop("resource_observation", None)
+        old_step.pop("checklist_waiver", None)
 
 
 def finalize_interrupted_subflow(observer, workspace_step, runtime, peak_memory_mb) -> None:

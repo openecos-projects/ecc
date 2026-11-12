@@ -141,6 +141,7 @@ def set_flow_state(
             step["state"] = state_value
             if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
                 step.pop("resource_observation", None)
+                step.pop("checklist_waiver", None)
             if runtime is not None:
                 step["runtime"] = runtime
             if peak_memory is not None:
@@ -175,6 +176,7 @@ def clear_flow_states(flow, *, persist=None) -> bool:
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
             step.pop("resource_observation", None)
+            step.pop("checklist_waiver", None)
         if write():
             return True
         flow.data = previous_data
