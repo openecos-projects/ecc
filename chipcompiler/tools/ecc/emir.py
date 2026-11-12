@@ -31,6 +31,10 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
         return False
     sub_flow.update_step(EccSubFlowEnum.load_data.value, StateEnum.Success)
 
+    signoff_items = runner.collect_sta_signoff_items(workspace)
+    power_item = runner._typical_signoff_item(signoff_items)
+    spef_path = power_item["spef_file"] if power_item is not None else ""
+
     sub_flow.update_step(EccSubFlowEnum.run_emir.value, StateEnum.Ongoing)
     initialized = False
     try:
@@ -46,6 +50,7 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
                 / "pdn_generator"
                 / "power.ploc"
             ),
+            spef_path=spef_path,
         )
         if not initialized:
             workspace.logger.error("Failed to initialize EMIR")
