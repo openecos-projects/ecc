@@ -41,6 +41,29 @@ class TestPlainQuoting:
     def test_plain_value_numeric(self):
         assert _plain_value(42) == "42"
 
+    def test_plain_value_escapes_line_breaks_and_tabs(self):
+        assert _plain_value("a\nb") == '"a\\nb"'
+        assert _plain_value("a\r\nb") == '"a\\r\\nb"'
+        assert _plain_value("a\tb") == '"a\\tb"'
+
+    def test_plain_value_escapes_backslash_before_line_break(self):
+        # A literal backslash followed by "n" must stay distinguishable from
+        # an escaped newline.
+        assert _plain_value("a\\nb c") == '"a\\\\nb c"'
+        assert _plain_value("a\\\nb") == '"a\\\\\\nb"'
+
+    def test_render_plain_keeps_multiline_value_on_one_line(self):
+        records = (
+            {"param": "sdc.clock_list", "value": "clk MAX:100\n", "source": "ecc.toml"},
+            {"param": "sdc.io", "value": "# line one\n# line two\n"},
+        )
+        buf = StringIO()
+        render_plain(records, file=buf)
+        lines = buf.getvalue().splitlines()
+        assert len(lines) == 2
+        assert lines[0] == 'param=sdc.clock_list value="clk MAX:100\\n" source=ecc.toml'
+        assert lines[1] == 'param=sdc.io value="# line one\\n# line two\\n"'
+
     def test_render_plain_one_record_per_line(self):
         records = (
             {"a": "1", "b": "two words"},
