@@ -32,7 +32,7 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     sub_flow.update_step(EccSubFlowEnum.load_data.value, StateEnum.Success)
 
     signoff_items = runner.collect_sta_signoff_items(workspace)
-    power_item = runner._typical_signoff_item(signoff_items)
+    power_item = runner.typical_signoff_item(signoff_items)
     spef_path = power_item["spef_file"] if power_item is not None else ""
 
     sub_flow.update_step(EccSubFlowEnum.run_emir.value, StateEnum.Ongoing)

@@ -68,6 +68,7 @@ _CHECKER_MIN_STEP_MB = 4096.0
 _CHECKER_MIN_RESERVE_MB = 1024.0
 _CHECKER_MEMORY_RESERVE_FRACTION = 0.20
 _CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
+_CHECKER_MAX_WORKERS = 8
 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
@@ -653,7 +654,7 @@ class EngineFlow:
         estimate_mb = max(estimates, default=_CHECKER_DEFAULT_STEP_MB)
         reserve_mb = max(_CHECKER_MIN_RESERVE_MB, available_mb * _CHECKER_MEMORY_RESERVE_FRACTION)
         capacity = int(max(0.0, available_mb - reserve_mb) // estimate_mb)
-        return max(1, min(len(steps), capacity))
+        return max(1, min(len(steps), capacity, _CHECKER_MAX_WORKERS))
 
     def _step_memory_estimate_mb(self, workspace_step: WorkspaceStep) -> float:
         flow_step = self.get_step(workspace_step.name, workspace_step.tool) or {}
@@ -769,7 +770,9 @@ class EngineFlow:
             if is_finished_step_state(persisted_state):
                 finished_state = StateEnum(str(persisted_state))
                 if finished_state == StateEnum.Skipped:
-                    self.workspace.logger.info("[SKIP] %s is marked Skipped", step_tag)
+                    reason = str((flow_step or {}).get("skip_reason") or "").strip()
+                    suffix = f": {reason}" if reason else ""
+                    self.workspace.logger.info("[SKIP] %s is marked Skipped%s", step_tag, suffix)
                 else:
                     self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
                 self.clear_db_engine_after_step(workspace_step, finished_state)

@@ -19,7 +19,9 @@ modeled by the loaded Liberty libraries. Two gap-filling transforms live here:
   ``pg_pin`` rather than connectable ports. A connection is removed only when
   Liberty declares that pin as a ``pg_pin`` on the instantiated master and the
   connected net is ``VDD`` or ``VSS``. Ordinary module ports with supply-like
-  names, and real power-pad pins such as ``.VDD1(PLL_AVDD)``, stay intact.
+  names, and real power-pad pins such as ``.VDD1(PLL_AVDD)``, stay intact. The
+  supply transform is applied symmetrically to golden and gate netlists because
+  either side may contain the same cell-level supply connectivities.
 
 Digests for the result contract are always taken on the ORIGINAL inputs, so
 stale-proof checks stay meaningful; only the YAML handed to kepler-formal
@@ -39,6 +41,9 @@ _PHYSICAL_CELL_PREFIXES = ("FILLER", "FILLTAP", "FILLCAP", "CORNER")
 
 _INSTANCE_LINE = r"^\s*(?:%s)\S*\s+\\?\S+\s*\([^;]*\)\s*;[ \t]*$"
 
+# These patterns target instance text in netlists prepared for LEC. String and
+# comment literals are not semantic inputs to the comparison, but callers
+# should keep the transforms narrowly scoped if these files gain another use.
 _EMPTY_PORT = r"\.\s*[A-Za-z_]\w*\s*\(\s*\)"
 _SUPPLY_NET = r"(?:VDD|VSS)"
 _CELL_GROUP = re.compile(r"\bcell\s*\(\s*([^)]+?)\s*\)\s*\{")

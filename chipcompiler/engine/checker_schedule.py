@@ -35,7 +35,13 @@ def checker_dependencies(flow, steps):
 
 
 def run_checker_dag(flow, steps, *, rerun: bool, observer, workers: int) -> list[StateEnum]:
-    """Run ready checker steps concurrently while preserving dependencies."""
+    """Run ready checker steps concurrently while preserving dependencies.
+
+    Failure semantics match the serial flow: no new ready work is scheduled
+    after a blocking failure, already-running checkers drain, and work that was
+    never started is reported as Unstart. Advisory Incomplete results remain
+    non-blocking, as do deliberate Skipped results.
+    """
     if not steps:
         return []
     dependencies = checker_dependencies(flow, steps)

@@ -151,7 +151,12 @@ def execute_tool_step(
 
 @contextmanager
 def _working_directory(directory: str | os.PathLike[str]):
-    """Run a tool with the Workspace as its relative-path root."""
+    """Run a tool with the Workspace as its relative-path root.
+
+    ``os.chdir`` is process-global, so this helper is only safe when no other
+    thread depends on the current directory. Parallel checker batches require
+    subprocess execution; the in-process fallback runs steps sequentially.
+    """
     previous = os.getcwd()
     os.chdir(directory)
     try:
