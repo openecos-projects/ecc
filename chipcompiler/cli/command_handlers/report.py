@@ -204,6 +204,12 @@ def _resolve_workspace_dir(command_input, ctx: CommandContext) -> str:
     run selected via ecc.toml or the manifest also conflicts with
     --workspace.
     """
+    if ctx.manifest_error:
+        # A selection error is not a missing workspace: report it under its
+        # own code instead of pointing the user at `ecc run`.
+        from chipcompiler.cli.core.records import manifest_error_record
+
+        raise CommandError([manifest_error_record(ctx.manifest_error)])
     workspace_dir, error = resolve_workspace_path(
         command_input.workspace, ctx.project, ctx.run_id, ctx.run_dir
     )

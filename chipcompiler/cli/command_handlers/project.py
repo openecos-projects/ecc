@@ -652,6 +652,19 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     )
 
 
+def _selection_error_record(ctx: CommandContext) -> dict:
+    """The recorded workspace selection error under its own code.
+
+    A corrupt manifest or an invalid name is not an undeclared workspace;
+    the fixed code is kept only when no selection error was recorded.
+    """
+    if ctx.manifest_error:
+        from chipcompiler.cli.core.records import manifest_error_record
+
+        return manifest_error_record(ctx.manifest_error)
+    return error_record("workspace_not_declared", reason=ctx.manifest_error)
+
+
 def archive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     return _manage_workspace_lifecycle(command_input, ctx, "archive")
 
@@ -673,9 +686,7 @@ def _manage_workspace_lifecycle(
     )
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err(
-            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
-        )
+        return CommandResult.err([_selection_error_record(ctx)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
@@ -741,9 +752,7 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err(
-            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
-        )
+        return CommandResult.err([_selection_error_record(ctx)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
