@@ -12,7 +12,7 @@ from chipcompiler.cli.core.inputs import (
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.output import disclosure_cmd
-from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.project.manifest import CONFIG_FILENAME
 
@@ -62,8 +62,6 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     if ctx.manifest_error:
         # Hybrid projects also resolve the run selector through the
         # manifest; an unresolvable selection is an error, not a warning.
-        from chipcompiler.cli.core.records import manifest_error_record
-
         return CommandResult.err(
             [
                 manifest_error_record(
@@ -652,19 +650,6 @@ def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     )
 
 
-def _selection_error_record(ctx: CommandContext) -> dict:
-    """The recorded workspace selection error under its own code.
-
-    A corrupt manifest or an invalid name is not an undeclared workspace;
-    the fixed code is kept only when no selection error was recorded.
-    """
-    if ctx.manifest_error:
-        from chipcompiler.cli.core.records import manifest_error_record
-
-        return manifest_error_record(ctx.manifest_error)
-    return error_record("workspace_not_declared", reason=ctx.manifest_error)
-
-
 def archive_workspace(command_input, ctx: CommandContext) -> CommandResult:
     return _manage_workspace_lifecycle(command_input, ctx, "archive")
 
@@ -686,7 +671,7 @@ def _manage_workspace_lifecycle(
     )
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err([_selection_error_record(ctx)])
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
@@ -752,7 +737,7 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err([_selection_error_record(ctx)])
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]

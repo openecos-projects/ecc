@@ -28,7 +28,7 @@ SELECTION_ERROR_KINDS = frozenset(
 )
 
 
-def manifest_error_record(manifest_error: str, **fields) -> dict:
+def manifest_error_record(manifest_error: str | None, **fields) -> dict:
     """Error record for a manifest selector failure, preserving the kind.
 
     The manifest_error text carries a "kind: reason" prefix; unknown kinds

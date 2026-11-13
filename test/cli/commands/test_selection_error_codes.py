@@ -139,6 +139,11 @@ def test_manifest_error_record_keeps_every_selection_kind(kind):
 def test_manifest_error_record_falls_back_for_an_unknown_kind():
     assert manifest_error_record("something else happened")["error"] == "workspace_not_declared"
     assert manifest_error_record("")["error"] == "workspace_not_declared"
+    assert manifest_error_record(None) == {
+        "kind": "error",
+        "error": "workspace_not_declared",
+        "reason": None,
+    }
 
 
 def _selection_arguments(command, selector, project):
