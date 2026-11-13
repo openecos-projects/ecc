@@ -68,6 +68,10 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
     except (OSError, tarfile.TarError, UnicodeDecodeError, ValueError) as exc:
         return CommandResult.err([error_record("invalid_additional_files", reason=str(exc))])
 
+    if ctx.manifest_error:
+        # Report the selection error before taking the lock: workspace_lock
+        # would create <name>.lock for a workspace the project does not declare.
+        return resolve_loaded_workspace(command_input, ctx)[1]
     try:
         from chipcompiler.engine.signoff_export import export_signoff_package_archive
         from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
