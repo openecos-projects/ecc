@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
 from chipcompiler.engine.reconcile import (
     compare_flows,
@@ -78,54 +80,14 @@ class TestCompareFlows:
 
 
 class TestLecEngineReconcile:
-    def test_target_entries_substitute_the_configured_engine(self):
-        from chipcompiler.engine.reconcile import _target_entries
-
-        entries = _target_entries(
-            {"start": "Synthesis", "end": "Harden", "skip_steps": [], "lec_engine": "yosys_lec"}
-        )
-
-        assert [(name, tool) for name, tool in entries if name in {"lec", "postRouteLec"}] == [
-            ("lec", "yosys_lec"),
-            ("postRouteLec", "yosys_lec"),
-        ]
-
-    def test_target_entries_default_to_kepler_formal(self):
+    def test_target_entries_run_post_route_lec_with_kepler_formal(self):
         from chipcompiler.engine.reconcile import _target_entries
 
         entries = _target_entries({"start": "Synthesis", "end": "Harden", "skip_steps": []})
 
-        assert [(name, tool) for name, tool in entries if name in {"lec", "postRouteLec"}] == [
-            ("lec", "kepler_formal"),
+        assert [(name, tool) for name, tool in entries if "lec" in name.lower()] == [
             ("postRouteLec", "kepler_formal"),
         ]
-
-    def test_yosys_lec_ledger_stays_compatible_with_a_kepler_target(self, tmp_path):
-        yosys_ledger = [
-            (name, "yosys_lec" if tool == "kepler_formal" else tool) for name, tool in RTL2GDS_STEPS
-        ]
-        workspace_dir = _write_workspace(tmp_path, yosys_ledger, flow_section={"preset": "rtl2gds"})
-
-        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
-
-        assert result.outcome == "no_op"
-        # No silent re-evidence: the recorded engine keeps owning the steps.
-        assert [(s["name"], s["tool"]) for s in _flow_steps(workspace_dir)] == yosys_ledger
-
-    def test_single_engine_ledger_stays_compatible_with_a_dual_target(self, tmp_path):
-        workspace_dir = _write_workspace(
-            tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
-        )
-
-        result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds", "lec_engine": "dual"})
-
-        # Normalized comparison: a kepler ledger matches a dual target, and
-        # the config edit alone never rewrites the ledger's engine.
-        assert result.outcome == "no_op"
-        assert [s["tool"] for s in _flow_steps(workspace_dir) if s["name"] == "postRouteLec"] == [
-            "kepler_formal"
-        ]
-        assert _flow_section(workspace_dir) == {"preset": "rtl2gds"}
 
 
 class TestReconcile:
@@ -178,7 +140,7 @@ class TestReconcile:
         # The removed terminal Warning state is not finished: a persisted
         # warned LEC reconciles to a resume that re-runs it and its suffix.
         lec_index = next(
-            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "lec"
+            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "postRouteLec"
         )
         states = ["Success"] * len(RTL2GDS_STEPS)
         states[lec_index] = "Warning"
@@ -352,15 +314,17 @@ class TestSkipPolicyReconcile:
     """Policy-driven targets: default-skip reproduces post-#280 ledgers;
     skipped ledger steps are inert, never removed or re-inserted."""
 
-    def test_default_policy_reproduces_ledger_without_lec(self, tmp_path):
-        without_lec = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "lec"]
+    def test_default_policy_reproduces_ledger_without_diff_opt(self, tmp_path):
+        without_diff_opt = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "diff_opt"]
 
-        workspace_dir = _write_workspace(tmp_path, without_lec, flow_section={"preset": "rtl2gds"})
+        workspace_dir = _write_workspace(
+            tmp_path, without_diff_opt, flow_section={"preset": "rtl2gds"}
+        )
 
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
         assert result.outcome == "no_op"
 
-    def test_ledger_with_lec_stays_runnable_under_default_policy(self, tmp_path):
+    def test_ledger_with_diff_opt_stays_runnable_under_default_policy(self, tmp_path):
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
         )
@@ -368,14 +332,14 @@ class TestSkipPolicyReconcile:
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})
 
         assert result.outcome == "no_op"
-        # The ledger keeps its LEC entry: policy changes never remove steps.
+        # The ledger keeps its diff_opt entry: policy changes never remove steps.
         names = [step["name"] for step in _flow_steps(workspace_dir)]
-        assert "lec" in names
+        assert "diff_opt" in names
 
-    def test_without_lec_ledger_never_gains_lec_when_policy_enables_it(self, tmp_path):
-        without_lec = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "lec"]
+    def test_a_ledger_without_diff_opt_never_gains_it_when_policy_enables_it(self, tmp_path):
+        without_diff_opt = [(name, tool) for name, tool in RTL2GDS_STEPS if name != "diff_opt"]
         workspace_dir = _write_workspace(
-            tmp_path, without_lec, flow_section={"start": "Synthesis", "end": "Harden"}
+            tmp_path, without_diff_opt, flow_section={"start": "Synthesis", "end": "Harden"}
         )
 
         result = reconcile_workspace(
@@ -385,7 +349,7 @@ class TestSkipPolicyReconcile:
 
         assert result.outcome == "mismatch"
         names = [step["name"] for step in _flow_steps(workspace_dir)]
-        assert "lec" not in names
+        assert "diff_opt" not in names
 
     def test_partial_ledger_with_lec_appends_only_the_missing_suffix(self, tmp_path):
         prefix = RTL2GDS_STEPS[: RTL2GDS_STEPS.index(("CTS", "ecc")) + 1]
@@ -402,9 +366,9 @@ class TestSkipPolicyReconcile:
         assert result.appended == tuple(name for name, _tool in RTL2GDS_STEPS[len(prefix) :])
 
     def test_declared_policy_extends_the_target_chain(self, tmp_path):
-        # A workspace declaring skip_steps=[] gets a WITH-lec target: a
-        # without-lec ledger extends by the suffix after the last kept step.
-        prefix = RTL2GDS_STEPS[:2]  # Synthesis, lec
+        # A workspace declaring skip_steps=[] gets a target WITH diff_opt: a
+        # ledger without it extends by the suffix after the last kept step.
+        prefix = RTL2GDS_STEPS[:2]  # Synthesis, preFloorplan
         workspace_dir = _write_workspace(
             tmp_path,
             prefix,
@@ -423,12 +387,12 @@ class TestTargetPrefixWithSkippedLedgerSteps:
         """A skipped ledger entry before the target boundary must not shift
         the state evaluation: an unfinished in-range step means resume, not
         no_op."""
-        ledger = RTL2GDS_STEPS  # full chain including lec
+        ledger = RTL2GDS_STEPS  # full chain including diff_opt
         target_end = next(
             index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "RCX"
         )
         # Everything finished except filler: inside the target range by
-        # name, but shifted out of a positional slice by the skipped lec.
+        # name, but shifted out of a positional slice by the skipped diff_opt.
         unfinished = next(
             index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "filler"
         )
@@ -440,7 +404,158 @@ class TestTargetPrefixWithSkippedLedgerSteps:
 
         result = reconcile_workspace(
             workspace_dir,
-            {"start": "Synthesis", "end": "RCX", "skip_steps": ["lec"]},
+            {"start": "Synthesis", "end": "RCX", "skip_steps": ["diff_opt"]},
         )
 
         assert result.outcome == "resume"
+
+
+@pytest.mark.parametrize(
+    ("ledger_lec", "old_line", "flow_line"),
+    [
+        (("lec", "kepler_formal"), 'end = "preFloorplan"', 'end = "lec"'),
+        (("lec", "yosys_lec"), 'lec_engine = "kepler_formal"', 'lec_engine = "yosys_lec"'),
+        (("lec", "lec_dual"), 'lec_engine = "kepler_formal"', 'lec_engine = "lec_dual"'),
+        # Every LEC skipped: only the workspace [flow] names the engine.
+        (None, 'lec_engine = "kepler_formal"', 'lec_engine = "yosys_lec"'),
+    ],
+)
+def test_a_workspace_built_with_a_removed_lec_is_a_flow_mismatch(
+    tmp_path, ledger_lec, old_line, flow_line
+):
+    names = [name for name, _tool in RTL2GDS_STEPS]
+    ledger = RTL2GDS_STEPS[: names.index("preFloorplan") + 1]
+    if ledger_lec is not None:
+        ledger = [ledger[0], ledger_lec, *ledger[1:]]
+    section = {"start": "Synthesis", "end": "preFloorplan", "lec_engine": "kepler_formal"}
+    workspace_dir = _write_workspace(tmp_path, ledger, flow_section=section)
+    # The workspace's own [flow] still names what that version recorded.
+    params = workspace_dir / "home" / "params.toml"
+    params.write_text(params.read_text().replace(old_line, flow_line))
+
+    assert (
+        reconcile_workspace(workspace_dir, None).error,
+        reconcile_workspace(workspace_dir, {"preset": "rtl2gds"}).error,
+    ) == ("flow_mismatch", "flow_mismatch")
+
+
+def test_a_malformed_lec_engine_stays_an_invalid_workspace_config(tmp_path):
+    names = [name for name, _tool in RTL2GDS_STEPS]
+    section = {"start": "Synthesis", "end": "preFloorplan", "lec_engine": "kepler_formal"}
+    workspace_dir = _write_workspace(
+        tmp_path, RTL2GDS_STEPS[: names.index("preFloorplan") + 1], flow_section=section
+    )
+    params = workspace_dir / "home" / "params.toml"
+    params.write_text(params.read_text().replace('lec_engine = "kepler_formal"', "lec_engine = []"))
+
+    result = reconcile_workspace(workspace_dir, None)
+
+    assert (result.outcome, result.error.split(":")[0]) == ("mismatch", "workspace_config_invalid")
+
+
+@pytest.mark.parametrize("anchor", ["Synthesis", "CTS", "diff_opt"])
+def test_a_ledger_without_a_flow_target_keeps_its_inserted_steps(tmp_path, anchor):
+    # No [flow] in home/params.toml: the target is derived from the ledger,
+    # whose inserted step is no range boundary but an insertion. The default
+    # policy skips diff_opt: its ledger entry and its check are both inert.
+    names = [name for name, _tool in RTL2GDS_STEPS]
+    ledger = _with_lec_after(anchor, RTL2GDS_STEPS[: names.index(anchor) + 2])
+    workspace_dir = _write_workspace(tmp_path, ledger, flow_section=None)
+
+    result = reconcile_workspace(workspace_dir, None)
+
+    assert (result.outcome, result.error) == ("no_op", None)
+
+
+def _with_lec_after(anchor, steps):
+    position = [name for name, _tool in steps].index(anchor) + 1
+    return [*steps[:position], (f"lec@{anchor}", "kepler_formal"), *steps[position:]]
+
+
+class TestInsertedStepReconcile:
+    def test_target_entries_put_the_inserted_lec_after_its_step(self):
+        from chipcompiler.engine.reconcile import _target_entries
+
+        entries = _target_entries(
+            {"start": "place", "end": "route", "skip_steps": [], "insert_steps": ["lec@CTS"]}
+        )
+
+        assert [name for name, _tool in entries] == [
+            "place",
+            "diff_opt",
+            "diff_sizing",
+            "CTS",
+            "lec@CTS",
+            "legalization",
+            "Timing optimization",
+            "route",
+        ]
+
+    def test_a_ledger_with_the_same_insertion_matches(self, tmp_path):
+        target = {"preset": "rtl2gds", "insert_steps": ["lec@CTS"]}
+        ledger = _with_lec_after("CTS", RTL2GDS_STEPS)
+        workspace_dir = _write_workspace(tmp_path, ledger, flow_section=target)
+
+        assert reconcile_workspace(workspace_dir, target).outcome == "no_op"
+
+    def test_adding_or_removing_an_insertion_is_a_mismatch(self, tmp_path):
+        inserted = _with_lec_after("CTS", RTL2GDS_STEPS)
+        with_insertion = {"preset": "rtl2gds", "insert_steps": ["lec@CTS"]}
+        added = _write_workspace(
+            tmp_path / "added", RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+        )
+        removed = _write_workspace(tmp_path / "removed", inserted, flow_section=with_insertion)
+
+        assert (
+            reconcile_workspace(added, with_insertion).error,
+            reconcile_workspace(removed, {"preset": "rtl2gds"}).error,
+        ) == ("flow_mismatch", "flow_mismatch")
+
+    def test_skipping_an_anchor_leaves_its_check_inert(self, tmp_path):
+        names = [name for name, _tool in RTL2GDS_STEPS]
+        ledger = _with_lec_after("diff_opt", RTL2GDS_STEPS[: names.index("diff_sizing") + 1])
+        section = {
+            "start": "Synthesis",
+            "end": "diff_sizing",
+            "skip_steps": [],
+            "insert_steps": ["lec@diff_opt"],
+        }
+        workspace_dir = _write_workspace(tmp_path, ledger, flow_section=section)
+
+        result = reconcile_workspace(workspace_dir, {**section, "skip_steps": ["diff_opt"]})
+
+        assert (result.outcome, result.error) == ("no_op", None)
+
+    def test_an_insertion_after_the_ledgers_last_step_is_a_mismatch(self, tmp_path):
+        names = [name for name, _tool in RTL2GDS_STEPS]
+        ledger = RTL2GDS_STEPS[: names.index("CTS") + 1]
+        section = {"start": "Synthesis", "end": "CTS", "skip_steps": []}
+        with_insertion = {**section, "insert_steps": ["lec@CTS"]}
+        added = _write_workspace(tmp_path / "added", ledger, flow_section=section)
+        inserted = _with_lec_after("CTS", ledger)
+        removed = _write_workspace(
+            tmp_path / "removed",
+            inserted,
+            states=["Success"] * len(ledger) + ["Unstart"],
+            flow_section=with_insertion,
+        )
+
+        assert (
+            reconcile_workspace(added, with_insertion).error,
+            reconcile_workspace(removed, section).error,
+        ) == ("flow_mismatch", "flow_mismatch")
+
+    def test_extending_the_range_brings_the_new_steps_insertions(self, tmp_path):
+        names = [name for name, _tool in RTL2GDS_STEPS]
+        ledger = RTL2GDS_STEPS[: names.index("CTS") + 1]
+        section = {"start": "Synthesis", "end": "CTS", "skip_steps": []}
+        workspace_dir = _write_workspace(tmp_path, ledger, flow_section=section)
+
+        result = reconcile_workspace(
+            workspace_dir, {**section, "end": "legalization", "insert_steps": ["lec@legalization"]}
+        )
+
+        assert (result.outcome, result.appended) == (
+            "extended",
+            ("legalization", "lec@legalization"),
+        )

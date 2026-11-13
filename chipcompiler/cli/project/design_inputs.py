@@ -53,7 +53,7 @@ def required_inputs_for_step(step: str) -> tuple[str, ...]:
     canonical = normalize_flow_step(step)
     if canonical == "Synthesis":
         return ("rtl",)
-    if canonical in {"lec", "postRouteLec"}:
+    if canonical == "postRouteLec":
         return ("netlist", "golden_netlist")
     if canonical == "preFloorplan":
         return ("netlist",)

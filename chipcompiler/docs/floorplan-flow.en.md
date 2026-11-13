@@ -5,7 +5,7 @@ surrounding sequence:
 
 ```mermaid
 flowchart LR
-    SYN[Synthesis\nYosys] --> LEC[LEC\noptional; default skipped]
+    SYN[Synthesis\nYosys] --> LEC[lec@Synthesis\noptional; inserted with insert_steps]
     LEC --> PRE[preFloorplan\necc]
     PRE --> MACRO[macroPlacement\nDreamPlace]
     MACRO --> POST[postFloorplan\necc]

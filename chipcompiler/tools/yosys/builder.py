@@ -90,20 +90,57 @@ def _plain_verilog_filelist_paths(filelist: str) -> list[str] | None:
     return sources or None
 
 
-def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
-    """Classify RTL input as native-Verilog or Slang-required."""
+def _declared_filelist(workspace: Workspace) -> str:
     raw_filelist = workspace.design.input_filelist or workspace.parameters.data.get("file_list", "")
     filelist = str(raw_filelist) if isinstance(raw_filelist, (str, Path)) else ""
-    if filelist and os.path.exists(filelist):
-        plain_sources = _plain_verilog_filelist_paths(filelist)
-        if plain_sources is not None:
-            return False, plain_sources, ""
-        return True, [], filelist
+    return filelist if filelist and os.path.exists(filelist) else ""
 
-    rtl_file = step.input.verilog or ""
+
+def synthesis_rtl(workspace: Workspace, step: WorkspaceStep) -> Path | None:
+    """The RTL the Synthesis step reads: its filelist, else its RTL file."""
+    if filelist := _declared_filelist(workspace):
+        return Path(filelist)
+    rtl_file = step.input.verilog
+    return Path(rtl_file) if rtl_file else None
+
+
+#: The macros each Synthesis frontend defines: the native ``read_verilog``
+#: predefines SYNTHESIS and YOSYS; ``read_slang`` is given SYNTHESIS
+#: (``yosys_synthesis.tcl``).
+_NATIVE_DEFINES = ("SYNTHESIS", "YOSYS")
+_SLANG_DEFINES = ("SYNTHESIS",)
+
+
+def _native_rtl_sources(workspace: Workspace, rtl_file: Path | str) -> list[str] | None:
+    """The sources the native ``read_verilog`` reads; None when Slang is required."""
+    if filelist := _declared_filelist(workspace):
+        return _plain_verilog_filelist_paths(filelist)
     if rtl_file and os.path.exists(rtl_file) and Path(rtl_file).suffix.lower() == ".v":
-        return False, [os.path.abspath(rtl_file)], ""
-    return True, [], ""
+        return [os.path.abspath(rtl_file)]
+    return None
+
+
+def synthesis_reads_filelist(workspace: Workspace, rtl: Path | str) -> bool:
+    """Whether *rtl*, the RTL Synthesis reads (:func:`synthesis_rtl`), is its filelist.
+
+    Decided by role, not by name: a generated filelist has no suffix.
+    """
+    filelist = _declared_filelist(workspace)
+    return bool(filelist) and os.path.abspath(filelist) == os.path.abspath(rtl)
+
+
+def synthesis_defines(workspace: Workspace, rtl: Path | str) -> tuple[str, ...]:
+    """The macros Synthesis defines while reading *rtl*, its :func:`synthesis_rtl`."""
+    native = _native_rtl_sources(workspace, rtl) is not None
+    return _NATIVE_DEFINES if native else _SLANG_DEFINES
+
+
+def _yosys_source_config(workspace: Workspace, step: WorkspaceStep) -> tuple[bool, list[str], str]:
+    """Classify RTL input as native-Verilog or Slang-required."""
+    native_sources = _native_rtl_sources(workspace, step.input.verilog or "")
+    if native_sources is not None:
+        return False, native_sources, ""
+    return True, [], _declared_filelist(workspace)
 
 
 def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:

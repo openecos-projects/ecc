@@ -17,12 +17,7 @@ import ast
 from pathlib import Path
 
 import chipcompiler
-from chipcompiler.data.step import (
-    DUAL_STEP_DIRECTORIES,
-    STEP_DIRECTORIES,
-    YOSYS_LEC_STEP_DIRECTORIES,
-    step_storage_name,
-)
+from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
 from chipcompiler.data.types import SkippableStepEnum, ToolName
 
 _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
@@ -30,8 +25,6 @@ _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
 _STEP_DIRECTORY_LITERALS = frozenset(
     {
         *STEP_DIRECTORIES.values(),
-        *YOSYS_LEC_STEP_DIRECTORIES.values(),
-        *DUAL_STEP_DIRECTORIES.values(),
         f"{step_storage_name(SkippableStepEnum.TIMING_OPT.value, ToolName.SIZER.value)}"
         f"_{ToolName.SIZER.value}",
     }
@@ -46,28 +39,16 @@ _ARTIFACT_OWNERS = {
     "subflow.json": {
         "tools/ecc/builder.py",
         "tools/yosys/builder.py",
-        "tools/lec_dual/builder.py",
         "tools/kepler_formal/builder.py",
-        "tools/yosys_lec/builder.py",
     },
     "checklist.json": {
         "data/checklist.py",
         "tools/ecc/builder.py",
         "tools/yosys/builder.py",
-        "tools/lec_dual/builder.py",
         "tools/kepler_formal/builder.py",
-        "tools/yosys_lec/builder.py",
     },
-    "run_lec_status.rpt": {
-        "tools/kepler_formal/builder.py",
-        "tools/yosys_lec/builder.py",
-    },
-    "equiv_status.rpt": {
-        "tools/kepler_formal/builder.py",
-        "tools/yosys_lec/builder.py",
-    },
-    "equiv_failed.il": {"tools/yosys_lec/builder.py"},
-    "equiv_failed.v": {"tools/yosys_lec/builder.py"},
+    "run_lec_status.rpt": {"tools/kepler_formal/builder.py"},
+    "equiv_status.rpt": {"tools/kepler_formal/builder.py"},
 }
 
 _ARTIFACT_NAMES = frozenset(_ARTIFACT_OWNERS)
@@ -159,10 +140,7 @@ def scan(root: Path) -> list[tuple[str, int, str, str]]:
                 value = node.value
                 if relative not in {"data/step/directories.py", *_STEP_DIR_ALLOWLIST}:
                     for name in _STEP_DIRECTORY_LITERALS:
-                        # A bare tool spelling (`lec_dual`) belongs to the tool
-                        # vocabulary; its directory form is still controlled.
-                        is_tool_spelling = value == name and name in _TOOL_NAMES
-                        if not is_tool_spelling and (value == name or value.startswith(f"{name}/")):
+                        if value == name or value.startswith(f"{name}/"):
                             violations.append((relative, node.lineno, "step-directory", value))
                             break
                 if (
@@ -212,12 +190,12 @@ def test_guard_rejects_an_artifact_name_outside_its_owner(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'NAME = "qor_hotspots.json"\n')
     _write(tmp_path, "engine/other.py", 'NAME = "qor_summary.json"\n')
     _write(tmp_path, "tools/ecc/builder.py", 'NAME = "qor_hotspots.json"\n')
-    _write(tmp_path, "tools/lec_dual/builder.py", 'NAME = "qor_hotspots.json"\n')
+    _write(tmp_path, "tools/kepler_formal/builder.py", 'NAME = "qor_hotspots.json"\n')
 
     assert scan(tmp_path) == [
         ("engine/consumer.py", 1, "artifact-name", "qor_hotspots.json"),
         ("engine/other.py", 1, "artifact-name", "qor_summary.json"),
-        ("tools/lec_dual/builder.py", 1, "artifact-name", "qor_hotspots.json"),
+        ("tools/kepler_formal/builder.py", 1, "artifact-name", "qor_hotspots.json"),
     ]
 
 
@@ -243,13 +221,6 @@ def test_guard_rejects_a_tool_attribute_compared_with_a_string(tmp_path):
     _write(tmp_path, "engine/consumer.py", 'if step.tool == "ecc":\n    pass\n')
 
     assert scan(tmp_path) == [("engine/consumer.py", 1, "tool-comparison", "ecc")]
-
-
-def test_guard_rejects_a_tool_name_used_as_a_directory(tmp_path):
-    _write(tmp_path, "engine/consumer.py", 'DIR = "lec_dual/output"\n')
-    _write(tmp_path, "data/types.py", 'ENGINE = "lec_dual"\n')
-
-    assert scan(tmp_path) == [("engine/consumer.py", 1, "step-directory", "lec_dual/output")]
 
 
 def test_guard_ignores_a_payload_that_mentions_the_ledger(tmp_path):

@@ -37,9 +37,7 @@ TOOLS: dict[ToolName, ToolSpec] = {
         skip_dependency_check=True,
         closes_db_after_step=True,
     ),
-    ToolName.YOSYS_LEC: ToolSpec("yosys_lec"),
     ToolName.KEPLER_FORMAL: ToolSpec("kepler_formal"),
-    ToolName.LEC_DUAL: ToolSpec("lec_dual"),
     ToolName.KLAYOUT: ToolSpec("klayout_tool"),
 }
 

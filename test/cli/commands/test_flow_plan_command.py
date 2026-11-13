@@ -28,15 +28,16 @@ def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_pro
         "flow": "rtl2gds",
         "status": "ok",
         "enabled_count": 21,
-        "step_count": 23,
+        "step_count": 22,
         "skip_steps": list(DEFAULT_SKIP_STEPS),
+        "insert_steps": [],
         "max_parallel_steps": 4,
     }
     steps = _records(records, "flow_step")
     assert [step["step"] for step in steps if not step["enabled"]] == list(DEFAULT_SKIP_STEPS)
     assert next(step for step in steps if step["step"] == "route") == {
         "record": "flow_step",
-        "position": 13,
+        "position": 12,
         "step": "route",
         "tool": "ecc",
         "enabled": True,
@@ -52,6 +53,7 @@ def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_pro
         "after": ["Timing optimization", "CTS"],
         "needs": {"clock_tree": "CTS", "legal": "Timing optimization"},
         "check": False,
+        "inserted": False,
     }
     assert [step["step"] for step in steps if step["target"]] == ["Harden"]
     assert _records(records, "flow_violation") == []
@@ -64,7 +66,7 @@ def test_a_disabled_step_has_a_null_stage_and_the_later_stages_renumber(capsys, 
     steps = {step["step"]: step for step in _records(records, "flow_step")}
     assert steps["drc"] == {
         "record": "flow_step",
-        "position": 16,
+        "position": 15,
         "step": "drc",
         "tool": "ecc",
         "enabled": False,
@@ -80,6 +82,7 @@ def test_a_disabled_step_has_a_null_stage_and_the_later_stages_renumber(capsys, 
         "after": ["filler"],
         "needs": {"filled": "filler"},
         "check": True,
+        "inserted": False,
     }
     assert steps["lvs"]["parallel_with"] == ["antennaCheck", "postRouteLec", "RCX"]
     assert steps["Harden"]["stage"] == 16
@@ -103,8 +106,9 @@ def test_the_summary_reports_the_projects_max_parallel_steps(capsys, create_cli_
         "flow": "rtl2gds",
         "status": "ok",
         "enabled_count": 21,
-        "step_count": 23,
+        "step_count": 22,
         "skip_steps": list(DEFAULT_SKIP_STEPS),
+        "insert_steps": [],
         "max_parallel_steps": 2,
     }
 
@@ -171,7 +175,8 @@ def test_unchecked_synthesis_needs_a_declared_netlist(capsys, create_cli_project
     ("args", "reason"),
     [
         (["--disable", "Harden"], "'Harden' ends the flow and cannot be skipped"),
-        (["--enable", "lec", "--disable", "LEC"], "steps both enabled and disabled: lec"),
+        (["--enable", "CTS", "--disable", "cts"], "steps both enabled and disabled: CTS"),
+        (["--enable", "lec"], "lec is not a flow step to enable or disable"),
         (["--disable", "Spin"], "skip_steps names unknown flow steps: Spin"),
     ],
 )
@@ -188,7 +193,7 @@ def test_text_mode_prints_the_checklist_and_its_warnings(capsys, create_cli_proj
 
     out = capsys.readouterr().out
     assert rc == 0
-    assert "rtl2gds · 20 of 23 steps enabled" in out
+    assert "rtl2gds · 20 of 22 steps enabled" in out
     assert "! warning: route runs with degraded results without clock_tree; enable CTS" in out
 
 

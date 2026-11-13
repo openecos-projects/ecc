@@ -3,7 +3,7 @@
 
 Three real step shapes exist: synthesis (:class:`YosysStep`), place-and-route
 (:class:`EccStep`, reused by ecc/dreamplace/sizer), and LEC
-(:class:`YosysLecStep`). Each path group has a common base plus a per-shape
+(:class:`KeplerFormalStep`). Each path group has a common base plus a per-shape
 variant that adds the tool-specific leaves. The step classes are frozen so a
 variant may override a group field with its narrower type (covariance) without a
 mutable-field variance error; the group dataclasses themselves stay mutable so a
@@ -47,7 +47,7 @@ class OutputPaths:
 class YosysOutput(OutputPaths):
     sim_verilog: Path | None = None
     report: Path | None = None
-    # Pre-techmap netlist used as the golden side of Yosys LEC.
+    # Pre-techmap netlist: the golden side of lec@Synthesis.
     golden_verilog: Path | None = None
 
 
@@ -150,25 +150,8 @@ class LecInput(StepInput):
     golden_verilog: Path | None = None
 
 
-class YosysLecInput(LecInput):
-    """Yosys LEC step inputs (kept as the engine step's declared shape)."""
-
-
 class KeplerFormalInput(LecInput):
     """kepler-formal step inputs (kept as the engine step's declared shape)."""
-
-
-@dataclass
-class YosysLecData(StepData):
-    config: Path | None = None
-
-
-@dataclass
-class YosysLecReport(StepReport):
-    status: Path | None = None
-    equiv_status: Path | None = None
-    failed_rtlil: Path | None = None
-    failed_verilog: Path | None = None
 
 
 @dataclass
@@ -287,37 +270,12 @@ class YosysStep(WorkspaceStepBase):
 
 
 @dataclass(frozen=True)
-class YosysLecStep(WorkspaceStepBase):
-    """Yosys equivalence-checking step."""
-
-    input: YosysLecInput = field(default_factory=YosysLecInput)
-    data: YosysLecData = field(default_factory=YosysLecData)
-    report: YosysLecReport = field(default_factory=YosysLecReport)
-
-
-@dataclass(frozen=True)
 class KeplerFormalStep(WorkspaceStepBase):
     """kepler-formal equivalence-checking step."""
 
     input: KeplerFormalInput = field(default_factory=KeplerFormalInput)
     data: KeplerFormalData = field(default_factory=KeplerFormalData)
     report: KeplerFormalReport = field(default_factory=KeplerFormalReport)
-
-
-@dataclass(frozen=True)
-class LecDualStep(WorkspaceStepBase):
-    """Dual-engine cross-checking LEC step.
-
-    One ledger step whose runner executes both physical engines on the
-    shared inputs and merges their verdicts into its output.json.
-    ``engine_steps`` is build-time wiring: the dual builder attaches the
-    per-engine step objects so build_step_space/build_step_config can
-    delegate without a workspace; the runner rebuilds them at run time
-    instead of trusting attached state across process boundaries.
-    """
-
-    input: LecInput = field(default_factory=LecInput)
-    engine_steps: dict = field(default_factory=dict, repr=False, compare=False)
 
 
 @dataclass(frozen=True)

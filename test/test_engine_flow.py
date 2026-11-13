@@ -212,16 +212,15 @@ def test_run_step_without_runtime_operation_marker_does_not_expand_function(monk
     assert engine_flow.run_step(workspace_step, observer=observer) == StateEnum.Success
 
 
-def test_engine_flow_default_steps_include_synthesis_lec(tmp_path):
+def test_engine_flow_default_steps_start_with_synthesis_then_the_floorplan(tmp_path):
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
 
     engine_flow: Any = EngineFlow(workspace)
     engine_flow.build_default_steps()
 
-    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:5]] == [
+    assert [(step["name"], step["tool"]) for step in workspace.flow.data["steps"][:4]] == [
         (StepEnum.SYNTHESIS.value, "yosys"),
-        (SkippableStepEnum.LEC.value, "kepler_formal"),
         (StepEnum.PRE_FLOORPLAN.value, "ecc"),
         (StepEnum.MACRO_PLACEMENT.value, "dreamplace"),
         (StepEnum.POST_FLOORPLAN.value, "ecc"),
@@ -314,6 +313,9 @@ def test_engine_flow_does_not_delay_short_step_before_return(monkeypatch, tmp_pa
     assert sleep_calls == []
 
 
+_SYNTHESIS_LEC = "lec@Synthesis"
+
+
 def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -321,15 +323,15 @@ def test_failed_synthesis_lec_is_persisted_as_incomplete(monkeypatch, tmp_path):
         "schema_version": 2,
         "steps": [
             {
-                "name": SkippableStepEnum.LEC.value,
-                "tool": "yosys_lec",
+                "name": _SYNTHESIS_LEC,
+                "tool": "kepler_formal",
                 "state": "Unstart",
-                **step_fields(SkippableStepEnum.LEC.value, "yosys_lec"),
+                **step_fields(_SYNTHESIS_LEC, "kepler_formal"),
             }
         ],
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
-    workspace_step = EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec")
+    workspace_step = EccStep(name=_SYNTHESIS_LEC, directory=tmp_path, tool="kepler_formal")
     engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
@@ -383,10 +385,10 @@ def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
         "schema_version": 2,
         "steps": [
             {
-                "name": SkippableStepEnum.LEC.value,
-                "tool": "yosys_lec",
+                "name": _SYNTHESIS_LEC,
+                "tool": "kepler_formal",
                 "state": "Unstart",
-                **step_fields(SkippableStepEnum.LEC.value, "yosys_lec"),
+                **step_fields(_SYNTHESIS_LEC, "kepler_formal"),
             },
             {
                 "name": StepEnum.FLOORPLAN.value,
@@ -398,14 +400,14 @@ def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     }
     engine_flow: Any = EngineFlow(workspace)
     engine_flow.workspace_steps = [
-        EccStep(name=SkippableStepEnum.LEC.value, directory=tmp_path, tool="yosys_lec"),
+        EccStep(name=_SYNTHESIS_LEC, directory=tmp_path, tool="kepler_formal"),
         EccStep(name=StepEnum.FLOORPLAN.value, directory=tmp_path, tool="ecc"),
     ]
     calls = []
 
     def fake_run_step(step, **_kwargs):
         calls.append(step.name)
-        if step.name == SkippableStepEnum.LEC.value:
+        if step.name == _SYNTHESIS_LEC:
             return StateEnum.Imcomplete
         return StateEnum.Success
 
@@ -413,7 +415,7 @@ def test_run_steps_stops_after_synthesis_lec_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(flow_module, "log_flow", lambda **_kwargs: None)
 
     assert engine_flow.run_steps() is False
-    assert calls == [SkippableStepEnum.LEC.value]
+    assert calls == [_SYNTHESIS_LEC]
 
 
 def test_check_step_result_synthesis_uses_common_verilog(tmp_path):
@@ -1914,3 +1916,37 @@ def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
         ["emir"],
         ["Harden"],
     ]
+
+
+def test_a_blocked_checklist_gates_the_next_step_past_an_inserted_lec(tmp_path):
+    workspace: Any = Workspace(directory=tmp_path)
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "CTS",
+                "tool": "ecc",
+                "category": "PNR",
+                "checklist_status": {"status": "blocked", "blocked": True},
+                **step_directory("CTS", "ecc"),
+            },
+            {
+                "name": "lec@CTS",
+                "tool": "kepler_formal",
+                "category": "PNR",
+                **step_directory("lec@CTS", "kepler_formal"),
+            },
+            {
+                "name": "legalization",
+                "tool": "dreamplace",
+                "category": "PNR",
+                **step_directory("legalization", "dreamplace"),
+            },
+        ],
+    }
+
+    assert [
+        flow._blocked_checklist_prerequisite(EccStep(name=name, tool=tool))
+        for name, tool in (("lec@CTS", "kepler_formal"), ("legalization", "dreamplace"))
+    ] == ["CTS", "CTS"]

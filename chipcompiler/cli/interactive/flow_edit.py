@@ -3,8 +3,10 @@
 
 The plan is recomputed after every toggle and redrawn with its problems, so a
 selection that leaves a step without required design data cannot be saved.
-``←``/``→`` change ``max_parallel_steps``, which only the legend depends on. The
-saved selection is then confirmed before ecc.toml is written.
+``i`` inserts an LEC after the step under the cursor (``lec@CTS``) and toggling
+an inserted row removes it. ``←``/``→`` change ``max_parallel_steps``, which
+only the legend depends on. The saved selection is then confirmed before
+ecc.toml is written.
 """
 
 import os
@@ -19,24 +21,27 @@ from rich.text import Text
 
 from chipcompiler.cli.project.flow_plan_view import PlanView
 from chipcompiler.cli.rendering.flow_selection_view import flow_selection_view
-from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
+from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS, StepEnum
+from chipcompiler.rtl2gds import inserted_step_name, lec_insert_anchors, resolve_insert_steps
 
 #: Reads the next key presses (one or more); see :func:`terminal_keys`.
 KeyReader = Callable[[], str]
-#: The view of the flow without the given (canonical) skipped steps.
-ViewOf = Callable[[tuple[str, ...]], PlanView]
+#: The view of the flow without the given (canonical) skipped steps and with
+#: the given (canonical) inserted steps.
+ViewOf = Callable[[tuple[str, ...], tuple[str, ...]], PlanView]
 
 _UP = frozenset({"\x1b[A", "\x1bOA", "k"})
 _DOWN = frozenset({"\x1b[B", "\x1bOB", "j"})
 _LEFT = frozenset({"\x1b[D", "\x1bOD", "-"})
 _RIGHT = frozenset({"\x1b[C", "\x1bOC", "+"})
 _TOGGLE = frozenset({" ", "x"})
+_INSERT = frozenset({"i"})
 _SAVE = frozenset({"\r", "\n"})
 _CANCEL = frozenset({"q", "\x1b", "\x03", "\x04"})
 #: Windows reports arrows as a prefix key followed by the scan code.
 _WINDOWS_PREFIX = frozenset({"\x00", "\xe0"})
 _WINDOWS_ARROWS = {"H": "\x1b[A", "P": "\x1b[B", "K": "\x1b[D", "M": "\x1b[C"}
-_KEYS = "↑/↓ move · space toggle · ←/→ parallel steps · enter save · q cancel"
+_KEYS = "↑/↓ move · space toggle · i insert LEC · ←/→ parallel steps · enter save · q cancel"
 _YES = frozenset({"y", "Y"})
 #: Enter keeps ecc.toml as it is: writing needs an explicit ``y``.
 _NO = frozenset({"n", "N", *_SAVE, *_CANCEL})
@@ -45,21 +50,29 @@ _CONFIRM_KEYS = "y write · n/enter/q cancel"
 
 @dataclass(frozen=True, slots=True)
 class EditedSelection:
-    """What the checkbox saved: the skipped steps and ``max_parallel_steps``."""
+    """What the checkbox saved: the skipped and inserted steps and ``max_parallel_steps``."""
 
     skip_steps: tuple[str, ...]
+    insert_steps: tuple[str, ...]
     max_parallel_steps: int
 
 
 def edit_selection(
-    skip_steps: Sequence[str], *, view_of: ViewOf, console: Console, read_key: KeyReader
+    skip_steps: Sequence[str],
+    insert_steps: Sequence[str] = (),
+    *,
+    view_of: ViewOf,
+    console: Console,
+    read_key: KeyReader,
 ) -> EditedSelection | None:
-    """Toggle steps and ``max_parallel_steps`` until saved or cancelled (None).
+    """Toggle and insert steps, and set ``max_parallel_steps``, until saved or
+    cancelled (None).
 
     The value starts as the first view's ``max_parallel_steps``.
     """
     skip = tuple(skip_steps)
-    view = view_of(skip)
+    insert = tuple(insert_steps)
+    view = view_of(skip, insert)
     started = view.max_parallel_steps
     parallel = started
     cursor = 0
@@ -91,11 +104,29 @@ def edit_selection(
                 cursor = (cursor + 1) % len(view.steps)
             elif key in _TOGGLE:
                 row = view.steps[cursor]
-                if row.target:
+                if row.inserted and row.step not in insert:
+                    notice = f"{row.step} is part of the preset"
+                elif row.inserted:
+                    insert = tuple(name for name in insert if name != row.step)
+                    view = view_of(skip, insert)
+                    cursor = min(cursor, len(view.steps) - 1)
+                elif row.target:
                     notice = f"{row.step} ends the flow and stays enabled"
                 else:
                     skip = _toggled(skip, row.step, [step.step for step in view.steps])
-                    view = view_of(skip)
+                    view = view_of(skip, insert)
+            elif key in _INSERT:
+                row = view.steps[cursor]
+                if row.step not in lec_insert_anchors():
+                    notice = (
+                        "an LEC can be inserted after a design-building step from "
+                        "Synthesis to route"
+                    )
+                elif (name := inserted_step_name(StepEnum.LEC.value, row.step)) in insert:
+                    notice = f"{name} is already inserted"
+                else:
+                    insert = resolve_insert_steps({"insert_steps": [*insert, name]})
+                    view = view_of(skip, insert)
             elif key in _LEFT:
                 parallel = max(parallel - 1, 1)
             elif key in _RIGHT:
@@ -104,7 +135,7 @@ def edit_selection(
                 parallel = parallel + 1 if parallel < bound else parallel
             elif key in _SAVE:
                 if not view.blocks_saving:
-                    return EditedSelection(skip, parallel)
+                    return EditedSelection(skip, insert, parallel)
                 notice = "resolve the errors before saving"
             elif key in _CANCEL:
                 return None

@@ -292,7 +292,7 @@ class TestManifestSkipBoundary:
     def test_skipped_manifest_boundary_fails_the_load(self, tmp_path):
         _write_manifest(
             tmp_path,
-            [_workspace(tmp_path, start_step="Synth", end_step="LEC", skip_steps=["LEC"])],
+            [_workspace(tmp_path, start_step="Synth", end_step="DiffOpt", skip_steps=["DiffOpt"])],
         )
 
         with pytest.raises(ManifestError, match="cannot bound the flow range"):
@@ -305,15 +305,15 @@ class TestManifestSkipBoundary:
                 _workspace(
                     tmp_path,
                     start_step="Synth",
-                    end_step="PreFloorplan",
-                    skip_steps=["LEC"],
+                    end_step="CTS",
+                    skip_steps=["DiffOpt"],
                 )
             ],
         )
 
         (entry,) = load_manifest(str(tmp_path)).workspaces
 
-        assert entry.skip_steps == ("LEC",)
+        assert entry.skip_steps == ("DiffOpt",)
 
 
 @pytest.mark.parametrize(
@@ -321,7 +321,7 @@ class TestManifestSkipBoundary:
     [
         # Optional data missing: warnings, and the check passes.
         (
-            ["lec", "diff_opt", "CTS"],
+            ["diff_opt", "CTS"],
             0,
             [
                 f"warning=flow_step_degraded step={step} missing=['clock_tree'] "
@@ -332,7 +332,7 @@ class TestManifestSkipBoundary:
         ),
         # Required data missing: a configuration error.
         (
-            ["lec", "diff_opt", "legalization", "TimingOpt"],
+            ["diff_opt", "legalization", "TimingOpt"],
             1,
             [
                 'check=config status=fail reason="flow.skip_steps: route requires legal; '

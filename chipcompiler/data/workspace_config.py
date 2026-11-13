@@ -104,17 +104,24 @@ def parameters_have_chip_identity(data: object) -> bool:
     return False
 
 
+#: The ``[flow]`` keys that shape the steps of a flow target besides its
+#: preset or range; each rides along wherever the target is persisted.
+FLOW_POLICY_KEYS = ("skip_steps", "lec_engine", "insert_steps")
+
+
 def validate_flow_config(flow: object) -> dict:
     """Validate a ``[flow]`` section; return it as a plain dict.
 
     Raises WorkspaceFlowTargetError on any rule violation: ``preset`` mixed
     with ``start``/``end``, only one of ``start``/``end``, unknown step
     names, ``start`` positioned after ``end`` in the canonical chain, an
-    invalid ``skip_steps`` list, or an unknown ``lec_engine``. ``skip_steps``
-    is stored normalized (canonical step values in canonical chain order);
-    an explicit empty list round-trips as ``[]`` and an absent key stays
-    absent. ``lec_engine`` is stored normalized (the ``dual`` alias becomes
-    ``lec_dual``); an absent key stays absent.
+    invalid ``skip_steps`` or ``insert_steps`` list, or an unknown
+    ``lec_engine``. ``skip_steps`` is stored normalized (canonical step values
+    in canonical chain order) and ``insert_steps`` too (canonical inserted
+    names, ordered by the step they follow); an explicit empty list
+    round-trips as ``[]`` and an absent key stays absent. ``lec_engine`` is
+    stored normalized; an absent key
+    stays absent.
     """
     if flow is None:
         return {}
@@ -128,12 +135,7 @@ def validate_flow_config(flow: object) -> dict:
         raise WorkspaceFlowTargetError("[flow] preset cannot be combined with start/end")
     if (start is None) != (end is None):
         raise WorkspaceFlowTargetError("[flow] start and end must be set together")
-    if (
-        preset is None
-        and start is None
-        and "skip_steps" not in section
-        and "lec_engine" not in section
-    ):
+    if preset is None and start is None and not any(key in section for key in FLOW_POLICY_KEYS):
         return {}
 
     result: dict = {}
@@ -151,19 +153,32 @@ def validate_flow_config(flow: object) -> dict:
             result["lec_engine"] = LECEngineEnum.from_value(section["lec_engine"]).value
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
+    if "insert_steps" in section:
+        from chipcompiler.rtl2gds import resolve_insert_steps
+
+        try:
+            result["insert_steps"] = list(
+                resolve_insert_steps({"insert_steps": section["insert_steps"]})
+            )
+        except ValueError as exc:
+            raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
     if preset is None and start is None:
-        # A policy-only section (skip_steps and/or lec_engine without a flow
-        # target).
+        # A policy-only section (FLOW_POLICY_KEYS without a flow target).
         return result
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
-        _first, last = flow_range_for_preset(preset)  # raises on unknown presets
-        # The final step is the preset's target; its first step may be
-        # skipped, the declared inputs then stand in for it.
-        if last in set(result.get("skip_steps") or ()):
+        flow_range_for_preset(preset)  # raises on unknown presets
+        from chipcompiler.data.flow_plan import flow_target, preset_chain
+
+        # The preset's target is its last step that is not an inserted check
+        # (synthesis_lec ends with lec@Synthesis, which skipping Synthesis
+        # drops too); its first step may be skipped, the declared inputs then
+        # stand in for it.
+        target = flow_target(preset_chain(preset))
+        if target in set(result.get("skip_steps") or ()):
             raise WorkspaceFlowTargetError(
-                f"[flow] {last!r} ends the {preset!r} preset and cannot be skipped; "
+                f"[flow] {target!r} ends the {preset!r} preset and cannot be skipped; "
                 f"remove it from skip_steps (for example skip_steps = []) or pick "
                 f"another preset"
             )
@@ -247,8 +262,8 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
 
     Uses the same selection resolution as the flow.json seeding, so both
     stores always describe the same contiguous range. A declared
-    ``skip_steps`` policy and ``lec_engine`` ride along (normalized); an
-    undeclared one stays absent so the code default keeps applying.
+    policy (``FLOW_POLICY_KEYS``) rides along normalized; an undeclared one
+    stays absent so the code default keeps applying.
     Returns {} when the flow_config does not select steps.
     """
     if not isinstance(flow_config, dict) or not flow_config:
@@ -257,10 +272,7 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
     # A preset-shaped flow_config selects the preset's canonical range.
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
         section: dict = {"preset": flow_config["preset"]}
-        if "skip_steps" in flow_config:
-            section["skip_steps"] = flow_config["skip_steps"]
-        if "lec_engine" in flow_config:
-            section["lec_engine"] = flow_config["lec_engine"]
+        section.update({key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config})
         return validate_flow_config(section)
 
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
@@ -271,10 +283,7 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
 
     # Names are already canonical here; validate to keep the contract explicit.
     section = {"start": selected[0], "end": selected[-1]}
-    if "skip_steps" in flow_config:
-        section["skip_steps"] = flow_config["skip_steps"]
-    if "lec_engine" in flow_config:
-        section["lec_engine"] = flow_config["lec_engine"]
+    section.update({key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config})
     return validate_flow_config(section)
 
 
@@ -402,7 +411,26 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
     return _decode_workspace_config(workspace_config_path(workspace_dir), workspace_dir)
 
 
-def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
+def ledger_flow_section(names: list[str]) -> dict:
+    """The (unvalidated) [flow] section describing a ledger's step names.
+
+    Its range runs from the first to the last chain step; the inserted steps
+    (``lec@CTS``) are its ``insert_steps``, since an inserted name never
+    bounds a range.
+    """
+    from chipcompiler.rtl2gds import parse_inserted_step
+
+    chain = [name for name in names if parse_inserted_step(name) is None]
+    inserted = [name for name in names if parse_inserted_step(name) is not None]
+    if not chain:
+        return {}
+    section: dict = {"start": chain[0], "end": chain[-1]}
+    if inserted:
+        section["insert_steps"] = inserted
+    return section
+
+
+def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict:
     """The [flow] section implied by the persisted flow.json, or {}."""
     from chipcompiler.utility import json_read
 
@@ -417,10 +445,11 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
         for step in steps
         if isinstance(step, dict) and isinstance(step.get("name"), str) and step["name"]
     ]
-    if not names:
+    section = ledger_flow_section(names)
+    if not section:
         return {}
     try:
-        return validate_flow_config({"start": names[0], "end": names[-1]})
+        return validate_flow_config(section)
     except WorkspaceFlowTargetError:
         return {}
 

@@ -211,14 +211,6 @@ def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
                 lambda: None,
             ),
         ),
-        (
-            "lec_dual",
-            (
-                "chipcompiler.tools.lec_dual.utility",
-                "engine_availability",
-                lambda engine: (False, f"{engine} missing"),
-            ),
-        ),
     ],
 )
 def test_load_tool_propagates_a_real_missing_dependency(monkeypatch, tool, probe):
@@ -231,7 +223,7 @@ def test_load_tool_propagates_a_real_missing_dependency(monkeypatch, tool, probe
         eda.load_tool(tool)
 
 
-@pytest.mark.parametrize("tool", ["yosys", "kepler_formal", "lec_dual"])
+@pytest.mark.parametrize("tool", ["yosys", "kepler_formal"])
 def test_load_tool_propagates_the_production_dependency_error(monkeypatch, tool):
     import importlib
 

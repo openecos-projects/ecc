@@ -34,6 +34,8 @@ class FlowPlanInput:
     project: ProjectOptions = ProjectOptions()
     enable: tuple[str, ...] = ()
     disable: tuple[str, ...] = ()
+    insert: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,8 @@ class FlowEditInput:
     project: ProjectOptions = ProjectOptions()
     enable: tuple[str, ...] = ()
     disable: tuple[str, ...] = ()
+    insert: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
     max_parallel_steps: int | None = None
     yes: bool = False
 

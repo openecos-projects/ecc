@@ -15,12 +15,12 @@ from chipcompiler.data import (
     EccOutput,
     EccReport,
     EccStep,
+    KeplerFormalStep,
     OriginDesign,
     OutputPaths,
     Workspace,
     WorkspaceStep,
     WorkspaceStepBase,
-    YosysLecStep,
     YosysOutput,
     YosysStep,
 )
@@ -33,13 +33,13 @@ from chipcompiler.utility.log import Logger
 def test_workspace_step_is_base_alias():
     assert WorkspaceStep is WorkspaceStepBase
     assert issubclass(YosysStep, WorkspaceStep)
-    assert issubclass(YosysLecStep, WorkspaceStep)
+    assert issubclass(KeplerFormalStep, WorkspaceStep)
     assert issubclass(EccStep, WorkspaceStep)
 
 
 def test_variants_are_isinstance_of_base():
     assert isinstance(YosysStep(), WorkspaceStep)
-    assert isinstance(YosysLecStep(), WorkspaceStep)
+    assert isinstance(KeplerFormalStep(), WorkspaceStep)
     assert isinstance(EccStep(), WorkspaceStep)
 
 

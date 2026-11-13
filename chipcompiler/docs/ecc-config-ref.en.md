@@ -43,7 +43,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   └── ics55_synthetic.tech # packaged default technology file copied for EMIR
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec_kepler_formal/         # synthesis-level LEC (default engine; data/lec_config.yaml)
+├── lec@Synthesis_kepler_formal/  # inserted RTL-vs-netlist SEC check (data/lec_config.yaml, data/rtl.f)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
 └── postRouteLec_kepler_formal/  # post-route LEC step (default engine; YAML config)
@@ -80,7 +80,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
-| lec | — | engine-generated config | Synthesis-level LEC; the checked-in default is `kepler_formal` (YAML), while `yosys_lec` uses Tcl and `lec_dual` runs both; an unproven result fails the step and stops the flow |
+| lec@&lt;step&gt; | — | engine-generated config | Inserted LEC check (`[flow] insert_steps`); `lec@Synthesis` compares the RTL with the synthesized netlist, any other compares the step's netlist with the synthesis one; kepler-formal (YAML); an unproven result fails the step and stops the flow, see §11 |
 | preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
@@ -95,7 +95,7 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | lvs | — | none | tool default behavior |
 | drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
 | antennaCheck | ✓ | none | reads `db_ecc.json`; advisory step, so an incomplete analysis does not by itself stop the flow |
-| postroutelec | — | engine-generated config | Post-route LEC on the `filler` netlist; engine selection and evidence are shared with `lec`, see §11 |
+| postroutelec | — | engine-generated config | Post-route LEC on the `filler` netlist (kepler-formal), see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
 | powerAnalysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not present in `_STEP_CONFIG_KEYS` |
@@ -163,7 +163,7 @@ The file has four sections:
 |---|---|
 | `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`, matching the project-level `ecc.toml [design]` vocabulary |
 | `[pdk]` | `name` / `root` / `config`; `config` is stored workspace-relative and resolved back to an absolute path on load |
-| `[flow]` | `preset = "rtl2gds"`, or a `start` + `end` pair (canonical persisted step names only), plus optional `skip_steps` and `lec_engine`; when the target is absent, it is derived from the first/last steps of `home/flow.json` |
+| `[flow]` | `preset = "rtl2gds"`, or a `start` + `end` pair (canonical persisted step names only), plus optional `skip_steps`, `lec_engine` and `insert_steps`; when the target is absent, it is derived from the first/last steps of `home/flow.json` |
 | `[params]` | canonical flat snake_case parameters; nested values render as subtables (for example `[params.die]`, `[params.floorplan.phy_placer.well_tap]`) |
 
 **Identity parameters remain canonical flat keys at runtime, but v2 does not persist them twice**: the seven identity keys `design`, `top_module`, `clock`, `frequency_max`, `pdk`, `pdk_root`, and `pdk_config` are persisted in the human-facing `[design]`/`[pdk]` sections and reconstructed into the flat `[params]` payload when loaded. This keeps `[design]`/`[pdk]`/`[flow]` in the same vocabulary as `ecc.toml` while the runtime parameter hub continues to provide step parameters, `config_overrides`, and back-filled results.
@@ -308,7 +308,7 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `use_slang` | `false` | runtime detection | Whether to use the slang front end to read SystemVerilog (default is Verilog mode) |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL source file list |
 | `final_netlist_file` | `output/gcd_Synthesis.v.gz` | step scheduling | Output gate-level netlist (consumed by floorplan) |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Golden netlist handed off for both LEC checks (exported before clock-gate mapping) |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Copy of the mapped netlist written after the last netlist transform; no LEC step reads it (`lec@Synthesis` reads the RTL, the others the synthesis netlist) |
 | `final_netlist_sim_file` | `…_sim.v.gz` | step scheduling | Netlist for simulation (contains SDF-related information) |
 | `synth_stat_json` / `synth_check_rpt` etc. | under `report/`, `feature/` | step scheduling | Statistics and check report outputs |
 | `keep_hierarchy` | `false` | template | Whether to preserve module hierarchy |
@@ -494,20 +494,21 @@ Enable it with one parameter in the project's `ecc.toml`:
 
 ```toml
 [flow]
-skip_steps = ["lec"]  # Enable diff_opt; the default is ["lec", "diff_opt"].
+skip_steps = []  # Enable diff_opt; the default is ["diff_opt"].
 ```
 
 `skip_steps` replaces the complete skip list; retain any other steps you want
-to skip. An empty list enables both synthesis LEC and `diff_opt`.
+to skip.
 Existing workspaces resume their saved ledgers; use a new workspace or
 `--overwrite` to apply a different policy.
 
 `skip_steps` (in `ecc.toml`, `home/params.toml`, and `project.json`
 `workspaces[].skip_steps`) may name any step of the rtl2gds chain, not only
-`lec`, `diff_opt`, `postRouteLec`, and `Timing optimization`; aliases such as
+`diff_opt`, `postRouteLec`, and `Timing optimization`; aliases such as
 `synth`, `cts`, and `TimingOpt` are accepted and unknown names are rejected.
-An absent key means the code default `["lec", "diff_opt"]`; `[]` runs every
-step. Whether a selection can run is decided by step capabilities — the design
+`lec` is no chain step (an LEC is inserted with `insert_steps`); a listed `lec`
+is ignored, so existing files keep working. An absent key means the code
+default `["diff_opt"]`; `[]` runs every step. Whether a selection can run is decided by step capabilities — the design
 data each step requires, the design data it can optionally use, and what it
 provides:
 
@@ -522,21 +523,33 @@ provides:
   for `sta`, `powerAnalysis`, and `Harden`); routing and STA after a skipped
   CTS use the pre-CTS (ideal clock) timing constraints.
 - The preset's final step is the flow target and cannot be skipped (`Harden`
-  for `rtl2gds`, `lec` for `synthesis_lec`), and neither can an explicit range
+  for `rtl2gds`, `Synthesis` for `syn_sta`), and neither can an explicit range
   start (`home/params.toml` `[flow] start`, `ecc run --from`, `project.json`
   `start_step`). A preset's first step may be skipped: skipping `Synthesis`
-  (and `lec`) enters the run at `preFloorplan` with the declared
+  enters the run at `preFloorplan` with the declared
   `[design] netlist` (postSynthesis input mode); the entry step's inputs are
   checked as before.
 - Skipping a signoff checker (`drc`, `lvs`, `sta`) leaves no signoff evidence:
   `ecc signoff check` reports that gate as `unknown`, never pass.
 
+`[flow] insert_steps` inserts an LEC check after a design-building step:
+`insert_steps = ["lec@Synthesis", "lec@CTS"]`. It may follow any step from
+`Synthesis` to `route` (`filler` has `postRouteLec`); LEC is the only
+insertable step, because it changes nothing. The inserted step is named
+`lec@<step>` (spaces as underscores: `lec@Timing_optimization`) and runs
+exactly when its step runs. `lec@Synthesis` compares the RTL with the
+synthesized netlist (kepler-formal SEC); any other compares that step's netlist
+with the `postRouteLec` golden netlist (see §11). It is part of a workspace's flow target (`home/params.toml`), so
+adding or removing one needs `--overwrite` or a new workspace; it is declared
+in `ecc.toml` only. See the user guide §8.6.
+
 `ecc flow plan` lists the preset's steps and checks a selection
-(`--enable`/`--disable` try one without writing `ecc.toml`); `ecc flow edit`
-picks the steps in a terminal checkbox list, or applies `--enable`/`--disable`
-(and `--max-parallel-steps N`) directly, and after confirmation (or with `--yes`)
-rewrites `[flow]` with `preset`, `lec_engine`, `skip_steps`, and
-`max_parallel_steps` stated explicitly. See the user guide §8.6.
+(`--enable`/`--disable`/`--insert`/`--remove` try one without writing
+`ecc.toml`); `ecc flow edit` picks the steps in a terminal checkbox list (`i`
+inserts an LEC), or applies those flags (and `--max-parallel-steps N`)
+directly, and after confirmation (or with `--yes`) rewrites `[flow]` with
+`preset`, `lec_engine`, `skip_steps`, and `max_parallel_steps` stated
+explicitly, plus `insert_steps` when an LEC is inserted. See the user guide §8.6.
 
 `ecc.toml` `[flow] max_parallel_steps` is a positive integer (default 4) that caps
 how many independent steps of one stage (the `#` column of `ecc flow plan`) `ecc run`
@@ -924,40 +937,42 @@ Configuration file `filler_ecc.json`. Sub-phases: load data → run filler → s
 |---|---|---|
 | `-min_filler_width` | 1 | Minimum filler width allowed to fill (in sites; gaps smaller than this are left unfilled) |
 
-## 11. lec / postroutelec (engine-selected LEC)
+## 11. LEC steps (kepler-formal)
 
-These steps have no reviewed JSON schema or `ecc param` fields. The project
-`ecc.toml` `[flow] lec_engine` selects the engine; `kepler_formal` is the code
-default, `yosys_lec` is the Yosys/Tcl implementation, and `lec_dual` (alias
-`dual`) runs both engines and aggregates their verdicts. The selected engine is
-recorded in the workspace flow ledger and determines the step directory and
-generated configuration:
+These steps have no reviewed JSON schema or `ecc param` fields. kepler-formal is
+the only LEC engine: `[flow] lec_engine` accepts `kepler_formal`, its default.
+The Yosys (`yosys_lec`) and dual (`lec_dual`) engines were removed; a workspace
+whose ledger records one of them is a `flow_mismatch` and must be recreated
+(`--overwrite` or a new workspace).
 
-| `lec_engine` | Default step directories | Generated configuration | Reports |
+| Step | Step directory | Generated configuration | Reports |
 |---|---|---|---|
-| `kepler_formal` (default) | `lec_kepler_formal/`, `postRouteLec_kepler_formal/` | `data/lec_config.yaml`, `script/run_lec.yaml` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, `report/miter_log.txt` |
-| `yosys_lec` | `lec_yosys_lec/`, `postRouteLec_yosys_lec/` | `data/lec_config.tcl`, `script/run_lec.tcl` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, plus failed-netlist evidence |
-| `lec_dual` | `lec_dual/`, `postRouteLec_dual/` plus both engine directories | per-engine generated configs | aggregate result plus per-engine reports |
+| `lec@<step>`, `postRouteLec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`, `script/run_lec.yaml` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, `report/miter_log.txt` |
 
-Both steps use the engine-neutral result contract `output/<design>_<step>_result.json`: `status` is `proven` or `incomplete`, and the file records both netlists' path, SHA-256, and size plus the report paths. A proof is accepted only while those identities still match the current files; an unproven or stale result fails the step.
+Every LEC step uses the result contract `output/<design>_<step>_result.json`: `status` is `proven` or `incomplete`, and the file records the golden and gate files' path, SHA-256, and size plus the report paths. A proof is accepted only while those identities still match the current files; an unproven or stale result fails the step.
 
 | Item | Content |
 |---|---|
-| `lec` input | The synthesis-mapped netlist is the gate; the declared `design.golden_netlist` (or the resolved step wiring) is the golden side. It sits immediately after synthesis and is **skipped by default** (`[flow] skip_steps` defaults to `["lec", "diff_opt"]`). |
+| `lec@Synthesis` input | The golden side is the RTL Synthesis read: its filelist, else its RTL file; the gate is the synthesized netlist. kepler-formal reads RTL only for sequential equivalence, so the config is `format: sv2v`, `verification: sec`, with no reset sequence. The RTL is passed as `sv_design1_flist` through a generated `data/rtl.f` that defines `SYNTHESIS` as Synthesis does and nests a filelist with `-F`, so its relative sources and `+incdir+` resolve against its own directory. The result records the identity of every file reading the RTL reads: the RTL file, or the filelist with its sources, the files under its include directories and each filelist it nests with `-F`, plus every file they `` `include `` (every file of that name in the including file's directory or an include directory, whichever the front end picks). Paths resolve as the operating system opens them, symbolic links followed. Editing any of them makes the proof stale; When the files the RTL reads cannot be identified (a filelist option other than `-F`, `+incdir+`, `-I`/`--include-directory`/`--isystem` and `+define+`, such as `-f`, `-v`, `-y` or `--libmap`; a path with an environment variable; an `` `include `` of a macro), the step fails before kepler-formal runs and names the entry. |
 | `postRouteLec` input | Golden priority: explicit step override → `design.golden_netlist` → synthesis-mapped netlist → original input. The `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
-| Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. |
+| Other `lec@<step>` input | Golden as for `postRouteLec`; the gate is the output netlist of the step it follows (any step from `preFloorplan` to `route`). The steps after it keep reading that step. Netlist checks are combinational (`format: verilog`, `verification: lec`). |
+| Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. Inserted LEC results stay in their step checklists. |
 
-Enable the synthesis LEC and optionally pin the engine with:
+How strong `lec@Synthesis` is: in our tests kepler-formal's SEC caught mutations
+of a small registered design, but proved three hand-made RTL mutations of `gcd`
+(one inverted the 16-bit `resp_msg` output) equivalent to the netlist of the
+correct RTL, while it caught the same inversion made in the netlist. Treat a
+pass as weaker evidence than the netlist checks.
+
+Check synthesis against the RTL with:
 
 ```toml
 [flow]
 preset = "rtl2gds"
-skip_steps = []
-lec_engine = "kepler_formal"  # yosys_lec | lec_dual (or dual)
+insert_steps = ["lec@Synthesis"]
 ```
 
-There is also a `synthesis_lec` preset (synthesis + `lec`) for standalone
-synthesis-level equivalence checking; it likewise requires `skip_steps = []`.
+The `synthesis_lec` preset runs Synthesis and `lec@Synthesis` alone.
 
 ## 12. rcx (ecc-tools)
 
@@ -1126,12 +1141,12 @@ ecc param set route.RT.-thread_number VALUE
 
 The temporary directory in `route_ecc.json` is generated by step scheduling and cannot be set through the CLI.
 
-### 15.7 lec, drc, lvs, postroutelec, and powerAnalysis
+### 15.7 Inserted LEC checks, drc, lvs, postroutelec, and powerAnalysis
 
-These steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, LEC uses the engine-generated configuration selected by `[flow] lec_engine` (see §11), LVS follows the tool default flow, and `powerAnalysis` has no explicit step config (the runner reuses `db_ecc.json` internally). Use these commands to confirm their actual configuration files:
+These steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, LEC steps use the kepler-formal configuration they generate (see §11), LVS follows the tool default flow, and `powerAnalysis` has no explicit step config (the runner reuses `db_ecc.json` internally). Use these commands to confirm their actual configuration files:
 
 ```bash
-ecc config lec
+ecc config lec@synthesis   # an inserted LEC check, by its step name
 ecc config drc
 ecc config lvs
 ecc config postroutelec
@@ -1214,4 +1229,4 @@ This section targets automation agents and batch scripts; it sets the boundaries
 
 Before tuning parameters, check which fields are actually public — run `ecc param list --all`, `ecc param show`, or the installed version's `--help` — then change them with `ecc param set` or `ecc param unset` in the scope that owns them. As a rule, do not edit `home/params.toml`, generated JSON/Tcl, or internal templates by hand. The one exception is the QoR reference's `qor_profile` and `qor_power_budget_w`: both are workspace parameters outside the CLI schema, and they must still follow the QoR document's semantics and revalidation rules. `run --set` only applies when creating a new workspace, and the override must be recorded as part of the candidate's provenance. When changing parameters on an existing workspace, first work out which steps are invalidated and what range must be rerun.
 
-A field mentioned in documentation but absent from the current public schema is not a usable interface. Configure flow policy through the project `ecc.toml` `[flow]` keys (`preset`, optional `start`/`end`, `skip_steps`, `lec_engine`, `max_parallel_steps`), not by hand-editing persisted workspace `home/params.toml` or `home/flow.json`; likewise do not hand-write QoR profiles/budgets or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.
+A field mentioned in documentation but absent from the current public schema is not a usable interface. Configure flow policy through the project `ecc.toml` `[flow]` keys (`preset`, optional `start`/`end`, `skip_steps`, `lec_engine`, `insert_steps`, `max_parallel_steps`), not by hand-editing persisted workspace `home/params.toml` or `home/flow.json`; likewise do not hand-write QoR profiles/budgets or unreviewed DreamPlace fields. If the CLI lacks a capability you need, record the version, the command output, and the impact — do not claim the configuration succeeded. Changing frequency, corners, constraints, or verification coverage changes what an experiment means: give it its own candidate and never compare it directly against the original result.

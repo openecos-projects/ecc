@@ -1,14 +1,10 @@
 """Flow steps in a workspace: where they live and the metrics they record."""
 
 from chipcompiler.data.step.directories import (
-    DUAL_STEP_DIRECTORIES,
     STEP_DIRECTORIES,
-    YOSYS_LEC_STEP_DIRECTORIES,
     StepDirectories,
     all_step_directories,
-    engine_step_directory,
     flow_step_directory,
-    inactive_lec_step_directories,
     is_step_directory_name,
     new_step_directory,
     next_step_index,
@@ -21,15 +17,11 @@ from chipcompiler.data.step.directories import (
 from chipcompiler.data.step.metrics import StepMetrics, load_metrics, save_metrics
 
 __all__ = [
-    "DUAL_STEP_DIRECTORIES",
-    "YOSYS_LEC_STEP_DIRECTORIES",
     "STEP_DIRECTORIES",
     "StepDirectories",
     "StepMetrics",
     "all_step_directories",
-    "engine_step_directory",
     "flow_step_directory",
-    "inactive_lec_step_directories",
     "is_step_directory_name",
     "load_metrics",
     "new_step_directory",

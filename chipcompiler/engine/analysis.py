@@ -158,7 +158,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
             (f"{step_id}_stat.json", f"{step_id}_check.rpt")
             if tool_id.lower() == "yosys"
             else ("run_lec_status.rpt", "equiv_status.rpt")
-            if tool_id.lower() == "yosys_lec"
+            if tool_id.lower() in LEC_STEP_TOOLS
             else (f"{step_id}.db.rpt", f"{step_id}.rpt")
         )
         for report_name in report_names:

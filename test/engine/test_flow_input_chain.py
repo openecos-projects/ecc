@@ -61,7 +61,7 @@ def _build(
     *,
     step_directory=None,
 ):
-    builder = build_kepler_step if tool in {"kepler_formal", "yosys_lec"} else build_ecc_step
+    builder = build_kepler_step if tool == "kepler_formal" else build_ecc_step
     return builder(
         workspace=workspace,
         step_name=step_name,

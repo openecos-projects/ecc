@@ -1,9 +1,4 @@
-"""synthesis_lec preset vs skip-policy interaction on `ecc run`.
-
-The preset exists to run the synthesis LEC the default policy skips, so
-a fresh creation needs an explicit `skip_steps = []` while an existing
-ledger is never re-filtered.
-"""
+"""Presets and the skip policy on `ecc run`."""
 
 import json
 import os
@@ -12,17 +7,6 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.project.manifest import load_manifest
-from test.flow_fixture import step_fields
-
-
-def _enable_lec_in(project_dir):
-    """Append an explicit empty skip list — the only LEC enable path."""
-    toml_path = os.path.join(project_dir, "ecc.toml")
-    with open(toml_path) as f:
-        toml = f.read()
-    toml += "\nskip_steps = []\n"
-    with open(toml_path, "w") as f:
-        f.write(toml)
 
 
 @pytest.mark.parametrize(
@@ -45,10 +29,6 @@ def test_run_dispatches_builder_for_preset(
 ):
     project_dir = create_cli_project()
     set_flow_preset(project_dir, preset)
-    if preset == "synthesis_lec":
-        # The preset needs the synthesis LEC the default policy skips;
-        # an explicit empty skip list is the only enable path.
-        _enable_lec_in(project_dir)
     markers = patch_all_flow_builders(monkeypatch)
 
     rc = cli_main.run(["run", "--project", project_dir])
@@ -57,21 +37,7 @@ def test_run_dispatches_builder_for_preset(
     assert flow_mocks.flow.instances[0].added_steps == markers[builder_attr]
 
 
-def test_synthesis_lec_preset_conflicts_with_default_skip_policy(
-    tmp_path, capsys, create_cli_project, flow_mocks, set_flow_preset
-):
-    project_dir = create_cli_project()
-    set_flow_preset(project_dir, "synthesis_lec")
-    # No skip_steps declared: the code default skips lec.
-
-    rc = cli_main.run(["run", "--project", project_dir])
-
-    assert rc == 1
-    assert "skip_steps = []" in capsys.readouterr().out
-    assert flow_mocks.capture["create_kwargs"] is None
-
-
-@pytest.mark.parametrize("skip_steps", [None, ["lec"], ["lec", "diff_opt"]])
+@pytest.mark.parametrize("skip_steps", [None, [], ["diff_opt"]])
 def test_run_diff_opt_is_optional_and_keeps_diff_sizing(
     monkeypatch, create_cli_project, flow_mocks, skip_steps
 ):
@@ -90,53 +56,10 @@ def test_run_diff_opt_is_optional_and_keeps_diff_sizing(
     cts_index = names.index("CTS")
     expected = (
         ["place", "diff_opt", "diff_sizing", "CTS"]
-        if skip_steps == ["lec"]
+        if skip_steps == []
         else ["place", "diff_sizing", "CTS"]
     )
     assert names[place_index : cts_index + 1] == expected
-
-
-def test_synthesis_lec_preset_conflict_never_fires_for_existing_ledger(
-    tmp_path, create_cli_project, flow_mocks, set_flow_preset, monkeypatch
-):
-    from chipcompiler.data.workspace_config import save_workspace_config
-
-    monkeypatch.setattr("chipcompiler.data.pdk.PDK.validate", lambda _self: None)
-    project_dir = create_cli_project()
-    set_flow_preset(project_dir, "synthesis_lec")
-    run_dir = os.path.join(project_dir, "default")
-    home = os.path.join(run_dir, "home")
-    os.makedirs(home, exist_ok=True)
-    with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump(
-            {
-                "schema_version": 2,
-                "steps": [
-                    {
-                        "name": "Synthesis",
-                        "tool": "yosys",
-                        "state": "Success",
-                        **step_fields("Synthesis", "yosys"),
-                    },
-                    {
-                        "name": "lec",
-                        "tool": "yosys_lec",
-                        "state": "Success",
-                        **step_fields("lec", "yosys_lec"),
-                    },
-                ],
-            },
-            f,
-        )
-    assert save_workspace_config(
-        run_dir,
-        {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
-        {"preset": "synthesis_lec"},
-    )
-
-    rc = cli_main.run(["run", "--project", project_dir, "--resume"])
-
-    assert rc == 0
 
 
 def test_run_skipping_synthesis_enters_with_the_declared_netlist(
@@ -153,7 +76,7 @@ def test_run_skipping_synthesis_enters_with_the_declared_netlist(
     with open(toml_path) as f:
         toml = f.read()
     toml = toml.replace("[design]\n", '[design]\nnetlist = "gcd_netlist.v"\n')
-    toml += '\nskip_steps = ["Synthesis", "lec"]\n'
+    toml += '\nskip_steps = ["Synthesis"]\n'
     with open(toml_path, "w") as f:
         f.write(toml)
 

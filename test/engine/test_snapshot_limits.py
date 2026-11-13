@@ -115,9 +115,9 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
                 "steps": [
                     {
                         "name": "postRouteLec",
-                        "tool": "yosys_lec",
+                        "tool": "kepler_formal",
                         "state": "Success",
-                        **step_fields("postRouteLec", "yosys_lec"),
+                        **step_fields("postRouteLec", "kepler_formal"),
                     },
                     {
                         "name": "RCX",
@@ -132,7 +132,7 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
-    lec_report = root / "postRouteLec_yosys_lec" / "report"
+    lec_report = root / "postRouteLec_kepler_formal" / "report"
     lec_report.mkdir(parents=True)
     (lec_report / "run_lec_status.rpt").write_text("status", encoding="utf-8")
     (lec_report / "equiv_status.rpt").write_text("equiv", encoding="utf-8")
@@ -148,8 +148,8 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
         if artifact["kind"] == "report_text" and artifact["stepId"] == "postRouteLec"
     ]
     assert lec_reports == [
-        "postRouteLec_yosys_lec/report/run_lec_status.rpt",
-        "postRouteLec_yosys_lec/report/equiv_status.rpt",
+        "postRouteLec_kepler_formal/report/run_lec_status.rpt",
+        "postRouteLec_kepler_formal/report/equiv_status.rpt",
     ]
     rcx_facts = [
         artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "rcx_feature_facts"

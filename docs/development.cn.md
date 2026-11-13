@@ -444,7 +444,7 @@ config_param(
 
 #### 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围：先构建 preset 的步骤链（先做 skip 过滤），再经 `_TOOL_COMPONENTS` 把每个步骤的工具映射为组件（`ecc` → ecc-tools，`yosys`/`yosys_lec` → yosys，`dreamplace` → dreamplace，`sizer` → sizer），因此每个所需组件恰好探查一次。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围：先构建 preset 的步骤链（先做 skip 过滤），再经 `_TOOL_COMPONENTS` 把每个步骤的工具映射为组件（`ecc` → ecc-tools，`yosys` → yosys，`kepler_formal` → kepler-formal，`dreamplace` → dreamplace，`sizer` → sizer），因此每个所需组件恰好探查一次。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
 
 #### 扩展签核（`ecc signoff inspect/export`）
 
@@ -507,7 +507,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 20 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 22 步；除 `postRouteLec` 外的 LEC 检查通过 `[flow] insert_steps` 插入，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
@@ -552,23 +552,25 @@ CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM �
 模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
 用于签核。普通项目不会自动使用这个文件。
 
-三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
+rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不限于三个可选 step：placement 寄生优化（`diff_opt`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
 策略在两个配置面声明，优先级与其他键一致（ecc.toml 显式声明覆盖 project.json 基准层）：
 
 1. `ecc.toml` → `[flow] skip_steps`（项目级；显式声明——包括显式空数组——优先于 workspace entry），
 2. `project.json` → `workspaces[].skip_steps`（per-workspace 基准层），
-3. 两者都未声明时的代码默认 `("lec",)`。
+3. 两者都未声明时的代码默认 `("diff_opt",)`。
 
 两个配置面声明的策略实际值不同时，`ecc run`/`ecc check` 会发出 `skip_steps_shadowed` 警告并指明生效来源。
 
-显式 `skip_steps = []` 表示全部执行，是启用综合级 LEC 的唯一方式。有效策略包含 `lec` 时选择 `synthesis_lec` preset 是创建期配置错误；解决办法是 `skip_steps = []`。条目接受与 flow 范围相同的别名（如 `LEC`、`postlec`、`TimingOpt`），并按可跳过集合校验。
+显式 `skip_steps = []` 表示全部执行，包括 `diff_opt`。条目接受与 flow 范围相同的别名（如 `postlec`、`synth`、`cts`、`TimingOpt`），并按链中的 step 校验，未知名称会被拒绝。`lec` 已不是链中的 step：`resolve_skip_steps` 会丢弃它，列出它的旧文件仍可加载。project.json 与 GUI 仍把 `LEC` 视为可跳过的范围 step，因此 `manifest_flow.manifest_synthesis_lec` 把声明策略保留 `LEC` 的 workspace 条目转成插入步骤 `lec@Synthesis`，以 `LEC` 为边界的范围改以 Synthesis 加该插入步骤为边界（`manifest_flow.entry_flow_config`；`manifest.manifest_step_name` 把 `lec@Synthesis` 映射回 `LEC`）。
+
+`[flow] insert_steps`（如 `["lec@CTS"]`）在一个构建设计的 step 之后插入 LEC，锚点可为 `rtl2gds.lec_insert_anchors()` 中任一 step（`Synthesis` .. `route`）。LEC 是 `data.types.INSERTABLE_FLOW_STEPS` 的唯一条目：它不修改也不提供设计数据，`FlowInputResolver` 本就跳过 LEC 记录，因此其后的链不变。插入步骤的 ledger 名为 `lec@<step>`（空格换成下划线；`rtl2gds.inserted_step_name` / `parse_inserted_step`），每个锚点唯一，各按名称索引的层（ledger、`req.json` 上游链接、`--from/--only`、snapshot）照常工作；`flow_step_policy` 把它解析为 `lec` 策略。插入在 skip 过滤与范围切片之后进行（`rtl2gds.insert_flow_steps`），覆盖所有构建 ledger 的路径（`build_dynamic_flow_data`、`run_prepare.py` 的新建 run、reconcile 目标、`workspace_reset`），因此插入步骤当且仅当其锚点存在时存在。`EngineFlow.create_step_workspaces` 连接 golden：`lec@Synthesis` 取 Synthesis 读入的 RTL（`tools.yosys.builder.synthesis_rtl`：filelist，否则 RTL 文件），其余插入的 LEC 取 `postRouteLec` 的 golden。`tools.kepler_formal.builder.checks_rtl` 为 `lec@Synthesis` 选择 kepler-formal 的 SEC 配置（`format: sv2v`、`verification: sec`）。RTL 经生成的 `data/rtl.f`（`sec_rtl_filelist_text`）以 `sv_design1_flist` 传入：先 `+define+SYNTHESIS`（与 Synthesis 读取方式一致），再是 RTL 文件或 `-F <filelist>`，使 filelist 的相对路径源文件与 `+incdir+` 相对其自身目录、而非 kepler-formal 运行的 step 目录解析。runner 原样读入 RTL，并接受 SEC 的双轨证明措辞（`No binary-defined difference was found.`）。`synthesis_lec` preset 构建 `Synthesis` + `lec@Synthesis`。`insert_steps` 与 `skip_steps`、`lec_engine` 同属 `workspace_config.FLOW_POLICY_KEYS`，是持久化 flow 目标（`home/params.toml` `_flow`）与 mismatch 检查的一部分。ECOS Studio 尚不认识插入步骤名（`flowStepRegistry.ts` 把未知 step 归一为 `Synth`）。`ecc flow edit` 的交互列表中按 `i` 插入 LEC，或用 `--insert`/`--remove`；有插入时一并写出 `insert_steps`。
 
 ```toml
 [flow]
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+skip_steps = ["diff_opt"]
+insert_steps = ["lec@Synthesis"]
 ```
 
 ### 报告
@@ -614,7 +616,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# 可选：skip_steps = ["lec"]（默认）；[] 全部执行（启用 LEC）
+# 可选：skip_steps = ["diff_opt"]（默认）；可列出链中任一 step（用 `ecc flow plan` 检查）；[] 全部执行
 ```
 
 filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["rtl/filelist.f"]`。多 RTL 源应列在 filelist 里，而不是写多个 `design.rtl` 条目。

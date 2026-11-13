@@ -19,7 +19,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 
-from chipcompiler.project.manifest import _CANONICAL_TO_MANIFEST_STEP
+from chipcompiler.project.manifest import manifest_step_name
 from chipcompiler.project.manifest_write import now_iso, update_manifest
 
 logger = logging.getLogger(__name__)
@@ -52,10 +52,7 @@ def flow_range_from_ledger(flow_data: object) -> tuple[str, str] | None:
             names.append(name)
     if not names:
         return None
-    return (
-        _CANONICAL_TO_MANIFEST_STEP.get(names[0], names[0]),
-        _CANONICAL_TO_MANIFEST_STEP.get(names[-1], names[-1]),
-    )
+    return manifest_step_name(names[0]), manifest_step_name(names[-1])
 
 
 _LEDGER_TO_MANIFEST_STATUS = {

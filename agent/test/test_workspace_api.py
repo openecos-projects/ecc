@@ -26,6 +26,7 @@ from agent.workspace_api import (
     build_agent_flow_for_workspace,
 )
 from chipcompiler.data import StateEnum
+from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.workspace.layout import EccOutput
 from test.flow_fixture import step_fields
 
@@ -215,6 +216,41 @@ def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
         assert not (step_root / "output").exists()
 
 
+def test_candidate_clone_skips_the_indexed_directories_a_ledger_records(tmp_path):
+    steps = [("place", "dreamplace"), ("CTS", "ecc"), ("lec@CTS", "kepler_formal")]
+    directories = [
+        new_step_directory(name, tool, index=index)
+        for index, (name, tool) in enumerate(steps, start=7)
+    ]
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {"name": name, "tool": tool, "directory": directory}
+                    for (name, tool), directory in zip(steps, directories, strict=True)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    for directory in directories:
+        (tmp_path / directory / "output").mkdir(parents=True)
+        (tmp_path / directory / "output" / "artifact").write_bytes(b"x")
+    workspace = SimpleNamespace(directory=tmp_path)
+
+    candidate, _, _ = _create_candidate_workspace(
+        _EccApi(workspace), workspace, "candidate-1", None, "CTS"
+    )
+
+    # The rerun steps (CTS and the check inserted after it) start without outputs.
+    assert [
+        (Path(candidate.directory) / directory / "output").exists() for directory in directories
+    ] == [True, False, False]
+
+
 def test_candidate_clone_rejects_invalid_flow_state(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
@@ -267,9 +303,9 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
                             **step_fields("Synthesis", "yosys"),
                         },
                         {
-                            "name": "lec",
-                            "tool": "yosys_lec",
-                            **step_fields("lec", "yosys_lec"),
+                            "name": "lec@Synthesis",
+                            "tool": "kepler_formal",
+                            **step_fields("lec@Synthesis", "kepler_formal"),
                         },
                         {
                             "name": "Floorplan",
@@ -299,7 +335,7 @@ _CURRENT_FLOW_STEPS = [
     {"name": "RCX", "tool": "ecc"},
     {"name": "sta", "tool": "ecc"},
     {"name": "lvs", "tool": "ecc"},
-    {"name": "postRouteLec", "tool": "yosys_lec"},
+    {"name": "postRouteLec", "tool": "kepler_formal"},
     {"name": "drc", "tool": "ecc"},
     {"name": "Harden", "tool": "ecc"},
 ]

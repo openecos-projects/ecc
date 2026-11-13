@@ -5,7 +5,7 @@ import typer
 from chipcompiler.cli.command_handlers.flow import flow_list, flow_show, flow_validate
 from chipcompiler.cli.command_handlers.flow_selection import flow_edit, flow_plan
 from chipcompiler.cli.core.apps import create_app
-from chipcompiler.cli.core.completion import complete_flow_step
+from chipcompiler.cli.core.completion import complete_flow_step, complete_inserted_step
 from chipcompiler.cli.core.inputs import (
     FlowEditInput,
     FlowListInput,
@@ -69,6 +69,11 @@ def _step_toggle(flag: str, help_text: str) -> Any:
     return typer.Option(flag, help=help_text, autocompletion=complete_flow_step)
 
 
+def _step_insertion(flag: str, help_text: str) -> Any:
+    """A repeatable ``STEP@AFTER`` option with shell completion."""
+    return typer.Option(flag, help=help_text, autocompletion=complete_inserted_step)
+
+
 @flow_app.command("plan")
 def plan_cmd(
     *,
@@ -78,20 +83,30 @@ def plan_cmd(
     disable: Annotated[
         list[str] | None, _step_toggle("--disable", "Also skip STEP (repeatable)")
     ] = None,
+    insert: Annotated[
+        list[str] | None,
+        _step_insertion("--insert", "Also insert lec@AFTER, an LEC after AFTER (repeatable)"),
+    ] = None,
+    remove: Annotated[
+        list[str] | None, _step_insertion("--remove", "Also remove inserted lec@AFTER (repeatable)")
+    ] = None,
     project: ProjectOption = None,
     plain: PlainOption = False,
     json_output: JsonOption = False,
 ) -> None:
     """Show the project's flow steps and check that the selection can run.
 
-    --enable/--disable try a selection without changing ecc.toml. Exits 1 when
-    an enabled step lacks design data it requires or an entry input is missing.
+    --enable/--disable/--insert/--remove try a selection without changing
+    ecc.toml. Exits 1 when an enabled step lacks design data it requires or an
+    entry input is missing.
     """
     command_input = FlowPlanInput(
         output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         enable=tuple(enable or ()),
         disable=tuple(disable or ()),
+        insert=tuple(insert or ()),
+        remove=tuple(remove or ()),
     )
     execute_command("flow", command_input, flow_plan, render_key="flow:plan")
 
@@ -102,6 +117,13 @@ def edit_cmd(
     enable: Annotated[list[str] | None, _step_toggle("--enable", "Run STEP (repeatable)")] = None,
     disable: Annotated[
         list[str] | None, _step_toggle("--disable", "Skip STEP (repeatable)")
+    ] = None,
+    insert: Annotated[
+        list[str] | None,
+        _step_insertion("--insert", "Insert lec@AFTER, an LEC after AFTER (repeatable)"),
+    ] = None,
+    remove: Annotated[
+        list[str] | None, _step_insertion("--remove", "Remove inserted lec@AFTER (repeatable)")
     ] = None,
     max_parallel_steps: Annotated[
         int | None,
@@ -120,16 +142,19 @@ def edit_cmd(
 ) -> None:
     """Choose the project's flow steps and write them to ecc.toml [flow].
 
-    Without --enable/--disable/--max-parallel-steps, opens a checkbox list in
-    the terminal. The changes are shown for confirmation before writing, unless
-    --yes is given (required without a terminal). The preset, LEC engine,
-    skip_steps and max_parallel_steps are always written explicitly.
+    Without --enable/--disable/--insert/--remove/--max-parallel-steps, opens a
+    checkbox list in the terminal. The changes are shown for confirmation
+    before writing, unless --yes is given (required without a terminal). The
+    preset, LEC engine, skip_steps and max_parallel_steps are always written
+    explicitly; insert_steps is written when a step is inserted.
     """
     command_input = FlowEditInput(
         output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         enable=tuple(enable or ()),
         disable=tuple(disable or ()),
+        insert=tuple(insert or ()),
+        remove=tuple(remove or ()),
         max_parallel_steps=max_parallel_steps,
         yes=yes,
     )

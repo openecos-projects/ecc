@@ -1,15 +1,9 @@
 """Flow ledger steps record the directory their step is built in."""
 
-from pathlib import Path
-
 import pytest
 
-from chipcompiler.data import LecDualStep, OriginDesign, Workspace, WorkspaceStep
-from chipcompiler.data.step import (
-    engine_step_directory,
-    new_step_directory,
-    recorded_step_directory,
-)
+from chipcompiler.data import KeplerFormalStep, OriginDesign, Workspace, WorkspaceStep
+from chipcompiler.data.step import new_step_directory, recorded_step_directory
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine.flow import EngineFlow
 
@@ -27,7 +21,12 @@ def _flow(tmp_path, ledger) -> EngineFlow:
 
 def _rtl2gds_ledger():
     return build_dynamic_flow_data(
-        {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": [], "lec_engine": "dual"}
+        {
+            "start_step": "Synthesis",
+            "end_step": "Harden",
+            "skip_steps": [],
+            "insert_steps": ["lec@Synthesis"],
+        }
     )
 
 
@@ -68,13 +67,12 @@ def test_a_recorded_directory_is_where_the_step_is_built(tmp_path):
     flow = _flow(tmp_path, ledger)
 
     place = flow.get_workspace_step("place")
-    lec = flow.get_workspace_step("lec")
-    assert place is not None and isinstance(lec, LecDualStep)
-    assert (_directory_name(place), _directory_name(lec)) == ("07_place_dreamplace", "02_lec_dual")
-    assert {name: _directory_name(step) for name, step in lec.engine_steps.items()} == {
-        "yosys_lec": "02_lec_yosys_lec",
-        "kepler_formal": "02_lec_kepler_formal",
-    }
+    lec = flow.get_workspace_step("lec@Synthesis")
+    assert place is not None and isinstance(lec, KeplerFormalStep)
+    assert (_directory_name(place), _directory_name(lec)) == (
+        "07_place_dreamplace",
+        "02_lec@Synthesis_kepler_formal",
+    )
 
 
 @pytest.mark.parametrize(
@@ -82,7 +80,7 @@ def test_a_recorded_directory_is_where_the_step_is_built(tmp_path):
     [
         ("Synthesis", "yosys", None, "Synthesis_yosys"),
         ("Timing optimization", "sizer", 11, "11_timing_optimization_sizer"),
-        ("postRouteLec", "lec_dual", 18, "18_postRouteLec_dual"),
+        ("postRouteLec", "kepler_formal", 18, "18_postRouteLec_kepler_formal"),
         ("place", "ecc", 7, "07_place_ecc"),
     ],
 )
@@ -94,11 +92,6 @@ def test_new_step_directory_names(step, tool, index, expected):
 def test_a_recorded_directory_must_be_a_single_name(directory):
     with pytest.raises(ValueError, match="single directory name"):
         recorded_step_directory({"name": "place", "tool": "dreamplace", "directory": directory})
-
-
-def test_engine_directories_of_a_non_dual_step_are_rejected():
-    with pytest.raises(ValueError, match="not a dual LEC step directory"):
-        engine_step_directory(Path("/ws/02_lec_kepler_formal"), "yosys_lec")
 
 
 def test_step_directories_use_recorded_names(tmp_path):
@@ -152,12 +145,11 @@ def test_step_directories_read_the_persisted_ledger(tmp_path):
     assert StepDirectories.at(tmp_path).name("RCX") == "18_RCX_ecc"
 
 
-@pytest.mark.parametrize("tool", ["yosys_lec", "lec_dual", "kepler_formal"])
-def test_unrecorded_ledger_steps_are_rejected_regardless_of_engine(tmp_path, tool):
+def test_unrecorded_ledger_steps_are_rejected(tmp_path):
     from chipcompiler.data.step import StepDirectories
 
     with pytest.raises(ValueError, match="no recorded directory"):
-        StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": tool}])
+        StepDirectories.from_records(tmp_path, [{"name": "postRouteLec", "tool": "kepler_formal"}])
 
 
 def test_an_inherited_indexed_directory_wins_over_a_legacy_one(tmp_path):

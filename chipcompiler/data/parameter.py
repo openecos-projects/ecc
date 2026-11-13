@@ -110,9 +110,6 @@ ICS55_DESIGN_PARAMETERS = {
         "top_module": "gcd",
         "clock": "clk",
         "frequency_max": 100,
-        "lec": {
-            "use_undef": True,
-        },
     }
 }
 

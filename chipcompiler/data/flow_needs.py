@@ -10,7 +10,8 @@ A step's ``after`` lists those producers, nearest first, minus any producer that
 every capability the step takes from it is also taken from by another producer
 of the step (that producer's own capability map names it). So ``sta`` does not
 follow ``filler`` (``RCX`` already does) but still follows ``CTS``, whose clock
-tree nothing else it follows hands on.
+tree nothing else it follows hands on. An inserted step (``lec@CTS``) also
+follows the step it is inserted after, whose netlist it checks, first.
 """
 
 from collections.abc import Sequence
@@ -34,6 +35,8 @@ class StepNeeds:
 
 def plan_needs(steps: Sequence[PlannedStep]) -> tuple[StepNeeds, ...]:
     """The needs of every planned step, in step order."""
+    from chipcompiler.rtl2gds import parse_inserted_step
+
     policies = [flow_step_policy(step.name) for step in steps]
 
     def producer_index(index: int, item: DesignData) -> int | None:
@@ -67,7 +70,11 @@ def plan_needs(steps: Sequence[PlannedStep]) -> tuple[StepNeeds, ...]:
                 if source == producer
             )
 
-        return tuple(steps[producer].name for producer in producers if not covered(producer))
+        names = tuple(steps[producer].name for producer in producers if not covered(producer))
+        checked = parse_inserted_step(steps[index].name) if steps[index].inserted else None
+        if checked is None:
+            return names
+        return (checked[1], *(name for name in names if name != checked[1]))
 
     return tuple(
         StepNeeds(

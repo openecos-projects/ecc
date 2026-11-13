@@ -233,7 +233,7 @@ Report exhausted budgets or unmet goals; do not automatically add validation run
 
 required_checkers is an independent acceptance requirement. It does not enable checks
 skipped by the flow policy. For synthesis-level LEC, verify that the flow actually
-includes/enables it and that public configuration is sufficient. If not, disclose the
+inserts it (`lec@Synthesis` in `[flow] insert_steps`) and that public configuration is sufficient. If not, disclose the
 gap instead of equating declaration with verification. Inspect real postRouteLec
 proven evidence rather than only execution success. The signoff profile does not
 replace required checkers, all checklist items, or additional physical acceptance.
@@ -968,7 +968,7 @@ verify inputs, parameters, successful states, and complete artifacts.
 The usual early rtl2gds sequence is:
 
 ```text
-Synthesis → lec (subject to the existing skip policy) → preFloorplan → macroPlacement
+Synthesis → lec@Synthesis (when [flow] insert_steps inserts it) → preFloorplan → macroPlacement
 → postFloorplan → place → CTS → legalization → Timing optimization → route → …
 ```
 

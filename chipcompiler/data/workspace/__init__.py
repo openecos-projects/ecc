@@ -28,6 +28,9 @@ from ..types import (
     StateEnum as StateEnum,
 )
 from ..workspace_config import (
+    FLOW_POLICY_KEYS,
+)
+from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
 )
 from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
@@ -995,14 +998,15 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
-    # The skip policy, the LEC engine, the selected range, and the resulting
-    # ledger are fully resolved before anything on disk is touched: invalid
-    # configuration (including a preset target whose endpoint the policy
+    # The skip policy, the LEC engine, the inserted steps, the selected range,
+    # and the resulting ledger are fully resolved before anything on disk is
+    # touched: invalid configuration (including a preset target whose endpoint the policy
     # skips) is an error, never a partial workspace.
-    from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_insert_steps, resolve_lec_engine, resolve_skip_steps
 
     resolve_skip_steps(flow_config)
     resolve_lec_engine(flow_config)
+    resolve_insert_steps(flow_config)
     dynamic_flow_data = build_dynamic_flow_data(flow_config)
 
     # create workspace directory
@@ -1109,16 +1113,14 @@ def create_workspace(
             steps[0].setdefault("info", {})["spef"] = str(workspace.pdk.spef)
         if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-    elif isinstance(flow_config, dict) and (
-        "skip_steps" in flow_config or "lec_engine" in flow_config
-    ):
+    elif isinstance(flow_config, dict) and any(key in flow_config for key in FLOW_POLICY_KEYS):
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
         from ..workspace_config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
-            {key: flow_config[key] for key in ("skip_steps", "lec_engine") if key in flow_config}
+            {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
         )
 
     if workspace.pdk.root:

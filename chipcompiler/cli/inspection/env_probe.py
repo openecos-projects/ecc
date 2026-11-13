@@ -225,35 +225,6 @@ def probe_kepler_formal() -> ProbeResult:
     return ProbeResult("kepler-formal", FAIL, remediation=get_kepler_formal_not_found_error())
 
 
-def probe_lec_dual() -> ProbeResult:
-    """Dual cross-checking preflight: probe both physical engines separately.
-
-    Degraded mode is allowed: the step runs the available engine and the
-    aggregate stays non-proven, so one missing engine is a pass with the
-    degradation named; only both missing is a failure.
-    """
-    from chipcompiler.data import LECEngineEnum
-    from chipcompiler.tools.lec_dual.utility import engine_availability
-
-    probed = [(engine, *engine_availability(engine)) for engine in LECEngineEnum.DUAL.spawn_engines]
-    available = [engine.value for engine, ok, _reason in probed if ok]
-    missing = [f"{engine.value}: {reason}" for engine, ok, reason in probed if not ok]
-    detail = f"available: {', '.join(available) or 'none'}"
-    if not missing:
-        return ProbeResult("lec-dual", PASS, detail=detail)
-    if available:
-        return ProbeResult(
-            "lec-dual",
-            PASS,
-            detail=f"{detail} (degraded: missing {'; '.join(missing)})",
-        )
-    return ProbeResult(
-        "lec-dual",
-        FAIL,
-        remediation="lec_dual needs at least one LEC engine: " + "; ".join(missing),
-    )
-
-
 def probe_pdk(cfg) -> ProbeResult:
     if cfg is None:
         return ProbeResult(
@@ -299,7 +270,6 @@ _PROBES = {
     "klayout": probe_klayout,
     "sizer": probe_sizer,
     "kepler-formal": probe_kepler_formal,
-    "lec-dual": probe_lec_dual,
 }
 
 ALL_COMPONENTS = (*_PROBES, "pdk")
@@ -330,23 +300,23 @@ def probe_environment(components, *, cfg=None, include_slang=True) -> list[Probe
 _TOOL_COMPONENTS = {
     "ecc": "ecc-tools",
     "yosys": "yosys",
-    "yosys_lec": "yosys",
     "kepler_formal": "kepler-formal",
-    "lec_dual": "lec-dual",
     "dreamplace": "dreamplace",
     "sizer": "sizer",
 }
 
 
 def probe_components_for_preset(
-    preset: str, *, skip: tuple[str, ...] = (), lec_engine=None
+    preset: str, *, skip: tuple[str, ...] = (), lec_engine=None, insert: tuple[str, ...] = ()
 ) -> tuple[str, ...]:
     """Components a flow preset needs at minimum before it can start.
 
     The PDK is not probed here: `ecc run` already validates it through
     validate_project_config, and the slang check is left to the synthesis
     step's existing fail-fast so preflight stays fast. Skipped steps are
-    filtered out first, so their tools are never probed.
+    filtered out first, so their tools are never probed; inserted steps are
+    added, so an inserted LEC probes the LEC engine even when postRouteLec
+    is skipped.
     """
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.data import DEFAULT_LEC_ENGINE
@@ -354,6 +324,7 @@ def probe_components_for_preset(
     engine = DEFAULT_LEC_ENGINE if lec_engine is None else lec_engine
     steps = rtl2gds_api.substitute_lec_engine(rtl2gds_api.get_flow_builders()[preset](), engine)
     steps = rtl2gds_api.filter_flow_steps(steps, skip)
+    steps = rtl2gds_api.insert_flow_steps(steps, insert, engine)
     return probe_components_for_steps(steps)
 
 
@@ -368,6 +339,6 @@ def probe_components_for_steps(steps) -> tuple[str, ...]:
     mapped = {_TOOL_COMPONENTS.get(tool) for tool in tools}
     return tuple(
         component
-        for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "kepler-formal", "lec-dual")
+        for component in ("ecc-tools", "yosys", "dreamplace", "sizer", "kepler-formal")
         if component in mapped
     )

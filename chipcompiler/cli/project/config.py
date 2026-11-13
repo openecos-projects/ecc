@@ -41,6 +41,9 @@ class ProjectConfig:
     # Declared [flow] lec_engine spelling; None when the key is absent (the
     # code default engine then applies).
     flow_lec_engine: str | None = None
+    # Declared [flow] insert_steps spelling (``["lec@CTS"]``); None when the
+    # key is absent (nothing is inserted).
+    flow_insert_steps: list[str] | None = None
     # Declared [flow] max_parallel_steps; None when the key is absent (the code
     # default then applies). A run-time knob only: it is never stored in the
     # workspace and does not take part in flow selection.
@@ -120,6 +123,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     # instead of silently dropping them.
     skip_steps = flow.get("skip_steps")
     lec_engine = flow.get("lec_engine")
+    insert_steps = flow.get("insert_steps")
     max_parallel_steps = flow.get("max_parallel_steps")
 
     cfg = ProjectConfig(
@@ -139,6 +143,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         flow_preset=_str(flow.get("preset", "")),
         flow_skip_steps=skip_steps,
         flow_lec_engine=lec_engine,
+        flow_insert_steps=insert_steps,
         flow_max_parallel_steps=max_parallel_steps,
         config_path=config_path,
         project_dir=project_dir,
@@ -284,13 +289,24 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
     if "flow.skip_steps" in cfg._explicit_keys:
-        from chipcompiler.cli.project.flow_selection import selection_errors
         from chipcompiler.rtl2gds import resolve_skip_steps
 
         try:
             resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
         except ValueError as exc:
             errors.append(str(exc))
+
+    if "flow.insert_steps" in cfg._explicit_keys:
+        from chipcompiler.rtl2gds import resolve_insert_steps
+
+        try:
+            resolve_insert_steps({"insert_steps": cfg.flow_insert_steps})
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    if cfg._explicit_keys & {"flow.skip_steps", "flow.insert_steps"}:
+        from chipcompiler.cli.project.flow_selection import selection_errors
+
         errors.extend(selection_errors(cfg, None))
 
     if "flow.lec_engine" in cfg._explicit_keys:

@@ -1,15 +1,17 @@
 # pyright: strict
 """``ecc flow plan`` and ``ecc flow edit``: the project's step selection.
 
-Both read the selection from ``ecc.toml`` (like ``ecc param``); a project.json
-workspace entry layers beneath it only when the selector resolves one. ``edit``
-writes the whole ``[flow]`` selection back to ``ecc.toml``, with the project's
-``max_parallel_steps`` (a run-time setting that is not part of the selection).
+Both read the selection (skipped and inserted steps) from ``ecc.toml`` (like
+``ecc param``); a project.json workspace entry layers beneath it only when the
+selector resolves one. ``edit`` writes the whole ``[flow]`` selection back to
+``ecc.toml``, with the project's ``max_parallel_steps`` (a run-time setting
+that is not part of the selection).
 """
 
 import os
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.inputs import FlowEditInput, FlowPlanInput
@@ -32,10 +34,20 @@ Record = dict[str, object]
 Confirm = Callable[[Sequence[Record]], bool]
 
 
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """The chosen steps of a preset: skipped chain steps and inserted steps."""
+
+    skip_steps: tuple[str, ...]
+    insert_steps: tuple[str, ...]
+
+
 def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.design_inputs import validate_entry_inputs
     from chipcompiler.cli.project.flow_plan_view import plan_view, view_records
     from chipcompiler.cli.project.flow_selection import (
+        changed_insert_steps,
+        effective_insert_steps,
         effective_skip_steps,
         project_flow_plan,
         toggled_skip_steps,
@@ -52,7 +64,10 @@ def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
         skip = toggled_skip_steps(
             effective_skip_steps(cfg, flow_config), enable=args.enable, disable=args.disable
         )
-        plan = project_flow_plan(cfg, flow_config, skip_steps=skip)
+        insert = changed_insert_steps(
+            effective_insert_steps(cfg, flow_config), insert=args.insert, remove=args.remove
+        )
+        plan = project_flow_plan(cfg, flow_config, skip_steps=skip, insert_steps=insert)
     except ValueError as exc:
         return _invalid_selection(exc)
     if plan is None:
@@ -69,18 +84,21 @@ def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
 
 
 def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
-    """Choose steps interactively (or with ``--enable``/``--disable``) and save them.
+    """Choose steps interactively (or with ``--enable``/``--disable``/``--insert``/
+    ``--remove``) and save them.
 
     ``--max-parallel-steps`` changes that setting alongside. The new selection
     is shown for confirmation before ecc.toml is written unless ``--yes`` is
     given, so without a terminal only a flag change with ``--yes`` writes.
     """
     from chipcompiler.cli.project.flow_selection import (
+        changed_insert_steps,
+        effective_insert_steps,
         effective_lec_engine,
         effective_skip_steps,
         toggled_skip_steps,
     )
-    from chipcompiler.data.flow_plan import preset_chain
+    from chipcompiler.data.flow_plan import flow_target, preset_chain
     from chipcompiler.rtl2gds import get_flow_builders
 
     selection = project_selection(ctx, "ecc flow edit")
@@ -103,7 +121,7 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
         return _no_preset(" and ecc flow edit edits a preset's steps; set [flow] preset first")
     # The ecc.toml preset is the flow target; only the entry's policy keys apply.
     policy = _policy_keys(flow_config)
-    toggles = bool(args.enable or args.disable)
+    toggles = bool(args.enable or args.disable or args.insert or args.remove)
     # Any flag skips the checkbox; the value only changes when asked to.
     direct = toggles or args.max_parallel_steps is not None
     # An explicit --max-parallel-steps replaces the declared value, so it is
@@ -117,17 +135,21 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
         return max_parallel_steps
     try:
         current = effective_skip_steps(cfg, policy)
+        current_inserted = effective_insert_steps(cfg, policy)
         lec_engine = effective_lec_engine(cfg, policy)
-        # The flow target always runs, so a policy that skips it (synthesis_lec
-        # under the default policy skipping lec) is edited with it enabled.
-        target, _tool = preset_chain(cfg.flow_preset, lec_engine=lec_engine)[-1]
+        # The flow target always runs, so a policy that skips it is edited
+        # with it enabled.
+        target = flow_target(preset_chain(cfg.flow_preset, lec_engine=lec_engine))
         start = tuple(step for step in current if step != target)
         toggled = toggled_skip_steps(start, enable=args.enable, disable=args.disable)
+        inserted = changed_insert_steps(current_inserted, insert=args.insert, remove=args.remove)
     except ValueError as exc:
         return _invalid_selection(exc)
+    previous = Selection(current, current_inserted)
     # A flag selection is checked before asking anything: an invalid one is
     # reported whether or not it could be confirmed.
-    plan = _checked_plan(cfg, lec_engine, toggled) if direct else None
+    chosen = Selection(toggled, inserted)
+    plan = _checked_plan(cfg, lec_engine, chosen) if direct else None
     if isinstance(plan, CommandResult):
         return plan
     if plan is not None and args.yes:
@@ -135,9 +157,10 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
             ctx,
             cfg,
             plan,
+            chosen,
             lec_engine,
             max_parallel_steps,
-            previous=current,
+            previous=previous,
             confirm=None,
         )
     if not _interactive(ctx):
@@ -151,17 +174,30 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
     with terminal_keys() as read_key:
         if plan is None:
             edited = _edit_interactively(
-                cfg, start, lec_engine, max_parallel_steps, console=console, read_key=read_key
+                cfg,
+                Selection(start, current_inserted),
+                lec_engine,
+                max_parallel_steps,
+                console=console,
+                read_key=read_key,
             )
             if edited is None:
                 return _cancelled()
             max_parallel_steps = edited.max_parallel_steps
-            plan = _checked_plan(cfg, lec_engine, edited.skip_steps)
+            chosen = Selection(edited.skip_steps, edited.insert_steps)
+            plan = _checked_plan(cfg, lec_engine, chosen)
             if isinstance(plan, CommandResult):
                 return plan
         confirm = None if args.yes else _terminal_confirm(console, read_key)
         return _write(
-            ctx, cfg, plan, lec_engine, max_parallel_steps, previous=current, confirm=confirm
+            ctx,
+            cfg,
+            plan,
+            chosen,
+            lec_engine,
+            max_parallel_steps,
+            previous=previous,
+            confirm=confirm,
         )
 
 
@@ -219,7 +255,7 @@ def _declared_max_parallel_steps(
 
 
 def _checked_plan(
-    cfg: "ProjectConfig", lec_engine: "LECEngineEnum", chosen: Sequence[str]
+    cfg: "ProjectConfig", lec_engine: "LECEngineEnum", chosen: Selection
 ) -> "FlowPlan | CommandResult":
     """The plan of *chosen*, or the errors that keep it from being written."""
     try:
@@ -246,18 +282,26 @@ def _write(
     ctx: CommandContext,
     cfg: "ProjectConfig",
     plan: "FlowPlan",
+    chosen: Selection,
     lec_engine: "LECEngineEnum",
     max_parallel_steps: int,
     *,
-    previous: Sequence[str],
+    previous: Selection,
     confirm: Confirm | None,
 ) -> CommandResult:
-    """Ask *confirm* (None: ``--yes``), then write *plan* to ecc.toml [flow]."""
+    """Ask *confirm* (None: ``--yes``), then write *plan* of *chosen* to ecc.toml [flow]."""
     from chipcompiler.cli.project.flow_selection import write_flow_selection
 
     config_path = os.path.join(ctx.project_dir, CONFIG_FILENAME)
     changes, warnings = _selection_records(
-        ctx, cfg, plan, lec_engine, max_parallel_steps, previous=previous, config_path=config_path
+        ctx,
+        cfg,
+        plan,
+        chosen,
+        lec_engine,
+        max_parallel_steps,
+        previous=previous,
+        config_path=config_path,
     )
     if confirm is not None and not confirm([changes, *warnings]):
         return _cancelled()
@@ -266,6 +310,8 @@ def _write(
         preset=cfg.flow_preset,
         lec_engine=lec_engine.value,
         skip_steps=plan.skip_steps,
+        # Kept as chosen: an inserted step whose step the preset lacks stays declared.
+        insert_steps=chosen.insert_steps,
         max_parallel_steps=max_parallel_steps,
     )
     return CommandResult.ok(
@@ -281,10 +327,11 @@ def _selection_records(
     ctx: CommandContext,
     cfg: "ProjectConfig",
     plan: "FlowPlan",
+    chosen: Selection,
     lec_engine: "LECEngineEnum",
     max_parallel_steps: int,
     *,
-    previous: Sequence[str],
+    previous: Selection,
     config_path: str,
 ) -> tuple[Record, list[Record]]:
     """What writing *plan* changes in ecc.toml [flow], and its warnings."""
@@ -292,14 +339,19 @@ def _selection_records(
     from chipcompiler.cli.project.flow_selection import mismatched_workspaces
 
     order = [step.name for step in plan.steps]
+    was_skipped, now_skipped = set(previous.skip_steps), set(plan.skip_steps)
+    was_inserted, now_inserted = set(previous.insert_steps), set(chosen.insert_steps)
     changes: Record = {
         "path": config_path,
         "preset": cfg.flow_preset,
         "lec_engine": lec_engine.value,
         "skip_steps": list(plan.skip_steps),
+        "insert_steps": list(chosen.insert_steps),
         "max_parallel_steps": max_parallel_steps,
-        "enabled": [name for name in order if name in set(previous) - set(plan.skip_steps)],
-        "disabled": [name for name in order if name in set(plan.skip_steps) - set(previous)],
+        "enabled": [name for name in order if name in was_skipped - now_skipped],
+        "disabled": [name for name in order if name in now_skipped - was_skipped],
+        "inserted": [name for name in chosen.insert_steps if name not in was_inserted],
+        "removed": [name for name in previous.insert_steps if name not in now_inserted],
     }
     records: list[Record] = []
     records.extend(
@@ -321,6 +373,7 @@ def _selection_records(
         "preset": cfg.flow_preset,
         "lec_engine": lec_engine.value,
         "skip_steps": list(plan.skip_steps),
+        "insert_steps": list(chosen.insert_steps),
     }
     records.extend(
         warning_record(
@@ -356,7 +409,7 @@ def _shadow_warnings(ctx: CommandContext, config_path: str) -> list[Record]:
 
 def _edit_interactively(
     cfg: "ProjectConfig",
-    current: tuple[str, ...],
+    current: Selection,
     lec_engine: "LECEngineEnum",
     max_parallel_steps: int,
     *,
@@ -367,8 +420,8 @@ def _edit_interactively(
     from chipcompiler.cli.project.design_inputs import validate_entry_inputs
     from chipcompiler.cli.project.flow_plan_view import PlanView, plan_view
 
-    def view_of(skip: tuple[str, ...]) -> PlanView:
-        plan = _preset_plan(cfg, lec_engine, skip)
+    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> PlanView:
+        plan = _preset_plan(cfg, lec_engine, Selection(skip, insert))
         return plan_view(
             plan,
             flow=cfg.flow_preset,
@@ -376,7 +429,13 @@ def _edit_interactively(
             input_errors=validate_entry_inputs(cfg, plan.enabled_steps[0]),
         )
 
-    return edit_selection(current, view_of=view_of, console=console, read_key=read_key)
+    return edit_selection(
+        current.skip_steps,
+        current.insert_steps,
+        view_of=view_of,
+        console=console,
+        read_key=read_key,
+    )
 
 
 def _terminal_confirm(console: "Console", read_key: "KeyReader") -> Confirm:
@@ -392,17 +451,23 @@ def _terminal_confirm(console: "Console", read_key: "KeyReader") -> Confirm:
 
 
 def _preset_plan(
-    cfg: "ProjectConfig", lec_engine: "LECEngineEnum", skip: Sequence[str]
+    cfg: "ProjectConfig", lec_engine: "LECEngineEnum", chosen: Selection
 ) -> "FlowPlan":
-    from chipcompiler.data.flow_plan import plan_flow, preset_chain
+    from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
 
-    return plan_flow(preset_chain(cfg.flow_preset, lec_engine=lec_engine), skip_steps=skip)
+    return plan_flow(
+        preset_chain(cfg.flow_preset, lec_engine=lec_engine),
+        skip_steps=chosen.skip_steps,
+        inserted=inserted_chain(chosen.insert_steps, lec_engine=lec_engine),
+    )
 
 
 def _policy_keys(flow_config: "FlowConfig | None") -> Record:
+    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+
     if flow_config is None:
         return {}
-    return {key: flow_config[key] for key in ("skip_steps", "lec_engine") if key in flow_config}
+    return {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
 
 
 def _interactive(ctx: CommandContext) -> bool:
@@ -426,8 +491,8 @@ def _needs_terminal(*, direct: bool) -> Record:
         )
     return error_record(
         "flow_edit_requires_terminal",
-        reason="the checkbox editor needs an interactive terminal; pass --enable/--disable "
-        "or --max-parallel-steps with --yes, or edit [flow] in ecc.toml",
+        reason="the checkbox editor needs an interactive terminal; pass --enable/--disable, "
+        "--insert/--remove or --max-parallel-steps with --yes, or edit [flow] in ecc.toml",
     )
 
 

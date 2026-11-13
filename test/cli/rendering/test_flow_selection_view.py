@@ -17,13 +17,15 @@ from chipcompiler.cli.rendering.flow_selection_view import (
     render_flow_plan_text,
 )
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_plan import plan_flow, preset_chain
+from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
 
 _LEGEND = "┐…┘ same number = can run in parallel, up to 4 at once"
 
 
-def _view(skip=DEFAULT_SKIP_STEPS, max_parallel_steps=4, **bounds) -> PlanView:
-    plan = plan_flow(preset_chain("rtl2gds"), skip_steps=skip, **bounds)
+def _view(skip=DEFAULT_SKIP_STEPS, max_parallel_steps=4, insert=(), **bounds) -> PlanView:
+    plan = plan_flow(
+        preset_chain("rtl2gds"), skip_steps=skip, inserted=inserted_chain(insert), **bounds
+    )
     return plan_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
 
 
@@ -164,10 +166,13 @@ def test_the_edit_summary_shows_max_parallel_steps(written, heading):
         "path": "ecc.toml",
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
-        "skip_steps": ["lec", "diff_opt", "CTS"],
+        "skip_steps": ["diff_opt", "CTS"],
+        "insert_steps": [],
         "max_parallel_steps": 2,
         "enabled": [],
         "disabled": ["CTS"],
+        "inserted": [],
+        "removed": [],
     }
 
     Console(file=out, width=100, force_terminal=False, highlight=False).print(
@@ -177,7 +182,7 @@ def test_the_edit_summary_shows_max_parallel_steps(written, heading):
     assert out.getvalue().splitlines() == [
         heading,
         "  preset = rtl2gds · lec_engine = kepler_formal",
-        "  skip_steps = lec, diff_opt, CTS",
+        "  skip_steps = diff_opt, CTS",
         "  max_parallel_steps = 2",
         "  disabled: CTS",
     ]
@@ -272,3 +277,27 @@ def test_a_colorless_terminal_wraps_instead_of_taking_the_piped_branch(monkeypat
 
     assert max(len(line) for line in piped.getvalue().splitlines()) > 110
     assert max(len(line) for line in terminal.getvalue().splitlines()) <= 110
+
+
+def test_an_inserted_lec_row_follows_its_step_and_is_tagged_inserted():
+    lines = _render(_view(insert=("lec@CTS",)))
+
+    assert _row(lines, "lec@CTS").split() == [
+        "[✔]",
+        "9",
+        "lec@CTS",
+        "kepler_formal",
+        "CTS,",
+        "Synthesis",
+        "inserted",
+    ]
+    assert lines.index(_row(lines, "lec@CTS")) == lines.index(_row(lines, "CTS")) + 1
+
+
+def test_a_range_ending_at_an_inserted_steps_step_keeps_the_target_on_that_step():
+    view = _view(skip=(), insert=("lec@route",), start="CTS", end="route")
+
+    assert [(step.step, step.target) for step in view.steps[-2:]] == [
+        ("route", True),
+        ("lec@route", False),
+    ]

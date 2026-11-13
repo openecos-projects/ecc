@@ -16,11 +16,8 @@ def test_step_directory_for_tool_uses_the_storage_stem_for_sizer():
     )
 
 
-def test_step_directory_for_tool_keeps_legacy_lec_directories():
+def test_step_directory_for_tool_names_lec_directories_after_the_engine():
     from chipcompiler.data import step_directory_for_tool
 
-    assert step_directory_for_tool("lec", "yosys_lec") == "lec_yosys_lec"
-    assert step_directory_for_tool("postRouteLec", "yosys_lec") == "postRouteLec_yosys_lec"
-    assert step_directory_for_tool("lec", "lec_dual") == "lec_dual"
-    assert step_directory_for_tool("postRouteLec", "lec_dual") == "postRouteLec_dual"
-    assert step_directory_for_tool("lec", "kepler_formal") == "lec_kepler_formal"
+    assert step_directory_for_tool("postRouteLec", "kepler_formal") == "postRouteLec_kepler_formal"
+    assert step_directory_for_tool("lec@CTS", "kepler_formal") == "lec@CTS_kepler_formal"

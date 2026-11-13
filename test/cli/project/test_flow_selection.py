@@ -29,7 +29,7 @@ def _config(tmp_path, flow_extra=""):
     ("flow_extra", "flow_config", "expected"),
     [
         ("", None, "Synthesis"),
-        ('skip_steps = ["Synthesis", "lec"]\n', None, "preFloorplan"),
+        ('skip_steps = ["Synthesis"]\n', None, "preFloorplan"),
         # The run's own policy wins over ecc.toml.
         ('skip_steps = ["Synthesis"]\n', {"skip_steps": []}, "Synthesis"),
         ("", {"start_step": "Place", "end_step": "route"}, "place"),
@@ -89,7 +89,7 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         "# preset: rtl2gds | syn_sta | synthesis_lec\n"
         'preset = "rtl2gds"\n'
         "# skipped steps\n"
-        'skip_steps = ["lec", "diff_opt"]\n'
+        'skip_steps = ["diff_opt"]\n'
         "\n[params.cts]\n"
         "# fanout\n"
         "max_fanout = 32\n"
@@ -99,7 +99,8 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         str(config_path),
         preset="rtl2gds",
         lec_engine="kepler_formal",
-        skip_steps=["lec", "CTS"],
+        skip_steps=["diff_opt", "CTS"],
+        insert_steps=[],
         max_parallel_steps=2,
     )
 
@@ -114,7 +115,7 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         "# preset: rtl2gds | syn_sta | synthesis_lec\n"
         'preset = "rtl2gds"\n'
         "# skipped steps\n"
-        'skip_steps = ["lec", "CTS"]\n'
+        'skip_steps = ["diff_opt", "CTS"]\n'
         "\n[params.cts]\n"
         "# fanout\n"
         "max_fanout = 32\n"
@@ -130,6 +131,7 @@ def test_written_selection_adds_a_missing_flow_section(tmp_path):
         preset="rtl2gds",
         lec_engine="kepler_formal",
         skip_steps=[],
+        insert_steps=[],
         max_parallel_steps=4,
     )
 
@@ -159,6 +161,7 @@ def test_a_declared_max_parallel_steps_changes_in_place(tmp_path):
         preset="rtl2gds",
         lec_engine="kepler_formal",
         skip_steps=[],
+        insert_steps=[],
         max_parallel_steps=3,
     )
 

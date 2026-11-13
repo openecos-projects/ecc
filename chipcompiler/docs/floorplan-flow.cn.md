@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-    SYN[Synthesis\nYosys] --> LEC[LEC\n可选；默认跳过]
+    SYN[Synthesis\nYosys] --> LEC[lec@Synthesis\n可选；由 insert_steps 插入]
     LEC --> PRE[preFloorplan\necc]
     PRE --> MACRO[macroPlacement\nDreamPlace]
     MACRO --> POST[postFloorplan\necc]

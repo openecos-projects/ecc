@@ -151,12 +151,9 @@ step_directory() {
     postRouteLec)
       tool="$(step_tool postRouteLec)"
       tool="${tool,,}"
-      case "$tool" in
-        kepler_formal) printf 'postRouteLec_kepler_formal' ;;
-        yosys_lec) printf 'postRouteLec_yosys_lec' ;;
-        lec_dual) printf 'postRouteLec_dual' ;;
-        *) printf 'postRouteLec_kepler_formal' ;;
-      esac
+      # The engine's own <step>_<tool> directory: a ledger naming another
+      # engine never borrows kepler-formal's result.
+      printf 'postRouteLec_%s' "${tool:-kepler_formal}"
       ;;
     *) printf '%s_ecc' "$name" ;;
   esac

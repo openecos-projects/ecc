@@ -56,7 +56,7 @@ def selected_step_names(
         return [steps[index]["name"]]
     if from_step is not None:
         first = _require_step_index(flow, from_step)
-        last = _require_step_index(flow, through) if through is not None else len(steps) - 1
+        last = _through_index(flow, through) if through is not None else len(steps) - 1
         if last < first:
             raise ValueError(f"step '{through}' is before '{from_step}'")
         return [step["name"] for step in steps[first : last + 1]]
@@ -69,7 +69,7 @@ def selected_step_names(
 def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     """The default-resume selection bounded to the reconciled target's end."""
     steps = flow.workspace.flow.data.get("steps", [])
-    last_index = _require_step_index(flow, through)
+    last_index = _through_index(flow, through)
     for index, step in enumerate(steps):
         if not is_finished_step_state(step.get("state")):
             if index > last_index:
@@ -123,7 +123,7 @@ def run_from(
     """
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    last_index = _require_step_index(flow, through) if through is not None else len(steps) - 1
+    last_index = _through_index(flow, through) if through is not None else len(steps) - 1
     if last_index < index:
         raise ValueError(f"step '{through}' is before '{name}'")
     _require_steps_available(flow, last_index)
@@ -208,6 +208,18 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
             return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
+
+
+def _through_index(flow: "EngineFlow", name: str) -> int:
+    """The index of the step that ends a range: *name*, or the last inserted
+    step right after it (``--to CTS`` includes ``lec@CTS``, the check of CTS)."""
+    from chipcompiler.data import inserted_step_kind
+
+    steps = flow.workspace.flow.data.get("steps", [])
+    index = _require_step_index(flow, name)
+    while index + 1 < len(steps) and inserted_step_kind(str(steps[index + 1].get("name", ""))):
+        index += 1
+    return index
 
 
 def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:

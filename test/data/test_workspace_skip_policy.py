@@ -35,11 +35,11 @@ def test_create_workspace_rejects_invalid_skip_steps_before_any_mutation(
     assert not workspace_dir.exists()
 
 
-def test_create_workspace_default_policy_keeps_lec_out_of_the_ledger(
+def test_create_workspace_without_insertions_chains_pre_floorplan_after_synthesis(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    """No declared policy: the synthesis LEC never enters the ledger, so
-    preFloorplan directly follows synthesis and consumes its outputs."""
+    """No inserted LEC: preFloorplan directly follows synthesis and consumes
+    its outputs."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     def_path = tmp_path / "gcd.def"
     def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
@@ -62,43 +62,12 @@ def test_create_workspace_default_policy_keeps_lec_out_of_the_ledger(
     assert [step["tool"] for step in flow_data["steps"]] == ["yosys", "ecc"]
 
 
-def test_create_workspace_explicit_empty_skip_enables_lec_in_the_ledger(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    """skip_steps = [] is the only LEC enable: the ledger carries the LEC
-    entry (with the golden netlist recorded) and preFloorplan still follows
-    the synthesis side of the chain."""
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    def_path = tmp_path / "gcd.def"
-    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
-    netlist_path = tmp_path / "gcd.v"
-    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=workspace_dir,
-        origin_def=def_path,
-        origin_verilog=netlist_path,
-        pdk="ics55",
-        parameters=deepcopy(default_ics55_parameters),
-        pdk_root=pdk_root,
-        flow_config={"start_step": "Synthesis", "end_step": "preFloorplan", "skip_steps": []},
-    )
-
-    flow_data = json_read(workspace_dir / "home" / "flow.json")
-    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
-        ("Synthesis", "yosys"),
-        ("lec", "kepler_formal"),
-        ("preFloorplan", "ecc"),
-    ]
-
-
 @pytest.mark.parametrize(
     ("policy", "expected"),
     [
         ({}, ["place", "diff_sizing", "CTS"]),
-        ({"skip_steps": ["lec", "diff_opt"]}, ["place", "diff_sizing", "CTS"]),
-        ({"skip_steps": ["lec"]}, ["place", "diff_opt", "diff_sizing", "CTS"]),
+        ({"skip_steps": ["diff_opt"]}, ["place", "diff_sizing", "CTS"]),
+        ({"skip_steps": []}, ["place", "diff_opt", "diff_sizing", "CTS"]),
     ],
 )
 def test_create_workspace_diff_opt_policy_preserves_diff_sizing(
