@@ -143,8 +143,8 @@ def test_unreadable_manifest_is_reported(manifest_project):
 
 
 def test_project_without_manifest_keeps_directory_convention(tmp_path):
-    assert operations.select_diagnose_workspace(tmp_path, None) == ("default", None, None)
-    assert operations.select_diagnose_workspace(tmp_path, "ws_1") == ("ws_1", None, None)
+    assert operations.select_experiment_workspace(tmp_path, None) == ("default", None, None)
+    assert operations.select_experiment_workspace(tmp_path, "ws_1") == ("ws_1", None, None)
 
     result = _diagnose(tmp_path, "--workspace", "ws_1", "--json")
 

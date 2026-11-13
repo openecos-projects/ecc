@@ -606,16 +606,45 @@ def _flow_items(workspace: Workspace) -> list[dict]:
         for item in (flow.steps() if flow is not None else [])
         if isinstance(item.get("name"), str)
     }
+    canonical = _canonical_flow_names()
+    window = _ledger_step_window(states, canonical)
     items = []
     for step in (*_REQUIRED_FLOW_STEPS, *sorted(ADVISORY_FLOW_STEPS)):
+        if step in canonical and window is not None:
+            index = canonical.index(step)
+            if not window[0] <= index <= window[1]:
+                # A bounded flow (for example starting at filler) does not own
+                # steps outside its ledger range; those were done upstream.
+                continue
         if step in ADVISORY_FLOW_STEPS and step not in states:
             continue
-        if step == SkippableStepEnum.POST_ROUTE_LEC.value and not _requires_post_route_lec(
-            workspace
+        skipped = states.get(step) == StateEnum.Skipped.value
+        if (
+            step == SkippableStepEnum.POST_ROUTE_LEC.value
+            and not skipped
+            and not _requires_post_route_lec(workspace)
         ):
             continue
         state = "pass" if states.get(step) == StateEnum.Success.value else "failed"
-        advisory = step in ADVISORY_FLOW_STEPS
+        advisory = step in ADVISORY_FLOW_STEPS or skipped
+        if skipped:
+            summary = (
+                "Step was deliberately skipped for this flow run; "
+                "its signoff evidence is unavailable."
+            )
+        elif state == "pass":
+            summary = (
+                "Advisory analysis completed; review its report and coverage. "
+                "Execution success is not a signoff verdict."
+                if advisory
+                else "Required flow stage completed successfully."
+            )
+        else:
+            summary = (
+                f"Advisory analysis state is {states.get(step) or 'missing'}."
+                if advisory
+                else f"Current flow state is {states.get(step) or 'missing'}."
+            )
         items.append(
             _item(
                 item_id=f"flow.{step.lower()}.completed",
@@ -625,25 +654,31 @@ def _flow_items(workspace: Workspace) -> list[dict]:
                 policy="warn" if advisory else "block",
                 state="warning" if advisory else state,
                 title=f"{step} flow completed",
-                summary=(
-                    (
-                        "Advisory analysis completed; review its report and coverage. "
-                        "Execution success is not a signoff verdict."
-                        if advisory
-                        else "Required flow stage completed successfully."
-                    )
-                    if state == "pass"
-                    else (
-                        f"Advisory analysis state is {states.get(step) or 'missing'}."
-                        if advisory
-                        else f"Current flow state is {states.get(step) or 'missing'}."
-                    )
-                ),
+                summary=summary,
                 source={"kind": "flow", "path": "home/flow.json", "step": step},
                 evidence=[{"kind": "flow", "path": "home/flow.json", "selector": f"/steps/{step}"}],
             )
         )
     return items
+
+
+def _canonical_flow_names() -> list[str]:
+    try:
+        from chipcompiler.rtl2gds import build_rtl2gds_flow
+
+        return [
+            step.value if hasattr(step, "value") else str(step)
+            for step, _tool, _state in build_rtl2gds_flow()
+        ]
+    except Exception:
+        return []
+
+
+def _ledger_step_window(states: dict[str, object], canonical: list[str]) -> tuple[int, int] | None:
+    indices = [canonical.index(name) for name in states if name in canonical]
+    if not indices:
+        return None
+    return min(indices), max(indices)
 
 
 def _workspace_items(workspace: Workspace) -> list[dict]:

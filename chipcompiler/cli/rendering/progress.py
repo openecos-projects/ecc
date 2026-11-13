@@ -17,7 +17,7 @@ from chipcompiler.cli.inspection.log_view import (
 )
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
-from chipcompiler.data import StateEnum, log_flow
+from chipcompiler.data import StateEnum, is_finished_step_state, log_flow
 from chipcompiler.engine.execution import (
     event_sink_for_workspace,
     execution_observer,
@@ -343,9 +343,13 @@ class RunProgressRenderer:
         self._stream.flush()
         self._step_started = True
 
-    def finish_step(self, step, tool, status, runtime, log_path, inspect_cmd, success):
+    def finish_step(
+        self, step, tool, status, runtime, log_path, inspect_cmd, success, *, skipped=False
+    ):
         self.clear()
-        if success:
+        if skipped:
+            line = style(f"- {step} ({tool}) skipped {runtime}", DIM, self._color)
+        elif success:
             line = style(f"✓ {step} ({tool}) {runtime}", GREEN, self._color)
         else:
             sym = style("✗", RED, self._color)
@@ -400,9 +404,20 @@ def _render_step_completion(
             rel_log = log_path
 
     inspect = disclosure_cmd(f"ecc log {step_token}", project, run_id)
-    success = getattr(state, "value", state) == StateEnum.Success.value
-    renderer.finish_step(step_token, step.tool, status, runtime, rel_log, inspect, success)
-    if not success:
+    state_value = getattr(state, "value", state)
+    finished = is_finished_step_state(state_value)
+    skipped = state_value == StateEnum.Skipped.value
+    renderer.finish_step(
+        step_token,
+        step.tool,
+        status,
+        runtime,
+        rel_log,
+        inspect,
+        finished,
+        skipped=skipped,
+    )
+    if not finished:
         _maybe_render_failure_context(
             renderer,
             log_path,
@@ -412,7 +427,7 @@ def _render_step_completion(
             run_id,
             color,
         )
-    return success
+    return finished
 
 
 class RunProgressEventSink:
@@ -703,7 +718,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
             minutes = int((elapsed % 3600) // 60)
             seconds = int(elapsed % 60)
             runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
-            is_success = _render_step_completion(
+            is_finished = _render_step_completion(
                 renderer,
                 engine_flow.workspace,
                 workspace_step,
@@ -715,7 +730,7 @@ def run_flow_with_progress(engine_flow, ctx, project, stderr):
                 log_path=log_path,
             )
 
-            if not is_success:
+            if not is_finished:
                 execution_state = StateEnum.Imcomplete.value
                 return False
 

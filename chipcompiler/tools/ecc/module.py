@@ -839,7 +839,11 @@ class ECCToolsModule:
         instance_power_file_path: PathArg,
         technology_file_path: PathArg,
         ploc_file_path: PathArg,
+        spef_path: PathArg = "",
     ):
+        normalized_spef = os.fspath(spef_path)
+        if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
+            raise RuntimeError("ECC EMIR SPEF initialization failed")
         return self.ecc.init_emir(
             temp_directory_path=output_dir,
             instance_power_file_path=instance_power_file_path,

@@ -57,6 +57,8 @@ def get_run_status(flow_data: dict) -> str:
     states = set()
     for step in steps:
         state = normalize_state(step.get("state", ""))
+        if state == "skipped":
+            state = "success"
         if step.get("name") in ADVISORY_FLOW_STEPS and state == "incomplete":
             state = "success"
         states.add(state)

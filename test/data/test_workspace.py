@@ -571,7 +571,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
     assert home_checklist["schema_version"] == 3
     assert home_checklist["kind"] == "signoff_checklist"
     flow_items = {item["id"]: item for item in home_checklist["checklist"]}
-    assert flow_items["flow.route.completed"]["state"] == "failed"
+    assert "flow.route.completed" not in flow_items
     assert home_checklist["status"] == "blocked"
 
 
@@ -604,6 +604,31 @@ def test_load_workspace_restores_path_fields_from_existing_json(
     assert loaded.flow.path == workspace_dir.resolve() / "home" / "flow.json"
     assert loaded.parameters.path == workspace_dir.resolve() / "home" / "params.toml"
     assert all(isinstance(path, Path) for path in loaded.config.values())
+
+
+def test_load_workspace_restores_systemverilog_origin(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.sv"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    def_path = tmp_path / "gcd.def"
+    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
+
+    workspace_dir = tmp_path / "workspace"
+    create_workspace(
+        directory=workspace_dir,
+        origin_def=def_path,
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=default_ics55_parameters,
+        pdk_root=pdk_root,
+    )
+
+    loaded = load_workspace(workspace_dir, read_only=True)
+
+    assert loaded is not None
+    assert loaded.design.origin_verilog == workspace_dir.resolve() / "origin" / "gcd.sv"
 
 
 def test_writable_load_removes_legacy_home_files_but_read_only_load_preserves_them(

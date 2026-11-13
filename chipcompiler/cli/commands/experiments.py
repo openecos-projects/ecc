@@ -21,7 +21,7 @@ from chipcompiler.cli.experiments.operations import (
     project_path,
     read_package,
     run_sweep,
-    select_diagnose_workspace,
+    select_experiment_workspace,
     sweep_matrix,
     sweep_root,
     verify_package,
@@ -42,7 +42,7 @@ def diagnose_run(
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     project_root = project_path(project)
-    workspace_name, workspace_dir, reason = select_diagnose_workspace(project_root, workspace)
+    workspace_name, workspace_dir, reason = select_experiment_workspace(project_root, workspace)
     if reason is not None:
         if json_output:
             error = {"status": "error", "error": reason.partition(":")[0], "reason": reason}
@@ -74,15 +74,25 @@ def diagnose_run(
 def reproducible_export(
     *,
     project: Annotated[str | None, typer.Option("--project")] = None,
-    workspace: Annotated[str, typer.Option("--workspace")] = "default",
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     output: Annotated[str, typer.Option("--output")],
 ) -> None:
     try:
         root = project_path(project)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    workspace_name, workspace_dir, reason = select_experiment_workspace(root, workspace)
+    if reason is not None:
+        typer.echo(reason, err=True)
+        raise typer.Exit(1)
+    if workspace_dir is None:
+        workspace_dir = (root / workspace_name).resolve()
+    try:
         output_path = Path(output).expanduser()
         if not output_path.is_absolute():
             output_path = Path.cwd() / output_path
-        result = export_package(root, (root / workspace).resolve(), output_path.resolve())
+        result = export_package(root, workspace_dir, output_path.resolve())
         typer.echo(json.dumps(result, sort_keys=True))
     except ValueError as exc:
         typer.echo(str(exc), err=True)
