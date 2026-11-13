@@ -10,6 +10,22 @@ from pathlib import Path
 from typing import Any
 
 
+def write_project_manifest(project: Path, workspace: str) -> None:
+    manifest = {
+        "schema_version": 1,
+        "root_path": str(project),
+        "design_name": workspace,
+        "workspaces": [
+            {
+                "workspace_id": workspace,
+                "workspace_path": workspace,
+                "status": "success",
+            }
+        ],
+    }
+    (project / "project.json").write_text(json.dumps(manifest, indent=2) + "\n")
+
+
 def run(binary: Path, args: list[str], *, json_option: bool = True) -> tuple[int, dict[str, Any]]:
     command = [str(binary), *args]
     if json_option:
@@ -38,7 +54,7 @@ def main() -> int:
         workspace = project / "smoke"
         (workspace / "home").mkdir(parents=True)
         (project / "ecc.toml").write_text((args.design / "ecc.toml").read_text())
-        (project / "project.json").write_text("{}\n")
+        write_project_manifest(project, "smoke")
         (workspace / "home" / "flow.json").write_text('{"status":"success","steps":[]}\n')
         (workspace / "home" / "checklist.json").write_text('{"items":[]}\n')
         (workspace / "home" / "qor_report.json").write_text('{"qor_score":1.0}\n')
