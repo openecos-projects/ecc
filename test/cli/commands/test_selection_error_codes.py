@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.core.records import SELECTION_ERROR_KINDS, manifest_error_record
 
 
 @pytest.fixture
@@ -125,3 +126,57 @@ def test_report_step_still_reports_a_declared_workspace_without_a_directory(
     assert rc == 1
     assert record["error"] == "missing_workspace"
     assert record["run"].startswith("ecc run")
+
+
+@pytest.mark.parametrize("kind", sorted(SELECTION_ERROR_KINDS))
+def test_manifest_error_record_keeps_every_selection_kind(kind):
+    record = manifest_error_record(f"{kind}: details")
+
+    assert record["error"] == kind
+    assert record["reason"] == f"{kind}: details"
+
+
+def test_manifest_error_record_falls_back_for_an_unknown_kind():
+    assert manifest_error_record("something else happened")["error"] == "workspace_not_declared"
+    assert manifest_error_record("")["error"] == "workspace_not_declared"
+
+
+def _selection_arguments(command, selector, project):
+    """One invocation per command family that reports the recorded selection error."""
+    if command in LIFECYCLE_COMMANDS:
+        return ["workspace", command, selector, "--project", str(project)]
+    return [*command.split(), "--project", str(project), "--workspace", selector]
+
+
+PATH_SELECTION_COMMANDS = [*LIFECYCLE_COMMANDS, "report step", "status"]
+
+
+@pytest.mark.parametrize("command", PATH_SELECTION_COMMANDS)
+def test_absolute_path_that_conflicts_with_a_declared_id_keeps_its_code(
+    capsys, manifest_project, plain_records, tmp_path, command
+):
+    # Same last component as the declared `baseline`, but a different location.
+    elsewhere = tmp_path / "elsewhere" / "baseline"
+    elsewhere.parent.mkdir()
+
+    rc, record = _error(
+        capsys, plain_records, _selection_arguments(command, str(elsewhere), manifest_project)
+    )
+
+    assert rc == 1
+    assert record["error"] == "workspace_id_conflict"
+    assert record["reason"].startswith("workspace_id_conflict: ")
+
+
+@pytest.mark.parametrize("command", PATH_SELECTION_COMMANDS)
+def test_unsafe_absolute_path_keeps_its_code(capsys, manifest_project, plain_records, command):
+    # The project directory itself is never a workspace.
+    rc, record = _error(
+        capsys,
+        plain_records,
+        _selection_arguments(command, str(manifest_project), manifest_project),
+    )
+
+    assert rc == 1
+    assert record["error"] == "workspace_path_unsafe"
+    assert record["reason"].startswith("workspace_path_unsafe: ")

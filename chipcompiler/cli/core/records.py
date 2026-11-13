@@ -10,6 +10,24 @@ def warning_record(warning: str, **fields) -> dict:
     return record
 
 
+# Every kind that workspace selection records in CommandContext.manifest_error:
+# build_context and _resolve_manifest_workspace (core/invocation.py) and the
+# explicit-path checks (project/workspace_location.py).
+SELECTION_ERROR_KINDS = frozenset(
+    {
+        "manifest_invalid",
+        "workspace_required",
+        "workspace_not_declared",
+        "invalid_workspace",
+        "workspace_id_conflict",
+        "workspace_path_conflict",
+        "workspace_path_invalid_id",
+        "workspace_path_not_absolute",
+        "workspace_path_unsafe",
+    }
+)
+
+
 def manifest_error_record(manifest_error: str, **fields) -> dict:
     """Error record for a manifest selector failure, preserving the kind.
 
@@ -17,17 +35,7 @@ def manifest_error_record(manifest_error: str, **fields) -> dict:
     fall back to workspace_not_declared.
     """
     prefix, _, _ = (manifest_error or "").partition(":")
-    kind = (
-        prefix
-        if prefix
-        in (
-            "manifest_invalid",
-            "workspace_required",
-            "workspace_not_declared",
-            "invalid_workspace",
-        )
-        else "workspace_not_declared"
-    )
+    kind = prefix if prefix in SELECTION_ERROR_KINDS else "workspace_not_declared"
     return error_record(kind, reason=manifest_error, **fields)
 
 
