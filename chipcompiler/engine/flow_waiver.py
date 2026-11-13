@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from chipcompiler.data import FlowStepCategory, SkippableStepEnum, StateEnum
+from chipcompiler.data.workspace.flow_ledger import validate_transition
 from chipcompiler.data.workspace.flow_policy import flow_category
 
 
@@ -56,10 +57,22 @@ def mark_step_skipped(workspace: Any, name: str, reason: str) -> dict:
         raise ValueError("a skip reason is required")
     flow = workspace.flow
     step = _step_record(flow, name)
+    validate_transition(
+        step.get("state"),
+        StateEnum.Skipped.value,
+        name,
+        str(step.get("tool") or ""),
+    )
     previous_step = deepcopy(step)
     step["state"] = StateEnum.Skipped.value
     step["runtime"] = ""
     step["peak memory (mb)"] = 0
+    step.pop("resource_observation", None)
+    step.pop("checklist_waiver", None)
+    info = step.get("info")
+    if isinstance(info, dict):
+        info.pop("runtime_operation", None)
+        info.pop("execution", None)
     step.pop("checklist", None)
     step["checklist_status"] = {
         "status": "skipped",

@@ -36,11 +36,13 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
         StateEnum.Invalid.value,
         StateEnum.Skipped.value,
     },
-    # Terminal states have no outgoing lifecycle transitions. Batch resets
+    # Terminal states have no normal outgoing lifecycle transitions. An
+    # Incomplete optional step may still be deliberately skipped. Batch resets
     # (clear_flow_states, suffix invalidation) assign Unstart directly and
     # bypass this guard by design.
     StateEnum.Success.value: set(),
-    StateEnum.Imcomplete.value: set(),
+    # A failed optional step may still be deliberately skipped by the user.
+    StateEnum.Imcomplete.value: {StateEnum.Skipped.value},
     StateEnum.Invalid.value: set(),
     StateEnum.Skipped.value: set(),
 }
@@ -99,7 +101,8 @@ def save_ledger(flow) -> bool:
 def validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
     """Raise ``ValueError`` on illegal lifecycle transitions.
 
-    Applies only to :func:`set_flow_state`; batch resets bypass it by design.
+    Used by :func:`set_flow_state` and explicit deliberate-skip transitions;
+    batch resets bypass it by design.
     """
     if old_state is None or old_state == new_state:
         return

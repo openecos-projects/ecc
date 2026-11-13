@@ -59,6 +59,24 @@ def test_mark_step_skipped_rejects_non_skippable_step():
         mark_step_skipped(workspace, "filler", "not applicable")
 
 
+@pytest.mark.parametrize("state", ["Success", "Invalid"])
+def test_mark_step_skipped_rejects_terminal_states(state):
+    step = {
+        "name": "postRouteLec",
+        "tool": "kepler_formal",
+        "category": "CHECKER",
+        "state": state,
+    }
+    previous = deepcopy(step)
+    workspace = _Workspace([step])
+
+    with pytest.raises(ValueError, match="Illegal state transition"):
+        mark_step_skipped(workspace, "postRouteLec", "not applicable")
+
+    assert step == previous
+    assert workspace.flow.saves == 0
+
+
 def test_mark_step_skipped_rolls_back_when_persistence_fails():
     step = {
         "name": "postRouteLec",
