@@ -1,4 +1,3 @@
-import ast
 import json
 import os
 from pathlib import Path
@@ -776,7 +775,7 @@ class TestMigrationPreview:
         ]
         (create,) = [r for r in records if r.get("manifest") == "create"]
         # Execution consumed the previewed document byte-for-byte.
-        assert ast.literal_eval(create["document"]) == _manifest(project_dir)
+        assert json.loads(create["document"]) == _manifest(project_dir)
 
     def test_non_tty_refusal_discloses_preview_without_mutation(
         self,
@@ -797,7 +796,7 @@ class TestMigrationPreview:
         assert rc != 0
         records = _records(capsys)
         (create,) = [r for r in records if r.get("manifest") == "create"]
-        document = ast.literal_eval(create["document"])
+        document = json.loads(create["document"])
         assert [w["workspace_id"] for w in document["workspaces"]] == ["exp1"]
         assert records[-1]["error"] == "confirmation_required"
         # Disclosure only: nothing moved, nothing created.
@@ -867,7 +866,7 @@ class TestMigrationPreview:
             w for w in _manifest(project_dir)["workspaces"] if w["workspace_id"] == "exp2"
         ]
         # The applied entry IS the previewed entry, complete and verbatim.
-        (previewed,) = ast.literal_eval(append["workspaces"])
+        (previewed,) = json.loads(append["workspaces"])
         assert appended == previewed
 
     def test_mixed_result_baseline_follows_first_success(

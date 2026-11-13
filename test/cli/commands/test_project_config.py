@@ -68,21 +68,21 @@ def test_project_rtl_list_replacement_and_incremental_changes(
         ]
     )
     assert rc == 0
-    assert _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/alu.sv']"
+    assert _records(capsys, plain_records)[0]["value"] == '["rtl/gcd.sv","rtl/alu.sv"]'
 
     rc = cli_main.run(
         ["project", "add", "design.rtl", "rtl/fifo.sv", "--project", project_dir, "--plain"]
     )
     assert rc == 0
     assert (
-        _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/alu.sv', 'rtl/fifo.sv']"
+        _records(capsys, plain_records)[0]["value"] == '["rtl/gcd.sv","rtl/alu.sv","rtl/fifo.sv"]'
     )
 
     rc = cli_main.run(
         ["project", "remove", "design.rtl", "rtl/alu.sv", "--project", project_dir, "--plain"]
     )
     assert rc == 0
-    assert _records(capsys, plain_records)[0]["value"] == "['rtl/gcd.sv', 'rtl/fifo.sv']"
+    assert _records(capsys, plain_records)[0]["value"] == '["rtl/gcd.sv","rtl/fifo.sv"]'
 
 
 def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_records):

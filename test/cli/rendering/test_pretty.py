@@ -41,6 +41,22 @@ class TestPlainQuoting:
     def test_plain_value_numeric(self):
         assert _plain_value(42) == "42"
 
+    def test_plain_value_boolean_uses_lowercase(self):
+        assert _plain_value(True) == "true"  # noqa: FBT003
+        assert _plain_value(False) == "false"  # noqa: FBT003
+
+    def test_plain_value_list_uses_json(self):
+        assert _plain_value(["rtl/simple_counter.v"]) == r'"[\"rtl/simple_counter.v\"]"'
+        assert _plain_value([1, 2]) == "[1,2]"
+        assert _plain_value([]) == "[]"
+
+    def test_plain_value_mapping_and_tuple_use_json(self):
+        assert _plain_value({"passed": 5, "blocked": 28}) == r'"{\"passed\":5,\"blocked\":28}"'
+        assert _plain_value(("design.frequency_mhz",)) == r'"[\"design.frequency_mhz\"]"'
+
+    def test_plain_value_container_keeps_nested_null(self):
+        assert _plain_value([None, True]) == "[null,true]"
+
     def test_plain_value_escapes_line_breaks_and_tabs(self):
         assert _plain_value("a\nb") == '"a\\nb"'
         assert _plain_value("a\r\nb") == '"a\\r\\nb"'
@@ -81,6 +97,17 @@ class TestPlainQuoting:
         buf = StringIO()
         render_plain(records, file=buf)
         assert "\x1b[" not in buf.getvalue()
+
+    def test_render_plain_encodes_booleans_and_containers(self):
+        records = (
+            {"param": "flow.run_analysis", "value": True, "default": False},
+            {"project": "demo", "rtl": ["rtl/a.v", "rtl/b.v"]},
+        )
+        buf = StringIO()
+        render_plain(records, file=buf)
+        lines = buf.getvalue().splitlines()
+        assert lines[0] == "param=flow.run_analysis value=true default=false"
+        assert lines[1] == r'project=demo rtl="[\"rtl/a.v\",\"rtl/b.v\"]"'
 
 
 # ---------------------------------------------------------------------------
