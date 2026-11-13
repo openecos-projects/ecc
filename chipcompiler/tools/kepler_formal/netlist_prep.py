@@ -186,7 +186,7 @@ def _strip_connections(text: str, connection: str) -> tuple[str, int]:
     for pattern in (
         re.compile(rf",\s*(?:{connection})"),
         re.compile(rf"(?:{connection})\s*,\s*"),
-        re.compile(rf"(?:{connection})\s*(?=\))"),
+        re.compile(rf"(?:{connection})\s*(?=\)|\Z)"),
     ):
         text, replacements = pattern.subn("", text)
         count += replacements

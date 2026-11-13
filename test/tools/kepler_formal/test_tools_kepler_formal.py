@@ -391,6 +391,35 @@ def test_prepare_netlist_strips_supply_connections_without_instance_whitespace(t
     assert ".VSS(VSS)" not in text
 
 
+def test_prepare_netlist_strips_final_supply_connection_from_spare_cell(tmp_path):
+    liberty = tmp_path / "stdcell.lib"
+    liberty.write_text(
+        "library(test) {\n"
+        "  cell (BUF) {\n"
+        "    pg_pin (VDD) { pg_type : primary_power; }\n"
+        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
+        "  }\n"
+        "}\n"
+    )
+    netlist = tmp_path / "gate.v"
+    netlist.write_text(
+        "module top;\n"
+        "  BUF spare (.A(), .Y(), .VDD(VDD), .VSS(VSS));\n"
+        "  BUF compact(.A(),.Y(),.VDD(VDD),.VSS(VSS));\n"
+        "endmodule\n"
+    )
+    target = tmp_path / "gate_compare.v"
+
+    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
+
+    assert prepared == target
+    text = prepared.read_text()
+    assert "BUF spare ();" in text
+    assert "BUF compact();" in text
+    assert ".VDD(VDD)" not in text
+    assert ".VSS(VSS)" not in text
+
+
 def test_prepare_netlist_preserves_functional_supply_named_ports(tmp_path):
     netlist = tmp_path / "golden.v"
     netlist.write_text(
