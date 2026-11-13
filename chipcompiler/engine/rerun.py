@@ -20,6 +20,7 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
+from chipcompiler.data.workspace.flow_policy import is_skipped_record
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
@@ -58,7 +59,7 @@ def selected_step_names(
         return [step["name"] for step in steps[first : last + 1]]
     for index, step in enumerate(steps):
         if not is_finished_step_state(step.get("state")):
-            return [step["name"] for step in steps[index:]]
+            return [step["name"] for step in steps[index:] if not is_skipped_record(step)]
     return []
 
 
@@ -70,7 +71,11 @@ def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
         if not is_finished_step_state(step.get("state")):
             if index > last_index:
                 return []
-            return [step["name"] for step in steps[index : last_index + 1]]
+            return [
+                step["name"]
+                for step in steps[index : last_index + 1]
+                if not is_skipped_record(step)
+            ]
     return []
 
 
@@ -88,7 +93,13 @@ def run_resume(
     """
     for step in flow.workspace.flow.data.get("steps", []):
         if not is_finished_step_state(step.get("state")):
-            return run_from(flow, step["name"], through=through, event_sink=event_sink)
+            return run_from(
+                flow,
+                step["name"],
+                through=through,
+                event_sink=event_sink,
+                preserve_skipped=True,
+            )
     return StepRunResult(ok=True, executed=())
 
 
@@ -98,9 +109,15 @@ def run_from(
     *,
     through: str | None = None,
     event_sink=None,
+    preserve_skipped: bool = False,
 ) -> StepRunResult:
     """Re-execute the named step and every following step in persisted order
-    (at most through the *through* step when given)."""
+    (at most through the *through* step when given).
+
+    Ordinary resume sets *preserve_skipped* so deliberate exclusions remain
+    Skipped while later stale steps still re-execute. An explicit selector keeps
+    the historical rerun behavior, including skipped steps.
+    """
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
     last_index = _require_step_index(flow, through) if through is not None else len(steps) - 1
@@ -108,11 +125,20 @@ def run_from(
         raise ValueError(f"step '{through}' is before '{name}'")
     _require_steps_available(flow, last_index)
     suffix = flow.workspace_steps[index : last_index + 1]
+    if preserve_skipped:
+        records = steps[index : last_index + 1]
+        suffix = [
+            workspace_step
+            for record, workspace_step in zip(records, suffix, strict=True)
+            if not is_skipped_record(record)
+        ]
+    if not suffix:
+        return StepRunResult(ok=True, executed=())
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
     # A bounded rerun executes only the requested interval, but all later
     # states become stale because their input chain changed. Their outputs are
     # deliberately retained until the user chooses to run them.
-    _invalidate_suffix(flow, index)
+    _invalidate_suffix(flow, index, preserve_skipped=preserve_skipped)
     return _run_selected(
         flow,
         list(zip(suffix, output_dirs, strict=True)),
@@ -201,7 +227,13 @@ def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:
             raise ValueError(f"step is unavailable in this workspace: {step['name']}")
 
 
-def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = None) -> None:
+def _invalidate_suffix(
+    flow: "EngineFlow",
+    index: int,
+    last_index: int | None = None,
+    *,
+    preserve_skipped: bool = False,
+) -> None:
     """Mark the steps from index on as Unstart, persisted before any deletion.
 
     *last_index* bounds the invalidation to the reconciled target: steps
@@ -210,6 +242,8 @@ def _invalidate_suffix(flow: "EngineFlow", index: int, last_index: int | None = 
     steps = flow.workspace.flow.data.get("steps", [])
     end = len(steps) if last_index is None else last_index + 1
     for step in steps[index:end]:
+        if preserve_skipped and is_skipped_record(step):
+            continue
         step["state"] = StateEnum.Unstart.value
         step["runtime"] = ""
         step["peak memory (mb)"] = 0

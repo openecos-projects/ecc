@@ -9,6 +9,7 @@ from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow_waiver import mark_step_skipped
 
 
 def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
@@ -129,6 +130,16 @@ class TestSelectedStepNames:
         )
 
         assert rerun.selected_step_names(flow) == ["place", "CTS"]
+
+    def test_resume_omits_deliberate_skip(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("lvs", "Incomplete"), ("postRouteLec", "Unstart"), ("route", "Success")],
+        )
+        mark_step_skipped(flow.workspace, "postRouteLec", "formal difference in input netlist")
+
+        assert rerun.selected_step_names(flow) == ["lvs", "route"]
+        assert rerun.bounded_resume_names(flow, "route") == ["lvs", "route"]
 
     def test_from_selects_suffix(self, tmp_path):
         flow = _make_run_flow(
@@ -410,6 +421,22 @@ class TestRunResume:
         assert result.ok
         assert result.executed == ()
         assert calls == []
+
+    def test_preserves_deliberate_skip_and_reruns_later_steps(self, monkeypatch, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [("lvs", "Incomplete"), ("postRouteLec", "Unstart"), ("route", "Unstart")],
+        )
+        mark_step_skipped(flow.workspace, "postRouteLec", "formal difference in input netlist")
+        calls = _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_resume(flow)
+
+        assert result.ok
+        assert result.executed == ("lvs", "route")
+        assert calls == [("lvs", True), ("route", True)]
+        assert _flow_states(flow) == ["Success", "Skipped", "Success"]
+        assert flow.workspace.flow.steps()[1]["skip_reason"] == "formal difference in input netlist"
 
     def test_forwards_progress_events_to_event_sink(self, monkeypatch, tmp_path):
         flow = _make_run_flow(tmp_path, [("place", "Incomplete")])

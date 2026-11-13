@@ -140,6 +140,30 @@ def test_selected_flow_continues_after_incomplete_advisory(advisory_step, raw_st
     assert result.executed_steps == ("Harden",)
 
 
+def test_selected_flow_treats_skipped_as_finished_and_continues():
+    calls = []
+
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_step(self, step, *, rerun=False, observer: Any = None):
+            calls.append(step.name)
+            state = StateEnum.Skipped if step.name == "postRouteLec" else StateEnum.Success
+            observer.on_step_completed(step, state)
+            return state
+
+    result = execute(
+        Flow(),
+        ExecutionPlan(intent="run", step_ids=("postRouteLec", "Harden")),
+        event_sink=object(),
+    )
+
+    assert result.succeeded
+    assert result.state == StateEnum.Success.value
+    assert calls == ["postRouteLec", "Harden"]
+
+
 @pytest.mark.parametrize(
     ("step_name", "state"),
     [("drc", StateEnum.Imcomplete), ("emir", StateEnum.Invalid)],

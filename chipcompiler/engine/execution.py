@@ -56,7 +56,7 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
                     raise ValueError(f"step not found: {step_id}")
                 state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
                 state_value = getattr(state, "value", state)
-                if state_value != StateEnum.Success.value and not (
+                if not is_finished_step_state(state_value) and not (
                     step.name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
                 ):
                     succeeded = False
