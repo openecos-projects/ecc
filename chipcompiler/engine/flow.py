@@ -766,6 +766,7 @@ class EngineFlow:
                 flow_step = self.get_step(workspace_step.name, workspace_step.tool)
                 persisted_state = flow_step.get("state") if flow_step is not None else None
             else:
+                flow_step = None
                 persisted_state = None
             if is_finished_step_state(persisted_state):
                 finished_state = StateEnum(str(persisted_state))
