@@ -307,6 +307,7 @@ def invalidate_engineering_snapshot(
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
             step.pop("resource_observation", None)
+            step.pop("checklist_waiver", None)
     stale_path = _stale_snapshot_path(workspace)
     if not stale_path.is_file():
         _write_snapshot(stale_path, current)

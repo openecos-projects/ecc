@@ -143,6 +143,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
                 / "pdn_generator"
                 / "power.ploc"
             ),
+            spef_path="",
         ),
         call.run_emir(),
         call.destroy_emir(),

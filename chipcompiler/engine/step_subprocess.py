@@ -45,19 +45,10 @@ _ENABLED_ENV = "ECC_STEP_SUBPROCESS"
 def is_enabled() -> bool:
     """Subprocess execution is the default; ECC_STEP_SUBPROCESS=0 opts out.
 
-    Frozen builds have no interpreter to spawn for ``python -m`` and fall
-    back to in-process execution.
+    Frozen builds re-exec the bundled CLI with ``--step-worker`` instead of
+    ``python -m``, so they keep the same isolation and parallel scheduling.
     """
-    if os.environ.get(_ENABLED_ENV, "1") == "0":
-        return False
-    if getattr(sys, "frozen", False):
-        logger.warning(
-            "step subprocess execution is not available in frozen builds; "
-            "running this step in process (set %s=0 to silence this warning)",
-            _ENABLED_ENV,
-        )
-        return False
-    return True
+    return os.environ.get(_ENABLED_ENV, "1") != "0"
 
 
 def execute_step_subprocess(
@@ -88,9 +79,9 @@ def execute_step_subprocess(
     try:
         if log_file:
             with open(log_file, "ab") as log_handle:
-                process = _spawn_worker(log_handle)
+                process = _spawn_worker(log_handle, cwd=workspace.directory)
         else:
-            process = _spawn_worker(None)
+            process = _spawn_worker(None, cwd=workspace.directory)
     except OSError as exc:
         return _result(start_time, 0.0, error=f"{step_tag} worker failed to start: {exc}")
 
@@ -177,12 +168,18 @@ def _restore_rcx_outputs(step: WorkspaceStep, result: dict) -> str | None:
     return None
 
 
-def _spawn_worker(log_handle) -> subprocess.Popen:
+def _spawn_worker(log_handle, *, cwd: str | Path | None = None) -> subprocess.Popen:
+    command = (
+        [sys.executable, "--step-worker"]
+        if getattr(sys, "frozen", False)
+        else [sys.executable, "-m", "chipcompiler.engine.step_subprocess"]
+    )
     return subprocess.Popen(
-        [sys.executable, "-m", "chipcompiler.engine.step_subprocess"],
+        command,
         stdin=subprocess.PIPE,
         stdout=log_handle,
         stderr=subprocess.STDOUT,
+        cwd=str(cwd) if cwd is not None else None,
         start_new_session=(os.name == "posix"),
     )
 

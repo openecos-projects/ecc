@@ -474,6 +474,24 @@ class TestRunProgressRenderer:
         assert "  log: \n" in output
         assert "  inspect: ecc log placement --errors\n" in output
 
+    def test_finish_step_skipped_is_distinct_from_success_and_failure(self):
+        buf = FakeTTYStderr(isatty_value=True)
+        r = RunProgressRenderer(buf, width_fn=lambda: 80)
+        r.finish_step(
+            "postroutelec",
+            "kepler_formal",
+            "skipped",
+            "0:00:00",
+            "",
+            "ecc log postroutelec --errors",
+            success=True,
+            skipped=True,
+        )
+        output = "".join(buf.written)
+        assert "- postroutelec (kepler_formal) skipped 0:00:00\n" in output
+        assert "✓ postroutelec" not in output
+        assert "✗ postroutelec" not in output
+
     def test_finish_step_clears_transient_to_clean_line(self):
         buf = FakeTTYStderr(isatty_value=True)
         r = RunProgressRenderer(buf, width_fn=lambda: 80)
@@ -703,6 +721,32 @@ class TestRunFlowWithProgress:
         output = "".join(buf.written)
         assert "✓ synthesis (yosys)" in output
         assert "status=success" not in output
+
+    def test_skipped_step_is_rendered_and_flow_continues(self):
+        calls = []
+
+        def fake_run_step(self, s):
+            calls.append(s.name)
+            return StateEnum.Skipped if s.name == "postRouteLec" else StateEnum.Success
+
+        flow = _make_flow(
+            _make_ws(),
+            [
+                _make_step("postRouteLec", "kepler_formal"),
+                _make_step("Synthesis", "yosys"),
+            ],
+            fake_run_step,
+        )
+
+        buf = FakeTTYStderr(isatty_value=True)
+        result = run_flow_with_progress(flow, _make_ctx(), None, buf)
+
+        assert result is True
+        assert calls == ["postRouteLec", "Synthesis"]
+        output = "".join(buf.written)
+        assert "- postroutelec (kepler_formal) skipped" in output
+        assert "✗ postroutelec" not in output
+        assert "✓ synthesis (yosys)" in output
 
     def test_stops_on_failure(self):
         call_count = [0]

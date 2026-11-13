@@ -91,8 +91,33 @@ def test_is_enabled_env_switch(monkeypatch):
     assert step_subprocess.is_enabled()
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "1")
     assert step_subprocess.is_enabled()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert step_subprocess.is_enabled()
     monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     assert not step_subprocess.is_enabled()
+
+
+def test_frozen_worker_spawn_uses_cli_entrypoint(monkeypatch):
+    captured = {}
+
+    def fake_popen(command, **_kwargs):
+        captured["command"] = command
+        return _FakePopen()
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", fake_popen)
+
+    step_subprocess._spawn_worker(None)
+
+    assert captured["command"] == [sys.executable, "--step-worker"]
+
+
+def test_cli_dispatches_step_worker(monkeypatch):
+    from chipcompiler.cli import app as app_module
+
+    monkeypatch.setattr(step_subprocess, "main", lambda: 17)
+
+    assert app_module.invoke_typer_app(["--step-worker"]) == 17
 
 
 def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
@@ -133,6 +158,24 @@ def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
     step.output = EccOutput(dir=tmp_path / "output")
     assert step_subprocess._restore_rcx_outputs(step, {"rcx_spef": names})
     assert step.output.spef == []
+
+
+def test_step_worker_runs_in_workspace_directory(monkeypatch, tmp_path):
+    workspace = _workspace(tmp_path)
+    step = _workspace_step(tmp_path)
+    result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
+    result_path.write_text(json.dumps({"done": True, "ok": True, "events": []}))
+    options = {}
+
+    def spawn(*_args, **kwargs):
+        options.update(kwargs)
+        return _FakePopen(poll_script=[0])
+
+    monkeypatch.setattr(step_subprocess.subprocess, "Popen", spawn)
+    result = step_subprocess.execute_step_subprocess(workspace, step)
+
+    assert result.error is None
+    assert options["cwd"] == workspace.directory
 
 
 def test_sta_step_memory_includes_corner_workers(monkeypatch, tmp_path):
@@ -293,14 +336,17 @@ def test_execute_tool_step_falls_back_in_process(monkeypatch, tmp_path):
     ran = []
     monkeypatch.setattr(
         "chipcompiler.tools.run_step",
-        lambda **kwargs: ran.append(kwargs) or True,
+        lambda **kwargs: ran.append((kwargs, os.getcwd())) or True,
     )
+    workspace = _workspace(tmp_path)
     step = _workspace_step(tmp_path)
     engine_db = _ns(engine=object(), initialization_error=None)
-    result = execute_tool_step(_workspace(tmp_path), step, engine_db)
+    result = execute_tool_step(workspace, step, engine_db)
 
     assert dispatched == []
     assert ran and result.error is None
+    assert ran[0][1] == workspace.directory
+    assert os.getcwd() != workspace.directory
 
 
 class _FakeFlow:

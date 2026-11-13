@@ -12,6 +12,7 @@ from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
     FlowStepCategory,
     SkippableStepEnum,
+    StateEnum,
     StepEnum,
     Workspace,
 )
@@ -88,6 +89,12 @@ def requires_post_route_lec(workspace: Workspace) -> bool:
     # A workspace whose ledger has no postRouteLec (skipped at creation)
     # never requires it, regardless of the artifacts on disk.
     if not flow.has_step(SkippableStepEnum.POST_ROUTE_LEC):
+        return False
+    if any(
+        step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
+        and step.get("state") == StateEnum.Skipped.value
+        for step in flow.steps()
+    ):
         return False
     golden, gate = post_route_lec_netlists(workspace)
     return bool(golden and Path(golden).is_file() and gate and Path(gate).is_file())

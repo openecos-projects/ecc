@@ -1,5 +1,6 @@
 import inspect
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any, Literal
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum, is_finished_step_state
@@ -55,7 +56,7 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
                     raise ValueError(f"step not found: {step_id}")
                 state = _invoke(flow.run_step, step, rerun=rerun, observer=observer)
                 state_value = getattr(state, "value", state)
-                if state_value != StateEnum.Success.value and not (
+                if not is_finished_step_state(state_value) and not (
                     step.name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
                 ):
                     succeeded = False
@@ -116,18 +117,24 @@ class ExecutionObserver:
         self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
         self.executed_steps: list[str] = []
         self.failed_step: str | None = None
+        self._callback_lock = RLock()
 
     def on_step_completed(self, step: Any, state: Any, error: str | None = None) -> None:
-        name = getattr(step, "name", None)
-        if isinstance(name, str) and name:
-            if getattr(state, "value", state) == StateEnum.Success.value:
-                self.executed_steps.append(name)
-            elif self.failed_step is None and not (
-                name in ADVISORY_FLOW_STEPS
-                and getattr(state, "value", state) == StateEnum.Imcomplete.value
-            ):
-                self.failed_step = name
-        self._delegate_call("on_step_completed", step, state, error)
+        with self._callback_lock:
+            name = getattr(step, "name", None)
+            if isinstance(name, str) and name:
+                state_value = getattr(state, "value", state)
+                if state_value == StateEnum.Success.value:
+                    self.executed_steps.append(name)
+                elif (
+                    self.failed_step is None
+                    and not is_finished_step_state(state_value)
+                    and not (
+                        name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
+                    )
+                ):
+                    self.failed_step = name
+            self._delegate_call("on_step_completed", step, state, error)
 
     @property
     def runtime_operation(self):
@@ -160,10 +167,11 @@ class ExecutionObserver:
         return True if result is None else bool(result)
 
     def _delegate_call(self, name: str, *args, **kwargs):
-        callback = getattr(self.delegate, name, None)
-        if callable(callback):
-            return callback(*args, **kwargs)
-        return None
+        with self._callback_lock:
+            callback = getattr(self.delegate, name, None)
+            if callable(callback):
+                return callback(*args, **kwargs)
+            return None
 
 
 class _EngineeringCommitSink:
