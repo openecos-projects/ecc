@@ -548,17 +548,14 @@ def execute_fresh_run(
                 missing = persisted_steps[len(created_steps)].get("name")
                 return failed_workspace(f"step workspace creation failed at {missing}")
 
-            if getattr(workspace, "parameters", None) is not None:
-                # add_step saves the ledger without the options projection.
-                # Write it once here, so the first workspace load finds a
-                # complete flow.json and has nothing to rewrite. The
-                # projection reads the workspace parameters, which test
-                # doubles do not carry.
-                from chipcompiler.data.workspace.flow_options import (
-                    sync_flow_options_projection,
-                )
+            # add_step saves the ledger without the options projection.
+            # Write it once here, so the first workspace load finds a
+            # complete flow.json and has nothing to rewrite.
+            from chipcompiler.data.workspace.flow_options import (
+                sync_flow_options_projection,
+            )
 
-                sync_flow_options_projection(workspace, persist=True)
+            sync_flow_options_projection(workspace, persist=True)
 
             # The replacement is fully constructed and verified: commit it.
             # The previous workspace's backup is obsolete (or retained as an

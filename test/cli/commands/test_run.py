@@ -34,6 +34,10 @@ class TestRun:
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", lambda **_kwargs: workspace)
         monkeypatch.setattr(
+            "chipcompiler.data.workspace.flow_options.sync_flow_options_projection",
+            lambda _workspace, **_kwargs: False,
+        )
+        monkeypatch.setattr(
             "chipcompiler.engine.snapshot.create_engineering_snapshot",
             lambda _workspace, **kwargs: captured.update(kwargs)
             or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
