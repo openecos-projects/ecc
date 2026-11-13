@@ -8,10 +8,12 @@ from chipcompiler.cli.command_handlers.param import param_list as param_list_han
 from chipcompiler.cli.command_handlers.param import param_set as param_set_handler
 from chipcompiler.cli.command_handlers.param import param_show as param_show_handler
 from chipcompiler.cli.command_handlers.param import param_unset as param_unset_handler
+from chipcompiler.cli.command_handlers.param_edit import param_edit as param_edit_handler
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     ParamApplyInput,
     ParamDiffInput,
+    ParamEditInput,
     ParamListInput,
     ParamSetInput,
     ParamShowInput,
@@ -77,6 +79,33 @@ def apply_cmd(
         no_wait=no_wait,
     )
     _finish_param("apply", command_input, param_apply_handler)
+
+
+@param_app.command("edit")
+def edit_cmd(
+    *,
+    project: ProjectOption = None,
+    workspace: WorkspaceOption = None,
+    step: Annotated[str | None, typer.Option("--step", help="Open one step's parameters")] = None,
+) -> None:
+    """Edit parameters in the terminal, then apply them as one batch.
+
+    Lists the parameter groups, then their values: enter edits a value
+    (checked as it is typed), `u` resets an override, `/` filters, `s`
+    saves. The changes are shown for confirmation and then applied exactly
+    as `ecc param apply --set/--unset` would, for the project (ecc.toml) or,
+    with `--workspace`, for that workspace, whose affected steps become
+    stale. Needs an interactive terminal; scripts and agents use
+    `ecc param apply`.
+    """
+    command_input = ParamEditInput(
+        output=output_options(),
+        project=project_options(project),
+        workspace=workspace,
+        step=step,
+    )
+    command_input = apply_location_defaults(command_input)
+    _finish_param("edit", command_input, param_edit_handler)
 
 
 @param_app.command("list")

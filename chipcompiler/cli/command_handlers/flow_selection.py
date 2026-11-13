@@ -1,5 +1,5 @@
 # pyright: strict
-"""``ecc flow plan`` and ``ecc flow edit``: the project's step selection.
+"""``ecc flow status`` and ``ecc flow edit``: the project's step selection.
 
 Both read the selection (skipped and inserted steps) from ``ecc.toml`` (like
 ``ecc param``); a project.json workspace entry layers beneath it only when the
@@ -9,12 +9,11 @@ that is not part of the selection).
 """
 
 import os
-import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from chipcompiler.cli.core.inputs import FlowEditInput, FlowPlanInput
+from chipcompiler.cli.core.inputs import FlowEditInput, FlowStatusInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record, manifest_error_record, warning_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
@@ -23,7 +22,8 @@ from chipcompiler.project.manifest import CONFIG_FILENAME
 if TYPE_CHECKING:
     from rich.console import Console
 
-    from chipcompiler.cli.interactive.flow_edit import EditedSelection, KeyReader
+    from chipcompiler.cli.interactive.flow_edit import EditedSelection
+    from chipcompiler.cli.interactive.terminal import KeyReader
     from chipcompiler.cli.project.config import ProjectConfig
     from chipcompiler.cli.project.flow_selection import FlowConfig
     from chipcompiler.data.flow_plan import FlowPlan
@@ -42,9 +42,8 @@ class Selection:
     insert_steps: tuple[str, ...]
 
 
-def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
+def flow_status(args: FlowStatusInput, ctx: CommandContext) -> CommandResult:
     from chipcompiler.cli.project.design_inputs import validate_entry_inputs
-    from chipcompiler.cli.project.flow_plan_view import plan_view, view_records
     from chipcompiler.cli.project.flow_selection import (
         changed_insert_steps,
         effective_insert_steps,
@@ -52,12 +51,13 @@ def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
         project_flow_plan,
         toggled_skip_steps,
     )
+    from chipcompiler.cli.project.flow_status_view import status_view, view_records
 
-    selection = project_selection(ctx, "ecc flow plan")
+    selection = project_selection(ctx, "ecc flow status")
     if isinstance(selection, CommandResult):
         return selection
     cfg, flow_config = selection
-    max_parallel_steps = _declared_max_parallel_steps(ctx, cfg, "ecc flow plan")
+    max_parallel_steps = _declared_max_parallel_steps(ctx, cfg, "ecc flow status")
     if isinstance(max_parallel_steps, CommandResult):
         return max_parallel_steps
     try:
@@ -72,7 +72,7 @@ def flow_plan(args: FlowPlanInput, ctx: CommandContext) -> CommandResult:
         return _invalid_selection(exc)
     if plan is None:
         return _no_preset()
-    view = plan_view(
+    view = status_view(
         plan,
         flow=_flow_label(cfg, flow_config),
         max_parallel_steps=max_parallel_steps,
@@ -168,7 +168,7 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
 
     from rich.console import Console
 
-    from chipcompiler.cli.interactive.flow_edit import terminal_keys
+    from chipcompiler.cli.interactive.terminal import terminal_keys
 
     console = Console(highlight=False)
     with terminal_keys() as read_key:
@@ -418,11 +418,11 @@ def _edit_interactively(
 ) -> "EditedSelection | None":
     from chipcompiler.cli.interactive.flow_edit import edit_selection
     from chipcompiler.cli.project.design_inputs import validate_entry_inputs
-    from chipcompiler.cli.project.flow_plan_view import PlanView, plan_view
+    from chipcompiler.cli.project.flow_status_view import StatusView, status_view
 
-    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> PlanView:
+    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> StatusView:
         plan = _preset_plan(cfg, lec_engine, Selection(skip, insert))
-        return plan_view(
+        return status_view(
             plan,
             flow=cfg.flow_preset,
             max_parallel_steps=max_parallel_steps,
@@ -439,7 +439,7 @@ def _edit_interactively(
 
 
 def _terminal_confirm(console: "Console", read_key: "KeyReader") -> Confirm:
-    from chipcompiler.cli.interactive.flow_edit import confirm_write
+    from chipcompiler.cli.interactive.terminal import confirm_write
     from chipcompiler.cli.rendering.flow_selection_view import flow_edit_summary
 
     def confirm(records: Sequence[Record]) -> bool:
@@ -472,14 +472,9 @@ def _policy_keys(flow_config: "FlowConfig | None") -> Record:
 
 def _interactive(ctx: CommandContext) -> bool:
     """Text output on a terminal the checkbox can redraw (``TERM=dumb`` cannot)."""
-    from rich.console import Console
+    from chipcompiler.cli.interactive.terminal import interactive_terminal
 
-    return (
-        ctx.output_mode is OutputMode.TEXT
-        and sys.stdin.isatty()
-        and sys.stdout.isatty()
-        and not Console().is_dumb_terminal
-    )
+    return ctx.output_mode is OutputMode.TEXT and interactive_terminal()
 
 
 def _needs_terminal(*, direct: bool) -> Record:

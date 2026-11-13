@@ -102,20 +102,20 @@ class TestConfigSurface:
             },
         )
 
-    def test_check_and_flow_plan_load_a_project_declaring_it(self, capsys, create_cli_project):
+    def test_check_and_flow_status_load_a_project_declaring_it(self, capsys, create_cli_project):
         project_dir = create_cli_project()
         _declare(project_dir, 2)
 
         assert cli_main.run(["check", "--project", project_dir]) == 0
         capsys.readouterr()
-        assert cli_main.run(["flow", "plan", "--project", project_dir, "--json"]) == 0
+        assert cli_main.run(["flow", "status", "--project", project_dir, "--json"]) == 0
         records = json.loads(capsys.readouterr().out)
 
         assert records[0]["status"] == "ok"
 
     @pytest.mark.parametrize(("literal", "shown"), [("0", "0"), ('"4"', "'4'"), ("true", "True")])
-    @pytest.mark.parametrize("command", ["plan", "edit"])
-    def test_flow_plan_and_edit_reject_an_invalid_value_like_check_and_run(
+    @pytest.mark.parametrize("command", ["status", "edit"])
+    def test_flow_status_and_edit_reject_an_invalid_value_like_check_and_run(
         self, capsys, create_cli_project, command, literal, shown
     ):
         project_dir = create_cli_project()

@@ -9,43 +9,34 @@ only the legend depends on. The saved selection is then confirmed before
 ecc.toml is written.
 """
 
-import os
-import sys
-from collections.abc import Callable, Generator, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 
-from rich.console import Console, Group, RenderableType
+from rich.console import Console, RenderableType
 from rich.live import Live
-from rich.text import Text
 
-from chipcompiler.cli.project.flow_plan_view import PlanView
+from chipcompiler.cli.interactive.terminal import (
+    CANCEL,
+    DOWN,
+    ENTER,
+    LEFT,
+    RIGHT,
+    UP,
+    KeyReader,
+    next_key,
+)
+from chipcompiler.cli.project.flow_status_view import StatusView
 from chipcompiler.cli.rendering.flow_selection_view import flow_selection_view
 from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS, StepEnum
 from chipcompiler.rtl2gds import inserted_step_name, lec_insert_anchors, resolve_insert_steps
 
-#: Reads the next key presses (one or more); see :func:`terminal_keys`.
-KeyReader = Callable[[], str]
 #: The view of the flow without the given (canonical) skipped steps and with
 #: the given (canonical) inserted steps.
-ViewOf = Callable[[tuple[str, ...], tuple[str, ...]], PlanView]
+ViewOf = Callable[[tuple[str, ...], tuple[str, ...]], StatusView]
 
-_UP = frozenset({"\x1b[A", "\x1bOA", "k"})
-_DOWN = frozenset({"\x1b[B", "\x1bOB", "j"})
-_LEFT = frozenset({"\x1b[D", "\x1bOD", "-"})
-_RIGHT = frozenset({"\x1b[C", "\x1bOC", "+"})
 _TOGGLE = frozenset({" ", "x"})
 _INSERT = frozenset({"i"})
-_SAVE = frozenset({"\r", "\n"})
-_CANCEL = frozenset({"q", "\x1b", "\x03", "\x04"})
-#: Windows reports arrows as a prefix key followed by the scan code.
-_WINDOWS_PREFIX = frozenset({"\x00", "\xe0"})
-_WINDOWS_ARROWS = {"H": "\x1b[A", "P": "\x1b[B", "K": "\x1b[D", "M": "\x1b[C"}
 _KEYS = "↑/↓ move · space toggle · i insert LEC · ←/→ parallel steps · enter save · q cancel"
-_YES = frozenset({"y", "Y"})
-#: Enter keeps ecc.toml as it is: writing needs an explicit ``y``.
-_NO = frozenset({"n", "N", *_SAVE, *_CANCEL})
-_CONFIRM_KEYS = "y write · n/enter/q cancel"
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,17 +81,13 @@ def edit_selection(
     with Live(render(), console=console, auto_refresh=False, transient=True) as live:
         while True:
             try:
-                while not pending:
-                    pending = split_keys(read_key())
-                    if pending and pending[-1] in _WINDOWS_PREFIX:
-                        pending[-1:] = split_keys(pending[-1] + read_key())
+                key = next_key(pending, read_key)
             except (KeyboardInterrupt, EOFError):
                 return None
-            key = pending.pop(0)
             notice = ""
-            if key in _UP:
+            if key in UP:
                 cursor = (cursor - 1) % len(view.steps)
-            elif key in _DOWN:
+            elif key in DOWN:
                 cursor = (cursor + 1) % len(view.steps)
             elif key in _TOGGLE:
                 row = view.steps[cursor]
@@ -127,93 +114,22 @@ def edit_selection(
                 else:
                     insert = resolve_insert_steps({"insert_steps": [*insert, name]})
                     view = view_of(skip, insert)
-            elif key in _LEFT:
+            elif key in LEFT:
                 parallel = max(parallel - 1, 1)
-            elif key in _RIGHT:
+            elif key in RIGHT:
                 # A larger value than any stage (or the default) could never matter.
                 bound = max(DEFAULT_MAX_PARALLEL_STEPS, _largest_stage(view), started)
                 parallel = parallel + 1 if parallel < bound else parallel
-            elif key in _SAVE:
+            elif key in ENTER:
                 if not view.blocks_saving:
                     return EditedSelection(skip, insert, parallel)
                 notice = "resolve the errors before saving"
-            elif key in _CANCEL:
+            elif key in CANCEL:
                 return None
             live.update(render(), refresh=True)
 
 
-def confirm_write(summary: RenderableType, *, console: Console, read_key: KeyReader) -> bool:
-    """Show *summary* until ``y`` (write) or ``n``/enter/cancel (keep ecc.toml)."""
-    prompt = Group(summary, Text(_CONFIRM_KEYS, style="dim"))
-    with Live(prompt, console=console, auto_refresh=False, transient=True):
-        while True:
-            try:
-                keys = split_keys(read_key())
-            except (KeyboardInterrupt, EOFError):
-                return False
-            for key in keys:
-                if key in _YES:
-                    return True
-                if key in _NO:
-                    return False
-
-
-@contextmanager
-def terminal_keys() -> Generator[KeyReader]:
-    """Key presses from the terminal on stdin, for the whole editing session.
-
-    The terminal stays in cbreak mode until the session ends, so keys typed
-    while the table redraws are kept (``click.getchar`` re-enters raw mode per
-    key and flushes them). Windows reads keys one at a time with ``getwch``.
-    """
-    if sys.platform == "win32":
-        import click
-
-        yield click.getchar
-        return
-    import termios
-    import tty
-
-    fd = sys.stdin.fileno()
-    saved = termios.tcgetattr(fd)
-    tty.setcbreak(fd)
-    encoding = sys.stdin.encoding or "utf-8"
-    try:
-        yield lambda: os.read(fd, 64).decode(encoding, "replace")
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-
-
-def split_keys(chunk: str) -> list[str]:
-    """The key presses in one terminal read.
-
-    A read can hold several keys (typing ahead, a held arrow key, a paste):
-    CSI (``ESC [`` ... final byte) and SS3 (``ESC O`` x) sequences stay whole,
-    a Windows prefix key joins its scan code, everything else is one key.
-    """
-    keys: list[str] = []
-    index = 0
-    while index < len(chunk):
-        char = chunk[index]
-        if chunk.startswith("\x1b[", index):
-            end = index + 2
-            while end < len(chunk) and not "@" <= chunk[end] <= "~":
-                end += 1
-            keys.append(chunk[index : end + 1])
-            index = end + 1
-        elif chunk.startswith("\x1bO", index) and index + 2 < len(chunk):
-            keys.append(chunk[index : index + 3])
-            index += 3
-        elif char in _WINDOWS_PREFIX and index + 1 < len(chunk):
-            keys.append(_WINDOWS_ARROWS.get(chunk[index + 1], ""))
-            index += 2
-        else:
-            keys.append(char)
-            index += 1
-    return keys
-
-
-def _largest_stage(view: PlanView) -> int:
+def _largest_stage(view: StatusView) -> int:
     """The most steps one stage of *view* can run at once."""
     return max((len(step.parallel_with) + 1 for step in view.steps), default=1)
 

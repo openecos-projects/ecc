@@ -2,6 +2,8 @@
 
 ECC is the EDA toolchain component of ECOS Studio, orchestrating EDA tools (Yosys, ECC-Tools, OpenROAD, Magic, KLayout) for RTL-to-GDS flows. See `docs/development.md` for workflows.
 
+This codebase is yours: its purpose and how it is built are up to you, and you will continue to build upon it.
+
 For setup, testing, and code quality commands, see [docs/development.md](docs/development.md).
 
 # Workflow

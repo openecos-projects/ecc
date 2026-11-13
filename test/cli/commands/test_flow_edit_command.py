@@ -275,7 +275,7 @@ def _scripted_terminal(monkeypatch, keys):
         yield lambda: next(scripted)
 
     monkeypatch.setattr(flow_selection_handlers, "_interactive", lambda _ctx: True)
-    monkeypatch.setattr("chipcompiler.cli.interactive.flow_edit.terminal_keys", scripted_keys)
+    monkeypatch.setattr("chipcompiler.cli.interactive.terminal.terminal_keys", scripted_keys)
 
 
 @pytest.mark.parametrize(

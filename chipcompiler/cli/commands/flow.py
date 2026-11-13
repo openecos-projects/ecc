@@ -3,14 +3,14 @@ from typing import Annotated, Any
 import typer
 
 from chipcompiler.cli.command_handlers.flow import flow_list, flow_show, flow_validate
-from chipcompiler.cli.command_handlers.flow_selection import flow_edit, flow_plan
+from chipcompiler.cli.command_handlers.flow_selection import flow_edit, flow_status
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.completion import complete_flow_step, complete_inserted_step
 from chipcompiler.cli.core.inputs import (
     FlowEditInput,
     FlowListInput,
-    FlowPlanInput,
     FlowShowInput,
+    FlowStatusInput,
     FlowValidateInput,
     output_options,
     project_options,
@@ -74,8 +74,8 @@ def _step_insertion(flag: str, help_text: str) -> Any:
     return typer.Option(flag, help=help_text, autocompletion=complete_inserted_step)
 
 
-@flow_app.command("plan")
-def plan_cmd(
+@flow_app.command("status")
+def status_cmd(
     *,
     enable: Annotated[
         list[str] | None, _step_toggle("--enable", "Also run STEP (repeatable)")
@@ -100,7 +100,7 @@ def plan_cmd(
     ecc.toml. Exits 1 when an enabled step lacks design data it requires or an
     entry input is missing.
     """
-    command_input = FlowPlanInput(
+    command_input = FlowStatusInput(
         output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         enable=tuple(enable or ()),
@@ -108,7 +108,7 @@ def plan_cmd(
         insert=tuple(insert or ()),
         remove=tuple(remove or ()),
     )
-    execute_command("flow", command_input, flow_plan, render_key="flow:plan")
+    execute_command("flow", command_input, flow_status, render_key="flow:status")
 
 
 @flow_app.command("edit")

@@ -621,7 +621,7 @@ an explicit range start cannot be skipped; the first step can (skipping
 `Synthesis` enters at `preFloorplan` with the declared
 `[design] netlist`). A skipped signoff checker (drc, lvs, sta) leaves its
 `ecc signoff check` gate `unknown`. Existing workspace ledgers are never
-re-filtered. `ecc flow plan` checks a selection read-only, and `ecc flow edit`
+re-filtered. `ecc flow status` checks a selection read-only, and `ecc flow edit`
 chooses one (interactive checkbox list, where `i` inserts an LEC, or
 `--enable`/`--disable`/`--insert`/`--remove`), asks to confirm unless `--yes`
 is given (required without a terminal), and writes `[flow]` `preset`,
