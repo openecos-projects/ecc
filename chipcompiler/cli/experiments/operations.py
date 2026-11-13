@@ -98,14 +98,15 @@ def project_path(value: str | None) -> Path:
     return path
 
 
-def select_diagnose_workspace(
+def select_experiment_workspace(
     project: Path, selector: str | None
 ) -> tuple[str, Path | None, str | None]:
-    """Select the workspace ``diagnose run`` reads: (name, directory, error).
+    """Select the workspace an experiment command reads: (name, directory, error).
 
-    A manifest project uses the same selection rules as ``status`` and
-    ``check`` (#396): an omitted selector picks the only active workspace, an
-    id resolves to its declared directory, an absolute path must be declared,
+    Used by ``diagnose run`` (#396) and ``reproducible export`` (#418). A
+    manifest project uses the same selection rules as ``status`` and
+    ``check``: an omitted selector picks the only active workspace, an id
+    resolves to its declared directory, an absolute path must be declared,
     and an unreadable manifest is an error. The error text is "kind: reason".
     Other projects keep the directory convention ``<project>/<name>``.
     """
