@@ -123,11 +123,15 @@ class ExecutionObserver:
         with self._callback_lock:
             name = getattr(step, "name", None)
             if isinstance(name, str) and name:
-                if getattr(state, "value", state) == StateEnum.Success.value:
+                state_value = getattr(state, "value", state)
+                if state_value == StateEnum.Success.value:
                     self.executed_steps.append(name)
-                elif self.failed_step is None and not (
-                    name in ADVISORY_FLOW_STEPS
-                    and getattr(state, "value", state) == StateEnum.Imcomplete.value
+                elif (
+                    self.failed_step is None
+                    and not is_finished_step_state(state_value)
+                    and not (
+                        name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
+                    )
                 ):
                     self.failed_step = name
             self._delegate_call("on_step_completed", step, state, error)

@@ -162,6 +162,27 @@ def test_selected_flow_treats_skipped_as_finished_and_continues():
     assert result.succeeded
     assert result.state == StateEnum.Success.value
     assert calls == ["postRouteLec", "Harden"]
+    assert result.failed_step is None
+
+
+def test_selected_flow_reports_real_failure_after_skipped_step():
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_step(self, step, *, rerun=False, observer: Any = None):
+            state = StateEnum.Skipped if step.name == "postRouteLec" else StateEnum.Imcomplete
+            observer.on_step_completed(step, state)
+            return state
+
+    result = execute(
+        Flow(),
+        ExecutionPlan(intent="run", step_ids=("postRouteLec", "Harden")),
+        event_sink=object(),
+    )
+
+    assert not result.succeeded
+    assert result.failed_step == "Harden"
 
 
 @pytest.mark.parametrize(
