@@ -139,6 +139,36 @@ def test_geometry_to_parameters_logs_and_keeps_unknown_flat_keys(caplog):
     assert any("some_future_key" in record.message for record in caplog.records)
 
 
+def test_geometry_to_parameters_keeps_registered_subtrees_without_warning(caplog):
+    # `ecc init` writes [params.sdc]; the project then carries it in its
+    # base parameters. A subtree of registered parameters is not unknown.
+    flat = {
+        "sdc": {"clock_list": "clk MAX:100 TYP:100\n"},
+        "dreamplace": {"target_density": 0.5},
+        "macro": {"placements": []},
+        "geometry": {"clock_tree": True},
+    }
+    with caplog.at_level("WARNING"):
+        result = geometry_to_parameters(flat)
+    assert result == flat
+    assert not [r.message for r in caplog.records if "unknown GUI parameter key" in r.message]
+
+
+def test_every_registered_parameter_is_stored_under_a_known_top_level_key():
+    from chipcompiler.data.parameter_keys import _known_top_level_keys
+    from chipcompiler.data.parameter_schema import list_schemas
+
+    known = _known_top_level_keys()
+    unknown = {
+        schema.param: schema.maps_to
+        for schema in list_schemas()
+        if schema.maps_to is not None
+        and not (set(schema.maps_to) if isinstance(schema.maps_to, dict) else {schema.maps_to})
+        <= known
+    }
+    assert unknown == {}
+
+
 def test_parameters_to_geometry_surfaces_aliases():
     parameters = {
         "die": {"size": [150, 160], "area": 0},
