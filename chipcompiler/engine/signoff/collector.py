@@ -24,7 +24,7 @@ from chipcompiler.data import (
     workspace_checklist_path,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_directory_for_tool
-from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+from chipcompiler.data.workspace.flow_policy import FlowInputStepError, is_skipped_record
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -147,16 +147,17 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         # whose ledger has no postRouteLec (skipped at creation) never requires
         # it, so the gate is only resolved when the step is in the ledger.
         flow_steps = self.workspace.flow.steps()
-        post_route_lec_index = next(
+        post_route_lec = next(
             (
-                index
-                for index, step in enumerate(flow_steps)
+                step
+                for step in flow_steps
                 if step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
             ),
             None,
         )
+        post_route_lec_skipped = post_route_lec is not None and is_skipped_record(post_route_lec)
         lec_gate = None
-        if post_route_lec_index is not None:
+        if post_route_lec is not None and not post_route_lec_skipped:
             # The gate netlist is the postRouteLec step's resolved input, so
             # its name comes from the builder contract, not from a
             # design-prefixed guess.
@@ -175,11 +176,13 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                         destination="final/reports/postRouteLec/result.json",
                     )
                 )
-        # A workspace whose ledger has no postRouteLec (skipped at creation)
-        # never requires it, regardless of the artifacts on disk.
-        require_lec = self.workspace.flow.has_step(
-            SkippableStepEnum.POST_ROUTE_LEC
-        ) and self._requires_post_route_lec(lec_golden, lec_gate)
+        # A ledger without postRouteLec, or one that deliberately skipped it,
+        # never requires the proof regardless of inherited artifacts on disk.
+        require_lec = (
+            post_route_lec is not None
+            and not post_route_lec_skipped
+            and self._requires_post_route_lec(lec_golden, lec_gate)
+        )
         required_steps = self._required_step_states(require_lec=require_lec)
         for step_name, state in required_steps.items():
             if state != StateEnum.Success.value:
