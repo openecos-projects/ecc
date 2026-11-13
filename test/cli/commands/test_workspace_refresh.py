@@ -194,6 +194,56 @@ def test_refresh_force_overwrites_modified_configs(
     assert len(refresh_engine_mocks) == 1
 
 
+def test_refresh_rejects_a_directory_that_is_not_declared(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    manifest_stubs,
+    plain_records,
+    refresh_engine_mocks,
+):
+    project_dir = create_cli_project()
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(os.path.join(project_dir, "baseline"))
+    # What `workspace delete` leaves behind: the directory, without its registration.
+    create_flow_json(os.path.join(project_dir, "removed"))
+    note = project_path / "removed" / "user-note.txt"
+    note.write_text("keep me\n")
+
+    rc = cli_main.run(
+        ["workspace", "refresh", "removed", "--force", "--project", project_dir, "--plain"]
+    )
+
+    assert rc == 1
+    (record,) = [r for r in plain_records(capsys.readouterr().out) if "error" in r]
+    assert record["error"] == "workspace_not_declared"
+    assert "removed" in record["reason"]
+    assert refresh_engine_mocks == []
+    assert note.read_text() == "keep me\n"
+
+
+def test_refresh_reports_a_corrupt_manifest_before_touching_the_workspace(
+    capsys,
+    create_cli_project,
+    create_flow_json,
+    plain_records,
+    refresh_engine_mocks,
+):
+    project_dir = create_cli_project()
+    create_flow_json(os.path.join(project_dir, "baseline"))
+    Path(project_dir, "project.json").write_text("{not-json")
+
+    rc = cli_main.run(
+        ["workspace", "refresh", "baseline", "--force", "--project", project_dir, "--plain"]
+    )
+
+    assert rc == 1
+    (record,) = [r for r in plain_records(capsys.readouterr().out) if "error" in r]
+    assert record["error"] == "manifest_invalid"
+    assert refresh_engine_mocks == []
+
+
 def test_refresh_does_not_write_manifest_flow_status(
     capsys,
     create_cli_project,

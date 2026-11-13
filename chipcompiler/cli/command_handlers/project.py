@@ -341,6 +341,12 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
+    if ctx.manifest_error:
+        # An undeclared name still resolves run_dir to <project>/<name>.
+        # Refreshing it would rebuild a directory the project does not manage.
+        return CommandResult.err(
+            [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
+        )
     from chipcompiler.data.workspace.config_manifest import modified_derived_configs
 
     modified = modified_derived_configs(ctx.run_dir)
