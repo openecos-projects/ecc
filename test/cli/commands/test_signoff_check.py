@@ -373,7 +373,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
 def test_skipped_checker_never_passes_signoff(tmp_path, checker, metric_id):
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": ["lec", checker]})
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": [checker]})
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text(json.dumps(ledger))
     # Clean evidence left in the tree (a copied or reused directory) is not

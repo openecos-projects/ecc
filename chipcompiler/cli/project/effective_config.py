@@ -18,6 +18,12 @@ from typing import TYPE_CHECKING, Any, TypeGuard
 
 from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandResult
+from chipcompiler.cli.project.manifest_flow import (
+    attach_insert_steps,
+    declared_insert_steps,
+    entry_flow_config,
+    manifest_synthesis_lec,
+)
 from chipcompiler.project.manifest import (
     PRESET_MANIFEST_RANGE,
     ManifestError,
@@ -153,13 +159,15 @@ def resolve_effective_config(
         if entry is not None:
             cfg.manifest_parameters = assembled["parameters"]
             if "flow.preset" not in cfg._explicit_keys:
-                flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
+                flow_config = entry_flow_config(entry)
 
     # skip_steps follows the common precedence: an explicit ecc.toml
     # declaration outranks the manifest entry (the base layer).
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
+    flow_config = attach_insert_steps(flow_config, manifest_synthesis_lec(entry, cfg))
+    flow_config = attach_insert_steps(flow_config, declared_insert_steps(cfg))
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (
@@ -208,9 +216,7 @@ def _manifest_only_config(ctx, assembled, entry):
     cfg.manifest_driven = True
     cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
 
-    flow_config = None
-    if entry is not None:
-        flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
+    flow_config = None if entry is None else entry_flow_config(entry)
     return (cfg, flow_config)
 
 

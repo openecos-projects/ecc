@@ -1,11 +1,13 @@
 # pyright: strict
-"""The step selection of a project: its preset chain minus ``skip_steps``.
+"""The step selection of a project: its preset chain minus ``skip_steps``
+plus ``insert_steps``.
 
 The skip policy comes from the run's flow config (manifest entry or CLI
 range), else an explicit ``ecc.toml`` ``[flow] skip_steps``, else the code
+default. Inserted steps (an LEC after a design-building step, ``lec@CTS``)
+come from the run's flow config, else ``ecc.toml``; nothing is inserted by
 default. Only a declared policy is checked against the step capabilities: the
-code default is fixed, and its one conflict (``synthesis_lec`` skipping its own
-LEC) is reported where a fresh run is created.
+code default is fixed and fits every preset.
 """
 
 import os
@@ -14,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from chipcompiler.cli.core.records import warning_record
-from chipcompiler.data.flow_plan import FlowPlan, plan_flow, preset_chain
+from chipcompiler.data.flow_plan import FlowPlan, inserted_chain, plan_flow, preset_chain
 
 if TYPE_CHECKING:
     from chipcompiler.cli.project.config import ProjectConfig
@@ -35,6 +37,37 @@ def effective_skip_steps(cfg: "ProjectConfig", flow_config: FlowConfig | None) -
     return resolve_skip_steps(None)
 
 
+def effective_insert_steps(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> tuple[str, ...]:
+    """Canonical inserted step names; raises ``ValueError`` for an invalid list."""
+    from chipcompiler.rtl2gds import resolve_insert_steps
+
+    if flow_config is not None and "insert_steps" in flow_config:
+        return resolve_insert_steps(flow_config)
+    if "flow.insert_steps" in _explicit_keys(cfg):
+        return resolve_insert_steps({"insert_steps": cfg.flow_insert_steps})
+    return ()
+
+
+def changed_insert_steps(
+    insert_steps: Collection[str], *, insert: Collection[str] = (), remove: Collection[str] = ()
+) -> tuple[str, ...]:
+    """*insert_steps* with *insert* added and *remove* removed, canonical.
+
+    Entries are ``STEP@AFTER`` and accept the selector aliases. Raises
+    ``ValueError`` for an invalid entry, an entry both inserted and removed,
+    or removing a step that is not inserted.
+    """
+    from chipcompiler.rtl2gds import resolve_insert_steps
+
+    added = set(resolve_insert_steps({"insert_steps": list(insert)}))
+    removed = set(resolve_insert_steps({"insert_steps": list(remove)}))
+    if conflict := sorted(added & removed):
+        raise ValueError(f"steps both inserted and removed: {', '.join(conflict)}")
+    if missing := sorted(removed - set(insert_steps)):
+        raise ValueError(f"steps not inserted, nothing to remove: {', '.join(missing)}")
+    return resolve_insert_steps({"insert_steps": sorted((set(insert_steps) | added) - removed)})
+
+
 def toggled_skip_steps(
     skip_steps: Collection[str], *, enable: Collection[str] = (), disable: Collection[str] = ()
 ) -> tuple[str, ...]:
@@ -43,8 +76,14 @@ def toggled_skip_steps(
     Step spellings accept the selector aliases. Raises ``ValueError`` for an
     unknown step or a step both enabled and disabled.
     """
-    from chipcompiler.rtl2gds import resolve_skip_steps
+    from chipcompiler.data import StepEnum
+    from chipcompiler.rtl2gds import normalize_flow_step, resolve_skip_steps
 
+    if any(normalize_flow_step(name) == StepEnum.LEC.value for name in (*enable, *disable)):
+        raise ValueError(
+            "lec is not a flow step to enable or disable; insert it after a step with "
+            "--insert lec@STEP (lec@Synthesis checks synthesis)"
+        )
     enabled = set(resolve_skip_steps({"skip_steps": list(enable)}))
     disabled = set(resolve_skip_steps({"skip_steps": list(disable)}))
     if conflict := sorted(enabled & disabled):
@@ -57,27 +96,36 @@ def project_flow_plan(
     flow_config: FlowConfig | None,
     *,
     skip_steps: Collection[str] | None = None,
+    insert_steps: Sequence[str] | None = None,
 ) -> FlowPlan | None:
     """The plan of the ledger a fresh run creates; None without a flow target.
 
-    *skip_steps* replaces the effective policy (for example a toggled one).
-    Raises ``ValueError`` for an invalid policy or a skipped flow boundary.
+    *skip_steps* and *insert_steps* replace the effective policy (for example
+    an edited one). Raises ``ValueError`` for an invalid policy or a skipped
+    flow boundary.
     """
     from chipcompiler import rtl2gds as rtl2gds_api
 
     lec_engine = effective_lec_engine(cfg, flow_config)
     skip = effective_skip_steps(cfg, flow_config) if skip_steps is None else tuple(skip_steps)
+    inserted = inserted_chain(
+        effective_insert_steps(cfg, flow_config) if insert_steps is None else insert_steps,
+        lec_engine=lec_engine,
+    )
     if (start := _flow_option(flow_config, "start_step")) is not None:
         end = _flow_option(flow_config, "end_step")
         return plan_flow(
             preset_chain("rtl2gds", lec_engine=lec_engine),
             skip_steps=skip,
+            inserted=inserted,
             start=rtl2gds_api.normalize_flow_step(start),
             end=rtl2gds_api.normalize_flow_step(end) if end is not None else None,
         )
     if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
         return None
-    return plan_flow(preset_chain(cfg.flow_preset, lec_engine=lec_engine), skip_steps=skip)
+    return plan_flow(
+        preset_chain(cfg.flow_preset, lec_engine=lec_engine), skip_steps=skip, inserted=inserted
+    )
 
 
 def entry_step(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> str | None:
@@ -102,7 +150,7 @@ def entry_step(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> str | No
 
 
 def selection_errors(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> list[str]:
-    """Why a declared skip policy cannot run; [] for the code default."""
+    """Why a declared skip policy or inserted steps cannot run; [] for the code default."""
     if not _policy_declared(cfg, flow_config):
         return []
     plan, error = _plan_or_error(cfg, flow_config)
@@ -110,7 +158,12 @@ def selection_errors(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> li
         return [error]
     if plan is None:
         return []
-    return [f"flow.skip_steps: {violation.message()}" for violation in plan.errors]
+    inserted = set(plan.insert_steps)
+    return [
+        f"flow.{'insert_steps' if violation.step in inserted else 'skip_steps'}: "
+        f"{violation.message()}"
+        for violation in plan.errors
+    ]
 
 
 def selection_warnings(
@@ -141,6 +194,7 @@ def _plan_or_error(
         # Invalid names and engines are reported where they are declared.
         effective_skip_steps(cfg, flow_config)
         effective_lec_engine(cfg, flow_config)
+        effective_insert_steps(cfg, flow_config)
     except ValueError:
         return None, None
     try:
@@ -150,8 +204,9 @@ def _plan_or_error(
 
 
 def _policy_declared(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> bool:
-    return (flow_config is not None and "skip_steps" in flow_config) or (
-        "flow.skip_steps" in _explicit_keys(cfg)
+    return any(
+        (flow_config is not None and key in flow_config) or f"flow.{key}" in _explicit_keys(cfg)
+        for key in ("skip_steps", "insert_steps")
     )
 
 
@@ -185,14 +240,16 @@ def write_flow_selection(
     preset: str,
     lec_engine: str,
     skip_steps: Sequence[str],
+    insert_steps: Sequence[str],
     max_parallel_steps: int,
 ) -> None:
     """Declare the whole selection in ``ecc.toml`` ``[flow]``, comments kept.
 
     Every key is written explicitly, the defaults included, so the file alone
-    states which steps the next fresh run executes.
+    states which steps the next fresh run executes. ``insert_steps`` is the
+    exception: nothing inserted is the absent key, so it is removed then.
     """
-    from chipcompiler.cli.project.toml_edit import set_scoped_key
+    from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
     from chipcompiler.utility.file import write_text_atomic
 
     with open(config_path, encoding="utf-8") as f:
@@ -204,6 +261,10 @@ def write_flow_selection(
         ("max_parallel_steps", max_parallel_steps),
     ):
         text = set_scoped_key(text, "flow", name, value)
+    if insert_steps:
+        text = set_scoped_key(text, "flow", "insert_steps", list(insert_steps))
+    else:
+        text = remove_scoped_key(text, "flow", "insert_steps") or text
     write_text_atomic(Path(config_path), text)
 
 

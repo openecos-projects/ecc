@@ -14,6 +14,7 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StepEnum,
     Workspace,
+    inserted_step_kind,
 )
 from chipcompiler.data.step import StepDirectories, recorded_step_directory
 from chipcompiler.data.workspace.flow_policy import (
@@ -47,19 +48,17 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
     """(golden, gate) netlists the post-route LEC proof compares."""
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
     # Golden precedence mirrors the execution wiring (engine/flow.py): the
-    # synthesis output when the flow contains Synthesis, else the declared
-    # golden netlist, else the origin RTL.
-    golden = getattr(getattr(workspace, "design", None), "origin_verilog", None)
+    # declared golden netlist, else the synthesis output when the flow
+    # contains Synthesis, else the origin RTL.
     gate = _post_route_gate(workspace)
-    if workspace.flow.has_step(StepEnum.SYNTHESIS):
+    golden = getattr(getattr(workspace, "design", None), "golden_verilog", None)
+    if golden is None and workspace.flow.has_step(StepEnum.SYNTHESIS):
         golden = (
             StepDirectories.of(workspace).path(StepEnum.SYNTHESIS.value)
             / "output"
             / f"{design}_Synthesis.v.gz"
         )
-    else:
-        golden = getattr(workspace.design, "golden_verilog", None) or golden
-    return golden, gate
+    return golden or getattr(getattr(workspace, "design", None), "origin_verilog", None), gate
 
 
 def _post_route_gate(workspace: Workspace) -> Path | None:
@@ -75,6 +74,20 @@ def _post_route_gate(workspace: Workspace) -> Path | None:
         if step_name(record) == SkippableStepEnum.POST_ROUTE_LEC.value:
             return getattr(step.input, "gate_verilog", None)
     return None
+
+
+def inserted_lec_results(workspace: Workspace) -> dict[str, Path]:
+    """The result JSON of every inserted LEC check (``lec@CTS``) the ledger records."""
+    design = getattr(getattr(workspace, "design", None), "name", "") or ""
+    flow = getattr(workspace, "flow", None)
+    return {
+        name: Path(workspace.directory)
+        / recorded_step_directory(record)
+        / "output"
+        / f"{design}_{name}_result.json"
+        for record in (flow.steps() if flow is not None else [])
+        if isinstance(name := record.get("name"), str) and inserted_step_kind(name) is not None
+    }
 
 
 def requires_post_route_lec(workspace: Workspace) -> bool:

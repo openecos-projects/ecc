@@ -324,7 +324,7 @@ class TestLogListingMode:
         assert "synthesis" in out
         assert "ecc log synthesis" in out
 
-    def test_listing_and_reading_yosys_lec_logs(
+    def test_listing_and_reading_lec_logs(
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
@@ -337,26 +337,26 @@ class TestLogListingMode:
                     "schema_version": 2,
                     "steps": [
                         {
-                            "name": "lec",
-                            "tool": "yosys_lec",
+                            "name": "lec@CTS",
+                            "tool": "kepler_formal",
                             "state": "Success",
-                            **step_fields("lec", "yosys_lec"),
+                            **step_fields("lec@CTS", "kepler_formal"),
                         },
                         {
                             "name": "postRouteLec",
-                            "tool": "yosys_lec",
+                            "tool": "kepler_formal",
                             "state": "Success",
-                            **step_fields("postRouteLec", "yosys_lec"),
+                            **step_fields("postRouteLec", "kepler_formal"),
                         },
                     ],
                 },
                 f,
             )
         for name, contents in (
-            ("lec", "synthesis equivalence\n"),
+            ("lec@CTS", "clock-tree equivalence\n"),
             ("postRouteLec", "post-route equivalence\n"),
         ):
-            log_dir = os.path.join(run_dir, f"{name}_yosys_lec", "log")
+            log_dir = os.path.join(run_dir, f"{name}_kepler_formal", "log")
             os.makedirs(log_dir, exist_ok=True)
             with open(os.path.join(log_dir, f"{name}.log"), "w") as f:
                 f.write(contents)
@@ -365,7 +365,7 @@ class TestLogListingMode:
 
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert [record["step"] for record in records] == ["lec", "postroutelec"]
+        assert [record["step"] for record in records] == ["lec@cts", "postroutelec"]
 
         rc = cli_main.run(["log", "postroutelec", "--plain", "--project", project_dir])
 

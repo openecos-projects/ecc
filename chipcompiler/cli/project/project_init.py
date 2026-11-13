@@ -220,7 +220,7 @@ root = ""
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# lec_engine: kepler_formal | yosys_lec | lec_dual
+# lec_engine: kepler_formal
 lec_engine = {lec_engine}
 # Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.

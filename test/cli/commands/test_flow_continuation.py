@@ -425,15 +425,14 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """A per-workspace project.json skip policy wins over the
-        workspace's undeclared one on an existing run: enabling the LEC
-        (skip_steps = []) against a without-LEC ledger is a mismatch that
-        never inserts the step."""
+        workspace's undeclared one on an existing run: keeping the LEC
+        (skip_steps = [], which inserts lec@Synthesis) against a ledger without
+        it is a mismatch that never inserts the step."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         # A post-default-policy ledger: the canonical chain without the LEC.
-        without_lec = [name for name in RTL2GDS_NAMES if name != "lec"]
-        prefix = without_lec[:3]
+        prefix = RTL2GDS_NAMES[:3]
         _write_existing_workspace(
             run_dir, prefix, states=["Success"] * 2 + ["Unstart"], pdk_root=pdk_root
         )
@@ -451,7 +450,7 @@ class TestFlowMismatchZeroMutation:
         errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         ledger = json.loads((Path(run_dir) / "home" / "flow.json").read_text())
-        assert "lec" not in [step["name"] for step in ledger["steps"]]
+        assert "lec@Synthesis" not in [step["name"] for step in ledger["steps"]]
 
     def test_parameter_mismatch_does_not_rewrite_workspace(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records

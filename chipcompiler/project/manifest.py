@@ -61,6 +61,23 @@ _CANONICAL_TO_MANIFEST_STEP = {
 # GUI display names for the canonical rtl2gds chain, in manifest range order.
 MANIFEST_FLOW_STEPS = tuple(_CANONICAL_TO_MANIFEST_STEP.values())
 
+
+def manifest_step_name(name: str) -> str:
+    """The project.json (GUI) name of a ledger step.
+
+    ``lec`` is no chain step any more, but project.json and the GUI still call
+    the synthesis LEC ``LEC``: ``lec@Synthesis`` maps to it. Another inserted
+    LEC maps to the step it follows; any other unknown name is kept.
+    """
+    from chipcompiler.rtl2gds import parse_inserted_step
+
+    parsed = parse_inserted_step(name)
+    if parsed is not None:
+        kind, after = parsed
+        name = kind if after == "Synthesis" else after
+    return _CANONICAL_TO_MANIFEST_STEP.get(name, name)
+
+
 # Display name -> canonical step value, for skip-policy boundary checks.
 _MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
 

@@ -199,7 +199,7 @@ AI 按阶段与预算选点；参数范围仍须经过当前 schema 和物理容
 预算耗尽或目标未达时如实总结，不自动再增加复验次数。
 
 spec 的 required_checkers 是独立验收要求，不会自动开启被 flow 默认 skip 的检查。
-若要求综合级 LEC，还需核对 flow 是否实际包含/启用及公开配置是否足够；
+若要求综合级 LEC，还需核对 flow 是否实际插入了它（`[flow] insert_steps` 中的 `lec@Synthesis`）及公开配置是否足够；
 无法通过当前接口满足时报告能力缺口，不能把“已声明”当成“已验证”。
 postRouteLec 要检查真实 proven 证据，不能仅看该步骤执行 success。
 signoff profile 也不能替代用户要求的 checker、全部 checklist 和额外物理验收。
@@ -845,7 +845,7 @@ derive 也不会证明保留前缀的有效性，调用者仍需核对输入、�
 rtl2gds 的前段常见链路是：
 
 ```text
-Synthesis → lec（按现有 skip 策略）→ preFloorplan → macroPlacement
+Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorplan → macroPlacement
 → postFloorplan → place → CTS → legalization → Timing optimization → route → …
 ```
 

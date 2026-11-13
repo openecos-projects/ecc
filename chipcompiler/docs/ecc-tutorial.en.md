@@ -142,7 +142,7 @@ $ ecc doctor
   status: pass
   required: True
   detail: read_slang frontend available
-  component: ecc-tools       # dreamplace / kepler-formal / lec-dual / pdk are listed the same way
+  component: ecc-tools       # dreamplace / kepler-formal / pdk are listed the same way
   ...
   component: sizer
   status: fail
@@ -153,7 +153,7 @@ $ ecc doctor
 `installed_at` is a best-effort UTC timestamp derived from the resolved
 install path's filesystem metadata; it is omitted when the path is unavailable.
 
-All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, kepler-formal, lec-dual, and pdk; klayout is optional) must `pass` before `ecc doctor` succeeds. kepler-formal and lec-dual serve the LEC equivalence checks (needed once LEC is enabled in §4.1; lec-dual allows a degraded single-engine pass). A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
+All required components (yosys, yosys-slang, ecc-tools, dreamplace, sizer, kepler-formal, and pdk; klayout is optional) must `pass` before `ecc doctor` succeeds. kepler-formal runs the equivalence checks: the post-route LEC and the synthesis check inserted in §4.1. A ready Sizer has both its executable and runtime root. The complete `rtl2gds` flow contains Timing optimization; fresh or `--overwrite` `rtl2gds` targets check Sizer during startup preflight and return `env_not_ready` when it is missing. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail mid-flow. When a component is missing, follow the `ecc doctor` remediation hint (e.g. re-run the §2.1 installer with `--with-toolchain`).
 
 ## 3. Creating Your First Project
 
@@ -266,23 +266,23 @@ rc=0
 
 ### 4.1 Start
 
-The `rtl2gds` preset runs all the way through Harden (which produces the GDS + abstract LEF + timing LIB). Synthesis LEC (step 2) and the post-placement `diff_opt` step are **skipped by default**: `[flow] skip_steps` defaults to `["lec", "diff_opt"]`. This tutorial keeps `diff_opt` disabled and enables the LEC shown below:
+The `rtl2gds` preset runs all the way through Harden (which produces the GDS + abstract LEF + timing LIB). The post-placement `diff_opt` step is **skipped by default** (`[flow] skip_steps` defaults to `["diff_opt"]`). The synthesis-level equivalence check is not part of the chain: it is an **inserted step**, `lec@Synthesis`, which compares the RTL against the synthesized netlist with kepler-formal's sequential equivalence check (SEC). This tutorial keeps `diff_opt` disabled and inserts that check:
 
 ```bash
-# enable the synthesis LEC for this tutorial
-sed -i 's/skip_steps = \["lec", "diff_opt"\]/skip_steps = ["diff_opt"]/' ecc.toml
+# insert the synthesis check (writes insert_steps = ["lec@Synthesis"] to ecc.toml [flow])
+ecc flow edit --insert lec@Synthesis --yes
 
 ecc run --preset rtl2gds
 ```
 
 (The generated `ecc.toml` already selects `rtl2gds`; `--preset` applies to this run only and is not written back.)
 
-In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. The 22 `rtl2gds` steps are:
+In an interactive terminal the CLI renders live per-step progress and log tails; with output redirected to a file it runs silently and prints a summary at the end. With `diff_opt` skipped and `lec@Synthesis` inserted, the run has 22 steps:
 
 | # | Step | Tool | What it does |
 |---|------|------|--------------|
 | 1 | synthesis | yosys | RTL synthesis and technology mapping (slang frontend reads SystemVerilog) |
-| 2 | lec | kepler_formal | Logic equivalence check: synthesis netlist vs its golden netlist |
+| 2 | lec@synthesis | kepler_formal | Inserted equivalence check: RTL vs synthesized netlist (SEC) |
 | 3 | pre_floorplan | ecc | Mark the configured clock net; build the simple floorplan with automatic macro placement |
 | 4 | macro_placement | dreamplace | Run macro-only placement (positions can also be set manually with `ecc macro`, see §6.5); this is the handoff checkpoint before the macro-location file is consumed |
 | 5 | post_floorplan | ecc | Read the macro-location file; run floorplanning, create tracks, IO pins, tap cells, and PDN |
@@ -306,12 +306,12 @@ In an interactive terminal the CLI renders live per-step progress and log tails;
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[LEC<br/>kepler_formal] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> PP[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[lec@Synthesis<br/>kepler_formal, inserted] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> PP[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
     D --> DS[Diff Sizing<br/>dreamplace] --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> AN[Antenna Check] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> EM[EMIR] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping: bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`). When LEC is enabled, only the selected `[flow] lec_engine` is probed: the default `kepler_formal` probes kepler-formal, `yosys_lec` probes Yosys, and `lec_dual` probes the composite dual engine. A missing component returns `env_not_ready` with a pointer to `ecc doctor`; `ecc doctor` separately checks both physical LEC engines. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
+For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping: bundled ecc-tools plus preset-selected Yosys, DreamPlace, and Sizer (Sizer only for flows containing Timing optimization, such as `rtl2gds`). kepler-formal is probed when the flow has an LEC step (`postRouteLec` or an inserted `lec@…`). A missing component returns `env_not_ready` with a pointer to `ecc doctor`. Existing workspaces and `--workspace` reruns skip preflight, so a missing Sizer can still fail at Timing optimization.
 
 ### 4.2 Watching progress (in a second terminal)
 
@@ -333,8 +333,8 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (kepler_formal) success 0:0:1
-      log: ecc log lec --workspace default
+    lec@synthesis (kepler_formal) success 0:0:1
+      log: ecc log lec@synthesis --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
     macro_placement (dreamplace) success 0:0:5
@@ -364,7 +364,7 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (kepler_formal) success 0:0:1
+    lec@synthesis (kepler_formal) success 0:0:1
     pre_floorplan (ecc) success 0:0:1
     macro_placement (dreamplace) success 0:0:5
     post_floorplan (ecc) success 0:0:1
@@ -407,7 +407,7 @@ default/
 ├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
-├── lec_kepler_formal/   # synthesis-level LEC equivalence check
+├── lec@Synthesis_kepler_formal/   # inserted RTL-vs-netlist SEC check
 ├── preFloorplan_ecc/
 ├── macroPlacement_dreamplace/
 ├── postFloorplan_ecc/
@@ -465,10 +465,10 @@ $ ecc signoff inspect
 
   risks:
     [warning] Reports signoff attention
-              Optional file is missing or empty
+              Advisory analysis completed; review its report and coverage. Execution success is not a signoff verdict.
 ```
 
-The remaining `attention` group comes from **optional** LEC debug dumps (`lec.failed_rtlil` / `lec.failed_verilog`), which only exist when LEC *fails* — their absence after a proven run is expected. They do not block export; only `blocked` (a missing *required* item) gets rejected at export time. The package still collects every file under `config/`, while only `db_ecc.json`, `rcx_ecc.json`, and `sta_ecc.json` are required for export.
+The remaining `attention` comes from warn-policy items. The advisory `antennaCheck` and `emir` steps always report attention, even after a successful run, because finishing an analysis is not a signoff verdict: review their reports. An optional package file that is missing shows up the same way. Warn-policy items do not block export; only `blocked` (a missing or failed *required* item) gets rejected at export time. The package still collects every file under `config/`, while only `db_ecc.json`, `rcx_ecc.json`, and `sta_ecc.json` are required for export.
 
 ### 5.2 Export the signoff package: ecc signoff export
 
@@ -494,7 +494,7 @@ gcd_signoff_package/
 └── final/
     ├── design/       # final DEF, GDS, netlist, layout snapshot
     ├── timing/       # per-corner STA reports + spef/ (multi-corner parasitics)
-    └── reports/      # per-step QoR metrics + lec/ and postRouteLec/ proofs
+    └── reports/      # per-step QoR metrics + lec@Synthesis/ and postRouteLec/ proofs
 ```
 
 ### 5.3 Design summary report: ecc report summary
@@ -589,7 +589,7 @@ $ ecc report checklist
   status: written
 ```
 
-All required checklist items PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...). Any ATTENTION items are optional LEC debug dumps (`lec.failed_rtlil`/`lec.failed_verilog`), which only exist when LEC fails.
+All required checklist items PASS (mapped netlist, DRC clean, LVS clean, **LEC equivalence proven**, SPEF integrity, setup/hold closure, Harden GDS/LEF/LIB, ...). The ATTENTION items are warn-policy entries: the advisory `antennaCheck` and `emir` steps, which always ask for a report review, and any optional package file that is missing. They never block export.
 
 ### 5.6 Open a step GDS in KLayout (optional): ecc gdsview
 
@@ -722,7 +722,7 @@ ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
 
 This copies the DEF/netlist into the new workspace's `origin/`, runs placement through routing, and does not rerun post-floorplan; `placement` and `routing` are accepted aliases when creating a range. `ecc project set` changes project-level `ecc.toml`, which also affects later fresh workspaces. If the two fields were previously unset, restore the original project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
 
-The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for LEC and postRouteLec; `netlist` for preFloorplan; `def` plus `netlist` for macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization, timing optimization, route, filler, RCX, DRC, LVS, and Harden; and `def`, `netlist`, plus `spef` for STA. `sdc` is optional. `antennaCheck`, powerAnalysis, and emir have no entry-input contract and rely on chained upstream artifacts, so begin such a range at an earlier validated checkpoint. Anything missing fails with a clear error:
+The declared entry files are validated against the first step's requirements: `rtl` for Synthesis; `netlist` plus `golden_netlist` for postRouteLec; `netlist` for preFloorplan; `def` plus `netlist` for macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization, timing optimization, route, filler, RCX, DRC, LVS, and Harden; and `def`, `netlist`, plus `spef` for STA. `sdc` is optional. `antennaCheck`, powerAnalysis, and emir have no entry-input contract and rely on chained upstream artifacts, so begin such a range at an earlier validated checkpoint. Anything missing fails with a clear error:
 
 ```console
 $ ecc run --from cts --to route
@@ -737,7 +737,7 @@ rc=1
 > ```console
 > $ ecc run --workspace default --only placemen   # typo: not a persisted step name
 > [error]
->   unknown_step unknown step 'placemen'; available steps: Synthesis, lec, preFloorplan,
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec@Synthesis, preFloorplan,
 >   macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization,
 >   Timing optimization, route, filler, lvs, drc, antennaCheck, postRouteLec, RCX, sta,
 >   powerAnalysis, emir, Harden
@@ -908,7 +908,7 @@ Plan/results schemas, ranking, and promotion rules are in [User Guide §11.5](ec
 ## 9. Next Steps
 
 - Try your own design: edit `top`/`rtl`/`clock_port`/`frequency_mhz` in `ecc.toml`; use a [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) for multi-file designs;
-- Preset differences: `rtl2gds` (the complete 22-step synthesis-to-Harden chain; the synthesis-level LEC is in the chain but skipped by default — `skip_steps = []` enables it), `syn_sta` (synthesis only), and `synthesis_lec` (synthesis + LEC, two steps, requires `skip_steps = []`);
+- Preset differences: `rtl2gds` (the complete 22-step synthesis-to-Harden chain; the synthesis-level LEC is not in the chain — insert it with `insert_steps = ["lec@Synthesis"]`), `syn_sta` (synthesis only), and `synthesis_lec` (Synthesis + the inserted `lec@Synthesis` SEC check, two steps);
 - The PPA-optimization loop and batch sweeps are in §7; read the [QoR Reference](ecc-qor-ref.en.md) and [Sweep Reference](ecc-sweep-ref.en.md) to go deeper;
 - Full command details in the **[ECC CLI User Guide](ecc-user-guide.en.md)** (`ecc doc ug`); extending the CLI is covered in [development.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.md#extending-the-cli);
 - Driving the flow directly via the Python API (`EngineFlow`): [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py).

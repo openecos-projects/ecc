@@ -61,8 +61,9 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     first..last range (with a log note) so flow.json and the [flow] target
     always describe the same steps. A preset-shaped config selects the
     preset's chain, whose first step may be skipped. The config's skip
-    policy is resolved here: skipped steps never enter the ledger, and a
-    selection whose remaining steps lack required design data
+    policy and inserted steps are resolved here: skipped steps never enter
+    the ledger, an inserted step follows the step it is inserted after, and
+    a selection whose remaining steps lack required design data
     (:func:`~chipcompiler.data.flow_plan.plan_flow`) raises ``ValueError``.
     """
     if not isinstance(flow_config, dict) or not flow_config:
@@ -83,21 +84,27 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
         start, end = selected_names[0], selected_names[-1]
 
     import chipcompiler.rtl2gds as rtl2gds_api
-    from chipcompiler.data.flow_plan import plan_flow
+    from chipcompiler.data.flow_plan import inserted_chain, plan_flow
 
     skip = rtl2gds_api.resolve_skip_steps(flow_config)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
     plan = plan_flow(
-        [(name, tool) for name, tool, _state in entries], skip_steps=skip, start=start, end=end
+        [(name, tool) for name, tool, _state in entries],
+        skip_steps=skip,
+        inserted=inserted_chain(
+            rtl2gds_api.resolve_insert_steps(flow_config), lec_engine=lec_engine
+        ),
+        start=start,
+        end=end,
     )
     if plan.errors:
         raise ValueError(
             "skip_steps leaves steps without required design data: "
             + "; ".join(violation.message() for violation in plan.errors)
         )
-    enabled = set(plan.enabled_steps)
     selected = rtl2gds_api.substitute_lec_engine(
-        [entry for entry in entries if entry[0] in enabled], lec_engine
+        [(step.name, step.tool, StateEnum.Unstart) for step in plan.steps if step.enabled],
+        lec_engine,
     )
     return {
         SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,

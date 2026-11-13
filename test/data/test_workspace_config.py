@@ -301,7 +301,7 @@ def test_chip_identity_rejects_legacy_long_keys():
 
 def test_preset_ranges():
     assert flow_range_for_preset("rtl2gds") == ("Synthesis", "Harden")
-    assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec")
+    assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec@Synthesis")
 
 
 def test_flow_range_of_section_forms():
@@ -341,12 +341,12 @@ def test_flow_validation_rejects_unknown_preset():
 
 
 def test_flow_section_skip_steps_normalize():
-    assert validate_flow_config({"skip_steps": ["LEC", "postlec"]}) == {
-        "skip_steps": ["lec", "postRouteLec"]
+    assert validate_flow_config({"skip_steps": ["DIFF-OPT", "postlec"]}) == {
+        "skip_steps": ["diff_opt", "postRouteLec"]
     }
     # Idempotent on already-normalized input.
-    assert validate_flow_config({"skip_steps": ["lec", "postRouteLec"]}) == {
-        "skip_steps": ["lec", "postRouteLec"]
+    assert validate_flow_config({"skip_steps": ["diff_opt", "postRouteLec"]}) == {
+        "skip_steps": ["diff_opt", "postRouteLec"]
     }
 
 
@@ -368,25 +368,24 @@ def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
         "end": "Harden",
         "skip_steps": [],
     }
-    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["LEC"]}) == {
+    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["DIFF-OPT"]}) == {
         "preset": "rtl2gds",
-        "skip_steps": ["lec"],
+        "skip_steps": ["diff_opt"],
     }
 
 
 def test_flow_section_policy_only_skip_steps_is_valid():
-    assert validate_flow_config({"skip_steps": ["lec"]}) == {"skip_steps": ["lec"]}
-    assert flow_range_of({"skip_steps": ["lec"]}) is None
+    assert validate_flow_config({"skip_steps": ["diff_opt"]}) == {"skip_steps": ["diff_opt"]}
+    assert flow_range_of({"skip_steps": ["diff_opt"]}) is None
 
 
-def test_flow_section_lec_engine_normalizes_the_dual_alias():
-    assert validate_flow_config({"lec_engine": "dual"}) == {"lec_engine": "lec_dual"}
-    assert validate_flow_config({"preset": "rtl2gds", "lec_engine": "yosys_lec"}) == {
+def test_flow_section_keeps_the_lec_engine():
+    assert validate_flow_config({"preset": "rtl2gds", "lec_engine": "kepler_formal"}) == {
         "preset": "rtl2gds",
-        "lec_engine": "yosys_lec",
+        "lec_engine": "kepler_formal",
     }
     # Policy-only section: no flow target, just the engine.
-    assert flow_range_of({"lec_engine": "lec_dual"}) is None
+    assert flow_range_of({"lec_engine": "kepler_formal"}) is None
 
 
 def test_flow_section_rejects_invalid_lec_engine():
@@ -404,12 +403,17 @@ def test_flow_section_rejects_invalid_skip_steps():
 
 
 def test_preset_section_may_skip_its_first_step_but_not_its_final_step():
-    assert validate_flow_config({"preset": "rtl2gds", "skip_steps": ["Synthesis", "lec"]}) == {
+    assert validate_flow_config({"preset": "rtl2gds", "skip_steps": ["Synthesis"]}) == {
         "preset": "rtl2gds",
-        "skip_steps": ["Synthesis", "lec"],
+        "skip_steps": ["Synthesis"],
     }
-    with pytest.raises(WorkspaceFlowTargetError, match="'lec' ends the 'synthesis_lec' preset"):
-        validate_flow_config({"preset": "synthesis_lec", "skip_steps": ["lec"]})
+    with pytest.raises(WorkspaceFlowTargetError, match="'Synthesis' ends the 'syn_sta' preset"):
+        validate_flow_config({"preset": "syn_sta", "skip_steps": ["Synthesis"]})
+    # An inserted check does not end a preset: skipping Synthesis drops lec@Synthesis too.
+    with pytest.raises(
+        WorkspaceFlowTargetError, match="'Synthesis' ends the 'synthesis_lec' preset"
+    ):
+        validate_flow_config({"preset": "synthesis_lec", "skip_steps": ["Synthesis"]})
 
 
 def test_flow_section_from_flow_config_carries_declared_skip():
@@ -535,14 +539,18 @@ def test_save_drops_null_list_elements_with_a_warning(tmp_path):
 
 def test_flow_section_rejects_skipped_step_as_range_boundary():
     with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
-        validate_flow_config({"start": "Synthesis", "end": "lec", "skip_steps": ["lec"]})
+        validate_flow_config({"start": "Synthesis", "end": "diff_opt", "skip_steps": ["diff_opt"]})
     # Same rule when the boundary step is the start.
     with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
-        validate_flow_config({"start": "lec", "end": "Harden", "skip_steps": ["LEC"]})
+        validate_flow_config({"start": "diff_opt", "end": "Harden", "skip_steps": ["DIFF-OPT"]})
     # A skipped step INSIDE the range is fine.
     assert validate_flow_config(
-        {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
-    ) == {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
+        {"start": "Synthesis", "end": "CTS", "skip_steps": ["diff_opt"]}
+    ) == {
+        "start": "Synthesis",
+        "end": "CTS",
+        "skip_steps": ["diff_opt"],
+    }
 
 
 def test_save_persists_normalized_skip_steps(tmp_path):

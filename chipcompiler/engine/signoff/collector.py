@@ -19,15 +19,10 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StateEnum,
     StepEnum,
-    ToolName,
     Workspace,
     workspace_checklist_path,
 )
-from chipcompiler.data.step import (
-    StepDirectories,
-    engine_step_directory,
-    flow_step_directory,
-)
+from chipcompiler.data.step import StepDirectories, flow_step_directory
 from chipcompiler.data.workspace.flow_policy import FlowInputStepError
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
@@ -137,11 +132,11 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
-        # Golden precedence mirrors the execution wiring: synthesis output,
-        # then the declared golden netlist, then the origin RTL.
+        # Golden precedence mirrors the execution wiring (engine/flow.py): the
+        # declared golden netlist, then the synthesis output, then the origin.
         lec_golden = (
-            synthesis_verilog
-            or getattr(self.workspace.design, "golden_verilog", None)
+            getattr(self.workspace.design, "golden_verilog", None)
+            or synthesis_verilog
             or getattr(self.workspace.design, "origin_verilog", None)
         )
         filler_verilog = (
@@ -421,15 +416,6 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         lec_result = (
             lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
         )
-        lec_tool = next(
-            (
-                str(step.get("tool", ""))
-                for step in lec_flow_steps or []
-                if isinstance(step, dict)
-                and step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
-            ),
-            "",
-        )
         if require_lec:
             add_file(
                 role="lec.result",
@@ -437,49 +423,18 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 destination="final/reports/postRouteLec/result.json",
                 required=True,
             )
-            if lec_tool == ToolName.LEC_DUAL:
-                # The aggregate drives the gate; per-engine evidence is
-                # additive — a degraded run's missing sibling is recorded
-                # missing-optional, never fatal.
-                from chipcompiler.data import LECEngineEnum
-
-                for engine in LECEngineEnum.DUAL.spawn_engines:
-                    engine_dir = engine_step_directory(lec_dir, engine.value)
-                    add_file(
-                        role=f"lec.{engine.value}.result",
-                        source=engine_dir
-                        / "output"
-                        / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json",
-                        destination=f"final/reports/postRouteLec/engines/{engine.value}/result.json",
-                    )
-                    add_file(
-                        role=f"lec.{engine.value}.status_report",
-                        source=engine_dir / "report" / "run_lec_status.rpt",
-                        destination=f"final/reports/postRouteLec/engines/{engine.value}/report/run_lec_status.rpt",
-                    )
-            else:
-                add_file(
-                    role="lec.equiv_status",
-                    source=lec_dir / "report" / "equiv_status.rpt",
-                    destination="final/reports/postRouteLec/report/equiv_status.rpt",
-                    required=True,
-                )
-                add_file(
-                    role="lec.status_report",
-                    source=lec_dir / "report" / "run_lec_status.rpt",
-                    destination="final/reports/postRouteLec/report/run_lec_status.rpt",
-                    required=True,
-                )
-                add_file(
-                    role="lec.failed_rtlil",
-                    source=lec_dir / "report" / "equiv_failed.il",
-                    destination="final/reports/postRouteLec/report/equiv_failed.il",
-                )
-                add_file(
-                    role="lec.failed_verilog",
-                    source=lec_dir / "report" / "equiv_failed.v",
-                    destination="final/reports/postRouteLec/report/equiv_failed.v",
-                )
+            add_file(
+                role="lec.equiv_status",
+                source=lec_dir / "report" / "equiv_status.rpt",
+                destination="final/reports/postRouteLec/report/equiv_status.rpt",
+                required=True,
+            )
+            add_file(
+                role="lec.status_report",
+                source=lec_dir / "report" / "run_lec_status.rpt",
+                destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+                required=True,
+            )
             from chipcompiler.tools.lec_result import lec_result_status
 
             lec_status = lec_result_status(
@@ -738,24 +693,8 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
-            if lec_tool == ToolName.LEC_DUAL:
-                # Dual packages evidence per engine; the summary must point
-                # at the paths that actually exist in the package.
-                from chipcompiler.data import LECEngineEnum
-
-                engines_root = "final/reports/postRouteLec/engines"
-                lec_summary["engines"] = {
-                    engine.value: {
-                        "result": f"{engines_root}/{engine.value}/result.json",
-                        "status_report": f"{engines_root}/{engine.value}/report/run_lec_status.rpt",
-                    }
-                    for engine in LECEngineEnum.DUAL.spawn_engines
-                }
-            else:
-                lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
-                lec_summary["status_report"] = (
-                    "final/reports/postRouteLec/report/run_lec_status.rpt"
-                )
+            lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
+            lec_summary["status_report"] = "final/reports/postRouteLec/report/run_lec_status.rpt"
             summary["lec"] = lec_summary
         if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}

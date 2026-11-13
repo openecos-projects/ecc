@@ -1,11 +1,14 @@
 """The flow policy table is exhaustive and owns the derived step views."""
 
+import pytest
+
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     FLOW_STEP_CATEGORIES,
     FLOW_STEP_POLICIES,
     SkippableStepEnum,
     StepEnum,
+    flow_step_policy,
 )
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.data.workspace.flow_policy import FlowInputResolver
@@ -17,6 +20,18 @@ def _flow_step_values() -> set[str]:
 
 def test_every_flow_step_has_a_policy():
     assert set(FLOW_STEP_POLICIES) == _flow_step_values()
+
+
+def test_only_a_canonical_inserted_step_has_the_lec_policy():
+    lec = FLOW_STEP_POLICIES[StepEnum.LEC.value]
+    assert [flow_step_policy(name) for name in ("lec@Synthesis", "lec@Timing_optimization")] == [
+        lec,
+        lec,
+    ]
+    # lec@ must be followed by a step an LEC can be inserted after.
+    for name in ("lec@bogus", "lec@filler", "lec@", "lec@Timing optimization"):
+        with pytest.raises(ValueError, match="no flow policy registered"):
+            flow_step_policy(name)
 
 
 def test_category_and_advisory_views_derive_from_the_policy_table():

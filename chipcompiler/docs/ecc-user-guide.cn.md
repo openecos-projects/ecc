@@ -115,9 +115,10 @@ uv run ecc --help
 | 22 | `process_not_found`：登记的运行进程已失效且无存活进程持有 workspace 锁 | `ecc process` 组 |
 | 23 | 契约不兼容（保留值：CLI 自身不发射，由 GUI 侧契约门禁在 runtime/CLI 契约不受支持时使用） | — |
 - 步骤名（step token）有三套写法，按场景区分：
-  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / lec / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antennacheck / postroutelec / rcx / sta / poweranalysis / emir / harden`；
-  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / lec / preFloorplan / macroPlacement / postFloorplan / preplace / place / diff_sizing / CTS / legalization / Timing optimization / route / filler / lvs / drc / antennaCheck / postRouteLec / RCX / sta / powerAnalysis / emir / Harden`；
+  - **展示名**（`ecc status` / `ecc log` / `ecc report step` 的输出与入参，统一小写/下划线）：`synthesis / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_opt / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antennacheck / postroutelec / rcx / sta / poweranalysis / emir / harden`；
+  - **持久化名**（`home/flow.json` 中的原始名；已有 workspace 上的 `--from`/`--only`/`--to` 必须用它，如 `place`、`CTS`、`Timing optimization`）：`Synthesis / preFloorplan / macroPlacement / postFloorplan / preplace / place / diff_opt / diff_sizing / CTS / legalization / Timing optimization / route / filler / lvs / drc / antennaCheck / postRouteLec / RCX / sta / powerAnalysis / emir / Harden`；
   - **新建范围时的别名**（首次 `--from A --to B` 建 workspace 会做别名归一化，两种拼法都接受）：如 `cts`↔`CTS`、`route`↔`routing`、`timingopt`↔`Timing optimization`、`diffsizing`↔`diff_sizing`、`antenna`↔`antennacheck`、`postlec`↔`postRouteLec`。
+  - **插入的 LEC**（`[flow] insert_steps`）持久化名为 `lec@<step>`，空格写成下划线（`lec@Synthesis`、`lec@Timing_optimization`），展示名为小写（`lec@synthesis`）。
   拼错时返回 `unknown_step` 并列出全部可用步骤名，照抄即可。
 
 ### 1.1 当前目录默认选择
@@ -360,11 +361,11 @@ root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# lec_engine: kepler_formal | yosys_lec | lec_dual
+# lec_engine: kepler_formal
 lec_engine = "kepler_formal"
 # Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
-skip_steps = ["lec", "diff_opt"]
+skip_steps = ["diff_opt"]
 # 仅在运行时生效：同一阶段内互相独立的步骤，同时最多运行这么多个
 # （默认 4；1 表示逐个运行）。见 8.6 节。
 max_parallel_steps = 4
@@ -400,7 +401,7 @@ rc=0
 
 ### 环境自检：ecc doctor
 
-`ecc doctor` 一条命令体检全部依赖，共 9 项组件（PDK、yosys、yosys-slang、随包捆绑的 ecc-tools/dreamplace、必需的 Sizer、LEC 等价性检查所需的 kepler-formal 与 lec-dual 双引擎预检，以及可选的 KLayout），每项给出 pass/fail 与修复建议；只有**必需项**失败才返回非零：
+`ecc doctor` 一条命令体检全部依赖，共 8 项组件（PDK、yosys、yosys-slang、随包捆绑的 ecc-tools/dreamplace、必需的 Sizer、等价性检查工具 kepler-formal，以及可选的 KLayout），每项给出 pass/fail 与修复建议；只有**必需项**失败才返回非零：
 
 ```bash
 ecc doctor [--project DIR] [--plain|--json]
@@ -411,7 +412,7 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
 [status]
   doctor: environment
   status: attention          # ok=全过 / attention=仅可选项失败(rc=0) / failed=必需项失败(rc=1)
-  checked: 9
+  checked: 8
   failed: 0                  # failed 只统计必需项失败；可选项失败计入 attention
   attention: 1
   run: ecc run
@@ -422,12 +423,11 @@ $ ecc doctor          # 在项目目录内执行（PDK 探测需要 ecc.toml 或
   status: pass
   detail: read_slang frontend available
   component: ecc-tools       # 其余组件同理：dreamplace / sizer / kepler-formal /
-                             # lec-dual / pdk（必需）；klayout（可选）
+                             # pdk（必需）；klayout（可选）
   ...
 ```
 
-- `kepler-formal`（必需）：LEC/postRouteLec 等价性检查工具。先按 `CHIPCOMPILER_KEPLER_FORMAL_ROOT` 解析（根级 `kepler-formal` wrapper 或 `bin/kepler-formal`），再回退 PATH。
-- `lec-dual`（必需）：双引擎 LEC 预检，分别探测两个物理引擎。允许降级运行——缺一个引擎仍为 pass（detail 注明 `degraded`，该步骤只跑可用引擎、结果保持非 proven）；两个都缺才 fail。
+- `kepler-formal`（必需）：所有 LEC 步骤（插入的 `lec@<step>` 与 postRouteLec）的等价性检查工具。先按 `CHIPCOMPILER_KEPLER_FORMAL_ROOT` 解析（根级 `kepler-formal` wrapper 或 `bin/kepler-formal`），再回退 PATH。
 - `klayout`（可选）：其 Python 模块用于兼容旧版 flow 缩略图，GUI 可执行文件
   由 `gdsview` 使用；可通过 `KLAYOUT_BIN` 显式指定，否则从 `PATH` 查找。
 
@@ -454,7 +454,7 @@ $ ecc doctor --json
 ]
 ```
 
-此外，对新建或 `--overwrite` 的目标，`ecc run` 会按目标 flow 实际步骤的工具映射预检组件（被 `skip_steps` 跳过的步骤不探测其工具）：所有 flow 预检捆绑 ecc-tools；含综合预检 Yosys；含布局/合法化预检 DreamPlace；含 Timing optimization 预检 Sizer（包括 `rtl2gds`）；启用的 LEC 步骤只预检 `[flow] lec_engine` 选中的引擎——默认 `kepler_formal` 预检 kepler-formal，`yosys_lec` 预检 Yosys，`lec_dual` 预检双引擎组合。这些组件缺失时会以 `env_not_ready` fail-fast：
+此外，对新建或 `--overwrite` 的目标，`ecc run` 会按目标 flow 实际步骤的工具映射预检组件（被 `skip_steps` 跳过的步骤不探测其工具）：所有 flow 预检捆绑 ecc-tools；含综合预检 Yosys；含布局/合法化预检 DreamPlace；含 Timing optimization 预检 Sizer（包括 `rtl2gds`）；启用的 LEC 步骤（`postRouteLec`，或用 `[flow] insert_steps` 插入的检查）预检 kepler-formal。这些组件缺失时会以 `env_not_ready` fail-fast：
 
 ```console
 $ ecc run
@@ -531,7 +531,7 @@ ecc run [OPTIONS]
 `--expected-revision` 与 `--no-wait`，但不接受 `--command-id`。以这种方式
 登记的 run 用 `ecc process` 控制（§6.5）。
 
-新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整步骤链（Synthesis→lec（按 `[flow] lec_engine` 选择，默认 kepler-formal；默认跳过——`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`，设为 `[]` 才启用）→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_opt（默认跳过）→diff_sizing→CTS→legalization→Timing optimization（sizer）→route→filler→lvs→drc→antennaCheck→postRouteLec（同一所选 LEC 引擎）→RCX→sta→powerAnalysis→emir→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB）。`antennaCheck` 与 `emir` 是 advisory 步骤：分析未完成会记录状态，但不会单独阻断后续 flow。
+新建或 `--overwrite` 的 workspace 会按以下流程执行：读 `ecc.toml` → 只解析入口步骤所需的设计文件以及 PDK/参数 → 预检所需工具 → 先写入 `project.json` 登记 → `--workspace` 是名称时默认在 `<project>/<workspace 名称>` 创建，是绝对路径时在该完整目录创建 → 将声明的设计输入复制到 `origin/`、写入对应步骤配置并运行 flow。绝对路径必须是完整的项目外目录且父目录已存在；新路径以 basename 作为 workspace ID，已登记路径沿用清单中的 ID。外部目录中已有有效 ECC workspace 时，也可以用同一命令登记并续跑。workspace 不会存放第二份项目输入清单。已有 workspace 按持久化 flow 续跑，不会改写已有输入或步骤配置。`rtl2gds` 是完整步骤链（Synthesis→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_opt（默认跳过：`[flow] skip_steps` 默认为 `["diff_opt"]`）→diff_sizing→CTS→legalization→Timing optimization（sizer）→route→filler→lvs→drc→antennaCheck→postRouteLec（kepler-formal）→RCX→sta→powerAnalysis→emir→Harden，Harden 产出 GDS + Abstract LEF + 时序 LIB；`[flow] insert_steps` 可插入 LEC 检查，其中包括 `lec@Synthesis`，见 §8.6）。`antennaCheck` 与 `emir` 是 advisory 步骤：分析未完成会记录状态，但不会单独阻断后续 flow。
 
 #### 外部 workspace 路径
 
@@ -552,7 +552,7 @@ ecc status --project /projects/gcd --workspace archive
 
 路径必须是绝对路径。`ecc` 只创建最后一级目录，因此父目录必须已存在；已有非空目录必须已经是有效 ECC workspace。项目根目录和 legacy `runs/` 目录是受项目保护目录，包含项目目录的路径也会被拒绝。同一个 workspace ID 不能重新绑定到另一个路径，已登记给其他 ID 的路径也不能重复使用。要登记已有 workspace 但不执行或修改它，请使用 `ecc workspace import`。
 
-`synthesis_lec` preset 需要默认策略跳过的 LEC，因此本示例的项目先编辑 `ecc.toml`（`sed -i 's/skip_steps = \["lec", "diff_opt"\]/skip_steps = []/' ecc.toml` 或手动修改）显式设置 `skip_steps = []`：
+`synthesis_lec` preset 运行 Synthesis 及其 RTL 检查 `lec@Synthesis`：
 
 ```console
 $ ecc run --preset synthesis_lec
@@ -576,7 +576,7 @@ run 汇总记录会带 `no_op: true`（`--plain` 输出可见；用 `--resume`/`
 
 **已有 workspace 的目标对齐（reconcile）**：再次 `ecc run` 时，`home/params.toml` 中显式保存的 start/end 范围继续作为目标，即使项目声明了 `flow.preset`，有界派生 workspace 也保持所选范围。否则使用项目预设或 workspace 已持久化的目标。显式 `--preset` 可覆盖保存的范围。CLI 将已持久化的账本与该目标对齐：
 
-- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完）；
+- 已持久化步骤是目标的**前缀**且未跑完 → 续跑，必要时**自动扩展**到目标终点（例如先用 `--preset synthesis_lec` 建的 workspace，`ecc.toml` 是 `rtl2gds` 且 `insert_steps = ["lec@Synthesis"]`，再裸跑 `ecc run` 会从当前进度继续把物理流程跑完；没有该插入时目标缺少该 workspace 的 `lec@Synthesis`，即 `flow_mismatch`）；
 - 已持久化范围 ⊇ 目标且全部成功 → `no_op`（默认 resume 不会越过目标终点重跑更宽的账本）；
 - 目标与持久化 flow **分叉**（既非前缀也非超集）→ `flow_mismatch`，按提示 `--overwrite` 重建或换新的 `--workspace`。
 
@@ -606,7 +606,7 @@ ecc run --workspace cts-only --from cts --to cts      # 新建范围 workspace�
 ecc run --workspace cts-route --from cts --to routing # 同上；两端都接受别名
 ```
 
-新建范围 workspace 时只校验**入口步骤**所需的设计输入：Synthesis 要 `rtl`；lec/postRouteLec 要 `netlist` + `golden_netlist`；preFloorplan 要 `netlist`；macroPlacement、postFloorplan、preplace、place、diff_sizing、CTS、legalization、Timing optimization、route、filler、RCX、drc、lvs 和 Harden 要 `def` + `netlist`；sta 还要 `spef`；`sdc` 声明了才校验。`antennaCheck`、powerAnalysis 与 emir 当前没有入口输入校验，依赖上游链式产物，因此这类范围应从更早的有效检查点开始。缺输入时按 `step_input_missing` 报错：
+新建范围 workspace 时只校验**入口步骤**所需的设计输入：Synthesis 要 `rtl`；postRouteLec 要 `netlist` + `golden_netlist`；preFloorplan 要 `netlist`；macroPlacement、postFloorplan、preplace、place、diff_sizing、CTS、legalization、Timing optimization、route、filler、RCX、drc、lvs 和 Harden 要 `def` + `netlist`；sta 还要 `spef`；`sdc` 声明了才校验。`antennaCheck`、powerAnalysis 与 emir 当前没有入口输入校验，依赖上游链式产物，因此这类范围应从更早的有效检查点开始。缺输入时按 `step_input_missing` 报错：
 
 ```console
 $ ecc run --from cts --to route          # 新建范围但缺 def/netlist
@@ -647,7 +647,7 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 ```console
 $ ecc run --workspace default --from synthesis   # 持久化名是 "Synthesis"
 [error]
-  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec, preFloorplan,
+  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec@Synthesis, preFloorplan,
   macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization,
   Timing optimization, route, filler, lvs, drc, antennaCheck, postRouteLec, RCX, sta,
   powerAnalysis, emir, Harden
@@ -744,8 +744,8 @@ $ ecc status
   steps:
     synthesis (yosys) success 0:0:17
       log: ecc log synthesis --workspace default
-    lec (kepler_formal) success 0:0:1
-      log: ecc log lec --workspace default
+    lec@synthesis (kepler_formal) success 0:0:1
+      log: ecc log lec@synthesis --workspace default
     pre_floorplan (ecc) success 0:0:1
       log: ecc log pre_floorplan --workspace default
     macro_placement (dreamplace) success 0:0:5
@@ -761,7 +761,7 @@ $ ecc status
 $ ecc status --plain
 workspace_id=default status=failed workspace=/tmp/gcd/default inspect_cmd="ecc status --workspace default" log_cmd="ecc log --workspace default"
 step=synthesis tool=yosys status=success runtime=0:0:17 log_cmd="ecc log synthesis --workspace default"
-step=lec tool=kepler_formal status=success runtime=0:0:1 log_cmd="ecc log lec --workspace default"
+step=lec@synthesis tool=kepler_formal status=success runtime=0:0:1 log_cmd="ecc log lec@synthesis --workspace default"
 ...
 ```
 
@@ -842,7 +842,7 @@ ecc config [STEP] [--project DIR] [--workspace NAME] [--plain|--json]
 ```
 
 `--workspace` 将步骤视图限定到指定的受管 workspace；项目级视图仍以项目为作用域，读取项目目录
-的 `ecc.toml`。`lec`、`lvs`、`postroutelec`、`poweranalysis`、`harden` 没有步骤级配置
+的 `ecc.toml`。LEC 步骤、`lvs`、`postroutelec`、`poweranalysis`、`harden` 没有步骤级配置
 （Tcl 驱动、工具默认，或复用 `db_ecc.json`）。
 
 不带 STEP 输出项目级配置（`ecc.toml` 键 + 解析后的绝对路径）；带 STEP 列出该步骤在 workspace `config/` 下实际生效的配置文件。
@@ -1039,14 +1039,14 @@ $ ecc workspace derive trial branch_a
 ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
-ecc flow plan [--enable STEP]... [--disable STEP]... [--project DIR] [--plain|--json]
-ecc flow edit [--enable STEP]... [--disable STEP]... [--max-parallel-steps N] [--yes] [--project DIR] [--plain|--json]
+ecc flow plan [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--remove lec@STEP]... [--project DIR] [--plain|--json]
+ecc flow edit [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--remove lec@STEP]... [--max-parallel-steps N] [--yes] [--project DIR] [--plain|--json]
 ```
 
 `flow list` 以 `flow_step` 记录输出每个已注册 flow preset 及其有序步骤
 （`rtl2gds`、`syn_sta`、`synthesis_lec`），含 `ordinal`、`skippable` 和
 `default skipped` 标志——即 `ecc run --preset` 选择所用的同一目录。`skippable`
-标记按设计可选的步骤（`lec`、`diff_opt`、`Timing optimization`、`postRouteLec`）；只要
+标记按设计可选的步骤（`diff_opt`、`Timing optimization`、`postRouteLec`）；只要
 其余步骤仍能运行，任何步骤都可以跳过，`ecc flow plan` 负责检查。`flow show
 FLOW_ID` 只显示一个 preset（未注册的名字报 `unknown_flow`，退出码 2）。`flow
 validate` 校验 flow 定义与步骤元数据，并对每个 flow 输出一条 `flow_validation`
@@ -1061,14 +1061,14 @@ $ ecc flow show rtl2gds
   ordinal: 0
   skippable: False
   default skipped: False
-  ...                            # 依次列出 23 个步骤；lec 与 diff_opt 为 skippable=True 且默认跳过
+  ...                            # 依次列出 22 个步骤；diff_opt 为 skippable=True 且默认跳过
 
 $ ecc flow validate
 [status]
   record: flow_validation
   status: valid
   flow id: rtl2gds
-  step count: 23
+  step count: 22
   ...                            # 其余 flow 各一条记录
 
 $ ecc flow list --json
@@ -1096,13 +1096,42 @@ $ ecc flow list --json
 - 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告（跳过 `CTS` 时警告
   `route runs with degraded results without clock_tree; enable CTS`，sta、powerAnalysis、Harden
   同理；此后的布线/STA 使用 CTS 之前的理想时钟时序约束）。
-- preset 的最后一步是 flow 目标，不能跳过（rtl2gds 为 Harden，synthesis_lec 为 lec）；显式的范围
+- preset 的最后一步是 flow 目标，不能跳过（rtl2gds 为 Harden，syn_sta 为 Synthesis）；显式的范围
   起点（`params.toml [flow] start`、`ecc run --from`、`project.json` `start_step`）同样不能跳过。
-  首步可以跳过：跳过 `Synthesis`（及 `lec`）后，运行从 `preFloorplan` 进入，使用声明的
+  首步可以跳过：跳过 `Synthesis` 后，运行从 `preFloorplan` 进入，使用声明的
   `[design] netlist`；入口步骤的输入照旧检查。
+- `lec` 不再是链上的步骤：LEC 以插入方式加入（见下文）。已有文件的 `skip_steps` 中仍列出的 `lec`
+  会被忽略，不影响使用。
 - 跳过签核检查步骤（drc、lvs、sta）即没有签核证据：`ecc signoff check` 将该门禁报告为
   `unknown`，绝不会报 pass。
 - 已有 workspace 的 ledger 不会被重新过滤；新的选择只作用于下一次新建或 `--overwrite` 运行。
+
+**插入 LEC 检查（`[flow] insert_steps`）。** 除了跳过步骤，选择还可以在某个构建设计的步骤之后插入
+一次 LEC 检查：`insert_steps = ["lec@Synthesis", "lec@CTS"]`。LEC 不修改设计，其后的步骤仍读取它
+之前那一步的输出，所以它可以跟在 `Synthesis` 到 `route` 之间的任何步骤之后（`Synthesis`、
+`preFloorplan`、`macroPlacement`、`postFloorplan`、`preplace`、`place`、`diff_opt`、`diff_sizing`、
+`CTS`、`legalization`、`Timing optimization`、`route`）；`filler` 之后已有 `postRouteLec`。其他步骤都不能插入：构建设计的步骤各运行一次，签核分析需要最终版图。重复插 buffer
+不需要额外的步骤：`diff_opt` 自身会交替进行 sizing 与 buffering 轮次（`place.diff_optimization_flows`）。
+
+- 每一项写作 `lec@STEP`，接受步骤别名（`lec@timing_opt`）。插入的步骤命名为 `lec@<step>`，空格写成
+  下划线（`lec@Timing_optimization`）；`ecc run --only`/`--from` 和 `ecc log` 使用这个名字。
+- `lec@Synthesis` 检查综合本身：把 Synthesis 读取的 RTL（其 filelist，否则其 RTL 文件）与综合后的
+  网表比较。kepler-formal 只在时序等价检查中读取 RTL，因此该检查以 SEC 模式运行（`format: sv2v`、
+  `verification: sec`），不施加复位序列，并像 Synthesis 一样定义 `SYNTHESIS`。修改 RTL 或其读取的任何文件
+  （filelist 源文件、嵌套 filelist、include 的头文件）都会使证明失效（stale）。在我们的测试中，kepler-formal 的 SEC 能发现一个小型带寄存器
+  设计的变异，但把 `gcd` 的三个手工 RTL 变异（其中一个把 16 位输出取反）判为与正确网表等价，因此该检查
+  通过时，证据强度不如网表之间的检查。
+- 其他插入的 LEC 把所跟步骤的网表（gate）与 `postRouteLec` 使用的 golden 网表比较：声明的
+  `design.golden_netlist`，否则为综合映射后的网表，再否则为原始输入（组合等价检查）。
+- 它使用 `[flow] lec_engine`（kepler-formal），与 `postRouteLec` 一样，未证明等价时会中止流程。
+- 它与所跟的步骤同进退：跳过该步骤也就跳过这次检查；以该步骤结束的范围（`ecc run --to CTS`）包含它，
+  `ecc run --only CTS` 则不包含。它本身不能作为范围的边界。
+- 它属于 workspace 的 flow 目标（`home/params.toml` `[flow] insert_steps`）：增加或删除一项都会让已有
+  workspace 报 `flow_mismatch`，需用 `--overwrite` 或新 workspace 应用。它在 `ecc.toml` 中声明。
+  `project.json` 仍把 `LEC` 列为可跳过的步骤：workspace 条目声明的 `skip_steps` 若保留它，就运行
+  `lec@Synthesis`；以 `LEC` 结束的范围则以 Synthesis 加上该检查结束。ECOS Studio 目前还不识别其他
+  插入的步骤（请用 CLI 查看）。
+- 它的结果是其步骤 checklist 中的一项；只有 `postRouteLec` 会进入签核包。
 
 **并行步骤（`[flow] max_parallel_steps`）。** 阶段号相同的步骤（`flow plan` 的 `#` 列）是互相独立的
 分析步骤，`ecc run` 会并行运行它们：新建运行、恢复运行和带 `--from` 的运行都是如此。从 ECOS Studio
@@ -1119,8 +1148,8 @@ workspace 被视为选择了哪些步骤；修改它只影响下一次 `ecc run`
 为每个完成的步骤打印一行完成信息（`✓ step (tool) runtime`），所以同阶段步骤的输出行会交错出现。
 
 `flow plan` 为只读命令：以表格列出 preset 的步骤——勾选框、阶段号 `#`、步骤、工具、`After`、
-`Gives` 与标记——随后列出错误与警告。`--enable`/`--disable` 用于试算一个选择，不写入
-`ecc.toml`。启用的步骤缺少必需设计数据，或 `ecc.toml` 缺少入口输入（如
+`Gives` 与标记——随后列出错误与警告。`--enable`/`--disable` 以及 `--insert`/`--remove lec@STEP`
+用于试算一个选择，不写入 `ecc.toml`。启用的步骤缺少必需设计数据，或 `ecc.toml` 缺少入口输入（如
 `step_input_missing: preFloorplan requires design.netlist`）时退出码为 1。
 
 - `#` 是阶段号。编号相同的步骤可以并行：它们带字母后缀（`13a`…`13e`）和一条括号线
@@ -1134,14 +1163,15 @@ workspace 被视为选择了哪些步骤；修改它只影响下一次 `ecc run`
 - `After` 列出该步骤从哪些已启用的步骤获取设计数据，离它最近的排在最前。可选输入以暗色显示；
   没有任何已启用步骤能提供的需求写成 `(名称)`，例如 `(rtl)`。如果该步骤从某个上游取得的数据，
   已经由列表里另一个上游转手提供，这个上游就不再重复列出（`sta` 只列 `RCX`，不列 `RCX` 已经
-  跟随的 `filler`，但仍列出 `CTS`）。
-- `Gives` 是该步骤产出的设计数据。`check` 标记表示只做检查、不产出任何数据的步骤；`optional`
-  与 `target` 含义不变。
+  跟随的 `filler`，但仍列出 `CTS`）。插入的 LEC 把它检查其网表的那一步排在最前（`lec@CTS`：
+  `CTS, Synthesis`）。
+- `Gives` 是该步骤产出的设计数据。`check` 标记表示只做检查、不产出任何数据的步骤；`inserted`
+  标记插入的 LEC；`optional` 与 `target` 含义不变。
 
 `--json` 输出一条 `flow_plan` 汇总（`flow`、`status` ok|warning|error、`enabled_count`、
-`step_count`、`skip_steps`、`max_parallel_steps`），每个步骤一条 `flow_step`（`position`、`step`、`tool`、`enabled`、
+`step_count`、`skip_steps`、`insert_steps`、`max_parallel_steps`），每个步骤一条 `flow_step`（`position`、`step`、`tool`、`enabled`、
 `optional`、`target`、`requires`、`uses`、`provides`、`stage`、`slot`、`label`、
-`parallel_with`、`after`、`needs`、`check`），以及 `flow_violation`（`severity`、`step`、
+`parallel_with`、`after`、`needs`、`check`、`inserted`），以及 `flow_violation`（`severity`、`step`、
 `missing`、`fixes`、`reason`）与 `flow_input`（`severity`、`step`、`reason`）记录。其中
 `stage` 是阶段号（被禁用的步骤为 `null`），`slot` 是字母后缀（步骤独占一个阶段时为空），`label` 是两者拼接，
 `parallel_with` 是同一阶段的其他步骤，`needs` 把每个必需或可选的数据映射到提供它的步骤
@@ -1151,7 +1181,7 @@ workspace 被视为选择了哪些步骤；修改它只影响下一次 `ecc run`
 
 ```console
 $ ecc flow plan
-rtl2gds · 21 of 23 steps enabled
+rtl2gds · 21 of 22 steps enabled
      #      Step                 Tool           After                         Gives
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   ...
@@ -1173,17 +1203,18 @@ $ ecc flow plan --disable legalization --disable TimingOpt     # 退出码 1
 ```
 
 `flow edit` 不带参数时在终端打开交互式勾选列表（需要可重绘的 TTY，即不能是 `TERM=dumb`，
-且为文本输出，否则报 `flow_edit_requires_terminal`）：`↑/↓` 或 `j/k` 移动，`space` 切换，
-`←/→`（或 `-`/`+`）在列表任意位置减小/增大 `max_parallel_steps`，`enter` 保存，`q`/`esc` 取消。
+且为文本输出，否则报 `flow_edit_requires_terminal`）：`↑/↓` 或 `j/k` 移动，`space` 切换（在插入的
+LEC 上则删除它），`i` 在光标所在步骤之后插入一个 LEC，`←/→`（或 `-`/`+`）在列表任意位置减小/增大 `max_parallel_steps`，`enter` 保存，`q`/`esc` 取消。
 该值取 1 到「4、当前视图中最大的阶段、编辑开始时的值」三者最大值之间；图例会随之重绘，没有并行阶段时
 改为在表格下方用一行显示该值。每次切换都会实时重新检查，有错误的选择无法保存；最后一步显示为
-`target`，不能取消勾选（跳过它的策略，例如默认策略下跳过 `lec` 的 `synthesis_lec`，编辑时它保持
-勾选）。带 `--enable`/`--disable`/`--max-parallel-steps N`（N >= 1）时不打开列表、直接应用这些修改，
+`target`，不能取消勾选（跳过它的策略，例如 `syn_sta` 配 `skip_steps = ["Synthesis"]`，编辑时它保持
+勾选）。带 `--enable`/`--disable`/`--insert`/`--remove`/`--max-parallel-steps N`（N >= 1）时不打开列表、直接应用这些修改，
 无效的选择会最先报告。只有明确指定时才会改变该值：`--disable CTS --yes` 写入的是项目当前的值。写入前，`flow edit` 会显示新的选择及其警告并请求确认：`y` 写入，`n`/`enter`/`q`
-保持 `ecc.toml` 不变。`--yes` 跳过确认直接写入；没有终端时，`--enable`/`--disable`/`--max-parallel-steps` 必须带
+保持 `ecc.toml` 不变。`--yes` 跳过确认直接写入；没有终端时，这些参数必须带
 `--yes`（否则报 `flow_edit_requires_confirmation`）。写入时把 `ecc.toml` `[flow]` 的
 `preset`、`lec_engine`、`skip_steps` 和 `max_parallel_steps` 全部显式写出（包括默认值，保留注释），使该文件本身即可
-说明所选步骤，随后报告警告：`flow_step_degraded`、`flow_input_missing`、
+说明所选步骤；插入了 LEC 时再写出 `insert_steps`（没有插入时删除该键）。`flow_edit` 记录列出
+`enabled`/`disabled` 的步骤以及 `inserted`/`removed` 的 LEC。随后报告警告：`flow_step_degraded`、`flow_input_missing`、
 `workspace_flow_mismatch`（已有 workspace 的 ledger 与新选择矛盾；用
 `ecc run --workspace <id> --overwrite` 重跑，或用 `ecc run --workspace <new id>` 在新
 workspace 中运行该选择。`ecc workspace derive` 不会应用新选择：派生出的 workspace 沿用源
@@ -1196,7 +1227,7 @@ workspace 的步骤），以及
 $ ecc flow edit --disable CTS --enable diff_opt --yes
 ✔ wrote [flow] to /tmp/gcd/ecc.toml
   preset = rtl2gds · lec_engine = kepler_formal
-  skip_steps = lec, CTS
+  skip_steps = CTS
   max_parallel_steps = 4
   enabled: diff_opt
   disabled: CTS
@@ -1780,7 +1811,7 @@ $ ecc report step --workspace default
 
   step                   tool         status    runtime  peak MB  metrics quality  checklist
   synthesis              yosys        success   0:0:17   1165.89  10      pass     ready
-  lec                    kepler_formal success   0:0:1    0.164    -       -        ready
+  lec@synthesis          kepler_formal success   0:0:1    0.164    -       -        ready
   pre_floorplan          ecc          success   0:0:1    97.516   -       -        ready
   macro_placement        dreamplace   success   0:0:5    97.516   -       -        ready
   post_floorplan         ecc          success   0:0:1    97.516   11      pass     ready

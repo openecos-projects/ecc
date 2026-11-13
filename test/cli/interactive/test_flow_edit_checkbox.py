@@ -14,7 +14,7 @@ from chipcompiler.cli.interactive.flow_edit import (
 )
 from chipcompiler.cli.project.flow_plan_view import PlanView, plan_view
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_plan import plan_flow, preset_chain
+from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
 from chipcompiler.rtl2gds import rtl2gds_step_names
 
 _DOWN = "\x1b[B"
@@ -33,8 +33,10 @@ def _redrawing_terminal(monkeypatch):
 
 
 def _view_of_project(max_parallel_steps: int, **bounds):
-    def view_of(skip: tuple[str, ...]) -> PlanView:
-        plan = plan_flow(preset_chain("rtl2gds"), skip_steps=skip, **bounds)
+    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> PlanView:
+        plan = plan_flow(
+            preset_chain("rtl2gds"), skip_steps=skip, inserted=inserted_chain(insert), **bounds
+        )
         return plan_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
 
     return view_of
@@ -49,10 +51,12 @@ def _screen():
     return screen, Console(file=screen, force_terminal=True, width=140, height=60)
 
 
-def _edit(keys, skip=DEFAULT_SKIP_STEPS, view_of=_view_of):
+def _edit(keys, skip=DEFAULT_SKIP_STEPS, view_of=_view_of, insert=()):
     screen, console = _screen()
     scripted = iter(keys)
-    result = edit_selection(skip, view_of=view_of, console=console, read_key=lambda: next(scripted))
+    result = edit_selection(
+        skip, insert, view_of=view_of, console=console, read_key=lambda: next(scripted)
+    )
     return result, screen.getvalue()
 
 
@@ -63,14 +67,14 @@ def _moves_to(step: str) -> list[str]:
 def test_space_toggles_the_step_under_the_cursor_and_enter_saves():
     result, output = _edit([*_moves_to("CTS"), _SPACE, _ENTER])
 
-    assert result == EditedSelection((*DEFAULT_SKIP_STEPS, "CTS"), 4)
+    assert result == EditedSelection((*DEFAULT_SKIP_STEPS, "CTS"), (), 4)
     assert "route runs with degraded results without clock_tree; enable CTS" in output
 
 
 def test_the_flow_target_stays_enabled():
     result, output = _edit([_UP, _SPACE, _ENTER])
 
-    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 4)
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)
     assert "Harden ends the flow and stays enabled" in output
 
 
@@ -108,7 +112,7 @@ def test_cancel_keys_leave_the_selection_unsaved(keys):
 def test_left_and_right_change_the_value_wherever_the_cursor_is(keys, value):
     result, _output = _edit([*keys, _ENTER])
 
-    assert result == EditedSelection(DEFAULT_SKIP_STEPS, value)
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), value)
 
 
 def test_the_value_stays_within_one_and_the_largest_stage():
@@ -117,8 +121,8 @@ def test_the_value_stays_within_one_and_the_largest_stage():
     raised, _ = _edit([_RIGHT] * 6 + [_ENTER])
 
     assert (lowered, raised) == (
-        EditedSelection(DEFAULT_SKIP_STEPS, 1),
-        EditedSelection(DEFAULT_SKIP_STEPS, 5),
+        EditedSelection(DEFAULT_SKIP_STEPS, (), 1),
+        EditedSelection(DEFAULT_SKIP_STEPS, (), 5),
     )
 
 
@@ -129,8 +133,8 @@ def test_a_value_above_the_default_and_every_stage_is_kept_and_can_be_lowered():
     lowered, _ = _edit([_LEFT, _ENTER], view_of=view_of)
 
     assert (kept, lowered) == (
-        EditedSelection(DEFAULT_SKIP_STEPS, 8),
-        EditedSelection(DEFAULT_SKIP_STEPS, 7),
+        EditedSelection(DEFAULT_SKIP_STEPS, (), 8),
+        EditedSelection(DEFAULT_SKIP_STEPS, (), 7),
     )
 
 
@@ -139,19 +143,22 @@ def test_the_default_bounds_the_value_when_no_stage_is_parallel():
 
     result, _output = _edit([_RIGHT, _ENTER], view_of=view_of)
 
-    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 4)
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)
 
 
 def test_toggles_alone_keep_the_value_the_editor_started_with():
-    result, _output = _edit([_DOWN, _SPACE, _ENTER], view_of=_view_of_project(2))
+    result, _output = _edit([*_moves_to("diff_opt"), _SPACE, _ENTER], view_of=_view_of_project(2))
 
-    assert result == EditedSelection(("diff_opt",), 2)
+    assert result == EditedSelection((), (), 2)
 
 
 def test_the_legend_and_key_hint_follow_the_value():
     _result, output = _edit([_LEFT, _LEFT, _LEFT, _ENTER])
 
-    assert "↑/↓ move · space toggle · ←/→ parallel steps · enter save · q cancel" in output
+    assert (
+        "↑/↓ move · space toggle · i insert LEC · ←/→ parallel steps · enter save · q cancel"
+        in output
+    )
     assert "┐…┘ same number = can run in parallel, up to 4 at once" in output
     assert "┐…┘ same number = can run in parallel, up to 2 at once" in output
     assert "┐…┘ same number = independent steps; run one at a time (max_parallel_steps = 1)" in (
@@ -164,7 +171,7 @@ def test_the_value_is_shown_when_no_stage_has_parallel_steps():
 
     result, output = _edit([_LEFT, _ENTER], view_of=view_of)
 
-    assert result == EditedSelection(DEFAULT_SKIP_STEPS, 3)
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 3)
     assert "max_parallel_steps = 4" in output
     assert "max_parallel_steps = 3" in output
     assert "┐…┘" not in output
@@ -212,10 +219,10 @@ def test_interrupt_declines_the_write():
 
 
 def test_windows_arrow_keys_move_the_cursor():
-    # \xe0 + P is the Windows down arrow: enable lec (row 2), then save.
-    result, _output = _edit(["\xe0", "P", _SPACE, _ENTER])
+    # \xe0 + P is the Windows down arrow: enable diff_opt (row 7), then save.
+    result, _output = _edit([*(["\xe0", "P"] * 6), _SPACE, _ENTER])
 
-    assert result == EditedSelection(("diff_opt",), 4)
+    assert result == EditedSelection((), (), 4)
 
 
 @pytest.mark.parametrize(
@@ -229,3 +236,29 @@ def test_windows_arrow_keys_move_the_cursor():
 )
 def test_one_terminal_read_splits_into_its_keys(chunk, keys):
     assert split_keys(chunk) == keys
+
+
+def test_i_inserts_an_lec_after_the_step_under_the_cursor():
+    # route, then the row above it (Timing optimization), then route again,
+    # now two rows down: below the inserted lec@Timing_optimization.
+    keys = [*_moves_to("route"), "i", _UP, "i", _DOWN, _DOWN, "i", _ENTER]
+
+    result, output = _edit(keys)
+
+    assert result == EditedSelection(
+        DEFAULT_SKIP_STEPS, ("lec@Timing_optimization", "lec@route"), 4
+    )
+    assert "lec@route is already inserted" in output
+
+
+def test_an_lec_can_only_be_inserted_after_a_design_building_step():
+    result, output = _edit([*_moves_to("filler"), "i", _ENTER])
+
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)
+    assert "an LEC can be inserted after a design-building step from Synthesis to route" in output
+
+
+def test_toggling_an_inserted_row_removes_it():
+    result, _output = _edit([*_moves_to("CTS"), _DOWN, _SPACE, _ENTER], insert=("lec@CTS",))
+
+    assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)

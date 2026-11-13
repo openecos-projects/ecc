@@ -51,6 +51,9 @@ class StepRow:
     needs: tuple[tuple[str, str | None], ...]
     #: A checker that provides nothing: it only reports.
     check: bool
+    #: Inserted after the step before it (``[flow] insert_steps``); enabled
+    #: exactly when that step is.
+    inserted: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +84,11 @@ class PlanView:
 
     @property
     def skip_steps(self) -> tuple[str, ...]:
-        return tuple(step.step for step in self.steps if not step.enabled)
+        return tuple(step.step for step in self.steps if not step.enabled and not step.inserted)
+
+    @property
+    def insert_steps(self) -> tuple[str, ...]:
+        return tuple(step.step for step in self.steps if step.inserted)
 
     @property
     def status(self) -> PlanStatus:
@@ -103,13 +110,15 @@ def plan_view(
     """The view of *plan*; *input_errors* are entry inputs ``ecc.toml`` lacks."""
     stages = plan_stages(plan.steps)
     needs = plan_needs(plan.steps)
+    # The flow target is the last chain step; an inserted check may follow it.
+    target = max(index for index, step in enumerate(plan.steps, start=1) if not step.inserted)
     steps = tuple(
         _step_row(
             position,
             step,
             stages[position - 1],
             needs[position - 1],
-            final=position == len(plan.steps),
+            final=position == target,
         )
         for position, step in enumerate(plan.steps, start=1)
     )
@@ -144,6 +153,7 @@ def view_records(view: PlanView) -> list[Record]:
             "enabled_count": view.enabled_count,
             "step_count": len(view.steps),
             "skip_steps": list(view.skip_steps),
+            "insert_steps": list(view.insert_steps),
             "max_parallel_steps": view.max_parallel_steps,
         }
     ]
@@ -166,6 +176,7 @@ def view_records(view: PlanView) -> list[Record]:
             "after": list(step.after),
             "needs": dict(step.needs),
             "check": step.check,
+            "inserted": step.inserted,
         }
         for step in view.steps
     )
@@ -210,6 +221,7 @@ def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
                     after=record_strings(record, "after"),
                     needs=_needs(record, "needs"),
                     check=_bool(record, "check"),
+                    inserted=_bool(record, "inserted"),
                 )
             )
         elif kind == "flow_violation" or kind == "flow_input":
@@ -263,6 +275,7 @@ def _step_row(
         after=needs.after,
         needs=needs.producers,
         check=policy.category is FlowStepCategory.CHECKER and not provides,
+        inserted=step.inserted,
     )
 
 

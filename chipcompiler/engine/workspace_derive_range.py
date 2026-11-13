@@ -3,9 +3,9 @@
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import Workspace, save_parameter
+from chipcompiler.data import Workspace, inserted_step_kind, save_parameter
 from chipcompiler.data.workspace.inputs import persist_origin_inputs
-from chipcompiler.data.workspace_config import flow_section_from_flow_config
+from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS, flow_section_from_flow_config
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
@@ -19,6 +19,17 @@ def bound_derived_flow(
     names = [record["name"] for record in records]
     start = _step_index(names, from_step) if from_step else 0
     end = _step_index(names, through_step)
+    for index in (start, end):
+        if inserted_step_kind(names[index]):
+            raise WorkspaceLifecycleError(
+                "invalid_flow_range",
+                f"{names[index]} is an inserted step and cannot bound a flow range; "
+                "use the step it is inserted after",
+            )
+    last_step = names[end]
+    # The inserted steps after the last step check it and stay with it.
+    while end + 1 < len(names) and inserted_step_kind(names[end + 1]):
+        end += 1
     if start > end:
         raise WorkspaceLifecycleError(
             "invalid_flow_range", f"Flow range is reversed: {from_step} -> {through_step}"
@@ -39,11 +50,11 @@ def bound_derived_flow(
         info["golden_verilog"] = str(workspace.design.golden_verilog)
     config = {
         "start_step": names[start],
-        "end_step": names[end],
+        "end_step": last_step,
         **{
             key: value
             for key, value in workspace.parameters.data.get("_flow", {}).items()
-            if key in {"skip_steps", "lec_engine"}
+            if key in FLOW_POLICY_KEYS
         },
     }
     workspace.parameters.data["_flow"] = flow_section_from_flow_config(config)

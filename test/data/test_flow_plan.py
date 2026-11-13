@@ -4,10 +4,12 @@ import pytest
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS
 from chipcompiler.data.flow_check import Severity
+from chipcompiler.data.flow_needs import StepNeeds, plan_needs
 from chipcompiler.data.flow_plan import (
     FlowPlan,
     PlannedStep,
     PlanViolation,
+    inserted_chain,
     plan_flow,
     preset_chain,
 )
@@ -17,16 +19,24 @@ _RTL2GDS = preset_chain("rtl2gds")
 
 
 def test_plan_marks_skipped_and_optional_steps():
-    chain = preset_chain("rtl2gds", lec_engine="yosys_lec")
-    plan = plan_flow(chain, skip_steps=["lec"], start="Synthesis", end="preFloorplan")
+    plan = plan_flow(_RTL2GDS, skip_steps=["diff_opt"], start="place", end="diff_sizing")
 
     assert plan == FlowPlan(
         steps=(
-            PlannedStep("Synthesis", "yosys", enabled=True, optional=False),
-            PlannedStep("lec", "yosys_lec", enabled=False, optional=True),
-            PlannedStep("preFloorplan", "ecc", enabled=True, optional=False),
+            PlannedStep("place", "dreamplace", enabled=True, optional=False),
+            PlannedStep("diff_opt", "dreamplace", enabled=False, optional=True),
+            PlannedStep("diff_sizing", "dreamplace", enabled=True, optional=False),
         ),
-        available=frozenset({DesignState.RTL}),
+        available=frozenset(
+            {
+                DesignState.RTL,
+                DesignState.NETLIST,
+                AnalysisData.GOLDEN_NETLIST,
+                DesignState.FLOORPLAN,
+                DesignState.MACROS_PLACED,
+                DesignState.PDN,
+            }
+        ),
         violations=(),
     )
 
@@ -69,7 +79,7 @@ def test_unlegalized_clock_tree_blocks_routing_and_names_every_legalizing_fix():
 
 
 def test_leading_steps_are_supplied_by_the_entry_inputs():
-    plan = plan_flow(_RTL2GDS, skip_steps=["Synthesis", "lec", "diff_opt"])
+    plan = plan_flow(_RTL2GDS, skip_steps=["Synthesis", "diff_opt"])
 
     assert plan.enabled_steps[0] == "preFloorplan"
     assert plan.available == frozenset(
@@ -133,3 +143,48 @@ def test_invalid_selections_are_rejected(kwargs, match):
 def test_unknown_preset_is_rejected():
     with pytest.raises(ValueError, match="unknown flow preset: 'harden'"):
         preset_chain("harden")
+
+
+def test_an_inserted_step_follows_its_step_and_is_enabled_with_it():
+    plan = plan_flow(
+        _RTL2GDS,
+        skip_steps=["CTS"],
+        inserted=inserted_chain(["lec@place", "lec@CTS"]),
+        start="place",
+        end="legalization",
+    )
+
+    assert plan.steps == (
+        PlannedStep("place", "dreamplace", enabled=True, optional=False),
+        PlannedStep("lec@place", "kepler_formal", enabled=True, optional=True, inserted=True),
+        PlannedStep("diff_opt", "dreamplace", enabled=True, optional=True),
+        PlannedStep("diff_sizing", "dreamplace", enabled=True, optional=False),
+        PlannedStep("CTS", "ecc", enabled=False, optional=False),
+        PlannedStep("lec@CTS", "kepler_formal", enabled=False, optional=True, inserted=True),
+        PlannedStep("legalization", "dreamplace", enabled=True, optional=False),
+    )
+    # An inserted step is declared by insert_steps, never skipped.
+    assert (plan.skip_steps, plan.insert_steps) == (("CTS",), ("lec@place", "lec@CTS"))
+
+
+def test_a_preset_built_check_is_planned_as_an_insertion_of_its_step():
+    plan = plan_flow(preset_chain("synthesis_lec"))
+
+    assert plan.steps == (
+        PlannedStep("Synthesis", "yosys", enabled=True, optional=False),
+        PlannedStep("lec@Synthesis", "kepler_formal", enabled=True, optional=True, inserted=True),
+    )
+    # Synthesis is the flow target; the check cannot run without it.
+    with pytest.raises(ValueError, match="'Synthesis' ends the flow"):
+        plan_flow(preset_chain("synthesis_lec"), skip_steps=["Synthesis"])
+
+
+def test_an_inserted_check_follows_the_step_it_checks_first():
+    plan = plan_flow(_RTL2GDS, skip_steps=DEFAULT_SKIP_STEPS, inserted=inserted_chain(["lec@CTS"]))
+    position = plan.enabled_steps.index("lec@CTS")
+    steps = [step for step in plan.steps if step.enabled]
+
+    assert plan_needs(steps)[position] == StepNeeds(
+        producers=(("golden_netlist", "Synthesis"), ("netlist", "Synthesis")),
+        after=("CTS", "Synthesis"),
+    )

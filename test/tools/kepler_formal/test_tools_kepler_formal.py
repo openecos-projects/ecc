@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from chipcompiler.data import (
     PDK,
     KeplerFormalStep,
@@ -84,7 +86,7 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -109,7 +111,7 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -125,6 +127,128 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     assert str(step.report.miter_log) in config
 
 
+@pytest.mark.parametrize(
+    ("name", "filelist", "defines"),
+    [
+        # Synthesis reads a .v file or a plain-Verilog filelist with the native
+        # read_verilog, which defines YOSYS too, anything else with read_slang.
+        ("", None, "+define+SYNTHESIS\n+define+YOSYS\n"),
+        ("design.f", f"{GCD_RTL}\n", "+define+SYNTHESIS\n+define+YOSYS\n"),
+        ("design.f", f"+incdir+.\n{GCD_RTL}\n", "+define+SYNTHESIS\n"),
+        # The filelist generated for several RTL entries has no suffix.
+        ("filelist", f"+incdir+.\n{GCD_RTL}\n", "+define+SYNTHESIS\n"),
+    ],
+    ids=["rtl file", "plain filelist", "slang filelist", "suffixless filelist"],
+)
+def test_the_synthesis_lec_config_checks_the_rtl_against_the_netlist_with_sec(
+    tmp_path, name, filelist, defines
+):
+    import yaml
+
+    from chipcompiler.tools.kepler_formal import builder
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_netlist_pair(gate)
+    rtl = GCD_RTL
+    if filelist is not None:
+        rtl = tmp_path / name
+        rtl.write_text(filelist)
+        workspace.design.input_filelist = rtl
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@Synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=rtl,
+    )
+    builder.build_step_space(step)
+
+    builder.write_step_config(workspace, step)
+
+    rtl_filelist = step.data.dir / "rtl.f"
+    assert yaml.safe_load(step.data.config.read_text()) == {
+        "format": "sv2v",
+        "verification": "sec",
+        "input_paths": [[], [str(gate)]],
+        "sv_design1_flist": str(rtl_filelist),
+        "sv_design1_top": "gcd",
+        "verilog_design2_top": "gcd",
+        "liberty_files": [str(workspace.pdk.libs[0])],
+        "log_file": str(step.report.miter_log),
+    }
+    # A filelist nests with -F so its entries resolve against its own directory.
+    entry = f'"{rtl}"' if filelist is None else f'-F "{rtl}"'
+    assert rtl_filelist.read_text() == f"{defines}{entry}\n"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode", "proven", "status"),
+    [
+        (
+            "No binary-defined difference was found. SEC proved equivalence under the "
+            "dual-rail steady-state abstraction at k = 9.\n",
+            0,
+            True,
+            "completed with proven equivalence.",
+        ),
+        (
+            "Difference was found. SEC found a counterexample at k = 2.\n",
+            3,
+            False,
+            "did not prove equivalence: kepler-formal found a difference; "
+            "see the miter log for details",
+        ),
+        # Conflicting verdicts fail: a difference outranks a proof marker.
+        (
+            "No difference was found.\nDifference was found. SEC found a counterexample.\n",
+            0,
+            False,
+            "did not prove equivalence: kepler-formal found a difference; "
+            "see the miter log for details",
+        ),
+    ],
+)
+def test_the_synthesis_lec_reads_the_sec_verdict(
+    tmp_path, monkeypatch, stdout, returncode, proven, status
+):
+    from chipcompiler.tools.kepler_formal import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_netlist_pair(gate)
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@Synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=GCD_RTL,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    def fake_run(cmd, cwd, env, stdout, stderr, _text=stdout):
+        stdout.write(_text)
+        return SimpleNamespace(returncode=returncode)
+
+    monkeypatch.setattr(
+        runner,
+        "KeplerFormalSubFlow",
+        lambda workspace, workspace_step: SimpleNamespace(update_step=lambda **_kw: None),
+    )
+    monkeypatch.setattr(
+        runner, "get_kepler_formal_runtime", lambda: (["kepler-formal"], {"PATH": "/tmp"})
+    )
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is proven
+    # The RTL is read as is: no prepared compare copy of the golden.
+    assert (
+        step.report.status.read_text(),
+        Path(step.data.dir, "golden_compare.v").exists(),
+    ) == (f"kepler-formal SEC of the RTL and the netlist {status}\n", False)
+
+
 def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeypatch):
     from chipcompiler.tools.kepler_formal import builder, runner
 
@@ -134,7 +258,7 @@ def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeyp
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate_gz,
         input_db=golden,
@@ -195,7 +319,7 @@ def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypa
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -236,7 +360,7 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -266,6 +390,52 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     monkeypatch.setattr(runner, "get_kepler_formal_runtime", lambda: ([], {}))
     assert runner.run_step(workspace=workspace, step=step) is False
     assert "kepler-formal is not available" in Path(step.log.file).read_text()
+
+
+def test_the_synthesis_lec_fails_when_the_files_its_rtl_reads_cannot_be_identified(
+    tmp_path, monkeypatch
+):
+    from chipcompiler.tools.kepler_formal import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    _write_netlist_pair(gate)
+    rtl = tmp_path / "design.f"
+    # -f resolves against the reading tool's working directory.
+    rtl.write_text(f"-f {tmp_path / 'other.f'}\n")
+    workspace.design.input_filelist = rtl
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@Synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=rtl,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    def unexpected_run(*_args, **_kwargs):
+        raise AssertionError("kepler-formal must not run")
+
+    monkeypatch.setattr(
+        runner,
+        "KeplerFormalSubFlow",
+        lambda workspace, workspace_step: SimpleNamespace(update_step=lambda **_kw: None),
+    )
+    monkeypatch.setattr(
+        runner, "get_kepler_formal_runtime", lambda: (["kepler-formal"], {"PATH": "/tmp"})
+    )
+    monkeypatch.setattr(runner.subprocess, "run", unexpected_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is False
+    assert (
+        json.loads(step.output.json.read_text())["status"],
+        step.report.status.read_text(),
+    ) == (
+        "incomplete",
+        "kepler-formal SEC of the RTL and the netlist did not prove equivalence: cannot "
+        f"identify the files the RTL reads: {rtl}:1: unsupported filelist option '-f'\n",
+    )
 
 
 def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
@@ -303,10 +473,15 @@ def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
     assert "module gcd" in prepared_gz.read_text()
 
 
-def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch):
+@pytest.mark.parametrize("filelist", [False, True], ids=["rtl file", "filelist"])
+def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch, filelist):
     import chipcompiler.tools as tools
 
     workspace = _workspace(tmp_path)
+    if filelist:
+        filelist_path = tmp_path / "design.f"
+        filelist_path.write_text(f"{GCD_RTL}\n")
+        workspace.design.input_filelist = filelist_path
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
         "schema_version": 2,
@@ -318,10 +493,10 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
                 **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
             },
             {
-                "name": SkippableStepEnum.LEC.value,
+                "name": "lec@Synthesis",
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
-                **step_fields(SkippableStepEnum.LEC.value, "kepler_formal"),
+                **step_fields("lec@Synthesis", "kepler_formal"),
             },
             {
                 "name": StepEnum.FLOORPLAN.value,
@@ -382,8 +557,11 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
     engine_flow.create_step_workspaces()
 
     synth_step, lec_step, floorplan_step = engine_flow.workspace_steps
-    assert lec_step.input.gate_verilog == synth_step.output.verilog
-    assert lec_step.input.golden_verilog == synth_step.output.golden_verilog
+    # The synthesized netlist against the RTL Synthesis read: its filelist, else its file.
+    assert (lec_step.input.gate_verilog, lec_step.input.golden_verilog) == (
+        synth_step.output.verilog,
+        workspace.design.input_filelist if filelist else GCD_RTL,
+    )
     # The LEC step must not advance the physical input chain.
     assert floorplan_step.input.verilog == synth_step.output.verilog
 
@@ -467,35 +645,6 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     assert lec_step.input.golden_verilog == synth_step.output.verilog
 
 
-def test_step_directory_helpers_resolve_supported_lec_engines():
-    from chipcompiler.data.step import (
-        STEP_DIRECTORIES,
-        YOSYS_LEC_STEP_DIRECTORIES,
-        all_step_directories,
-        step_directory_for_tool,
-    )
-
-    assert step_directory_for_tool("lec", "kepler_formal") == "lec_kepler_formal"
-    assert step_directory_for_tool("lec", "yosys_lec") == "lec_yosys_lec"
-    assert step_directory_for_tool("postRouteLec", None) == STEP_DIRECTORIES["postRouteLec"]
-    assert YOSYS_LEC_STEP_DIRECTORIES["lec"] in all_step_directories()
-    assert STEP_DIRECTORIES["lec"] in all_step_directories()
-
-
-def test_reconcile_treats_lec_engines_as_interchangeable():
-    from chipcompiler.engine.reconcile import _normalized_entries, compare_flows
-
-    persisted = [("Synthesis", "yosys"), ("lec", "yosys_lec"), ("Floorplan", "ecc")]
-    target = [("Synthesis", "yosys"), ("lec", "kepler_formal"), ("Floorplan", "ecc")]
-
-    assert compare_flows(_normalized_entries(persisted), _normalized_entries(target)) == "equal"
-
-    prefix = [("Synthesis", "yosys")]
-    assert (
-        compare_flows(_normalized_entries(prefix), _normalized_entries(target)) == "proper_prefix"
-    )
-
-
 def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
     import yaml
 
@@ -506,7 +655,7 @@ def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )

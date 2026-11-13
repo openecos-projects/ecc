@@ -88,7 +88,6 @@ def test_discovery_finds_flow_step_tools():
         "ecc_dreamplace",
         "ecc_sizer",
         "yosys",
-        "yosys_lec",
         "kepler_formal",
     } <= set(discovered), (
         f"discovery regressed; packages exempt only via {_EXEMPT_PACKAGES}: {discovered}"

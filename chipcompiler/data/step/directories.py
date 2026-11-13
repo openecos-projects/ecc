@@ -20,7 +20,6 @@ from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
 # optimization owns no artifact directory any consumer reads through these tables.
 STEP_DIRECTORIES = {
     StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    SkippableStepEnum.LEC.value: "lec_kepler_formal",
     StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
     StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
     StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
@@ -44,32 +43,9 @@ STEP_DIRECTORIES = {
     StepEnum.DEFVIEW.value: "defview_ecc",
 }
 
-# Directories of the supported Yosys LEC engine.
-YOSYS_LEC_STEP_DIRECTORIES = {
-    SkippableStepEnum.LEC.value: "lec_yosys_lec",
-    SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_yosys_lec",
-}
-
-# Directories of the dual cross-checking LEC engine. Like the
-# single-engine directories, they resolve only through tool-aware lookup —
-# the name-keyed table alone cannot tell which engine a ledger recorded.
-DUAL_STEP_DIRECTORIES = {
-    SkippableStepEnum.LEC.value: "lec_dual",
-    SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_dual",
-}
-
 
 def step_directory_for_tool(step_name: str, tool: str | None) -> str:
-    """Resolve a step directory for the engine the flow recorded.
-
-    LEC steps own one directory per engine (yosys_lec historically,
-    kepler_formal today, lec_dual for cross-checking); every other step
-    has a single directory.
-    """
-    if tool == ToolName.YOSYS_LEC and step_name in YOSYS_LEC_STEP_DIRECTORIES:
-        return YOSYS_LEC_STEP_DIRECTORIES[step_name]
-    if tool == ToolName.LEC_DUAL and step_name in DUAL_STEP_DIRECTORIES:
-        return DUAL_STEP_DIRECTORIES[step_name]
+    """The base directory of *step_name* run by *tool*."""
     directory = STEP_DIRECTORIES.get(step_name)
     if directory is not None:
         return directory
@@ -78,20 +54,8 @@ def step_directory_for_tool(step_name: str, tool: str | None) -> str:
 
 
 def all_step_directories() -> list[str]:
-    """All supported step directories, deduplicated in stable order.
-
-    Directory scans (checklist aggregation, report extraction) iterate this so
-    artifacts from every supported LEC engine are covered.
-    """
-    return list(
-        dict.fromkeys(
-            [
-                *STEP_DIRECTORIES.values(),
-                *YOSYS_LEC_STEP_DIRECTORIES.values(),
-                *DUAL_STEP_DIRECTORIES.values(),
-            ]
-        )
-    )
+    """All base step directories, deduplicated in stable order (directory scans)."""
+    return list(dict.fromkeys(STEP_DIRECTORIES.values()))
 
 
 def flow_step_directory(steps: Sequence[Mapping[str, object]] | None, step_name: str) -> str:
@@ -103,30 +67,6 @@ def flow_step_directory(steps: Sequence[Mapping[str, object]] | None, step_name:
         if step.get("name") == step_name:
             return recorded_step_directory(step)
     return STEP_DIRECTORIES.get(step_name, step_name)
-
-
-def inactive_lec_step_directories(
-    steps: Sequence[Mapping[str, object]] | None,
-) -> frozenset[str]:
-    """LEC step directories holding stale evidence for a flow ledger.
-
-    LEC steps own one directory per engine; after an engine switch the
-    previous engine's directory is preserved evidence, never current
-    state. Returns every engine's directory for lec/postRouteLec except
-    the one the ledger recorded (per step); when the ledger lacks a LEC
-    step, all of that step's engine directories count as inactive.
-    """
-    from chipcompiler.data.types import LEC_STEP_TOOLS
-
-    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
-    ledger_names = {str(step.get("name", "")) for step in steps or []}
-    active = {flow_step_directory(steps, name) for name in lec_names & ledger_names}
-    return (
-        frozenset(
-            step_directory_for_tool(name, tool) for name in lec_names for tool in LEC_STEP_TOOLS
-        )
-        - active
-    )
 
 
 def step_storage_name(step_name: str, tool_name: str) -> str:
@@ -143,12 +83,11 @@ def step_storage_name(step_name: str, tool_name: str) -> str:
 def new_step_directory(step_name: str, tool: str, *, index: int | None = None) -> str:
     """The directory name a step gets when it is added to a flow.
 
-    ``<step>_<tool>`` (``Synthesis_yosys``; the dual LEC step uses
-    ``<step>_dual``), prefixed with the step's two-digit position in the flow
-    when *index* is given (``01_Synthesis_yosys``).
+    ``<step>_<tool>`` (``Synthesis_yosys``), prefixed with the step's
+    two-digit position in the flow when *index* is given
+    (``01_Synthesis_yosys``).
     """
-    suffix = "dual" if tool == ToolName.LEC_DUAL else tool
-    stem = f"{step_storage_name(step_name, tool)}_{suffix}"
+    stem = f"{step_storage_name(step_name, tool)}_{tool}"
     return stem if index is None else f"{index:02d}_{stem}"
 
 
@@ -204,18 +143,6 @@ def recorded_step_directory(record: Mapping[str, object]) -> str:
     if not isinstance(directory, str) or not is_step_directory_name(directory):
         raise ValueError(f"flow step directory must be a single directory name: {directory!r}")
     return directory
-
-
-def engine_step_directory(dual_directory: Path, engine: str) -> Path:
-    """The directory of one engine of a dual LEC step.
-
-    Engines run in siblings of the dual step's directory that keep its prefix:
-    ``03_lec_dual`` runs kepler-formal in ``03_lec_kepler_formal``.
-    """
-    name = dual_directory.name
-    if not name.endswith("_dual"):
-        raise ValueError(f"not a dual LEC step directory: {dual_directory}")
-    return dual_directory.with_name(f"{name.removesuffix('dual')}{engine}")
 
 
 @runtime_checkable

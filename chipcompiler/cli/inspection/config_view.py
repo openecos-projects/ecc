@@ -101,6 +101,22 @@ def build_project_config_items(
     else:
         entries.append(("flow.skip_steps", declared, declared, source))
 
+    # Inserted steps: ecc.toml's, plus the synthesis LEC a project.json entry
+    # implies (manifest_flow.manifest_synthesis_lec) in the effective config.
+    from chipcompiler.rtl2gds import resolve_insert_steps
+
+    insert_source = "ecc.toml" if "flow.insert_steps" in explicit else "default"
+    declared_insert = cfg.flow_insert_steps if insert_source == "ecc.toml" else None
+    if resolved is not None and isinstance(flow_config, dict) and "insert_steps" in flow_config:
+        if insert_source == "default":
+            insert_source = "project.json"
+            declared_insert = list(flow_config["insert_steps"])
+        effective_insert = resolve_insert_steps(flow_config)
+    else:
+        effective_insert = resolve_insert_steps(
+            None if declared_insert is None else {"insert_steps": declared_insert}
+        )
+    entries.append(("flow.insert_steps", declared_insert, list(effective_insert), insert_source))
     entries.append(
         (
             "flow.max_parallel_steps",

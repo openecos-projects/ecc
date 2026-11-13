@@ -141,11 +141,13 @@ def flow_edit_summary(records: Sequence[Mapping[str, object]], *, written: bool)
             f"lec_engine = {record_str(summary, 'lec_engine')}"
         ),
         Text(f"  skip_steps = {', '.join(record_strings(summary, 'skip_steps'))}"),
-        Text(f"  max_parallel_steps = {record_int(summary, 'max_parallel_steps')}"),
     ]
+    if insert_steps := record_strings(summary, "insert_steps"):
+        lines.append(Text(f"  insert_steps = {', '.join(insert_steps)}"))
+    lines.append(Text(f"  max_parallel_steps = {record_int(summary, 'max_parallel_steps')}"))
     lines.extend(
         Text(f"  {key}: {', '.join(names)}")
-        for key in ("enabled", "disabled")
+        for key in ("enabled", "disabled", "inserted", "removed")
         if (names := record_strings(summary, key))
     )
     lines.extend(
@@ -192,6 +194,9 @@ def _after_names(step: StepRow) -> list[str]:
 def _after_cell(step: StepRow) -> Text:
     producers = dict(step.needs)
     required = {producers[capability] for capability in step.requires if capability in producers}
+    if step.inserted:
+        # The step whose netlist an inserted check reads.
+        required.add(step.after[0])
     cell = Text()
     for name in step.after:
         # Optional inputs: the step runs without them, with degraded results.
@@ -223,7 +228,9 @@ def _tags(step: StepRow) -> list[Text]:
     tags: list[Text] = []
     if step.check:
         tags.append(Text("check"))
-    if step.optional:
+    if step.inserted:
+        tags.append(Text("inserted", "magenta"))
+    elif step.optional:
         tags.append(Text("optional", "italic"))
     if step.target:
         tags.append(Text("target", "cyan"))

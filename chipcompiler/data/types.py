@@ -58,6 +58,9 @@ class StepEnum(StepBaseEnum):
     ABSTRACT_LEF = "Abstract lef"
     HARDEN = "Harden"
     DEFVIEW = "defview"
+    #: Logic equivalence check. Not a chain step: a selection inserts it after
+    #: a design-building step (``lec@CTS``; ``[flow] insert_steps``).
+    LEC = "lec"
 
 
 class SkippableStepEnum(StepBaseEnum):
@@ -67,7 +70,6 @@ class SkippableStepEnum(StepBaseEnum):
     do without; persisted string values match the former StepEnum members.
     """
 
-    LEC = "lec"
     DIFF_OPT = "diff_opt"
     POST_ROUTE_LEC = "postRouteLec"
     TIMING_OPT = "Timing optimization"
@@ -293,7 +295,7 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.LEC.value: FlowStepPolicy(
+    StepEnum.LEC.value: FlowStepPolicy(
         FlowStepCategory.PNR,
         requires=_data(DesignState.NETLIST, AnalysisData.GOLDEN_NETLIST),
     ),
@@ -315,11 +317,41 @@ FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
 }
 
 
+#: Steps a selection may insert after other steps (``[flow] insert_steps``).
+#: An inserted step is named ``<step>@<after>`` and follows the policy of
+#: ``<step>``; only LEC is insertable, because it reads a netlist and changes
+#: nothing (see ``chipcompiler.rtl2gds.lec_insert_anchors``).
+INSERTABLE_FLOW_STEPS: Final = frozenset({StepEnum.LEC.value})
+
+#: Separates an inserted step's kind from the step it follows.
+INSERTED_STEP_MARK: Final = "@"
+
+
+def inserted_step_kind(name: str) -> str | None:
+    """The insertable step an inserted step name is a copy of (``lec`` for ``lec@CTS``).
+
+    Only a canonical inserted name counts: ``lec@`` followed by a step an LEC
+    can be inserted after (``rtl2gds.lec_insert_anchors``), so ``lec@bogus`` or
+    ``lec@filler`` is no step at all.
+    """
+    kind, mark, _after = name.partition(INSERTED_STEP_MARK)
+    if not mark or kind not in INSERTABLE_FLOW_STEPS:
+        return None
+    # The rtl2gds chain, which builds on this module, owns the anchors.
+    from chipcompiler.rtl2gds.builder import parse_inserted_step
+
+    parsed = parse_inserted_step(name)
+    return None if parsed is None else parsed[0]
+
+
 def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
-    """The registered policy for a flow step; unknown names raise."""
+    """The registered policy for a flow step; unknown names raise.
+
+    An inserted step (``lec@CTS``) has the policy of the step it copies.
+    """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
     try:
-        return FLOW_STEP_POLICIES[value]
+        return FLOW_STEP_POLICIES[inserted_step_kind(value) or value]
     except KeyError:
         raise ValueError(f"no flow policy registered for step: {value!r}") from None
 
@@ -331,13 +363,13 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
     without a policy fails loudly rather than silently inheriting PNR.
     """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
-    policy = FLOW_STEP_POLICIES.get(value)
+    policy = FLOW_STEP_POLICIES.get(inserted_step_kind(value) or value)
     return policy.category if policy is not None else FlowStepCategory.PNR
 
 
-# New flows skip synthesis LEC and placement-parasitic diff_opt by default.
-# An explicit skip list replaces this policy; existing ledgers are preserved.
-DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value)
+# New flows skip placement-parasitic diff_opt by default. An explicit skip
+# list replaces this policy; existing ledgers are preserved.
+DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.DIFF_OPT.value,)
 
 # Upper bound on independent analysis steps a run executes at once; the
 # project ``[flow] max_parallel_steps`` key overrides it for a run.
@@ -351,57 +383,34 @@ class ToolName(StrEnum):
     ECC = "ecc"
     DREAMPLACE = "dreamplace"
     SIZER = "sizer"
-    YOSYS_LEC = "yosys_lec"
     KEPLER_FORMAL = "kepler_formal"
-    LEC_DUAL = "lec_dual"
     # Not a flow-step tool: the layout-image backend behind save_layout_image.
     KLAYOUT = "klayout"
 
 
 class LECEngineEnum(StrEnum):
-    """Engines that can own the lec/postRouteLec steps.
+    """Engines that can own LEC steps (inserted ``lec@<step>`` and postRouteLec)."""
 
-    DUAL is a composite: it runs both physical engines on the same inputs
-    and aggregates their verdicts.
-    """
-
-    YOSYS_LEC = "yosys_lec"
     KEPLER_FORMAL = "kepler_formal"
-    DUAL = "lec_dual"
 
     @classmethod
     def from_value(cls, raw: object) -> "LECEngineEnum":
         """The LEC engine for a persisted/declared spelling.
 
-        Accepts every member value plus the ``dual`` alias (normalized to
-        ``lec_dual``); anything else raises ValueError listing the legal
-        set. Persisted and ledger strings always use the member value,
-        never the alias.
+        Anything but a member value raises ValueError listing the legal set.
         """
         if isinstance(raw, cls):
             return raw
         token = str(raw or "").strip()
-        if token == "dual":
-            return cls.DUAL
         try:
             return cls(token)
         except ValueError:
             legal = ", ".join(sorted(member.value for member in cls))
-            raise ValueError(
-                f"unknown LEC engine: {raw!r}; available engines: {legal} (or the 'dual' alias)"
-            ) from None
-
-    @property
-    def spawn_engines(self) -> tuple["LECEngineEnum", ...]:
-        """The physical engines to probe/launch (DUAL fans out)."""
-        if self is LECEngineEnum.DUAL:
-            return (LECEngineEnum.YOSYS_LEC, LECEngineEnum.KEPLER_FORMAL)
-        return (self,)
+            raise ValueError(f"unknown LEC engine: {raw!r}; available engines: {legal}") from None
 
 
-# Tool identifiers that can own the lec/postRouteLec steps. Workspaces keep
-# the engine their ledger recorded, so every LEC-aware branch (input wiring,
-# result checks, DB skips) matches this set instead of one literal.
+# Tool identifiers that can own LEC steps. Every LEC-aware branch (input
+# wiring, result checks, DB skips) matches this set instead of one literal.
 LEC_STEP_TOOLS: Final = frozenset(member.value for member in LECEngineEnum)
 
 DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL

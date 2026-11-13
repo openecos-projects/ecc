@@ -6,6 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import chipcompiler
+from chipcompiler.data.types import LEC_STEP_TOOLS
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
@@ -994,7 +995,8 @@ def _candidate_source_step(flow, target_step: str) -> str:
     for index, step in enumerate(steps):
         if step.get("name") == target_step and index:
             for source_step in reversed(steps[:index]):
-                if source_step.get("tool") == "yosys_lec":
+                # An LEC check reads a netlist and changes nothing.
+                if source_step.get("tool") in LEC_STEP_TOOLS:
                     continue
                 source = source_step.get("name")
                 if isinstance(source, str):

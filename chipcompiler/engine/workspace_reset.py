@@ -23,10 +23,12 @@ def build_flow_for_workspace(workspace: Any, *, create_step_workspaces: bool = T
     if not engine_flow.has_init():
         parameters = getattr(getattr(workspace, "parameters", None), "data", None)
         persisted_flow = parameters.get("_flow") if isinstance(parameters, dict) else None
-        skip = rtl2gds_api.resolve_skip_steps(
-            persisted_flow if isinstance(persisted_flow, dict) else None
-        )
-        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(skip=skip):
+        policy = persisted_flow if isinstance(persisted_flow, dict) else None
+        for step, tool, state in rtl2gds_api.build_rtl2gds_flow(
+            skip=rtl2gds_api.resolve_skip_steps(policy),
+            lec_engine=rtl2gds_api.resolve_lec_engine(policy),
+            insert=rtl2gds_api.resolve_insert_steps(policy),
+        ):
             engine_flow.add_step(step=step, tool=tool, state=state)
     if create_step_workspaces:
         # Reset/derive only rebuild metadata; they do not execute EDA tools.

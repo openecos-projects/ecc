@@ -31,13 +31,13 @@ def test_sta_entry_requires_spef_and_accepts_declared_files(tmp_path):
     assert validate_entry_inputs(cfg, "sta") == []
 
 
-def test_lec_entry_requires_a_golden_netlist(tmp_path):
+def test_post_route_lec_entry_requires_a_golden_netlist(tmp_path):
     netlist = tmp_path / "gcd.v"
     netlist.write_text("module gcd; endmodule\n")
     cfg = _config(tmp_path, design_netlist=netlist.name)
 
-    assert validate_entry_inputs(cfg, "lec") == [
-        "step_input_missing: lec requires design.golden_netlist"
+    assert validate_entry_inputs(cfg, "postRouteLec") == [
+        "step_input_missing: postRouteLec requires design.golden_netlist"
     ]
 
 

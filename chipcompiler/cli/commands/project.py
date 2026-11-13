@@ -247,9 +247,10 @@ def config_cmd(
     """Show resolved project or step configuration.
 
     Without STEP: resolved project-level configuration. With STEP: the
-    configuration files actually in effect for that step. `lec`, `lvs`,
-    `postroutelec`, and `harden` have no step-specific configuration
-    (Tcl-driven, tool-default, or reusing `db_ecc.json`).
+    configuration files actually in effect for that step. Inserted LEC
+    checks (`lec@<step>`), `lvs`, `postroutelec`, and `harden` have no
+    step-specific configuration (Tcl-driven, tool-default, or reusing
+    `db_ecc.json`).
 
     See 'ecc doc config' for the full reference.
     """

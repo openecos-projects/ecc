@@ -21,6 +21,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     default_flow_step_category,
+    inserted_step_kind,
     log_flow,
 )
 from chipcompiler.data.step import (
@@ -34,6 +35,7 @@ from chipcompiler.data.workspace.flow_policy import (
     analysis_wave_end,
     explicit_input_step,
     flow_category,
+    is_lec_record,
     ledger_category,
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
@@ -137,13 +139,6 @@ class EngineFlow:
             self.init_flow_step(step, tool, state, index=index)
             for index, (step, tool, state) in enumerate(build_rtl2gds_flow(), start=1)
         ]
-        # Persist the golden netlist on the LEC step so reloads do not have
-        # to guess roles from the golden_* filename convention.
-        golden = getattr(self.workspace.design, "golden_verilog", None)
-        if golden:
-            for step in steps:
-                if step["name"] == SkippableStepEnum.LEC.value:
-                    step["info"] = {"golden_verilog": str(golden)}
 
         self.workspace.flow.data = {"steps": steps}
 
@@ -319,10 +314,7 @@ class EngineFlow:
         ecc_output = output if isinstance(output, EccOutput) else None
         if self._is_placement_only_step(workspace_step):
             return bool(os.path.exists(output.def_ or "") and os.path.exists(output.verilog or ""))
-        if workspace_step.tool in LEC_STEP_TOOLS or workspace_step.name in (
-            SkippableStepEnum.LEC.value,
-            SkippableStepEnum.POST_ROUTE_LEC.value,
-        ):
+        if workspace_step.tool in LEC_STEP_TOOLS:
             from chipcompiler.tools.lec_result import lec_result_is_proven
 
             step_input = workspace_step.input
@@ -405,7 +397,7 @@ class EngineFlow:
         records = self.workspace.flow.data.get("steps", [])
         resolver = FlowInputResolver(records)
         synthesis_gate_verilog = ""
-        synthesis_golden_verilog = ""
+        synthesis_rtl: Path | None = None
         for index, step in enumerate(records):
             input_source = resolver.input_source(index)
             if input_source is None:
@@ -428,14 +420,25 @@ class EngineFlow:
                     input_db = explicit_golden
                 elif input_source is None and self.workspace.design.golden_verilog is not None:
                     input_db = self.workspace.design.golden_verilog
-                elif step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value:
+                elif (
+                    input_source is not None
+                    and input_source.name == StepEnum.SYNTHESIS.value
+                    and inserted_step_kind(step["name"]) is not None
+                ):
+                    # lec@Synthesis: the synthesized netlist against the RTL
+                    # Synthesis read (kepler-formal SEC).
+                    input_db = synthesis_rtl
+                elif (
+                    step["name"] == SkippableStepEnum.POST_ROUTE_LEC.value
+                    or inserted_step_kind(step["name"]) is not None
+                ):
+                    # The implemented netlist (filler's, or the inserted
+                    # LEC's step's) against the synthesis one.
                     input_db = (
                         self.workspace.design.golden_verilog
                         or synthesis_gate_verilog
                         or self.workspace.design.origin_verilog
                     )
-                elif input_source is not None and input_source.name == StepEnum.SYNTHESIS.value:
-                    input_db = synthesis_golden_verilog or None
 
             # create workspace step
             eda_step = create_step(
@@ -465,8 +468,10 @@ class EngineFlow:
                 self.workspace_steps.append(eda_step)
                 resolver.record(eda_step)
                 if eda_step.name == StepEnum.SYNTHESIS.value:
+                    from chipcompiler.tools.yosys.builder import synthesis_rtl as rtl_of
+
                     synthesis_gate_verilog = eda_step.output.verilog
-                    synthesis_golden_verilog = getattr(eda_step.output, "golden_verilog", None)
+                    synthesis_rtl = rtl_of(self.workspace, eda_step)
             else:
                 self.set_state(name=step["name"], tool=step["tool"], state=StateEnum.Imcomplete)
                 logger.error(
@@ -693,11 +698,13 @@ class EngineFlow:
             ]
         else:
             prerequisites = []
+            # The checks between this step and the step it reads (checkers,
+            # and LEC steps, which the input chain also skips) gate it too.
             for step in reversed(steps[:current_index]):
                 if not isinstance(step, dict):
                     continue
                 prerequisites.append(step)
-                if flow_category(step) != FlowStepCategory.CHECKER:
+                if flow_category(step) != FlowStepCategory.CHECKER and not is_lec_record(step):
                     break
 
         for prerequisite in prerequisites:

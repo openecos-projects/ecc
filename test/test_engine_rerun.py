@@ -124,6 +124,23 @@ class TestSelectedStepNames:
 
         assert rerun.selected_step_names(flow, only="lec") == ["lec"]
 
+    def test_a_range_ending_at_a_step_keeps_its_inserted_check(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("place", "Success"),
+                ("CTS", "Success"),
+                ("lec@CTS", "Success"),
+                ("legalization", "Success"),
+            ],
+            tools_by_name={"lec@CTS": "kepler_formal"},
+        )
+
+        assert (
+            rerun.selected_step_names(flow, from_step="place", through="CTS"),
+            rerun.selected_step_names(flow, only="CTS", force=True),
+        ) == (["place", "CTS", "lec@CTS"], ["CTS"])
+
     def test_resume_still_selects_incomplete_suffix(self, tmp_path):
         flow = _make_run_flow(
             tmp_path,
@@ -555,8 +572,10 @@ class TestInitDbEngineForStep:
         from chipcompiler.engine import EngineDB
 
         # LEC compares netlists and has no ECC DB: explicit reruns
-        # (--only lec) must not build one from the LEC workspace.
-        flow = _make_run_flow(tmp_path, [("lec", "Incomplete")], tools_by_name={"lec": "yosys_lec"})
+        # (--only lec@CTS) must not build one from the LEC workspace.
+        flow = _make_run_flow(
+            tmp_path, [("lec@CTS", "Incomplete")], tools_by_name={"lec@CTS": "kepler_formal"}
+        )
         created = []
 
         def create_db_engine(self, step):

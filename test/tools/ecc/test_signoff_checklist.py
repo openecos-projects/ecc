@@ -1,6 +1,8 @@
 import json
 from typing import Any
 
+import pytest
+
 from chipcompiler.data import (
     Checklist,
     ChecklistState,
@@ -104,9 +106,7 @@ def test_lec_failure_blocks_export_for_both_lec_steps(monkeypatch, tmp_path):
     )
     workspace = Workspace(directory=tmp_path)
 
-    synthesis_item = _lec_artifact_items(
-        workspace, SkippableStepEnum.LEC.value, result, None, None
-    )[0]
+    synthesis_item = _lec_artifact_items(workspace, StepEnum.LEC.value, result, None, None)[0]
     post_route_item = _lec_artifact_items(
         workspace, SkippableStepEnum.POST_ROUTE_LEC.value, result, None, None
     )[0]
@@ -639,7 +639,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
             )
         ],
     }
-    workspace.flow.data.get("steps", [])[-3]["tool"] = "yosys_lec"
+    workspace.flow.data.get("steps", [])[-3]["tool"] = "kepler_formal"
     step = EccStep(
         name=StepEnum.HARDEN.value,
         directory=tmp_path / "Harden_ecc",
@@ -908,7 +908,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
             )
         ],
     }
-    workspace.flow.data.get("steps", [])[5]["tool"] = "yosys_lec"
+    workspace.flow.data.get("steps", [])[5]["tool"] = "kepler_formal"
     workspace.flow.data.get("steps", [])[5]["input_step"] = "lvs"
 
     items = {item["id"]: item for item in _flow_items(workspace)}
@@ -953,7 +953,9 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     gate = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
     gate.parent.mkdir(parents=True)
     gate.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
-    result_json = tmp_path / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json"
+    result_json = (
+        tmp_path / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json"
+    )
     result_json.parent.mkdir(parents=True)
     origin_digest: Any = file_digest(origin)
     gate_digest: Any = file_digest(gate)
@@ -971,7 +973,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
         ),
         encoding="utf-8",
     )
-    stale = tmp_path / "postRouteLec_yosys_lec" / "checklist.json"
+    stale = tmp_path / "postRouteLec_kepler_formal" / "checklist.json"
     stale.write_text(
         json.dumps(
             {
@@ -986,8 +988,8 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
                         "policy": "block",
                         "state": "failed",
                         "blocked": True,
-                        "title": "Yosys LEC result",
-                        "summary": "Yosys LEC did not prove equivalence.",
+                        "title": "LEC result",
+                        "summary": "LEC did not prove equivalence.",
                     }
                 ],
             }
@@ -1016,75 +1018,84 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
             )
         ],
     }
-    workspace.flow.data.get("steps", [])[2]["tool"] = "yosys_lec"
-    workspace.flow.data.get("steps", [])[2]["directory"] = "postRouteLec_yosys_lec"
+    workspace.flow.data.get("steps", [])[2]["tool"] = "kepler_formal"
+    workspace.flow.data.get("steps", [])[2]["directory"] = "postRouteLec_kepler_formal"
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
     assert home_items["artifact.postroutelec.result"]["state"] == "pass"
     assert home_items["artifact.postroutelec.result"]["blocked"] is False
 
 
-def test_home_checklist_excludes_inactive_lec_engine_snapshots(tmp_path):
-    """After an engine switch, the previous engine's checklist.json is
-    preserved evidence on disk; it must never leak into the home checklist
-    when no current result replaces it."""
-    origin = tmp_path / "origin" / "gcd.v"
-    origin.parent.mkdir()
-    origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
-    (tmp_path / "home").mkdir()
+@pytest.mark.parametrize("saved_checklist", [True, False], ids=["saved pass", "no step checklist"])
+def test_home_checklist_revalidates_an_inserted_lec_proof(tmp_path, saved_checklist):
+    from types import SimpleNamespace
 
-    stale_dir = tmp_path / "postRouteLec_yosys_lec"
-    stale_dir.mkdir()
-    (stale_dir / "checklist.json").write_text(
+    from chipcompiler.tools.lec_result import write_step_result
+
+    rtl = tmp_path / "origin" / "gcd.v"
+    rtl.parent.mkdir()
+    rtl.write_text("module gcd; endmodule\n", encoding="utf-8")
+    fields = step_fields("lec@Synthesis", "kepler_formal")
+    step_dir = tmp_path / fields["directory"]
+    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate.parent.mkdir(parents=True)
+    gate.write_text("module gcd; endmodule\n", encoding="utf-8")
+    result_json = step_dir / "output" / "gcd_lec@Synthesis_result.json"
+    result_json.parent.mkdir(parents=True)
+    write_step_result(
+        SimpleNamespace(
+            input=SimpleNamespace(golden_verilog=rtl, gate_verilog=gate),
+            output=SimpleNamespace(json=result_json),
+            report=SimpleNamespace(equiv_status=None, status=None),
+        ),
+        proven=True,
+        golden_kind="rtl",
+    )
+    # The step checklist saved the pass when the proof was current (or is gone).
+    (step_dir / ("checklist.json" if saved_checklist else "unrelated.json")).write_text(
         json.dumps(
             {
                 "schema_version": 3,
                 "kind": "signoff_checklist",
                 "checklist": [
                     {
-                        "id": "artifact.postroutelec.result",
-                        "step": "postRouteLec",
+                        "id": "artifact.lec@synthesis.result",
+                        "step": "lec@Synthesis",
                         "category": "artifact",
                         "owner": "checklist",
                         "policy": "block",
-                        "state": "failed",
-                        "blocked": True,
+                        "state": "pass",
+                        "blocked": False,
                         "title": "LEC result",
-                        "summary": "LEC did not prove equivalence.",
+                        "summary": "LEC proved equivalence.",
                     }
                 ],
             }
         ),
         encoding="utf-8",
     )
-
-    workspace = Workspace(
-        directory=tmp_path,
-        design=OriginDesign(name="gcd", origin_verilog=origin),
-    )
-    # The ledger records kepler_formal; no current netlists exist, so the
-    # fresh postRouteLec item is not computed (requires is False).
+    (tmp_path / "home").mkdir()
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", origin_verilog=rtl))
     workspace.flow.data = {
         "schema_version": 2,
         "steps": [
             {
-                "name": step.value,
-                "tool": "ecc",
-                "state": StateEnum.Unstart.value,
-                **step_fields(step.value, "ecc"),
+                "name": name,
+                "tool": tool,
+                "state": StateEnum.Success.value,
+                **step_fields(name, tool),
             }
-            for step in (
-                StepEnum.FILLER,
-                StepEnum.LVS,
-                SkippableStepEnum.POST_ROUTE_LEC,
-                StepEnum.HARDEN,
-            )
+            for name, tool in (("Synthesis", "yosys"), ("lec@Synthesis", "kepler_formal"))
         ],
     }
-    workspace.flow.data.get("steps", [])[2]["tool"] = "kepler_formal"
+
+    rtl.write_text("module gcd; wire edited; endmodule\n", encoding="utf-8")
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
-    assert "artifact.postroutelec.result" not in home_items
+    assert (
+        home_items["artifact.lec@synthesis.result"]["state"],
+        home_items["artifact.lec@synthesis.result"]["blocked"],
+    ) == ("failed", True)
 
 
 def test_rebuild_home_checklist_uses_canonical_workspace_path(tmp_path):
