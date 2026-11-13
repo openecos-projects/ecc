@@ -930,7 +930,8 @@ class EngineFlow:
                 # artifacts refreshed above, so it runs after they exist; a
                 # failure degrades to a warning like the facts refresh.
                 if state == StateEnum.Success and not placement_only:
-                    _refresh_qor_report(self.workspace, step_tag)
+                    with self._completion_lock:
+                        _refresh_qor_report(self.workspace, step_tag)
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
