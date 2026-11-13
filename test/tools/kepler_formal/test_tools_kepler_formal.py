@@ -275,6 +275,7 @@ def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
         "  input clk;\n"
         "  FILLTAPH7R BNDRY_CAP_1 (  );\n"
         "  FILLER4H7R FILLER4H7R_0 (  );\n"
+        "  FILLER4H7R FILLER4H7R_1(.VDD(VDD));\n"
         "  FILLCAP16H7L DCAP_1 (  );\n"
         "  P65_1233_FILLER50 IOFIL_E_0 (  );\n"
         "  P65_1233_CORNER corner_ll (  );\n"
@@ -357,6 +358,37 @@ def test_prepare_netlist_strips_standard_cell_supply_connections(tmp_path):
     assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
     assert ".VDD1(PLL_AVDD)" in text
     assert ".VDD(PLL_DVDD)" in text
+
+
+def test_prepare_netlist_strips_supply_connections_without_instance_whitespace(tmp_path):
+    liberty = tmp_path / "stdcell.lib"
+    liberty.write_text(
+        "library(test) {\n"
+        "  cell (BUFX20H7L) {\n"
+        "    pg_pin (VDD) { pg_type : primary_power; }\n"
+        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
+        "  }\n"
+        "}\n"
+    )
+    netlist = tmp_path / "gate.v"
+    netlist.write_text(
+        "module top;\n"
+        "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
+        "  BUFX20H7L u1(.A(a),.VDD(VDD),.VSS(VSS),.Y(y));\n"
+        "  BUFX20H7L \\u2 (.A(a), .VDD(VDD), .Y(y));\n"
+        "endmodule\n"
+    )
+    target = tmp_path / "gate_compare.v"
+
+    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
+
+    assert prepared == target
+    text = prepared.read_text()
+    assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
+    assert "BUFX20H7L u1(.A(a),.Y(y));" in text
+    assert "BUFX20H7L \\u2 (.A(a), .Y(y));" in text
+    assert ".VDD(VDD)" not in text
+    assert ".VSS(VSS)" not in text
 
 
 def test_prepare_netlist_preserves_functional_supply_named_ports(tmp_path):

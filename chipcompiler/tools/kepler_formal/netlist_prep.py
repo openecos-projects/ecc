@@ -39,7 +39,8 @@ from pathlib import Path
 # (P65_1233_CORNER), plus tap and decap cells that no Liberty models.
 _PHYSICAL_CELL_PREFIXES = ("FILLER", "FILLTAP", "FILLCAP", "CORNER")
 
-_INSTANCE_LINE = r"^\s*(?:%s)\S*\s+\\?\S+\s*\([^;]*\)\s*;[ \t]*$"
+_INSTANCE_NAME = r"(?:\\[^\s]+(?=\s)|[A-Za-z_][A-Za-z0-9_$]*)"
+_INSTANCE_LINE = rf"^\s*(?:%s)\S*\s+{_INSTANCE_NAME}\s*\([^;]*\)\s*;[ \t]*$"
 
 # These patterns target instance text in netlists prepared for LEC. String and
 # comment literals are not semantic inputs to the comparison, but callers
@@ -49,10 +50,10 @@ _SUPPLY_NET = r"(?:VDD|VSS)"
 _CELL_GROUP = re.compile(r"\bcell\s*\(\s*([^)]+?)\s*\)\s*\{")
 _PG_PIN_GROUP = re.compile(r"\bpg_pin\s*\(\s*([^)]+?)\s*\)\s*\{")
 _VERILOG_INSTANCE = re.compile(
-    r"\b(?P<master>[A-Za-z_][A-Za-z0-9_$]*)\s+"
-    r"(?:#\s*\([^;]*?\)\s*)?"
-    r"(?P<instance>\\?\S+)\s*"
-    r"\((?P<connections>[^;]*?)\)\s*;"
+    rf"\b(?P<master>[A-Za-z_][A-Za-z0-9_$]*)\s+"
+    rf"(?:#\s*\([^;]*?\)\s*)?"
+    rf"(?P<instance>{_INSTANCE_NAME})\s*"
+    rf"\((?P<connections>[^;]*?)\)\s*;"
 )
 
 
