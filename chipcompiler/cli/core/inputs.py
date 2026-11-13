@@ -29,7 +29,7 @@ class FlowValidateInput:
 
 
 @dataclass(frozen=True)
-class FlowPlanInput:
+class FlowStatusInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
     enable: tuple[str, ...] = ()
@@ -328,6 +328,14 @@ class ParamApplyInput:
 
 
 @dataclass(frozen=True)
+class ParamEditInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None = None
+    step: str | None = None
+
+
+@dataclass(frozen=True)
 class ProjectSetInput:
     output: OutputOptions
     project: ProjectOptions
@@ -412,11 +420,11 @@ class WorkspaceImportInput:
 
 
 @dataclass(frozen=True)
-class WorkspaceDeriveInput:
+class WorkspaceForkInput:
     output: OutputOptions
     project: ProjectOptions
-    workspace: str
-    target_workspace: str
+    workspace: str | None = None
+    target_workspace: str | None = None
     from_step: str | None = None
     to_step: str | None = None
     command_id: str = ""

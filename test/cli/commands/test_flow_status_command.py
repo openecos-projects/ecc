@@ -1,4 +1,4 @@
-"""`ecc flow plan`: the project's step selection, as records and as a checklist."""
+"""`ecc flow status`: the project's step selection, as records and as a checklist."""
 
 import json
 import os
@@ -11,7 +11,7 @@ from chipcompiler.data import DEFAULT_SKIP_STEPS
 
 
 def _plan(capsys, project_dir, *args):
-    rc = cli_main.run(["flow", "plan", "--project", project_dir, "--json", *args])
+    rc = cli_main.run(["flow", "status", "--project", project_dir, "--json", *args])
     return rc, json.loads(capsys.readouterr().out)
 
 
@@ -24,7 +24,7 @@ def test_default_selection_lists_every_step_of_the_preset(capsys, create_cli_pro
 
     assert rc == 0
     assert records[0] == {
-        "record": "flow_plan",
+        "record": "flow_status",
         "flow": "rtl2gds",
         "status": "ok",
         "enabled_count": 21,
@@ -102,7 +102,7 @@ def test_the_summary_reports_the_projects_max_parallel_steps(capsys, create_cli_
 
     assert rc == 0
     assert records[0] == {
-        "record": "flow_plan",
+        "record": "flow_status",
         "flow": "rtl2gds",
         "status": "ok",
         "enabled_count": 21,
@@ -126,7 +126,7 @@ def test_the_table_legend_states_the_projects_value(capsys, create_cli_project, 
     if value is not None:
         _declare_max_parallel_steps(project_dir, value)
 
-    rc = cli_main.run(["flow", "plan", "--project", project_dir])
+    rc = cli_main.run(["flow", "status", "--project", project_dir])
 
     assert rc == 0
     assert legend in capsys.readouterr().out.splitlines()
@@ -189,7 +189,7 @@ def test_invalid_overrides_are_rejected(capsys, create_cli_project, args, reason
 
 
 def test_text_mode_prints_the_checklist_and_its_warnings(capsys, create_cli_project):
-    rc = cli_main.run(["flow", "plan", "--project", create_cli_project(), "--disable", "CTS"])
+    rc = cli_main.run(["flow", "status", "--project", create_cli_project(), "--disable", "CTS"])
 
     out = capsys.readouterr().out
     assert rc == 0
@@ -211,7 +211,7 @@ def test_step_options_complete_canonical_step_names(incomplete, expected):
 
 def test_plain_records_name_the_missing_design_data(capsys, create_cli_project):
     rc = cli_main.run(
-        ["flow", "plan", "--project", create_cli_project(), "--plain", "--disable", "CTS"]
+        ["flow", "status", "--project", create_cli_project(), "--plain", "--disable", "CTS"]
     )
 
     assert rc == 0

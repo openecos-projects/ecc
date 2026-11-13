@@ -5,16 +5,16 @@ import io
 import pytest
 from rich.console import Console
 
-from chipcompiler.cli.project.flow_plan_view import (
-    PlanView,
-    plan_view,
+from chipcompiler.cli.project.flow_status_view import (
+    StatusView,
+    status_view,
     view_from_records,
     view_records,
 )
 from chipcompiler.cli.rendering.flow_selection_view import (
     flow_edit_summary,
     flow_selection_view,
-    render_flow_plan_text,
+    render_flow_status_text,
 )
 from chipcompiler.data import DEFAULT_SKIP_STEPS
 from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
@@ -22,14 +22,14 @@ from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
 _LEGEND = "┐…┘ same number = can run in parallel, up to 4 at once"
 
 
-def _view(skip=DEFAULT_SKIP_STEPS, max_parallel_steps=4, insert=(), **bounds) -> PlanView:
+def _view(skip=DEFAULT_SKIP_STEPS, max_parallel_steps=4, insert=(), **bounds) -> StatusView:
     plan = plan_flow(
         preset_chain("rtl2gds"), skip_steps=skip, inserted=inserted_chain(insert), **bounds
     )
-    return plan_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
+    return status_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
 
 
-def _render(view: PlanView, width: int = 140) -> list[str]:
+def _render(view: StatusView, width: int = 140) -> list[str]:
     out = io.StringIO()
     Console(file=out, width=width, force_terminal=False, highlight=False).print(
         flow_selection_view(view)
@@ -199,7 +199,7 @@ def _rows(lines: list[str]) -> list[list[str]]:
     return [sorted(row) for row in rows]
 
 
-def _expected_rows(view: PlanView) -> list[list[str]]:
+def _expected_rows(view: StatusView) -> list[list[str]]:
     rows: list[list[str]] = []
     for step in view.steps:
         tags = [
@@ -252,7 +252,7 @@ def test_a_stage_record_is_an_integer_or_null():
 def test_piped_output_is_as_wide_as_the_table_needs():
     out = io.StringIO()
 
-    render_flow_plan_text(view_records(_view()), file=out, color=False)
+    render_flow_status_text(view_records(_view()), file=out, color=False)
 
     lines = out.getvalue().splitlines()
     assert not any("…" in line for line in lines if line != _LEGEND)
@@ -272,8 +272,8 @@ def test_a_colorless_terminal_wraps_instead_of_taking_the_piped_branch(monkeypat
     piped = io.StringIO()
     terminal = _ColorlessTty()
 
-    render_flow_plan_text(records, file=piped, color=False)
-    render_flow_plan_text(records, file=terminal, color=False)
+    render_flow_status_text(records, file=piped, color=False)
+    render_flow_status_text(records, file=terminal, color=False)
 
     assert max(len(line) for line in piped.getvalue().splitlines()) > 110
     assert max(len(line) for line in terminal.getvalue().splitlines()) <= 110

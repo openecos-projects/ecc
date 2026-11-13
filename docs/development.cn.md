@@ -616,7 +616,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# 可选：skip_steps = ["diff_opt"]（默认）；可列出链中任一 step（用 `ecc flow plan` 检查）；[] 全部执行
+# 可选：skip_steps = ["diff_opt"]（默认）；可列出链中任一 step（用 `ecc flow status` 检查）；[] 全部执行
 ```
 
 filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["rtl/filelist.f"]`。多 RTL 源应列在 filelist 里，而不是写多个 `design.rtl` 条目。

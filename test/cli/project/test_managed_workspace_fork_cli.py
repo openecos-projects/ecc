@@ -1,4 +1,4 @@
-"""Real CLI derivation preserves the selected output and managed identity."""
+"""Real CLI forks preserve the selected output and managed identity."""
 
 import gzip
 import json
@@ -55,7 +55,9 @@ def completed_source(tmp_path, minimal_ics55_pdk_factory):
 
 
 @pytest.mark.parametrize("continuation", ["preFloorplan", "floorplan"])
-def test_cli_derive_can_open_preserves_outputs_and_retries(completed_source, continuation):
+# ECOS Studio's pinned runtime integration still runs the former name.
+@pytest.mark.parametrize("name", ["fork", "derive"])
+def test_cli_fork_can_open_preserves_outputs_and_retries(completed_source, continuation, name):
     project, source, steps = completed_source
     before = {
         path.relative_to(source): path.read_bytes()
@@ -65,7 +67,7 @@ def test_cli_derive_can_open_preserves_outputs_and_retries(completed_source, con
     }
     command = [
         "workspace",
-        "derive",
+        name,
         "source",
         "branch",
         "--project",
@@ -73,7 +75,7 @@ def test_cli_derive_can_open_preserves_outputs_and_retries(completed_source, con
         "--from",
         continuation,
         "--command-id",
-        "derive-1",
+        "fork-1",
         "--no-wait",
         "--plain",
     ]
@@ -99,14 +101,14 @@ def test_cli_derive_can_open_preserves_outputs_and_retries(completed_source, con
     assert [entry["workspace_id"] for entry in manifest["workspaces"]] == ["source", "branch"]
 
 
-def test_cli_derive_and_batch_parameters_keep_identity_and_source(completed_source):
+def test_cli_fork_and_batch_parameters_keep_identity_and_source(completed_source):
     project, source, _steps = completed_source
     before = read_engineering_snapshot_from_directory(source)
     assert (
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "branch",
                 "--project",
@@ -145,14 +147,14 @@ def test_cli_derive_and_batch_parameters_keep_identity_and_source(completed_sour
     assert read_engineering_snapshot_from_directory(source) == before
 
 
-def test_cli_derive_rejects_unknown_continuation_without_registering(completed_source):
+def test_cli_fork_rejects_unknown_continuation_without_registering(completed_source):
     project, _source, _steps = completed_source
     before = load_project_manifest(project)
     assert (
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "branch",
                 "--project",
@@ -176,7 +178,7 @@ def test_cli_derive_rejects_unknown_continuation_without_registering(completed_s
         ("place", "place", ["place"]),
     ],
 )
-def test_cli_derive_bounds_flow_and_freezes_entry_inputs(completed_source, start, end, expected):
+def test_cli_fork_bounds_flow_and_freezes_entry_inputs(completed_source, start, end, expected):
     from chipcompiler.rtl2gds import normalize_flow_step
 
     project, source, steps = completed_source
@@ -184,7 +186,7 @@ def test_cli_derive_bounds_flow_and_freezes_entry_inputs(completed_source, start
     source_entry = next(step for step in steps if step.name == normalize_flow_step(start))
     command = [
         "workspace",
-        "derive",
+        "fork",
         "source",
         "bounded",
         "--project",
@@ -194,7 +196,7 @@ def test_cli_derive_bounds_flow_and_freezes_entry_inputs(completed_source, start
         "--to",
         end,
         "--command-id",
-        "derive-range-1",
+        "fork-range-1",
         "--plain",
     ]
     assert cli_main.run(command) == 0
@@ -233,7 +235,7 @@ def test_cli_derive_bounds_flow_and_freezes_entry_inputs(completed_source, start
 
 
 @pytest.mark.parametrize(("start", "end"), [("place", "unknown"), ("CTS", "place")])
-def test_cli_derive_invalid_range_rolls_back(completed_source, start, end):
+def test_cli_fork_invalid_range_rolls_back(completed_source, start, end):
     project, source, _steps = completed_source
     manifest = load_project_manifest(project)
     snapshot = read_engineering_snapshot_from_directory(source)
@@ -241,7 +243,7 @@ def test_cli_derive_invalid_range_rolls_back(completed_source, start, end):
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "invalid",
                 "--project",
@@ -260,13 +262,13 @@ def test_cli_derive_invalid_range_rolls_back(completed_source, start, end):
     assert read_engineering_snapshot_from_directory(source) == snapshot
 
 
-def test_cli_derive_endpoint_without_start_uses_first_source_step(completed_source):
+def test_cli_fork_endpoint_without_start_uses_first_source_step(completed_source):
     project, source, _steps = completed_source
     assert (
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "prefix",
                 "--project",
@@ -289,7 +291,7 @@ def test_cli_derive_endpoint_without_start_uses_first_source_step(completed_sour
     )
 
 
-def test_cli_derive_missing_entry_output_does_not_fall_back_to_original_rtl(completed_source):
+def test_cli_fork_missing_entry_output_does_not_fall_back_to_original_rtl(completed_source):
     project, _source, steps = completed_source
     steps[0].output.verilog.unlink()
     before = load_project_manifest(project)
@@ -297,7 +299,7 @@ def test_cli_derive_missing_entry_output_does_not_fall_back_to_original_rtl(comp
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "missing-input",
                 "--project",
@@ -335,7 +337,7 @@ def _sta_signoff_items(workspace):
     return collect_sta_signoff_items(workspace, step)
 
 
-def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_source):
+def test_cli_fork_sta_range_preserves_all_inherited_corner_spefs(completed_source):
     project, source, _steps = completed_source
     source_items = _sta_signoff_items(load_workspace(source))
     assert len(source_items) > 1
@@ -347,7 +349,7 @@ def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_sou
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "sta-only",
                 "--project",
@@ -374,7 +376,7 @@ def test_cli_derive_sta_range_preserves_all_inherited_corner_spefs(completed_sou
 
 
 @pytest.mark.parametrize("corrupt_ledger", [False, True])
-def test_bounded_derive_run_preserves_range_with_explicit_project_preset(
+def test_bounded_fork_run_preserves_range_with_explicit_project_preset(
     completed_source, corrupt_ledger, capsys, plain_records
 ):
     project, source, _steps = completed_source
@@ -399,7 +401,7 @@ def test_bounded_derive_run_preserves_range_with_explicit_project_preset(
         cli_main.run(
             [
                 "workspace",
-                "derive",
+                "fork",
                 "source",
                 "bounded",
                 "--project",
@@ -450,3 +452,172 @@ def test_bounded_derive_run_preserves_range_with_explicit_project_preset(
         records = plain_records(capsys.readouterr().out)
         assert any(record.get("error") == "flow_mismatch" for record in records)
         assert path.read_bytes() == before
+
+
+_ENTER = "\r"
+_DOWN = "\x1b[B"
+_CLEAR = "\x15"
+
+
+def _place_index(steps):
+    return next(index for index, step in enumerate(steps) if step.name == "place")
+
+
+def test_a_fork_chosen_in_the_terminal_is_registered_with_its_lineage(
+    completed_source, scripted_terminal
+):
+    project, _source, steps = completed_source
+    place = _place_index(steps)
+    # The only source, rerun from place, the suggested name, fork.
+    scripted_terminal([_ENTER, _DOWN * place, _ENTER, _ENTER, "y"])
+
+    assert cli_main.run(["workspace", "fork", "--project", str(project)]) == 0
+
+    entry = load_project_manifest(project)["workspaces"][-1]
+    assert (entry["workspace_id"], entry["branch_from"]) == (
+        "source-1",
+        {"source_workspace_id": "source", "source_step": "place"},
+    )
+    snapshot = read_engineering_snapshot_from_directory(project / "source-1")
+    assert [step["state"] for step in snapshot["flow"]["steps"]] == [
+        *["Success"] * place,
+        *["Unstart"] * (len(steps) - place),
+    ]
+
+
+def test_a_fork_can_open_its_parameters_right_away(completed_source, scripted_terminal, capsys):
+    project, _source, steps = completed_source
+    scripted_terminal([_DOWN * _place_index(steps), _ENTER, _CLEAR, "trial", _ENTER, "e", "q"])
+
+    assert cli_main.run(["workspace", "fork", "source", "--project", str(project)]) == 0
+
+    assert (project / "trial" / "home").is_dir()
+    assert "cancelled" in capsys.readouterr().out
+
+
+def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_source):
+    from chipcompiler.cli.command_handlers.param_edit import workspace_rows
+    from chipcompiler.cli.core.types import CommandContext, OutputMode
+    from chipcompiler.data.parameter_schema import lookup_schema
+    from chipcompiler.data.workspace_parameters import workspace_param_step
+
+    project, _source, _steps = completed_source
+    fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]
+    assert cli_main.run(fork) == 0
+    ctx = CommandContext(
+        project_dir=str(project),
+        project=str(project),
+        run_dir=str(project / "branch"),
+        run_id="branch",
+        output_mode=OutputMode.TEXT,
+        project_state="manifest",
+    )
+
+    rows = workspace_rows(ctx, steps=["place", "CTS"])
+
+    assert isinstance(rows, list)
+    affected = {workspace_param_step(lookup_schema(row.param)) for row in rows}
+    assert affected <= {"place", "CTS", None}
+    assert {"place.target_density", "cts.max_fanout"} <= {row.param for row in rows}
+
+
+def test_workspace_parameters_edited_in_the_terminal_change_only_that_workspace(
+    completed_source, scripted_terminal
+):
+    from chipcompiler.data.workspace_parameters import workspace_param_diff
+
+    project, source, _steps = completed_source
+    fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]
+    assert cli_main.run(fork) == 0
+    scripted_terminal(["/", "target_density", _ENTER, _ENTER, _CLEAR, "0.65", _ENTER, "s", "y"])
+
+    edit = ["param", "edit", "--project", str(project), "--workspace", "branch", "--step", "place"]
+    assert cli_main.run(edit) == 0
+
+    branch = workspace_param_diff(load_workspace(project / "branch"))
+    assert [(record["key"], record["value"]) for record in branch] == [
+        ("place.target_density", 0.65)
+    ]
+    assert workspace_param_diff(load_workspace(source)) == []
+
+
+@pytest.mark.parametrize(
+    ("args", "error"),
+    [
+        ([], "workspace_fork_requires_terminal"),
+        (["source"], "workspace_fork_requires_terminal"),
+        (["source", "--from", "place"], "workspace_fork_requires_target"),
+    ],
+)
+def test_a_fork_without_target_is_chosen_only_in_a_terminal(completed_source, capsys, args, error):
+    project, _source, _steps = completed_source
+
+    assert cli_main.run(["workspace", "fork", *args, "--project", str(project)]) == 1
+    assert error in capsys.readouterr().out
+
+
+def test_without_source_the_picker_offers_every_workspace(completed_source, scripted_terminal):
+    project, _source, steps = completed_source
+    place = _place_index(steps)
+    fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]
+    assert cli_main.run(fork) == 0
+    # Two workspaces and none selected: fork the second one, branch, from place.
+    scripted_terminal([_DOWN, _ENTER, _DOWN * place, _ENTER, _ENTER, "y"])
+
+    assert cli_main.run(["workspace", "fork", "--project", str(project)]) == 0
+
+    entry = load_project_manifest(project)["workspaces"][-1]
+    assert (entry["workspace_id"], entry["branch_from"]) == (
+        "branch-1",
+        {"source_workspace_id": "branch", "source_step": "place"},
+    )
+
+
+def test_a_project_without_workspaces_has_nothing_to_fork(tmp_path, capsys):
+    project = tmp_path / "project"
+    assert cli_main.run(["init", str(project)]) == 0
+    capsys.readouterr()
+
+    assert cli_main.run(["workspace", "fork", "--project", str(project)]) == 1
+    assert "workspace_fork_no_source" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("removed", "reason"),
+    [
+        ("flow.json", "source cannot be forked: it has no flow steps"),
+        ("engineering-snapshot.json", "source cannot be forked: it has no Engineering Snapshot"),
+    ],
+)
+def test_a_source_given_on_the_command_line_is_refused_as_the_picker_would(
+    completed_source, scripted_terminal, capsys, removed, reason
+):
+    project, source, _steps = completed_source
+    (source / "home" / removed).unlink()
+    scripted_terminal([])
+
+    assert cli_main.run(["workspace", "fork", "source", "--project", str(project)]) == 1
+
+    out = capsys.readouterr().out
+    assert "workspace_fork_source_unavailable" in out, out
+    assert reason in out, out
+    assert [entry["workspace_id"] for entry in load_project_manifest(project)["workspaces"]] == [
+        "source"
+    ]
+
+
+def test_without_source_a_fork_still_opens_its_parameters(
+    completed_source, scripted_terminal, capsys
+):
+    project, _source, steps = completed_source
+    fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]
+    assert cli_main.run(fork) == 0
+    capsys.readouterr()
+    # Two workspaces and none selected: fork source from Synthesis, open its parameters, cancel.
+    scripted_terminal([_ENTER, _ENTER, _ENTER, "e", "q"])
+
+    assert cli_main.run(["workspace", "fork", "--project", str(project)]) == 0
+
+    out = capsys.readouterr().out
+    assert "workspace id: source-1" in out
+    assert "record: param_edit\n  status: cancelled" in out

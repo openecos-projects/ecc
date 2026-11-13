@@ -6,13 +6,9 @@ import pytest
 from rich.console import Console
 from rich.text import Text
 
-from chipcompiler.cli.interactive.flow_edit import (
-    EditedSelection,
-    confirm_write,
-    edit_selection,
-    split_keys,
-)
-from chipcompiler.cli.project.flow_plan_view import PlanView, plan_view
+from chipcompiler.cli.interactive.flow_edit import EditedSelection, edit_selection
+from chipcompiler.cli.interactive.terminal import confirm_write, split_keys
+from chipcompiler.cli.project.flow_status_view import StatusView, status_view
 from chipcompiler.data import DEFAULT_SKIP_STEPS
 from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
 from chipcompiler.rtl2gds import rtl2gds_step_names
@@ -33,11 +29,11 @@ def _redrawing_terminal(monkeypatch):
 
 
 def _view_of_project(max_parallel_steps: int, **bounds):
-    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> PlanView:
+    def view_of(skip: tuple[str, ...], insert: tuple[str, ...]) -> StatusView:
         plan = plan_flow(
             preset_chain("rtl2gds"), skip_steps=skip, inserted=inserted_chain(insert), **bounds
         )
-        return plan_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
+        return status_view(plan, flow="rtl2gds", max_parallel_steps=max_parallel_steps)
 
     return view_of
 

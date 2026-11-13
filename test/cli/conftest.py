@@ -254,3 +254,24 @@ def mock_pdk_validation_fixture(monkeypatch):
         mock_pdk_validation(monkeypatch)
 
     return factory
+
+
+@pytest.fixture(name="scripted_terminal")
+def scripted_terminal_fixture(monkeypatch):
+    """Run the interactive editors in a terminal session typing the given keys, one read each."""
+    from contextlib import contextmanager
+
+    def factory(keys):
+        scripted = iter(keys)
+
+        @contextmanager
+        def scripted_keys():
+            yield lambda: next(scripted)
+
+        monkeypatch.setenv("TERM", "xterm-256color")
+        monkeypatch.setattr(
+            "chipcompiler.cli.interactive.terminal.interactive_terminal", lambda: True
+        )
+        monkeypatch.setattr("chipcompiler.cli.interactive.terminal.terminal_keys", scripted_keys)
+
+    return factory

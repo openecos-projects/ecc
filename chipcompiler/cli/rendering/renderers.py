@@ -10,7 +10,7 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMod
 from chipcompiler.cli.rendering.compare import render_compare_run_text
 from chipcompiler.cli.rendering.flow_selection_view import (
     render_flow_edit_text,
-    render_flow_plan_text,
+    render_flow_status_text,
 )
 from chipcompiler.cli.rendering.pretty import (
     render_check,
@@ -251,7 +251,7 @@ RENDERERS: dict[RendererKey, Renderer] = {
     ("param:workspace:list", OutputMode.PLAIN): _render_line_records,
     ("flow:list", OutputMode.PLAIN): _render_line_records,
     ("flow:show", OutputMode.PLAIN): _render_line_records,
-    ("flow:plan", OutputMode.TEXT): _pretty(render_flow_plan_text),
+    ("flow:status", OutputMode.TEXT): _pretty(render_flow_status_text),
     ("flow:edit", OutputMode.TEXT): _pretty(render_flow_edit_text),
     ("param:show", OutputMode.TEXT): _plain_text(render_param_show_text),
     ("param:set", OutputMode.TEXT): _plain_text(render_param_set_text),

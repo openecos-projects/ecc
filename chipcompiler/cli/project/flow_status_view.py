@@ -1,7 +1,7 @@
 # pyright: strict
 """The typed view of a project's step selection, and its record form.
 
-``ecc flow plan`` reports :class:`PlanView` as records (``--json``/``--plain``);
+``ecc flow status`` reports :class:`StatusView` as records (``--json``/``--plain``);
 the rich table and the ``ecc flow edit`` checkbox draw the view itself. Records
 read back through :func:`view_from_records` are checked field by field.
 """
@@ -70,7 +70,7 @@ class PlanProblem:
 
 
 @dataclass(frozen=True, slots=True)
-class PlanView:
+class StatusView:
     flow: str
     steps: tuple[StepRow, ...]
     problems: tuple[PlanProblem, ...]
@@ -104,9 +104,9 @@ class PlanView:
         )
 
 
-def plan_view(
+def status_view(
     plan: FlowPlan, *, flow: str, max_parallel_steps: int, input_errors: Sequence[str] = ()
-) -> PlanView:
+) -> StatusView:
     """The view of *plan*; *input_errors* are entry inputs ``ecc.toml`` lacks."""
     stages = plan_stages(plan.steps)
     needs = plan_needs(plan.steps)
@@ -138,16 +138,16 @@ def plan_view(
         PlanProblem(kind="flow_input", severity="error", step=entry, reason=reason)
         for reason in input_errors
     )
-    return PlanView(
+    return StatusView(
         flow=flow, steps=steps, problems=tuple(problems), max_parallel_steps=max_parallel_steps
     )
 
 
-def view_records(view: PlanView) -> list[Record]:
-    """A ``flow_plan`` summary, one ``flow_step`` per step, then the problems."""
+def view_records(view: StatusView) -> list[Record]:
+    """A ``flow_status`` summary, one ``flow_step`` per step, then the problems."""
     records: list[Record] = [
         {
-            "record": "flow_plan",
+            "record": "flow_status",
             "flow": view.flow,
             "status": view.status,
             "enabled_count": view.enabled_count,
@@ -194,10 +194,10 @@ def view_records(view: PlanView) -> list[Record]:
     return records
 
 
-def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
+def view_from_records(records: Sequence[Mapping[str, object]]) -> StatusView:
     """The view :func:`view_records` reported; raises ``ValueError`` otherwise."""
-    if not records or records[0].get("record") != "flow_plan":
-        raise ValueError("flow plan records must start with a flow_plan summary")
+    if not records or records[0].get("record") != "flow_status":
+        raise ValueError("flow status records must start with a flow_status summary")
     steps: list[StepRow] = []
     problems: list[PlanProblem] = []
     for record in records[1:]:
@@ -242,8 +242,8 @@ def view_from_records(records: Sequence[Mapping[str, object]]) -> PlanView:
                 )
             )
         else:
-            raise ValueError(f"unexpected flow plan record: {kind!r}")
-    return PlanView(
+            raise ValueError(f"unexpected flow status record: {kind!r}")
+    return StatusView(
         flow=record_str(records[0], "flow"),
         steps=tuple(steps),
         problems=tuple(problems),
@@ -281,7 +281,7 @@ def _step_row(
 
 def _field(record: Mapping[str, object], key: str) -> object:
     if key not in record:
-        raise ValueError(f"flow plan record lacks {key!r}")
+        raise ValueError(f"flow status record lacks {key!r}")
     return record[key]
 
 

@@ -889,11 +889,11 @@ persisted flow target (`home/params.toml` `_flow`) and of the mismatch check.
 ECOS Studio does not know inserted step names yet (`flowStepRegistry.ts`
 normalizes an unknown step to `Synth`).
 
-`ecc flow plan` shows the selection as a table and checks it
+`ecc flow status` shows the selection as a table and checks it
 (`--enable`/`--disable`/`--insert`/`--remove` try one without writing
 `ecc.toml`). Its `flow_step` records carry `stage`, `slot`, `label`,
 `parallel_with`, `after`, `needs`, `check` and `inserted` besides the step's
-capabilities; the user guide (`ecc flow plan`) defines them. `ecc flow edit`
+capabilities; the user guide (`ecc flow status`) defines them. `ecc flow edit`
 picks the steps in a terminal checkbox list (`i` inserts an LEC; or applies
 `--enable`/`--disable`/`--insert`/`--remove` and `--max-parallel-steps N`) and,
 once confirmed (or with `--yes`), writes `[flow]` `preset`, `lec_engine`,
@@ -907,7 +907,7 @@ LEC is inserted. Like
 preset = "rtl2gds"
 # lec_engine: kepler_formal
 lec_engine = "kepler_formal"
-# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# Steps the run skips. `ecc flow status` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["diff_opt"]
 ```
@@ -919,7 +919,7 @@ resumed and `--from` runs, as the cap on independent analysis steps of one
 stage that run at once (`1`: one at a time; the engine's memory throttle can
 lower it further). It is never stored in a workspace, so it never makes an
 existing workspace count as a different selection (the
-`workspace_flow_mismatch` check ignores it). `flow plan` shows it in the `flow_plan` summary and the legend,
+`workspace_flow_mismatch` check ignores it). `flow status` shows it in the `flow_status` summary and the legend,
 `ecc config` as `flow.max_parallel_steps`.
 
 In the engine, `EngineFlow.run_steps` runs every selection wave by wave through
@@ -986,7 +986,7 @@ root = "/path/to/ics55"
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
 # Optional: skip_steps = ["diff_opt"] (default); any chain step may be
-# listed (check with `ecc flow plan`); [] runs everything
+# listed (check with `ecc flow status`); [] runs everything
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example

@@ -492,7 +492,7 @@ acceptance. Keep synthesis strategy fixed in the first round.
 to check the local region, then fresh full validation.** Avoid the Cartesian product
 of ten parameters; add a parameter group only when evidence supports it.
 
-Early PNR provides a lower-cost entry. `workspace derive --from` preserves a
+Early PNR provides a lower-cost entry. `workspace fork --from` preserves a
 valid prefix, and `run --from --to` controls checkpoints. Current sweep has no range
 options and is not a staged DSE scheduler. Early rankings cannot depend on final
 overall QoR. See §17 for reuse conditions, metrics, and commands.
@@ -942,20 +942,20 @@ not automatic RTL architecture rewrites.
 | --- | --- | --- |
 | Fresh `run --from A --to B --set …` | Available | Create an independent candidate and execute only its range |
 | `workspace create --from A --to B --set …` | Available | Register a candidate before executing it |
-| `workspace derive SOURCE TARGET --from STEP` | Available | Preserve earlier state/artifacts, reset the named step and its suffix |
+| `workspace fork SOURCE TARGET --from STEP` | Available | Preserve earlier state/artifacts, reset the named step and its suffix |
 | Workspace `param set/apply` | Available | Modify a branch, regenerate configuration, invalidate affected suffix |
 | report step feature/analysis/checklist/outputs | Available | Read metrics, execution evidence, intermediate DEF/Verilog |
 | report snapshot and same-workspace compare run | Available | Save checkpoints and inspect before/after iteration |
 | Sweep range options, early stopping, staged advancement | Unavailable | Orchestrate public CLI calls through an AI |
 | Measured stage objectives and Pareto | User/AI responsibility | Compare matching measured metrics externally, separate from overall ECC QoR |
 
-`derive --from place` means rerun place and subsequent steps. It does not mean
+`fork --from place` means rerun place and subsequent steps. It does not mean
 copy only files starting at place. Current implementation copies the source workspace,
 clears the selected suffix's states/artifacts/checklists in the target, and preserves
 earlier steps. The source remains unchanged; the target receives a new engineering
 identity and branch registration. This is not a hard-link cache or zero-copy operation;
 budget disk space and copying time.
-**Without `--from`, derive prepares the entire flow for rerun and does not save
+**Without `--from`, fork prepares the entire flow for rerun and does not save
 synthesis/early-stage execution.**
 
 The source must be managed and have an Engineering Snapshot. Do not forcibly copy
@@ -1126,19 +1126,19 @@ accepts analogous range/override options; subsequent run must not use `--set`.
 Check the persisted target and specify checkpoints explicitly. Do not assume an
 arbitrary `--resume` advances a range workspace to the full flow.
 
-### 17.6 Method B: derive from a trusted workspace
+### 17.6 Method B: fork from a trusted workspace
 
 The source must include the explored steps, with a successful prefix and usable artifacts.
 A full baseline already contains later steps and supports checkpoint execution.
 A source range ending at place does not automatically acquire CTS/route through
-derive. Inspect the persisted target and use the corresponding public entry for later stages.
+fork. Inspect the persisted target and use the corresponding public entry for later stages.
 
-**Placement candidates: reuse the same floorplan.** Derive from a full managed baseline:
+**Placement candidates: reuse the same floorplan.** Fork from a full managed baseline:
 
 ```bash
 DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
-ecc workspace derive "$DSE_SOURCE" "$DSE_CANDIDATE" \
+ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
   --project "$DSE_PROJECT" --from place --plain
 ecc param set place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
@@ -1159,7 +1159,7 @@ ecc report step place --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
 ```
 
 **Floorplan candidates: reuse synthesis and rerun early PNR.**
-Derive with `--from preFloorplan`, set the candidate's floorplan parameters,
+Fork with `--from preFloorplan`, set the candidate's floorplan parameters,
 then run from actual invalidation through postFloorplan or place.
 If parameter application requires earlier invalidation/full refresh, follow that
 contract instead of retaining an invalid prefix. Macro changes cannot preserve
@@ -1177,7 +1177,7 @@ ecc report step CTS --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
 
 Existing workspace endpoints use persisted names such as `place`, `CTS`,
 `legalization`, and `Timing optimization`. Creation-time aliases do not all
-apply to existing workspaces. For CTS variants, derive from trusted placement
+apply to existing workspaces. For CTS variants, fork from trusted placement
 with `--from CTS`, then set public CTS parameters.
 cts.max_fanout also affects generated SDC. Inspect actual invalidation when dependencies
 span stages; the parameter name does not prove CTS is the only affected stage.
@@ -1263,13 +1263,13 @@ variables that actually control dimensions and validating fully.
 | run_state / checklist / stage_decision | Execution, real stage checks, screening state/reason |
 | cost / promotion_reason / final_result | Copy/EDA cost, advancement reason, final PPA/checker/signoff |
 
-Derived candidates have different workspaceId values, so compare run may return
+Forked candidates have different workspaceId values, so compare run may return
 different_workspace. Align external comparisons as described in §12.
 Use snapshot compare for before/after changes within one workspace.
 report project can display candidate step matrices, but early null QoR must not
 be ranked as zero.
 
-A shortlist derived from a full baseline retains the complete flow and can run
+A shortlist forked from a full baseline retains the complete flow and can run
 remaining steps once its prefix is valid. For pure range candidates, use the
 persisted target/public intermediate-input entry; a bare run does not necessarily
 complete rtl2gds. The final winner must return to the original RTL project for a
@@ -1403,7 +1403,7 @@ Pure PPA/DSE normally freezes existing RTL, PDK, frequency, and acceptance const
    Diagnose configuration/input/environment failures instead of searching blindly.
 4. Generate a baseline within budget if none is trustworthy. Save input digests,
    full effective parameters, and evidence. If project defaults differ from an
-   old workspace, explicitly carry fixed values or derive from the trusted workspace.
+   old workspace, explicitly carry fixed values or fork from the trusted workspace.
 5. Select a few legal variables/candidates for the goal. Record hypotheses, budget,
    and range; use unused names. Default to serial. Use §17 checkpoints for staged
    tasks; full sweep is not an early-stage scheduler.
@@ -1457,7 +1457,7 @@ Run serial experiments within parameter allowlists, tolerances, and budget.
 Record the complete effective parameter vector and provenance.
 Diagnose required blockers first. Preserve raw metrics, step/checklist states,
 exit codes, and costs for every candidate.
-Use ranges/derive and stage screening for early DSE; use raw PPA/Pareto and actual
+Use ranges/fork and stage screening for early DSE; use raw PPA/Pareto and actual
 acceptance for complete optimization.
 Iterate autonomously within authorization without repeatedly asking for each round.
 Do not expand scope or budgets without authorization.

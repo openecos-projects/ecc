@@ -40,7 +40,7 @@ def _run(capsys, *argv):
 def test_plan_shows_the_inserted_lec_after_the_step_it_checks(capsys, create_cli_project):
     project_dir = create_cli_project()
 
-    rc, records = _run(capsys, "flow", "plan", "--project", project_dir, "--insert", "lec@cts")
+    rc, records = _run(capsys, "flow", "status", "--project", project_dir, "--insert", "lec@cts")
 
     steps = [record for record in records if record["record"] == "flow_step"]
     names = [step["step"] for step in steps]
@@ -72,7 +72,7 @@ def test_an_inserted_lec_is_skipped_with_its_step(capsys, create_cli_project):
     project_dir = create_cli_project()
     _declare(project_dir, '["lec@CTS"]')
 
-    rc, records = _run(capsys, "flow", "plan", "--project", project_dir, "--disable", "CTS")
+    rc, records = _run(capsys, "flow", "status", "--project", project_dir, "--disable", "CTS")
 
     enabled = {
         record["step"]: record["enabled"] for record in records if record["record"] == "flow_step"

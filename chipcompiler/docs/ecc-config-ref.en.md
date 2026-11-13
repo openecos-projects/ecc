@@ -543,7 +543,7 @@ with the `postRouteLec` golden netlist (see §11). It is part of a workspace's f
 adding or removing one needs `--overwrite` or a new workspace; it is declared
 in `ecc.toml` only. See the user guide §8.6.
 
-`ecc flow plan` lists the preset's steps and checks a selection
+`ecc flow status` lists the preset's steps and checks a selection
 (`--enable`/`--disable`/`--insert`/`--remove` try one without writing
 `ecc.toml`); `ecc flow edit` picks the steps in a terminal checkbox list (`i`
 inserts an LEC), or applies those flags (and `--max-parallel-steps N`)
@@ -552,7 +552,7 @@ directly, and after confirmation (or with `--yes`) rewrites `[flow]` with
 explicitly, plus `insert_steps` when an LEC is inserted. See the user guide §8.6.
 
 `ecc.toml` `[flow] max_parallel_steps` is a positive integer (default 4) that caps
-how many independent steps of one stage (the `#` column of `ecc flow plan`) `ecc run`
+how many independent steps of one stage (the `#` column of `ecc flow status`) `ecc run`
 executes at once; `1` runs them one at a time. The engine's memory throttle (at
 least 4 GB budgeted per step, 20% of the available memory kept in reserve) can lower
 the number further. It is read at run time only: it is never stored in a workspace

@@ -85,7 +85,7 @@ Discovery applies to roots only, never arbitrary project subdirectories or globa
 Commands with both project and workspace scopes, such as `param` and `macro`, default to
 workspace scope when invoked inside a workspace. Invoke them from the project root for
 project scope. `process --workspace` can also be omitted there; cancellation still requires
-`--run-id`. Explicit positional lifecycle arguments for create/import/delete/derive remain required.
+`--run-id`. Explicit positional lifecycle arguments for create/import/delete remain required (`workspace fork` asks for SOURCE and TARGET in a terminal).
 
 ### Running from source
 
@@ -181,7 +181,7 @@ eval "$(ecc --show-completion)"     # auto-detects the current shell
 
 - Add that line to `~/.zshrc` / `~/.bashrc` (or home-manager `initExtra`) to enable completion permanently. zsh requires `compinit` to be initialized first.
 - On NixOS or other declaratively managed setups, prefer the `eval` line over `--install-completion`: the latter rewrites `~/.zshrc` / `~/.bashrc` in place, which fails on read-only rc symlinks and conflicts with home-manager.
-- Flow step names complete for `ecc flow plan` / `ecc flow edit` `--enable`/`--disable` and for `ecc run --from/--to/--only`.
+- Flow step names complete for `ecc flow status` / `ecc flow edit` `--enable`/`--disable` and for `ecc run --from/--to/--only`.
 
 ## 1.7. Command index
 
@@ -202,13 +202,13 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc doctor` | environment self-check (9 components) | §4 |
 | `ecc check-update` | check whether a newer nightly build is available | §2.5 |
 | `ecc rtl import` | import RTL/filelist into the project's `rtl/` | §8.5 |
-| `ecc param apply / list / show / set / unset / diff` | parameter management (project/workspace scopes) | §9 |
-| `ecc flow list / show / validate / plan / edit` | inspect and validate registered flows; check and choose the project's steps (`skip_steps`) | §8.6 |
+| `ecc param edit / apply / list / show / set / unset / diff` | parameter management (project/workspace scopes); `edit` in the terminal | §9 |
+| `ecc flow list / show / validate / status / edit` | inspect and validate registered flows; check and choose the project's steps (`skip_steps`) | §8.6 |
 | `ecc macro set / remove / import / show` | manual macro placement | §9.5 |
 | `ecc pdk set-root / show / verify / unset` | PDK path configuration and content verification | §10 |
 | `ecc project apply / baseline / reconcile / set / unset / add / remove / show / doctor` | edit `ecc.toml` declarations, select the QoR baseline, manifest health check | §8.5 |
 | `ecc process inspect / cancel / reconcile` | inspect, cancel, or reconcile run processes | §6.5 |
-| `ecc workspace create / import / derive / archive / delete / reset-flow / refresh / reconcile-deletes` | workspace lifecycle management | §8.5 |
+| `ecc workspace create / import / fork / archive / delete / reset-flow / refresh / reconcile-deletes` | workspace lifecycle management; `fork` continues an existing workspace from a step | §8.5 |
 | `ecc signoff inspect / check / export` | signoff readiness, quality gates, package export | §11 |
 | `ecc report summary / qor / checklist / step / snapshot / project` | design summary, QoR score, checklist, per-step evidence, snapshots, project matrix | §12 |
 | `ecc compare run` | compare two Engineering Snapshots | §12.6 |
@@ -306,7 +306,7 @@ root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER
 preset = "rtl2gds"
 # lec_engine: kepler_formal
 lec_engine = "kepler_formal"
-# Steps the run skips. `ecc flow plan` lists the steps and checks a selection;
+# Steps the run skips. `ecc flow status` lists the steps and checks a selection;
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = ["diff_opt"]
 # Run-time only: at most this many independent steps of one stage run at once
@@ -512,7 +512,7 @@ $ ecc run --workspace default          # everything already succeeded → nothin
 The run summary record carries `no_op: true` (visible in `--plain` output; the `--resume`/`--only` selector paths also carry an `executed_steps` list). If `ecc.toml` and the baseline values recorded in `project.json` effectively disagree (for example `pdk.root` resolving to a different PDK than the one recorded by the first run, or `flow.preset` differing from the workspace's declared range), a `warning: ...` line (`config_layer_diverged`) is prepended to the summary block; it does not affect the execution result.
 
 **Target reconciliation on an existing workspace**: on a repeat `ecc run`, an explicit
-start/end range in `home/params.toml` remains the target, including for bounded derived
+start/end range in `home/params.toml` remains the target, including for bounded forked
 workspaces in a project declaring `flow.preset`. Otherwise the project preset or the
 workspace's persisted target governs. An explicit `--preset` overrides the saved range.
 The CLI aligns the persisted ledger with that target:
@@ -950,17 +950,18 @@ $ ecc workspace refresh default --force   # intentionally discard detected confi
 $ ecc workspace refresh default --keep-backup   # keep the replaced tree as an archived .replace-backup-* sibling
 ```
 
-Changes to entry inputs, PDK paths, and `flow.preset` must go through refresh, because they alter the workspace's input snapshot or flow structure. For parameter-only tweaks on an existing workspace there is also `ecc param set KEY VALUE --workspace NAME` (§9), which does not touch `ecc.toml`.
+Changes to entry inputs, PDK paths, and `flow.preset` must go through refresh, because they alter the workspace's input snapshot or flow structure. For parameter-only tweaks on an existing workspace there is also `ecc param edit --workspace NAME` or `ecc param set KEY VALUE --workspace NAME` (§9), which do not touch `ecc.toml`.
 
-### Workspace lifecycle: create, derive, archive, delete, reset
+### Workspace lifecycle: create, fork, archive, delete, reset
 
 The remaining `ecc workspace` subcommands manage the declared lifecycle without running the flow:
 
 ```bash
 ecc workspace create <NAME> [--path DIR] [--from STEP] [--to STEP] [--set KEY=VALUE...]
                                     # create and register an empty managed workspace (no run)
-ecc workspace derive <SOURCE> <TARGET> [--from STEP] [--to STEP]
-                                    # branch a new workspace from an existing one's completed state
+ecc workspace fork [SOURCE] [TARGET] [--from STEP] [--to STEP]
+                                    # continue a new workspace from an existing one's state;
+                                    # without TARGET, chosen in the terminal
 ecc workspace archive <NAME>        # mark the workspace archived: kept on disk, out of auto-selection
 ecc workspace delete <NAME> [--delete-directory]
                                     # remove the manifest entry; --delete-directory also removes the files
@@ -970,21 +971,37 @@ ecc workspace reconcile-deletes     # finish half-completed workspace deletions 
 
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
-overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the
-source workspace into `<project>/<TARGET>` and registers the branch relationship in
-`project.json`. `--from STEP` resets that step and all later steps, retaining earlier
+overrides at creation (the same fresh-run semantics as `ecc run --set`). `fork` copies the
+source workspace, with its parameters, into `<project>/<TARGET>` and registers where it came
+from in `project.json` (`source_workspace_id`, and `branch_from` with the source and `--from`
+step); the source is not modified. Each workspace keeps one linear flow, so iterating on a
+step is a chain of forks: fork, change parameters, run, compare, and fork the better one
+again. `--from STEP` resets that step and all later steps, retaining earlier
 completed states and outputs. To continue from a selected output, pass the **next runnable
-step**; for example, `ecc workspace derive source trial --from preFloorplan` retains the
+step**; for example, `ecc workspace fork source trial --from preFloorplan` retains the
 Synthesis output. Without `--from`, all steps are reset.
 Adding `--to STEP` creates a bounded flow: `home/flow.json` contains only the inclusive
 `--from`/`--to` range (or starts at the source's first step if `--from` is omitted).
 The entry step's inherited netlist/DEF and constraints are copied into `origin/`, so the
 flow can resume without putting earlier steps back into the ledger. For example,
-`ecc workspace derive source trial --from preFloorplan --to macroPlacement` creates
+`ecc workspace fork source trial --from preFloorplan --to macroPlacement` creates
 exactly those two steps, using the source Synthesis output as input.
-The derived snapshot uses the target
+The fork's snapshot uses the target
 Workspace ID and starts at revision 1. Workspace-local parameter changes can then be applied
-with `ecc param apply --workspace trial --set KEY=VALUE ...`, without modifying the source.
+with `ecc param edit --workspace trial` or `ecc param apply --workspace trial --set KEY=VALUE ...`,
+without modifying the source.
+
+Without TARGET (in a terminal, with text output), `ecc workspace fork [SOURCE]` asks for what
+it lacks: the source workspace (with each one's status, steps done, and what it was forked
+from), the step to rerun from (`t` also picks the last step to build, as `--to` does), and the
+name (a free `<SOURCE>-<n>` is suggested). The step table shows which steps the fork keeps,
+reruns, and does not build. The summary forks on `y`, or on `e` forks and opens the parameter
+editor (§9) on the new workspace with only the parameters of the steps it reruns, so a change
+cannot reset the steps it keeps. `--project DIR` selects the project as usual; one without a
+workspace fails with `workspace_fork_no_source`, and a SOURCE that cannot be forked (no flow
+steps or no Engineering Snapshot) with `workspace_fork_source_unavailable`. `--from`/`--to` require SOURCE and TARGET; without a terminal
+the command fails with `workspace_fork_requires_terminal`. Scripts, agents and ECOS Studio pass
+SOURCE and TARGET; the former name `ecc workspace derive` still works for them.
 `archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
 unregisters it and optionally removes the directory. The automation flags apply where
@@ -1011,12 +1028,14 @@ $ ecc project baseline trial --reason "first experiment"
   status: selected
   workspace: trial
 
-$ ecc workspace derive trial branch_a
+$ ecc workspace fork trial branch_a --from place
 [status]
   workspace id: branch_a
-  status: derived
+  status: forked
+  source workspace id: trial
   workspace: /tmp/gcd/branch_a
   workspace revision: 1
+  run: ecc run --workspace branch_a
 ```
 
 ## 8.6. flow — inspect the registered flow catalog
@@ -1025,7 +1044,7 @@ $ ecc workspace derive trial branch_a
 ecc flow list [--plain|--json]
 ecc flow show <FLOW_ID> [--project DIR] [--plain|--json]
 ecc flow validate [--flow FLOW_ID] [--project DIR] [--plain|--json]
-ecc flow plan [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--remove lec@STEP]... [--project DIR] [--plain|--json]
+ecc flow status [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--remove lec@STEP]... [--project DIR] [--plain|--json]
 ecc flow edit [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--remove lec@STEP]... [--max-parallel-steps N] [--yes] [--project DIR] [--plain|--json]
 ```
 
@@ -1033,7 +1052,7 @@ ecc flow edit [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--r
 `synthesis_lec`) as `flow_step` records with `ordinal`, `skippable`, and `default skipped`
 flags — the same catalog `ecc run --preset` selects from. `skippable` marks the steps that
 are optional by design (`diff_opt`, `Timing optimization`, `postRouteLec`); any step
-may be skipped when the rest can still run, which `ecc flow plan` checks. `flow show FLOW_ID` filters to one
+may be skipped when the rest can still run, which `ecc flow status` checks. `flow show FLOW_ID` filters to one
 preset (`unknown_flow`, exit 2, for an unregistered name). `flow validate` checks the flow
 definitions and step metadata and emits one `flow_validation` record per flow; all three are
 read-only and need no running workspace.
@@ -1071,7 +1090,7 @@ $ ecc flow list --json
 ]
 ```
 
-`flow plan` and `flow edit` work on the project's own step selection, which they read from
+`flow status` and `flow edit` work on the project's own step selection, which they read from
 `ecc.toml` `[flow]` (like `ecc param`). `[flow] skip_steps` may name any step of the rtl2gds
 chain (aliases such as `synth`, `cts`, `TimingOpt` are accepted; unknown names are rejected).
 Whether a selection can run is decided by each step's required design data, optional design
@@ -1134,7 +1153,7 @@ buffering rounds itself (`place.diff_optimization_flows`).
   package.
 
 **Parallel steps (`[flow] max_parallel_steps`).** Steps that share a stage number (the `#`
-column of `flow plan`) are independent analysis steps, and `ecc run` runs them in parallel: on
+column of `flow status`) are independent analysis steps, and `ecc run` runs them in parallel: on
 a fresh run, on resume and with `--from`. Runs started from ECOS Studio are `ecc run` runs, so
 the project's value applies to them too; Studio shows one of the running steps as the current
 one. `max_parallel_steps` is the most of them that run at once. It is a positive integer
@@ -1153,7 +1172,7 @@ In terminal progress, every started step prints a header
 (`> step (tool)`) and every finished step a completion line (`✓ step (tool) runtime`), so the
 lines of sibling steps interleave.
 
-`flow plan` is read-only. It shows the preset's steps as a table — checkbox, stage `#`, step,
+`flow status` is read-only. It shows the preset's steps as a table — checkbox, stage `#`, step,
 tool, `After`, `Gives` and tags — followed by errors and warnings. `--enable`/`--disable` and
 `--insert`/`--remove lec@STEP` try a selection without writing `ecc.toml`. It exits 1 when an enabled step lacks required design
 data or an entry input is missing from `ecc.toml` (`step_input_missing: preFloorplan requires
@@ -1176,7 +1195,7 @@ design.netlist`).
 - `Gives` lists what the step provides. The tag `check` marks a checker that provides nothing: it
   only reports; `inserted` marks an inserted LEC. `optional` and `target` are as before.
 
-`--json` emits one `flow_plan` summary (`flow`, `status` ok|warning|error, `enabled_count`,
+`--json` emits one `flow_status` summary (`flow`, `status` ok|warning|error, `enabled_count`,
 `step_count`, `skip_steps`, `insert_steps`, `max_parallel_steps`), one `flow_step` per step (`position`, `step`, `tool`, `enabled`,
 `optional`, `target`, `requires`, `uses`, `provides`, `stage`, `slot`, `label`, `parallel_with`,
 `after`, `needs`, `check`, `inserted`), plus `flow_violation` (`severity`, `step`, `missing`, `fixes`,
@@ -1189,7 +1208,7 @@ Text output piped to a file or another program is not folded to a terminal width
 cell stays on one line.
 
 ```console
-$ ecc flow plan
+$ ecc flow status
 rtl2gds · 21 of 22 steps enabled
      #      Step                 Tool           After                         Gives
 ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1206,7 +1225,7 @@ rtl2gds · 21 of 22 steps enabled
 ┐…┘ same number = can run in parallel, up to 4 at once
 ✔ every enabled step has the design data it requires
 
-$ ecc flow plan --disable legalization --disable TimingOpt     # exit 1
+$ ecc flow status --disable legalization --disable TimingOpt     # exit 1
   ...
 ✖ error: route requires legal; enable Timing optimization or legalization
 ```
@@ -1231,10 +1250,10 @@ selection, plus `insert_steps` when an LEC is inserted (the key is removed when 
 `flow_edit` record lists `enabled`/`disabled` steps and `inserted`/`removed` LECs. It then reports warnings: `flow_step_degraded`, `flow_input_missing`,
 `workspace_flow_mismatch` (an existing workspace whose ledger the new selection contradicts;
 rerun it with `ecc run --workspace <id> --overwrite`, or run the selection in a new
-workspace with `ecc run --workspace <new id>`. `ecc workspace derive` does not apply it: a
-derived workspace keeps its source's steps), and `skip_steps_shadowed` when `project.json`
+workspace with `ecc run --workspace <new id>`. `ecc workspace fork` does not apply it: a
+fork keeps its source's steps), and `skip_steps_shadowed` when `project.json`
 declares a different policy. `flow edit` edits the steps of the `ecc.toml` `[flow]` preset;
-without one (for example a workspace ranged only in `project.json`, which `flow plan` still
+without one (for example a workspace ranged only in `project.json`, which `flow status` still
 shows) it fails with `flow_target_missing`.
 
 ```console
@@ -1260,6 +1279,7 @@ ecc param set KEY VALUE             # write into ecc.toml (comments and formatti
 ecc param unset KEY                 # remove the override, restoring the default
 ecc param diff                      # show only parameters that differ from their defaults
 ecc param apply [--set KEY=VALUE...] [--unset KEY...]   # atomic batch of set/unset edits
+ecc param edit [--workspace NAME] [--step STEP]        # edit in the terminal, applied as one batch
 ecc param set KEY VALUE --workspace NAME   # workspace-local override; ecc.toml is not touched
 ```
 
@@ -1269,6 +1289,18 @@ so the whole batch lands in one atomic update and one invalidation; a mid-batch 
 failure writes nothing. In the workspace scope `--step STEP` additionally restricts the batch to
 parameters configurable at that step (`parameter_not_applicable` otherwise), and
 `--expected-revision`/`--command-id`/`--no-wait` carry the automation contract (§5.1).
+
+`param edit` is the interactive form of `param apply`, for the project (`ecc.toml`) or, with
+`--workspace NAME`, one workspace. It lists the parameter groups (with how many each holds,
+overrides, and pending edits), then a group's parameters with their value, their base value
+(the default, or the workspace's value before its own override), and their type and range;
+`--step STEP` opens one step's group directly. Enter edits a value, which is checked as
+`--set` would parse it; `u` resets an override to its base (or drops a pending edit); `/`
+filters by name; `←`/esc goes back to the groups; `s` saves. The pending changes are shown
+as `current → new` and applied only on `y`, through `param apply`, so they validate, write and
+invalidate steps exactly as the batch command does. A workspace offers only the parameters it
+can change in place (not `pdk.*`, and only for steps in its flow). Without a terminal it fails
+with `param_edit_requires_terminal`; scripts and agents use `param apply`.
 
 Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
 

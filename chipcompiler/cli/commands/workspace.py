@@ -5,12 +5,13 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import project as project_handlers
+from chipcompiler.cli.command_handlers import workspace_fork as workspace_fork_handlers
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
     WorkspaceArchiveInput,
     WorkspaceCreateInput,
     WorkspaceDeleteInput,
-    WorkspaceDeriveInput,
+    WorkspaceForkInput,
     WorkspaceImportInput,
     WorkspaceReconcileDeletesInput,
     WorkspaceRefreshInput,
@@ -39,13 +40,20 @@ def reconcile_deletes_cmd(
     execute_command("workspace", command_input, project_handlers.reconcile_workspace_deletes)
 
 
-@workspace_app.command("derive")
-def derive_cmd(
+@workspace_app.command("fork")
+def fork_cmd(
     *,
-    source_workspace: Annotated[str, typer.Argument(help="Source Workspace ID")],
-    target_workspace: Annotated[str, typer.Argument(help="Target Workspace ID")],
+    source_workspace: Annotated[
+        str | None, typer.Argument(help="Workspace to fork (chosen in the terminal when omitted)")
+    ] = None,
+    target_workspace: Annotated[
+        str | None,
+        typer.Argument(help="New Workspace ID (without it, the fork is chosen in the terminal)"),
+    ] = None,
     project: ProjectOption = None,
-    from_step: Annotated[str | None, typer.Option("--from")] = None,
+    from_step: Annotated[
+        str | None, typer.Option("--from", help="Rerun from STEP, keeping the steps before it")
+    ] = None,
     to_step: Annotated[
         str | None, typer.Option("--to", help="Create only the inclusive --from/--to range")
     ] = None,
@@ -53,7 +61,18 @@ def derive_cmd(
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
     plain: PlainOption = False,
 ) -> None:
-    command_input = WorkspaceDeriveInput(
+    """Fork a workspace into a new one that continues from a step.
+
+    The new workspace copies the source with its parameters, keeps the
+    results of the steps before --from and reruns that step and the steps
+    after it (only up to --to when given). The source is not modified, and
+    project.json records which workspace and step the fork came from.
+
+    Without TARGET, a terminal picker asks for the source (unless given),
+    the step and the name, and can then open the parameter editor on the new
+    workspace. Scripts and agents pass SOURCE and TARGET.
+    """
+    command_input = WorkspaceForkInput(
         output=output_options(plain=plain),
         project=project_options(project),
         workspace=source_workspace,
@@ -63,7 +82,11 @@ def derive_cmd(
         command_id=command_id,
         no_wait=no_wait,
     )
-    execute_command("workspace", command_input, project_handlers.derive_workspace)
+    execute_command("workspace", command_input, workspace_fork_handlers.fork_workspace)
+
+
+# The former name, still run by ECOS Studio's pinned ECC runtime integration.
+workspace_app.command("derive", hidden=True)(fork_cmd)
 
 
 @workspace_app.command("archive")

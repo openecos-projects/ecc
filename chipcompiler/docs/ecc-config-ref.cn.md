@@ -519,14 +519,14 @@ skip_steps = []  # 开启 diff_opt；默认值为 ["diff_opt"]
 （`home/params.toml`），增加或删除都需要 `--overwrite` 或新 workspace；它只能在 `ecc.toml` 中声明。
 详见用户指南 §8.6。
 
-`ecc flow plan` 列出 preset 的步骤并检查所选组合（`--enable`/`--disable`/`--insert`/`--remove`
+`ecc flow status` 列出 preset 的步骤并检查所选组合（`--enable`/`--disable`/`--insert`/`--remove`
 只试算，不写入 `ecc.toml`）；`ecc flow edit` 在终端勾选列表中选择步骤（`i` 插入 LEC），或直接应用
 这些参数（以及 `--max-parallel-steps N`），经确认（或带 `--yes`）后把 `[flow]` 的 `preset`、
 `lec_engine`、`skip_steps`、`max_parallel_steps` 显式写回，插入了 LEC 时再写出 `insert_steps`。
 详见用户指南 §8.6。
 
 `ecc.toml` 的 `[flow] max_parallel_steps` 取正整数（默认 4），限制 `ecc run` 同时执行同一阶段
-（`ecc flow plan` 的 `#` 列）内多少个互相独立的步骤；`1` 表示逐个运行。引擎的内存限流（每个步骤至少
+（`ecc flow status` 的 `#` 列）内多少个互相独立的步骤；`1` 表示逐个运行。引擎的内存限流（每个步骤至少
 预留 4 GB，并保留 20% 的可用内存作为余量）可能把并行数进一步压低。该值只在运行时读取：不会写入
 workspace（`home/params.toml` 与 `home/flow.json` 都不含它），也不会改变已有 workspace 被视为选择了
 哪些步骤。`ecc config` 会以 `flow.max_parallel_steps` 显示它。

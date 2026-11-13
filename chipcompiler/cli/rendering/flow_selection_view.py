@@ -1,5 +1,5 @@
 # pyright: strict
-"""The rich step table shared by ``ecc flow plan`` and ``ecc flow edit``."""
+"""The rich step table shared by ``ecc flow status`` and ``ecc flow edit``."""
 
 import sys
 from collections.abc import Iterable, Mapping, Sequence
@@ -10,9 +10,9 @@ from rich.console import Console, Group, RenderableType
 from rich.table import Table
 from rich.text import Text
 
-from chipcompiler.cli.project.flow_plan_view import (
-    PlanView,
+from chipcompiler.cli.project.flow_status_view import (
     ProblemSeverity,
+    StatusView,
     StepRow,
     record_int,
     record_str,
@@ -34,7 +34,7 @@ def _legend(max_parallel_steps: int) -> str:
 
 
 def flow_selection_view(
-    view: PlanView, *, cursor: int | None = None, footer: str | None = None
+    view: StatusView, *, cursor: int | None = None, footer: str | None = None
 ) -> RenderableType:
     """The step checklist, its problems and an optional *footer*.
 
@@ -93,7 +93,7 @@ def flow_selection_view(
     return Group(*lines)
 
 
-def render_flow_plan_text(
+def render_flow_status_text(
     records: Sequence[Mapping[str, object]], file: TextIO | None = None, *, color: bool = True
 ) -> None:
     stream = file or sys.stdout
