@@ -1,11 +1,10 @@
 """Shared EngineFlow completion hooks."""
 
 import logging
-from copy import deepcopy
 from pathlib import Path
 from typing import Literal
 
-from chipcompiler.data.workspace.flow_types import ChecklistStatus, FlowStepEntry
+from chipcompiler.data.workspace.flow_types import ChecklistStatus
 
 logger = logging.getLogger(__name__)
 
@@ -88,15 +87,17 @@ def sync_step_checklist(flow, workspace_step) -> ChecklistStatus | None:
     return projection
 
 
-def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
-    """Reset terminal states from pre-guard workspaces before rerun."""
+def reset_unfinished_terminal_state(flow, workspace_step, step_tag) -> None:
+    """Reset current unfinished terminal states before a rerun."""
     old_step = flow.get_step(name=workspace_step.name, tool=workspace_step.tool)
     if old_step is None:
         return
+    if old_step.get("state") == "Warning":
+        raise ValueError(f"{step_tag} uses the removed Warning state; create a new workspace")
     persisted = old_step.get("state")
-    if persisted in {"Incomplete", "Invalid", "Warning"}:
+    if persisted in {"Incomplete", "Invalid"}:
         logger.warning(
-            "Normalizing legacy %s state '%s' -> Unstart",
+            "Resetting %s state '%s' -> Unstart",
             step_tag,
             persisted,
         )
@@ -106,14 +107,15 @@ def normalize_legacy_terminal_state(flow, workspace_step, step_tag) -> None:
         old_step.pop("resource_observation", None)
 
 
-def finalize_interrupted_subflow(observer, workspace_step, runtime, peak_memory_mb) -> None:
+def finalize_interrupted_subflow(workspace_step, runtime, peak_memory_mb) -> list[dict]:
+    """Mark the step's running subflow stages Incomplete; return them for the observer."""
     try:
         from chipcompiler.engine.subflow_events import finalize_interrupted_subflow as finalize
 
-        for subflow_step in finalize(workspace_step, runtime, peak_memory_mb):
-            notify_flow_observer(observer, "on_subflow_stage", workspace_step, subflow_step)
+        return finalize(workspace_step, runtime, peak_memory_mb)
     except (Exception, SystemExit):
         logger.exception("Failed to finalize subflow after %s", workspace_step.name)
+        return []
 
 
 def refresh_signoff_checklist(workspace, workspace_step) -> None:
@@ -138,42 +140,3 @@ def refresh_qor_report(workspace, step_tag: str) -> None:
         refresh_workspace_qor_report(workspace)
     except Exception:
         workspace.logger.exception("[QOR] %s failed to refresh the workspace QoR report", step_tag)
-
-
-def notify_flow_observer(observer, method_name: str, *args) -> None:
-    """Keep optional GUI observers outside the flow engine's failure domain."""
-    if observer is None:
-        return
-    callback = getattr(observer, method_name, None)
-    if not callable(callback):
-        return
-    try:
-        callback(*args)
-    except (Exception, SystemExit):
-        if getattr(observer, "fatal_observer", False):
-            raise
-        logger.exception("flow observer callback failed: %s", method_name)
-
-
-def notify_step_completed(
-    flow,
-    observer,
-    workspace_step,
-    state,
-    error,
-    previous_step: FlowStepEntry | None,
-) -> None:
-    """Publish completion and restore Ongoing state when a fatal commit fails."""
-    try:
-        notify_flow_observer(observer, "on_step_completed", workspace_step, state, error)
-    except (Exception, SystemExit):
-        if previous_step is not None:
-            current = flow.get_step(workspace_step.name, workspace_step.tool)
-            if current is not None:
-                current.clear()
-                current.update(deepcopy(previous_step))
-                if not flow.save():
-                    raise RuntimeError(
-                        "failed to roll back flow state after completion commit failure"
-                    ) from None
-        raise

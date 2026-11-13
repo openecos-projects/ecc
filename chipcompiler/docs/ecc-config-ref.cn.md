@@ -42,7 +42,7 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   └── ics55_synthetic.tech # 为 EMIR 复制的打包默认工艺文件
 ├── Synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
-├── lec_kepler_formal/         # 综合级 LEC（默认引擎；data/lec_config.yaml）
+├── lec@Synthesis_kepler_formal/  # 插入的 RTL vs 网表 SEC 检查（data/lec_config.yaml、data/rtl.f）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
 └── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（默认引擎；YAML 配置）
@@ -79,7 +79,7 @@ graph LR
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
-| lec | — | 引擎生成配置 | 综合级 LEC；当前默认引擎为 `kepler_formal`（YAML），`yosys_lec` 使用 Tcl，`lec_dual` 同时运行两者；未证明时步骤失败并终止后续流程 |
+| lec@&lt;step&gt; | — | 引擎生成配置 | 插入的 LEC 检查（`[flow] insert_steps`）；`lec@Synthesis` 比较 RTL 与综合后网表，其他插入检查比较该步骤网表与综合网表；kepler-formal（YAML）；未证明时步骤失败并终止后续流程，见 §11 |
 | preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
 | macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
 | postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
@@ -94,7 +94,7 @@ graph LR
 | lvs | — | 无 | 工具默认行为 |
 | drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
 | antennaCheck | ✓ | 无 | 读取 `db_ecc.json`；advisory 步骤，分析未完成不会单独中断 flow |
-| postroutelec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC；引擎选择与证据契约同 `lec`，见 §11 |
+| postroutelec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC（kepler-formal），见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
 | powerAnalysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，不在 `_STEP_CONFIG_KEYS` 中 |
@@ -154,9 +154,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 参数中枢 params.toml
 
-`home/params.toml` 是带 schema 版本的文档。新文件在顶层写入 `schema_version = 2`；早于版本化机制的合法文件按 version 0 处理，workspace 迁移路径打开它时会依次迁移到 version 2。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
+`home/params.toml` 是带 schema 版本的文档。当前文件在顶层写入 `schema_version = 2`。旧版本（包括无版本文件和 `home/parameters.json`）会被拒绝，并提示创建新 workspace。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
 
-该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。`home/parameters.json` 仅在迁移旧 workspace 时读取。
+该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。
 
 文件由四个节区构成：
 
@@ -164,12 +164,12 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|
 | `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`，与项目级 `ecc.toml [design]` 同词汇 |
 | `[pdk]` | `name` / `root` / `config`；`config` 以 workspace 相对路径存储，加载时还原为绝对路径 |
-| `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名），另可声明 `skip_steps` 与 `lec_engine`；目标缺省时由 `home/flow.json` 的首末步骤推导 |
+| `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名），另可声明 `skip_steps`、`lec_engine` 与 `insert_steps`；目标缺省时由 `home/flow.json` 的首末步骤推导 |
 | `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
 
-**身份参数在运行时仍使用规范扁平键，但 v2 不再在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。旧版 v1 文件仍接受读取，并在可写 workspace 打开时迁移去重。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
+**身份参数在运行时仍使用规范扁平键，但 v2 不在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
 
-保存时身份字段只渲染到 `[design]`/`[pdk]`，加载仍兼容 v1 的 `[params]` 镜像。若旧文件被手工改到两处不一致，加载规则为：**`[design]`/`[pdk]` 的非空值覆盖 `[params]` 副本；节区键为空或缺失时回落到 `[params]` 副本**。写入采用临时文件 + 原子 rename，不穿透 symlink。
+保存时身份字段只渲染到 `[design]`/`[pdk]`。写入采用临时文件 + 原子 rename，不穿透 symlink。
 
 通过 `ecc param set KEY VALUE --workspace NAME` 写入的已创建 workspace 覆盖也保存在 `[params]`：实际参数值与 `config_overrides` 共同决定刷新后的步骤配置，`workspace_param_overrides` 列表记录 `key`、首次修改前的 `baseline` 和当前 `value`，供 `ecc param diff --workspace NAME` 使用。`ecc param unset KEY --workspace NAME` 会恢复该 `baseline` 并清除这条本地覆盖记录；其所属步骤及后续步骤会失效，直到再次运行。PDK 资源路径和引用不能在此处局部修改，应更新 `ecc.toml` 后执行 `ecc workspace refresh NAME`。
 
@@ -309,7 +309,7 @@ timing_exception_txt = '''
 | `use_slang` | `false` | 运行时探测 | 是否用 slang 前端读 SystemVerilog（默认 Verilog 模式） |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL 源文件列表 |
 | `final_netlist_file` | `output/gcd_Synthesis.v.gz` | 步骤调度 | 输出门级网表（供 floorplan） |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | 两次 LEC 共用的 golden 网表（clockgate 映射前导出） |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | 最后一次网表变换之后写出的映射网表副本；没有 LEC 步骤读取它（`lec@Synthesis` 读取 RTL，其他 LEC 读取综合网表） |
 | `final_netlist_sim_file` | `…_sim.v.gz` | 步骤调度 | 仿真用网表（含 SDF 相关信息） |
 | `synth_stat_json` / `synth_check_rpt` 等 | `report/`、`feature/` 下 | 步骤调度 | 统计与检查报告输出 |
 | `keep_hierarchy` | `false` | 模板 | 是否保留模块层级 |
@@ -479,19 +479,59 @@ S50 继续使用 RRR=3、padding=0 和最终 legalization；placement bin 使用
 并按 die aspect ratio 调整。
 
 `diff_opt` 是 placement 之后、`diff_sizing` 之前的可选独立步骤，用来替换新 workspace
-中的 `diff_buffering`。新建 workspace 默认跳过该步骤，仍执行独立的 `diff_sizing`。
+步骤。新建 workspace 默认跳过该步骤，仍执行独立的 `diff_sizing`。
 通过项目 `ecc.toml` 的一个参数即可开启：
 
 ```toml
 [flow]
-skip_steps = ["lec"]  # 开启 diff_opt；默认值为 ["lec", "diff_opt"]
+skip_steps = []  # 开启 diff_opt；默认值为 ["diff_opt"]
 ```
 
 `skip_steps` 是完整跳过列表；若另有需跳过的步骤，请保留在列表中。
-`skip_steps = []` 同时开启 synthesis LEC 和 `diff_opt`。
 已有 workspace 按保存的 ledger 续跑；切换策略需新建 workspace 或使用 `--overwrite`。
 
-启用后，它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
+`skip_steps`（`ecc.toml`、`home/params.toml` 以及 `project.json` 的
+`workspaces[].skip_steps`）可以列出 rtl2gds 链上的任意步骤，不再限于 `diff_opt`、
+`postRouteLec` 和 `Timing optimization`；接受 `synth`、`cts`、`TimingOpt` 等别名，未知步骤名仍被拒绝。
+`lec` 不是链上的步骤（LEC 用 `insert_steps` 插入）；列出的 `lec` 会被忽略，已有文件照常可用。
+缺省该键时取代码默认值 `["diff_opt"]`；`[]` 运行全部步骤。选择能否运行由步骤能力决定——
+每个步骤必需的设计数据、可选使用的设计数据及其产出：
+
+- 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 与 workspace 创建都会拒绝，
+  修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `Timing optimization` 时报
+  `route requires legal; enable Timing optimization or legalization`）。
+- 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告。跳过 `CTS` 时警告
+  `route runs with degraded results without clock_tree; enable CTS`（`sta`、`powerAnalysis`、
+  `Harden` 同理）；跳过 CTS 后的布线与 STA 使用 CTS 之前的（理想时钟）时序约束。
+- preset 的最后一步是 flow 目标，不能跳过（`rtl2gds` 为 `Harden`，`syn_sta` 为 `Synthesis`）；
+  显式的范围起点（`home/params.toml` `[flow] start`、`ecc run --from`、`project.json`
+  `start_step`）同样不能跳过。preset 的首步可以跳过：跳过 `Synthesis` 后，运行从
+  `preFloorplan` 进入，使用声明的 `[design] netlist`（postSynthesis 输入模式）；入口步骤的输入照旧检查。
+- 跳过签核检查步骤（`drc`、`lvs`、`sta`）即没有签核证据：`ecc signoff check` 将该门禁报告为
+  `unknown`，绝不会报 pass。
+
+`[flow] insert_steps` 在某个构建设计的步骤之后插入一次 LEC 检查：
+`insert_steps = ["lec@Synthesis", "lec@CTS"]`。它可以跟在 `Synthesis` 到 `route` 之间的任何步骤之后
+（`filler` 之后已有 `postRouteLec`）；LEC 是唯一可以插入的步骤，因为它不修改设计。插入的步骤命名为
+`lec@<step>`（空格写成下划线：`lec@Timing_optimization`），与该步骤同进退。`lec@Synthesis` 比较 RTL
+与综合后的网表（kepler-formal SEC）；其他插入的检查把该步骤的网表与 `postRouteLec` 的 golden 网表
+比较（见 §11）。它属于 workspace 的 flow 目标
+（`home/params.toml`），增加或删除都需要 `--overwrite` 或新 workspace；它只能在 `ecc.toml` 中声明。
+详见用户指南 §8.6。
+
+`ecc flow status` 列出 preset 的步骤并检查所选组合（`--enable`/`--disable`/`--insert`/`--remove`
+只试算，不写入 `ecc.toml`）；`ecc flow edit` 在终端勾选列表中选择步骤（`i` 插入 LEC），或直接应用
+这些参数（以及 `--max-parallel-steps N`），经确认（或带 `--yes`）后把 `[flow]` 的 `preset`、
+`lec_engine`、`skip_steps`、`max_parallel_steps` 显式写回，插入了 LEC 时再写出 `insert_steps`。
+详见用户指南 §8.6。
+
+`ecc.toml` 的 `[flow] max_parallel_steps` 取正整数（默认 4），限制 `ecc run` 同时执行同一阶段
+（`ecc flow status` 的 `#` 列）内多少个互相独立的步骤；`1` 表示逐个运行。引擎的内存限流（每个步骤至少
+预留 4 GB，并保留 20% 的可用内存作为余量）可能把并行数进一步压低。该值只在运行时读取：不会写入
+workspace（`home/params.toml` 与 `home/flow.json` 都不含它），也不会改变已有 workspace 被视为选择了
+哪些步骤。`ecc config` 会以 `flow.max_parallel_steps` 显示它。
+
+启用后，`diff_opt` 从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
 使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
@@ -538,13 +578,13 @@ diff_optimization_flows = [
 JSON 中也可设为 `null`，分别使用该模式的 S50 或 B10 简写。
 
 `diff_opt` 固定使用 placement 寄生参数，输入 GGR/RRR、route grid、
-route-extracted SPEF 或 post-route RC 会直接报错。旧的 `diff_buffering_*` 参数仍作为
+route-extracted SPEF 或 post-route RC 会直接报错。请使用 `place.diff_optimization_mode` 与 `place.diff_optimization_flows` 配置；不再支持旧的 `diff_buffering_*` 参数。
 buffering-only `diff_opt` 的兼容别名。
 
 在 `skip_steps` 中移除 `diff_opt` 后，可以用
 `ecc run --project PROJECT --workspace NAME --from diff_opt --to diff_opt`
 单独执行；结束范围改为 `--to diff_sizing` 则继续做独立 GR S50。
-已有 workspace 继续使用保存的 `diff_buffering` alias；新建 workspace 使用
+workspace 使用
 启用 `diff_opt` 时执行 `diff_opt → diff_sizing` 两个独立步骤。
 
 placement 的 sizing 窗口和 `diff_opt` 的 `sz` 阶段也默认使用 LUT action，
@@ -832,37 +872,39 @@ check_antenna -step_json /path/to/antennaCheck.step.json
 |---|---|---|
 | `-min_filler_width` | 1 | 允许填充的最小 filler 宽度（site 数；间隙小于该值不填充） |
 
-## 11. lec / postroutelec（可选引擎的 LEC）
+## 11. LEC 步骤（kepler-formal）
 
-这两个步骤没有经过审核的 JSON schema，也没有 `ecc param` 字段。项目
-`ecc.toml` 的 `[flow] lec_engine` 选择引擎：代码默认值为 `kepler_formal`，
-`yosys_lec` 是 Yosys/Tcl 实现，`lec_dual`（别名 `dual`）并行运行两者并汇总判定。
-所选引擎记录在 workspace flow ledger 中，并决定步骤目录与生成的配置：
+这些步骤没有经过审核的 JSON schema，也没有 `ecc param` 字段。kepler-formal 是唯一的 LEC 引擎：
+`[flow] lec_engine` 只接受 `kepler_formal`（即默认值）。Yosys（`yosys_lec`）与双引擎（`lec_dual`）
+已被移除；ledger 记录了其中之一的 workspace 会报 `flow_mismatch`，需要重建（`--overwrite` 或新
+workspace）。
 
-| `lec_engine` | 默认步骤目录 | 生成的配置 | 报告 |
+| 步骤 | 步骤目录 | 生成的配置 | 报告 |
 |---|---|---|---|
-| `kepler_formal`（默认） | `lec_kepler_formal/`、`postRouteLec_kepler_formal/` | `data/lec_config.yaml`、`script/run_lec.yaml` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`、`report/miter_log.txt` |
-| `yosys_lec` | `lec_yosys_lec/`、`postRouteLec_yosys_lec/` | `data/lec_config.tcl`、`script/run_lec.tcl` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`，以及失败网表证据 |
-| `lec_dual` | `lec_dual/`、`postRouteLec_dual/`，另含两个引擎目录 | 各引擎配置 | 汇总结果及各引擎报告 |
+| `lec@<step>`、`postRouteLec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`、`script/run_lec.yaml` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`、`report/miter_log.txt` |
 
-两个步骤共用与引擎无关的结果契约 `output/<设计>_<步骤>_result.json`：`status` 为 `proven` 或 `incomplete`，并记录双方网表的路径、SHA-256、大小与报告路径。只有这些身份信息仍与当前文件一致时证明才有效；未证明或过期的结果会使步骤失败。
+所有 LEC 步骤共用结果契约 `output/<设计>_<步骤>_result.json`：`status` 为 `proven` 或 `incomplete`，并记录 golden 与 gate 文件的路径、SHA-256、大小与报告路径。只有这些身份信息仍与当前文件一致时证明才有效；未证明或过期的结果会使步骤失败。
 
 | 项 | 内容 |
 |---|---|
-| `lec` 输入 | 综合映射网表为 gate；声明的 `design.golden_netlist`（或解析后的步骤接线）为 golden。它紧跟 synthesis，且**默认被跳过**（`[flow] skip_steps` 默认为 `["lec", "diff_opt"]`）。 |
+| `lec@Synthesis` 输入 | golden 为 Synthesis 读取的 RTL：其 filelist，否则其 RTL 文件；gate 为综合后的网表。kepler-formal 只在时序等价检查中读取 RTL，因此配置为 `format: sv2v`、`verification: sec`，不施加复位序列。RTL 经生成的 `data/rtl.f` 以 `sv_design1_flist` 传入：它像 Synthesis 一样定义 `SYNTHESIS`，并用 `-F` 嵌套 filelist，使其相对路径源文件与 `+incdir+` 相对 filelist 自身目录解析。结果记录读取该 RTL 时读取的每个文件的身份：RTL 文件，或 filelist 及其源文件、include 目录下的文件和其用 `-F` 嵌套的每个 filelist，再加上它们 `` `include `` 的每个文件（包含文件所在目录或任一 include 目录中的每个同名文件，无论前端选中哪一个）。路径按操作系统打开文件的方式解析，跟随符号链接。修改其中任何一个都会使证明失效（stale）；无法确定 RTL 读取的文件时（`-F`、`+incdir+`、`-I`/`--include-directory`/`--isystem` 与 `+define+` 以外的 filelist 选项，如 `-f`、`-v`、`-y` 或 `--libmap`；含环境变量的路径；以宏 `` `include ``），该步骤在运行 kepler-formal 之前失败并指出对应条目。 |
 | `postRouteLec` 输入 | golden 优先级：步骤显式覆盖 → `design.golden_netlist` → 综合映射网表 → 原始输入。`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
-| 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。 |
+| 其他 `lec@<step>` 输入 | golden 与 `postRouteLec` 相同；gate 为它所跟步骤的输出网表（可跟在 `preFloorplan` 到 `route` 之间的任何步骤之后）。其后的步骤仍读取那一步的输出。网表之间的检查为组合等价检查（`format: verilog`、`verification: lec`）。 |
+| 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。插入的 LEC 结果只留在各自步骤的 checklist 中。 |
 
-启用综合级 LEC 并可选地固定引擎：
+`lec@Synthesis` 的证据强度：在我们的测试中，kepler-formal 的 SEC 能发现一个小型带寄存器设计的变异，
+但把 `gcd` 的三个手工 RTL 变异（其中一个把 16 位 `resp_msg` 输出取反）判为与正确 RTL 的网表等价，
+而同样的取反若出现在网表一侧则能被发现。因此该检查通过时，证据强度不如网表之间的检查。
+
+用以下配置检查综合结果与 RTL：
 
 ```toml
 [flow]
 preset = "rtl2gds"
-skip_steps = []
-lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
+insert_steps = ["lec@Synthesis"]
 ```
 
-另有 `synthesis_lec` preset（synthesis + `lec`）可单独做综合级等价检查；它同样需要 `skip_steps = []`。
+`synthesis_lec` preset 只运行 Synthesis 与 `lec@Synthesis`。
 
 ## 12. rcx（ecc-tools）
 
@@ -1021,12 +1063,12 @@ ecc param set route.RT.-thread_number VALUE
 
 `route_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。
 
-### 15.7 lec、drc、lvs、postroutelec 与 powerAnalysis
+### 15.7 插入的 LEC 检查、drc、lvs、postroutelec 与 powerAnalysis
 
-这些步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，LEC 使用 `[flow] lec_engine` 选择的引擎生成配置（见 §11），LVS 走工具默认流程，`powerAnalysis` 没有显式步骤配置（运行器内部复用 `db_ecc.json`）。可用下列命令确认实际配置文件：
+这些步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，LEC 步骤使用自行生成的 kepler-formal 配置（见 §11），LVS 走工具默认流程，`powerAnalysis` 没有显式步骤配置（运行器内部复用 `db_ecc.json`）。可用下列命令确认实际配置文件：
 
 ```bash
-ecc config lec
+ecc config lec@synthesis   # 插入的 LEC 检查，按其步骤名
 ecc config drc
 ecc config lvs
 ecc config postroutelec
@@ -1108,4 +1150,4 @@ ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --o
 
 调参之前，先用 `ecc param list --all`、`ecc param show` 或当前版本的 `--help` 确认哪些字段是公开的，再按字段所属的 scope 用 `ecc param set` / `ecc param unset` 修改。一般不要直接编辑 `home/params.toml`、生成的 JSON/Tcl 或内部模板。唯一的例外是 QoR 参考中列出的 `qor_profile` 和 `qor_power_budget_w`：它们是 workspace 参数，不在 CLI schema 里，但仍要遵守 QoR 文档中的语义和复验要求。`run --set` 只对新 workspace 生效，并且要记录到候选实验的来源信息（provenance）里；在已有 workspace 上改参数时，先确认哪些步骤会失效、需要重跑哪些范围。
 
-文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。流程策略应通过项目 `ecc.toml` 的 `[flow]` 键配置（`preset`、可选的 `start`/`end`、`skip_steps`、`lec_engine`），不要手改已持久化的 workspace `home/params.toml` 或 `home/flow.json`；同样不要手写 QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。
+文档里提到、但当前公开 schema 中没有的字段，不等于可以直接使用的接口。流程策略应通过项目 `ecc.toml` 的 `[flow]` 键配置（`preset`、可选的 `start`/`end`、`skip_steps`、`lec_engine`、`insert_steps`、`max_parallel_steps`），不要手改已持久化的 workspace `home/params.toml` 或 `home/flow.json`；同样不要手写 QoR profile/预算或未经审核的 DreamPlace 字段。如果遇到能力缺口（capability gap），如实记录版本、命令输出和影响即可，不要假装配置成功。修改 frequency、corner、约束或验证覆盖都会改变实验的语义：这类实验要建独立候选，不能和原始结果直接对比。

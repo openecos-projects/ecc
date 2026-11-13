@@ -17,13 +17,9 @@ from chipcompiler.cli.inspection.log_view import (
 )
 from chipcompiler.cli.rendering.pretty import BOLD, CYAN, DIM, GREEN, RED, RESET
 from chipcompiler.cli.rendering.pretty import style as _style
-from chipcompiler.data import StateEnum, log_flow
-from chipcompiler.engine.execution import (
-    event_sink_for_workspace,
-    execution_observer,
-    invoke_engine,
-)
-from chipcompiler.utility.log import flush_cstdio, redirect_stdio_to_file
+from chipcompiler.data import StateEnum
+from chipcompiler.engine.observers import event_sink_for_workspace
+from chipcompiler.utility.log import flush_cstdio
 
 
 def supports_color(stream, mode, env=None):
@@ -369,8 +365,17 @@ def _flow_step_runtime(workspace, step_name):
     data = getattr(flow, "data", {})
     for step in data.get("steps", []) if isinstance(data, dict) else []:
         if isinstance(step, dict) and step.get("name") == step_name:
-            return str(step.get("runtime") or "")
+            return _padded_runtime(str(step.get("runtime") or ""))
     return ""
+
+
+def _padded_runtime(runtime):
+    """The ledger stores ``H:M:S``; progress lines show ``H:MM:SS``."""
+    parts = runtime.split(":")
+    if len(parts) == 3 and all(part.isdigit() for part in parts):
+        hours, minutes, seconds = (int(part) for part in parts)
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return runtime
 
 
 def _render_step_completion(
@@ -416,7 +421,15 @@ def _render_step_completion(
 
 
 class RunProgressEventSink:
-    """Render rerun step events while preserving the engineering event sink."""
+    """Render step events while preserving the engineering event sink.
+
+    Steps of a parallel analysis wave start and complete interleaved. Every
+    running step is tracked; the transient ``log:`` line follows the most
+    recently started step that is still running and moves to another running
+    step when that one completes. Callbacks arrive serialized (the engine wraps
+    the observer for waves), and the monitor stops around every write to the
+    stream so transient and permanent lines never interleave.
+    """
 
     def __init__(
         self,
@@ -438,6 +451,9 @@ class RunProgressEventSink:
         self._delegate = delegate
         self._stop_event = None
         self._monitor = None
+        # (name, tool) -> (step token, log path) of started, uncompleted
+        # steps, in start order.
+        self._running: dict[tuple[str, str], tuple[str, str]] = {}
         self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
 
     @property
@@ -455,23 +471,20 @@ class RunProgressEventSink:
     def on_step_started(self, step):
         self._stop_monitor()
         step_token = normalize_step_name(step.name)
+        key = (step.name, step.tool)
+        self._running[key] = (step_token, getattr(getattr(step, "log", None), "file", "") or "")
         self._renderer.start_step(step_token, step.tool)
-        self._renderer.running("starting step...")
-        log_path = getattr(getattr(step, "log", None), "file", "") or ""
-        self._stop_event, self._monitor = _start_log_monitor(
-            self._renderer,
-            log_path,
-            step_token,
-            isolated=self._isolated,
-        )
+        self._start_monitor(key, "starting step...")
         try:
             self._delegate_call("on_step_started", step)
         except BaseException:
+            self._running.pop(key, None)
             self._stop_monitor()
             raise
 
     def on_step_completed(self, step, state, error=None):
         self._stop_monitor()
+        self._running.pop((step.name, step.tool), None)
         self._renderer.clear()
         self._delegate_call("on_step_completed", step, state, error)
         _render_step_completion(
@@ -483,9 +496,13 @@ class RunProgressEventSink:
             self._run_id,
             self._color,
         )
+        if self._running:
+            key = next(reversed(self._running))
+            self._start_monitor(key, f"running {self._running[key][0]}...")
 
     def on_execution_finished(self, state, error):
         self._stop_monitor()
+        self._running.clear()
         self._renderer.clear()
         self._delegate_call("on_execution_finished", state, error)
 
@@ -511,6 +528,19 @@ class RunProgressEventSink:
     def close(self):
         self._stop_monitor()
         self._renderer.clear()
+
+    def _start_monitor(self, key, status):
+        step_token, log_path = self._running[key]
+        # On a terminal the monitor is a forked process: the parent renderer
+        # never sees its writes. Put the first transient line through the
+        # parent, so the parent's clear() removes whatever the monitor wrote.
+        self._renderer.running(status)
+        self._stop_event, self._monitor = _start_log_monitor(
+            self._renderer,
+            log_path,
+            step_token,
+            isolated=self._isolated,
+        )
 
     def _stop_monitor(self):
         if self._stop_event is not None and self._monitor is not None:
@@ -623,110 +653,6 @@ def _stop_log_monitor(stop_event, monitor, timeout=2.0):
     if monitor.is_alive() and hasattr(monitor, "terminate"):
         monitor.terminate()
         monitor.join(timeout=timeout)
-
-
-def run_flow_with_progress(engine_flow, ctx, project, stderr):
-    color = supports_color(stderr, ctx.output_mode)
-    progress_stream = _stable_stream_from(stderr)
-    execution_state = "interrupted"
-    try:
-        renderer = RunProgressRenderer(progress_stream, color=color)
-        workspace = engine_flow.workspace
-
-        run_dir = engine_flow.workspace.directory
-        run_name = ctx.run_id or "default"
-        renderer.start_run(run_name, run_dir)
-        event_sink = event_sink_for_workspace(workspace)
-        observer = execution_observer(event_sink)
-        started_callback = getattr(event_sink, "on_execution_started", None)
-        if callable(started_callback):
-            started_callback("run", ())
-
-        for workspace_step in engine_flow.workspace_steps:
-            step_token = normalize_step_name(workspace_step.name)
-            tool = workspace_step.tool
-            log_path = workspace_step.log.file or ""
-
-            engine_flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
-            )
-
-            renderer.start_step(step_token, tool)
-            renderer.running("starting step...")
-
-            stop_event, monitor = _start_log_monitor(
-                renderer,
-                log_path,
-                step_token,
-                isolated=progress_stream is not stderr,
-            )
-
-            start = time.time()
-
-            try:
-                with preserve_cli_stdio():
-                    if not engine_flow.check_state(
-                        name=workspace_step.name,
-                        tool=workspace_step.tool,
-                        state=StateEnum.Success,
-                    ):
-                        init_log_stream = None
-                        if log_path:
-                            try:
-                                abs_log_path = os.path.abspath(log_path)
-                                os.makedirs(os.path.dirname(abs_log_path) or ".", exist_ok=True)
-                                init_log_stream = redirect_stdio_to_file(abs_log_path)
-                            except OSError:
-                                init_log_stream = None
-                        try:
-                            engine_flow.init_db_engine()
-                        finally:
-                            if init_log_stream is not None:
-                                init_log_stream.close()
-                    state = invoke_engine(
-                        engine_flow.run_step,
-                        workspace_step,
-                        rerun=False,
-                        observer=observer,
-                    )
-            finally:
-                _stop_log_monitor(stop_event, monitor)
-                renderer.clear()
-
-            log_flow(workspace=engine_flow.workspace)
-            engine_flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
-
-            elapsed = time.time() - start
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
-            seconds = int(elapsed % 60)
-            runtime = f"{hours}:{minutes:02d}:{seconds:02d}"
-            is_success = _render_step_completion(
-                renderer,
-                engine_flow.workspace,
-                workspace_step,
-                state,
-                project,
-                ctx.run_id,
-                color,
-                runtime=runtime,
-                log_path=log_path,
-            )
-
-            if not is_success:
-                execution_state = StateEnum.Imcomplete.value
-                return False
-
-        execution_state = StateEnum.Success.value
-        return True
-    finally:
-        finished_callback = getattr(locals().get("event_sink"), "on_execution_finished", None)
-        if callable(finished_callback):
-            finished_callback(execution_state, None)
-        if progress_stream is not stderr:
-            progress_stream.close()
 
 
 def _maybe_render_failure_context(renderer, log_path, rel_log, step_token, project, run_id, color):

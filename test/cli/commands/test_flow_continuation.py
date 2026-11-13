@@ -4,6 +4,7 @@ from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.rtl2gds import build_rtl2gds_flow
+from test.flow_fixture import step_fields
 
 
 def _write_existing_workspace(
@@ -27,13 +28,14 @@ def _write_existing_workspace(
             "runtime": "",
             "peak memory (mb)": 0,
             "info": {},
+            **step_fields(name, tools[name]),
         }
         for name, state in zip(step_names, states, strict=True)
     ]
     home = os.path.join(run_dir, "home")
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 2, "steps": steps}, f)
     parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
     if pdk_root is not None:
         parameters["pdk_root"] = str(pdk_root)
@@ -423,15 +425,14 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """A per-workspace project.json skip policy wins over the
-        workspace's undeclared one on an existing run: enabling the LEC
-        (skip_steps = []) against a without-LEC ledger is a mismatch that
-        never inserts the step."""
+        workspace's undeclared one on an existing run: keeping the LEC
+        (skip_steps = [], which inserts lec@Synthesis) against a ledger without
+        it is a mismatch that never inserts the step."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         # A post-default-policy ledger: the canonical chain without the LEC.
-        without_lec = [name for name in RTL2GDS_NAMES if name != "lec"]
-        prefix = without_lec[:3]
+        prefix = RTL2GDS_NAMES[:3]
         _write_existing_workspace(
             run_dir, prefix, states=["Success"] * 2 + ["Unstart"], pdk_root=pdk_root
         )
@@ -449,35 +450,34 @@ class TestFlowMismatchZeroMutation:
         errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         ledger = json.loads((Path(run_dir) / "home" / "flow.json").read_text())
-        assert "lec" not in [step["name"] for step in ledger["steps"]]
+        assert "lec@Synthesis" not in [step["name"] for step in ledger["steps"]]
 
-    def test_legacy_parameters_mismatch_never_migrates(
+    def test_parameter_mismatch_does_not_rewrite_workspace(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
-        """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create params.toml/lock files, or touch
-        any other path."""
+        """A flow mismatch refusal must not rewrite configs or create locks."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
-        # Legacy shape: long-key parameters.json, no params.toml, and a ledger
-        # that diverges from the project preset at step one.
-        with open(os.path.join(home, "parameters.json"), "w") as f:
-            json.dump(
-                {
-                    "PDK": "ics55",
-                    "Design": "gcd",
-                    "Top module": "gcd",
-                    "Clock": "clk",
-                    "Frequency max [MHz]": 250,
-                },
-                f,
-            )
+        # Current config with a ledger that diverges from the project preset.
+        Path(home, "params.toml").write_text(
+            """schema_version = 2
+[design]
+name = "gcd"
+top = "gcd"
+clock_port = "clk"
+frequency_mhz = 250.0
+[pdk]
+name = "ics55"
+[params]
+"""
+        )
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
+                    "schema_version": 2,
                     "steps": [
                         {
                             "name": "place",
@@ -486,8 +486,9 @@ class TestFlowMismatchZeroMutation:
                             "runtime": "",
                             "peak memory (mb)": 0,
                             "info": {},
+                            **step_fields("place", "ecc"),
                         }
-                    ]
+                    ],
                 },
                 f,
             )

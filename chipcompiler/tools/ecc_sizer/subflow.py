@@ -53,6 +53,10 @@ class SizerSubFlow(SubFlow):
         rerun) and is reported by the writer.
         """
         if self._current_stage_names() != list(self.stages()):
+            if self.workspace.flow.read_only:
+                raise RuntimeError(
+                    f"Worker cannot rebuild persisted stages for {self.workspace_step.name}"
+                )
             previous_stages = list(self.workspace_step.subflow.steps or [])
             self.workspace_step.subflow.steps = [stage_template(name) for name in self.stages()]
             if not self._invalidate_owner_and_suffix():

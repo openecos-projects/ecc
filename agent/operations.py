@@ -621,15 +621,18 @@ class RuntimeOperationManager:
             }
             if error:
                 log_file = str(getattr(getattr(workspace_step, "log", None), "file", "") or "")
-                operation.error = operation.error or {
+                step_error = {
                     "code": "tool_failed",
                     "message": error,
                     "step": operation.current_step,
                     "tool": operation.current_tool,
                     "logFile": log_file,
                 }
-                payload["error"] = operation.error
-                payload["logFile"] = str(operation.error.get("logFile", log_file))
+                if not operation.cancel_requested:
+                    operation.error = operation.error or step_error
+                    step_error = operation.error
+                payload["error"] = step_error
+                payload["logFile"] = str(step_error.get("logFile", log_file))
             event = self._new_event_locked(operation, "step.completed", payload)
             if workspace_revision is None:
                 operation.workspace_revision += 1

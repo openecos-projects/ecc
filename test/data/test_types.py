@@ -20,14 +20,12 @@ def test_step_base_enum_defines_no_members_and_defaults_to_not_skippable():
 
 def test_skippable_step_enum_members_are_marked_skippable():
     assert {member.name for member in SkippableStepEnum} == {
-        "LEC",
         "DIFF_OPT",
         "POST_ROUTE_LEC",
         "TIMING_OPT",
     }
     assert all(member.is_skippable() is True for member in SkippableStepEnum)
     assert {member.value for member in SkippableStepEnum} == {
-        "lec",
         "diff_opt",
         "postRouteLec",
         "Timing optimization",
@@ -35,7 +33,7 @@ def test_skippable_step_enum_members_are_marked_skippable():
 
 
 def test_core_enum_no_longer_carries_the_skippable_members():
-    for name in ("LEC", "DIFF_OPT", "POST_ROUTE_LEC", "TIMING_OPT"):
+    for name in ("DIFF_OPT", "POST_ROUTE_LEC", "TIMING_OPT"):
         assert not hasattr(StepEnum, name)
         with pytest.raises(ValueError):
             StepEnum(getattr(SkippableStepEnum, name).value)
@@ -60,11 +58,7 @@ def test_step_from_value_rejects_unknown_values():
 
 
 def test_lec_engine_enum_members_and_derived_constants():
-    assert {member.value for member in LECEngineEnum} == {
-        "yosys_lec",
-        "kepler_formal",
-        "lec_dual",
-    }
+    assert {member.value for member in LECEngineEnum} == {"kepler_formal"}
     assert frozenset(member.value for member in LECEngineEnum) == LEC_STEP_TOOLS
     assert DEFAULT_LEC_ENGINE is LECEngineEnum.KEPLER_FORMAL
 
@@ -74,31 +68,15 @@ def test_lec_engine_enum_members_and_derived_constants():
     [
         *[(member.value, member) for member in LECEngineEnum],
         *[(member, member) for member in LECEngineEnum],
-        ("dual", LECEngineEnum.DUAL),
     ],
 )
-def test_lec_engine_from_value_accepts_member_values_and_the_dual_alias(raw, expected):
+def test_lec_engine_from_value_accepts_member_values(raw, expected):
     assert LECEngineEnum.from_value(raw) is expected
 
 
-def test_lec_engine_from_value_normalizes_the_dual_alias_away():
-    # Persisted/ledger strings are always the member value, never the alias.
-    assert LECEngineEnum.from_value("dual").value == "lec_dual"
-    assert "dual" not in {member.value for member in LECEngineEnum}
-
-
 def test_lec_engine_from_value_rejects_unknown_values_with_the_legal_set():
-    with pytest.raises(ValueError, match="unknown LEC engine: 'nonsense'.*yosys_lec"):
+    with pytest.raises(ValueError, match="unknown LEC engine: 'nonsense'.*kepler_formal"):
         LECEngineEnum.from_value("nonsense")
-
-
-def test_spawn_engines_fans_out_only_for_dual():
-    assert LECEngineEnum.DUAL.spawn_engines == (
-        LECEngineEnum.YOSYS_LEC,
-        LECEngineEnum.KEPLER_FORMAL,
-    )
-    assert LECEngineEnum.YOSYS_LEC.spawn_engines == (LECEngineEnum.YOSYS_LEC,)
-    assert LECEngineEnum.KEPLER_FORMAL.spawn_engines == (LECEngineEnum.KEPLER_FORMAL,)
 
 
 def test_enum_members_render_and_compare_as_their_persisted_values():
@@ -115,10 +93,10 @@ def test_enum_members_render_and_compare_as_their_persisted_values():
 
 def test_step_hierarchy_survives_the_string_enum_base():
     assert isinstance(StepEnum.STA, StepBaseEnum)
-    assert isinstance(SkippableStepEnum.LEC, StepBaseEnum)
+    assert isinstance(SkippableStepEnum.DIFF_OPT, StepBaseEnum)
     assert isinstance(StepEnum.STA, str)
     assert StepEnum.SYNTHESIS.is_skippable() is False
-    assert SkippableStepEnum.LEC.is_skippable() is True
+    assert SkippableStepEnum.DIFF_OPT.is_skippable() is True
 
 
 def test_yaml_safe_dump_rejects_enum_members():

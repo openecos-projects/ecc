@@ -18,8 +18,12 @@ from chipcompiler.data import (
     StepEnum,
     Workspace,
     WorkspaceStep,
+    inserted_step_kind,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
+from chipcompiler.data.step import StepDirectories
+from chipcompiler.tools.ecc.lec_gates import (
+    inserted_lec_results as _inserted_lec_results,
+)
 from chipcompiler.tools.ecc.lec_gates import (
     latest_pnr_output as _latest_pnr_output,
 )
@@ -126,7 +130,9 @@ def _item(
     }
 
 
-def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
+def _prefixed_evidence(
+    step_directory: str, evidence: list, step_directories: list[str]
+) -> list[dict]:
     result = []
     for entry in evidence:
         if not isinstance(entry, dict):
@@ -134,8 +140,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         item = dict(entry)
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
-            path == directory or path.startswith(directory + "/")
-            for directory in all_step_directories()
+            path == directory or path.startswith(directory + "/") for directory in step_directories
         )
         if (
             isinstance(path, str)
@@ -230,7 +235,11 @@ def _quality_gate_items_from_summary(
                     "path": _path_text(workspace, summary_path),
                     "gate_id": gate_id,
                 },
-                evidence=_prefixed_evidence(step_directory_text, gate.get("evidence", [])),
+                evidence=_prefixed_evidence(
+                    step_directory_text,
+                    gate.get("evidence", []),
+                    StepDirectories.of(workspace).scan_names(),
+                ),
             )
         )
     return result
@@ -513,7 +522,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
-    elif step.name in {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}:
+    elif step.name == SkippableStepEnum.POST_ROUTE_LEC.value or inserted_step_kind(step.name):
         step_input = getattr(step, "input", None)
         return _lec_artifact_items(
             workspace,
@@ -737,25 +746,29 @@ def rebuild_home_checklist(
     workspace_dir = Path(workspace.directory)
     items = []
     loaded_step_checklists = set()
-    # LEC artifacts live under the engine the flow recorded (yosys_lec
-    # historically, kepler_formal today, lec_dual for cross-checking).
-    # Checklist snapshots of every INACTIVE LEC engine are stale evidence —
-    # an engine switch deliberately preserves them on disk — so only the
-    # ledger-recorded directory may contribute; the recorded postRouteLec
-    # itself is recomputed fresh below.
-    flow = getattr(workspace, "flow", None)
-    flow_steps = flow.steps() if flow is not None else None
-    post_route_lec_dir = flow_step_directory(flow_steps, SkippableStepEnum.POST_ROUTE_LEC.value)
-    from chipcompiler.data.step import inactive_lec_step_directories
-
-    inactive_lec_dirs = inactive_lec_step_directories(flow_steps)
-    for directory in all_step_directories():
-        if directory == post_route_lec_dir or directory in inactive_lec_dirs:
+    # The recorded postRouteLec is recomputed fresh below.
+    directories = StepDirectories.of(workspace)
+    post_route_lec_dir = directories.name(SkippableStepEnum.POST_ROUTE_LEC.value)
+    for directory in directories.scan_names():
+        if directory == post_route_lec_dir:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
         if data.get("schema_version") == 3 and data.get("kind") == "signoff_checklist":
             loaded_step_checklists.add(directory)
             items.extend(item for item in data.get("checklist", []) if isinstance(item, dict))
+    # Every inserted LEC the ledger records is required and judged fresh: a
+    # saved verdict may be stale, and its step checklist may be missing.
+    inserted = _inserted_lec_results(workspace)
+    items = [
+        item
+        for item in items
+        if not (
+            item.get("step") in inserted
+            and item.get("id") == f"artifact.{str(item['step']).lower()}.result"
+        )
+    ]
+    for step_name, result_json in inserted.items():
+        items.extend(_lec_artifact_items(workspace, step_name, result_json, None, None))
     if _requires_post_route_lec(workspace):
         design = getattr(getattr(workspace, "design", None), "name", "") or ""
         golden, gate = _post_route_lec_netlists(workspace)
@@ -771,7 +784,7 @@ def rebuild_home_checklist(
             )
         )
     for step_name, gate_ids in QOR_STEP_GATE_IDS.items():
-        step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
+        step_directory = directories.path(step_name)
         if step_directory.name in loaded_step_checklists:
             continue
         items.extend(

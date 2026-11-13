@@ -4,23 +4,22 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import StateEnum
-from chipcompiler.engine.execution import ExecutionPlan, event_sink_for_workspace, execute
+from chipcompiler.engine.execution import ExecutionPlan, ExecutionResult, execute
+from chipcompiler.engine.observers import event_sink_for_workspace
 
 
-def test_execution_plan_dispatches_full_flow_and_single_step():
+def test_execution_plan_dispatches_full_flow_and_selected_steps():
     calls = []
 
     class Flow:
-        def run_steps(self, *, rerun=False, observer: Any = None):
-            calls.append(("flow", rerun, observer))
+        def run_steps(self, *, rerun=False, observer: Any = None, steps=None):
+            calls.append(
+                (None if steps is None else [step.name for step in steps], rerun, observer)
+            )
             return True
 
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
-
-        def run_step(self, step, *, rerun=False, observer: Any = None):
-            calls.append((step.name, rerun, observer))
-            return StateEnum.Success
 
     observer = object()
     flow = Flow()
@@ -28,68 +27,136 @@ def test_execution_plan_dispatches_full_flow_and_single_step():
     assert execute(flow, ExecutionPlan(intent="run"), event_sink=observer).succeeded
     step_result = execute(
         flow,
-        ExecutionPlan(intent="rerun", step_id="Floorplan"),
+        ExecutionPlan(intent="rerun", step_ids=("Floorplan", "place")),
         event_sink=observer,
     )
 
     assert step_result == step_result.__class__(
         succeeded=True,
         state=StateEnum.Success.value,
-        step_id="Floorplan",
     )
-    assert [call[:2] for call in calls] == [("flow", False), ("Floorplan", True)]
+    assert [call[:2] for call in calls] == [(None, False), (["Floorplan", "place"], True)]
     assert all(call[2].delegate is observer for call in calls)
 
 
+def test_execution_of_a_single_step_reports_its_id():
+    class Flow:
+        def run_steps(self, *, rerun=False, observer: Any = None, steps=None):
+            return True
+
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+    result = execute(
+        Flow(), ExecutionPlan(intent="rerun", step_id="Floorplan"), event_sink=object()
+    )
+
+    assert result == ExecutionResult(
+        succeeded=True, state=StateEnum.Success.value, step_id="Floorplan"
+    )
+
+
 def test_execution_observer_does_not_hide_unknown_callbacks():
-    from chipcompiler.engine.execution import ExecutionObserver
+    from chipcompiler.engine.observers import ExecutionObserver
 
     callback = "unknown_callback"
     with pytest.raises(AttributeError):
         _ = getattr(ExecutionObserver(object()), callback)
 
 
-def test_execution_plan_checks_cancel_before_each_selected_step():
-    calls = []
+def test_execution_reports_an_interruption_and_reraises():
+    events = []
 
     class Cancelled(RuntimeError):
         pass
 
-    class Observer:
-        fatal_observer = True
+    class Sink:
+        def on_execution_started(self, intent, step_ids):
+            events.append(("started", intent, step_ids))
 
-        def __init__(self):
-            self.completed = 0
-
-        def on_step_completed(self, _step, _state, _error=None):
-            self.completed += 1
-
-        def raise_if_cancelled(self):
-            if self.completed:
-                raise Cancelled
+        def on_execution_finished(self, state, error):
+            events.append(("finished", state, error))
 
     class Flow:
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
 
-        def run_step(self, step, *, rerun=False, observer: Any = None):
-            calls.append(step.name)
-            observer.on_step_completed(step, StateEnum.Success)
-            return StateEnum.Success
+        def run_steps(self, *, rerun=False, observer: Any = None, steps=None):
+            raise Cancelled("run cancelled at a step boundary")
 
     with pytest.raises(Cancelled):
         execute(
             Flow(),
-            ExecutionPlan(intent="run", step_ids=("Synthesis", "Floorplan")),
-            event_sink=Observer(),
+            ExecutionPlan(intent="rerun", step_ids=("Synthesis", "Floorplan")),
+            event_sink=Sink(),
         )
 
-    assert calls == ["Synthesis"]
+    assert events == [
+        ("started", "rerun", ("Synthesis", "Floorplan")),
+        ("finished", "interrupted", "run cancelled at a step boundary"),
+    ]
+
+
+def test_execution_of_an_unknown_step_runs_nothing_and_is_reported():
+    events = []
+
+    class Sink:
+        def on_execution_finished(self, state, error):
+            events.append((state, error))
+
+    class Flow:
+        def get_workspace_step(self, step_id):
+            return None if step_id == "nope" else SimpleNamespace(name=step_id)
+
+        def run_steps(self, **_kwargs):
+            pytest.fail("no step may run when the selection is unknown")
+
+    with pytest.raises(ValueError, match="step not found: nope"):
+        execute(
+            Flow(),
+            ExecutionPlan(intent="rerun", step_ids=("Synthesis", "nope")),
+            event_sink=Sink(),
+        )
+
+    assert events == [("interrupted", "step not found: nope")]
+
+
+@pytest.mark.parametrize("selected", [True, False], ids=["selection", "full flow"])
+def test_execution_reports_wave_steps_in_flow_order(selected):
+    names = ("lvs", "drc", "antennaCheck", "RCX")
+
+    class Flow:
+        workspace_steps = [SimpleNamespace(name=name) for name in names]
+        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 2, "steps": []}))
+
+        def get_workspace_step(self, step_id):
+            return SimpleNamespace(name=step_id)
+
+        def run_steps(self, *, rerun=False, observer: Any = None, steps=None):
+            # Steps of a parallel wave complete in any order.
+            for name, state in [
+                ("RCX", StateEnum.Imcomplete),
+                ("antennaCheck", StateEnum.Success),
+                ("drc", StateEnum.Invalid),
+                ("lvs", StateEnum.Success),
+            ]:
+                observer.on_step_completed(SimpleNamespace(name=name), state)
+            return False
+
+    plan = ExecutionPlan(intent="rerun", step_ids=names if selected else ())
+    result = execute(Flow(), plan, event_sink=object())
+
+    assert result == ExecutionResult(
+        succeeded=False,
+        state=StateEnum.Imcomplete.value,
+        executed_steps=("lvs", "antennaCheck"),
+        failed_step="drc",
+    )
 
 
 def test_execution_failure_keeps_main_blocking_semantics():
     class Flow:
-        workspace = SimpleNamespace(flow=SimpleNamespace(data={"steps": []}))
+        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 2, "steps": []}))
 
         def run_steps(self, *, rerun=False, observer: Any = None):
             return False
@@ -113,63 +180,8 @@ def test_successful_flow_with_advisory_failure_has_no_blocking_failed_step():
     assert result.executed_steps == ("Harden",)
 
 
-@pytest.mark.parametrize("advisory_step", ["antennaCheck", "emir"])
-@pytest.mark.parametrize("raw_state", [False, True])
-def test_selected_flow_continues_after_incomplete_advisory(advisory_step, raw_state):
-    calls = []
-
-    class Flow:
-        def get_workspace_step(self, step_id):
-            return SimpleNamespace(name=step_id)
-
-        def run_step(self, step, *, rerun=False, observer: Any = None):
-            calls.append(step.name)
-            state = StateEnum.Imcomplete if step.name == advisory_step else StateEnum.Success
-            observer.on_step_completed(step, state)
-            return state.value if raw_state else state
-
-    result = execute(
-        Flow(),
-        ExecutionPlan(intent="rerun", step_ids=(advisory_step, "Harden")),
-        event_sink=object(),
-    )
-
-    assert calls == [advisory_step, "Harden"]
-    assert result.succeeded
-    assert result.failed_step is None
-    assert result.executed_steps == ("Harden",)
-
-
-@pytest.mark.parametrize(
-    ("step_name", "state"),
-    [("drc", StateEnum.Imcomplete), ("emir", StateEnum.Invalid)],
-)
-def test_selected_flow_still_stops_on_blocking_failure(step_name, state):
-    calls = []
-
-    class Flow:
-        def get_workspace_step(self, step_id):
-            return SimpleNamespace(name=step_id)
-
-        def run_step(self, step, *, rerun=False, observer: Any = None):
-            calls.append(step.name)
-            step_state = StateEnum.Imcomplete if step.name == "antennaCheck" else state
-            observer.on_step_completed(step, step_state)
-            return step_state
-
-    result = execute(
-        Flow(),
-        ExecutionPlan(intent="rerun", step_ids=("antennaCheck", step_name, "Harden")),
-        event_sink=object(),
-    )
-
-    assert calls == ["antennaCheck", step_name]
-    assert not result.succeeded
-    assert result.failed_step == step_name
-
-
 def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_path):
-    from chipcompiler.engine import execution
+    from chipcompiler.engine import execution, observers
 
     committed = []
 
@@ -181,7 +193,7 @@ def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_pat
             return True
 
     monkeypatch.setattr(
-        execution,
+        observers,
         "_EngineeringCommitSink",
         lambda workspace: SimpleNamespace(
             snapshot={"workspaceId": "workspace-1", "workspaceRevision": 1},
@@ -200,7 +212,9 @@ def test_execution_reports_ordered_steps_and_completed_default_is_noop():
 
     class Flow:
         workspace = SimpleNamespace(
-            flow=SimpleNamespace(data={"steps": [{"name": "synthesis", "state": "Success"}]})
+            flow=SimpleNamespace(
+                data={"schema_version": 2, "steps": [{"name": "synthesis", "state": "Success"}]}
+            )
         )
 
         def run_steps(self, **_kwargs):

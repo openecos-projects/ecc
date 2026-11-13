@@ -23,69 +23,24 @@ from typing import Any
 MANIFEST_FILENAME = "project.json"
 CONFIG_FILENAME = "ecc.toml"
 
-# GUI display names for the canonical rtl2gds chain.
-MANIFEST_FLOW_STEPS = (
-    "Synth",
-    "LEC",
-    "PreFloorplan",
-    "MacroPlacement",
-    "PostFloorplan",
-    "Preplace",
-    "Place",
-    "DiffOpt",
-    "DiffBuffering",
-    "DiffSizing",
-    "CTS",
-    "Legal",
-    "TimingOpt",
-    "Route",
-    "Filler",
-    "RCX",
-    "STA",
-    "PowerAnalysis",
-    "LVS",
-    "PostRouteLEC",
-    "DRC",
-    "AntennaCheck",
-    "EMIR",
-    "Harden",
-)
-
-# ``Floor`` was the public manifest value before floorplanning was split into
-# pre/macro/post stages.  Read it as the completed handoff stage so old ranges
-# keep their original start/end meaning without rewriting project.json.
-# ``Timing Opt``/``Post-route LEC``/``Power Analysis`` are the Studio display
-# spellings the GUI sends on workspace registration; accept them so a manifest
-# carrying display names still loads (entries self-heal to canonical spellings
-# on next write).
-_MANIFEST_STEP_ALIASES = {
-    "Floor": "PostFloorplan",
-    "Timing Opt": "TimingOpt",
-    "Post-route LEC": "PostRouteLEC",
-    "Power Analysis": "PowerAnalysis",
-}
-
 PRESET_MANIFEST_RANGE = {
     "syn_sta": ("Synth", "Synth"),
     "rtl2gds": ("Synth", "Harden"),
     "synthesis_lec": ("Synth", "LEC"),
-    # Legacy presets removed from the builder; keep resolving them so
-    # persisted projects still load.
-    "rcx": ("Synth", "STA"),
-    "harden": ("Synth", "Harden"),
 }
 
+#: project.json (GUI) display name of each canonical rtl2gds step, in the
+#: manifest's range order: after RCX it orders the signoff checks differently
+#: from the canonical chain, and persisted ranges are validated in this order.
 _CANONICAL_TO_MANIFEST_STEP = {
     "Synthesis": "Synth",
     "lec": "LEC",
     "preFloorplan": "PreFloorplan",
     "macroPlacement": "MacroPlacement",
     "postFloorplan": "PostFloorplan",
-    "Floorplan": "PostFloorplan",
     "preplace": "Preplace",
     "place": "Place",
     "diff_opt": "DiffOpt",
-    "diff_buffering": "DiffBuffering",
     "diff_sizing": "DiffSizing",
     "CTS": "CTS",
     "legalization": "Legal",
@@ -95,22 +50,40 @@ _CANONICAL_TO_MANIFEST_STEP = {
     "RCX": "RCX",
     "sta": "STA",
     "powerAnalysis": "PowerAnalysis",
-    "emir": "EMIR",
     "lvs": "LVS",
     "postRouteLec": "PostRouteLEC",
     "drc": "DRC",
     "antennaCheck": "AntennaCheck",
+    "emir": "EMIR",
     "Harden": "Harden",
 }
+
+# GUI display names for the canonical rtl2gds chain, in manifest range order.
+MANIFEST_FLOW_STEPS = tuple(_CANONICAL_TO_MANIFEST_STEP.values())
+
+
+def manifest_step_name(name: str) -> str:
+    """The project.json (GUI) name of a ledger step.
+
+    ``lec`` is no chain step any more, but project.json and the GUI still call
+    the synthesis LEC ``LEC``: ``lec@Synthesis`` maps to it. Another inserted
+    LEC maps to the step it follows; any other unknown name is kept.
+    """
+    from chipcompiler.rtl2gds import parse_inserted_step
+
+    parsed = parse_inserted_step(name)
+    if parsed is not None:
+        kind, after = parsed
+        name = kind if after == "Synthesis" else after
+    return _CANONICAL_TO_MANIFEST_STEP.get(name, name)
+
 
 # Display name -> canonical step value, for skip-policy boundary checks.
 _MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
 
 
 def validate_manifest_range(start_step: str, end_step: str) -> tuple[str, str]:
-    """Alias-resolve and validate a persisted start/end range."""
-    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
-    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
+    """Validate a persisted start/end range in the current manifest vocabulary."""
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
         if step_name not in MANIFEST_FLOW_STEPS:
             raise ManifestError(f"{field_name} is not on the canonical flow chain: {step_name}")
@@ -499,8 +472,8 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
     DECLARED project source spellings preserved: ``rtl_list`` verbatim,
     and ``origin_verilog`` when the single source is plain RTL (empty for
     a filelist source; the document builder drops empty keys). Parameters
-    are the GUI-flat projection. Shared by virgin generation and first
-    migration so the two writers cannot drift.
+    are the GUI-flat projection. Shared by every manifest writer so their
+    generated documents cannot drift.
     """
     from chipcompiler.utility.filelist import FILELIST_SUFFIXES
 

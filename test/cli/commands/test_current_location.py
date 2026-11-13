@@ -6,6 +6,7 @@ from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, StatusInput
 from chipcompiler.cli.core.invocation import apply_location_defaults, build_context
 from chipcompiler.cli.core.types import CommandResult
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
@@ -17,7 +18,19 @@ def location_project(tmp_path, manifest_stubs):
     for root in (current, other):
         (root / "home").mkdir(parents=True)
         (root / "home" / "flow.json").write_text(
-            json.dumps({"steps": [{"name": "drc", "tool": "ecc", "state": "Success"}]})
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "steps": [
+                        {
+                            "name": "drc",
+                            "tool": "ecc",
+                            "state": "Success",
+                            **step_fields("drc", "ecc"),
+                        }
+                    ],
+                }
+            )
         )
     entry = manifest_stubs.entry(project, "registered_alias")
     entry["workspace_path"] = str(current)
@@ -129,7 +142,7 @@ def test_external_workspace_can_be_inferred_with_explicit_project(
 def test_standalone_workspace_defaults_to_current_absolute_path(tmp_path, monkeypatch, capsys):
     current = tmp_path / "standalone"
     (current / "home").mkdir(parents=True)
-    (current / "home" / "flow.json").write_text('{"steps":[]}')
+    (current / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
     monkeypatch.chdir(current)
 
     assert cli_main.run(["status", "--json"]) == 0
@@ -175,7 +188,7 @@ def test_legacy_workspace_uses_exact_current_path(tmp_path, create_cli_project, 
     project = Path(create_cli_project())
     current = project / "runs" / "trial"
     (current / "home").mkdir(parents=True)
-    (current / "home" / "flow.json").write_text('{"steps":[]}')
+    (current / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
     monkeypatch.chdir(current)
 
     ctx = build_context(_input())

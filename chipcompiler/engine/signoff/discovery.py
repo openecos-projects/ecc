@@ -10,8 +10,14 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data import (
+    SkippableStepEnum,
+    StepEnum,
+    Workspace,
+    WorkspaceStep,
+    default_flow_step_category,
+)
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 
 
@@ -101,7 +107,7 @@ class CollectorDiscoveryMixin:
             (StepEnum.HARDEN.value, "_Harden.gds"),
             (StepEnum.FILLER.value, "_filler.v.gz"),
         ):
-            pattern = f"{STEP_DIRECTORIES[step_name]}/output/*{suffix}"
+            pattern = f"{StepDirectories.at(workspace_dir).name(step_name)}/output/*{suffix}"
             matches = sorted(workspace_dir.glob(pattern))
             if matches:
                 name = matches[0].name
@@ -111,8 +117,15 @@ class CollectorDiscoveryMixin:
 
     def _synthesis_output_verilog(self) -> Path | None:
         """Resolve the netlist from the Yosys step's declared output contract."""
+        synthesis_name = StepEnum.SYNTHESIS.value
         synthesis_step = self._build_workspace_step(
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": ""},
+            FlowStepEntry(
+                name=synthesis_name,
+                tool="yosys",
+                state="",
+                category=default_flow_step_category(synthesis_name).value,
+                directory=StepDirectories.of(self.workspace).name(synthesis_name),
+            ),
             input_source=None,
         )
         output = getattr(synthesis_step, "output", None)

@@ -1,12 +1,23 @@
 import pytest
 
 from chipcompiler.cli.experiments.candidate_evidence import candidate_evidence
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
 def evidence():
     return {
-        "flow": {"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]},
+        "flow": {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("sta", "ecc"),
+                }
+            ],
+        },
         "checklist": {
             "status": "ready",
             "checklist": [{"id": "sta.setup", "step": "sta", "state": "pass", "blocked": False}],

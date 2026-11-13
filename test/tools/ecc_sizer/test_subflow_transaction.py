@@ -8,10 +8,13 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
-from chipcompiler.data.schema_migrations import SCHEMA_VERSION_FIELD
+from chipcompiler.data.schema_versions import SCHEMA_VERSION_FIELD
 from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
+from chipcompiler.engine.rerun import _reset_output_dir
 from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 from chipcompiler.tools.ecc_sizer import subflow as sizer_subflow
+from chipcompiler.tools.subflow import stage_template
+from test.flow_fixture import step_fields
 
 
 def _workspace(tmp_path) -> Any:
@@ -20,10 +23,21 @@ def _workspace(tmp_path) -> Any:
     assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": "Timing optimization", "tool": "sizer", "state": "Success"},
-            {"name": "route", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "Timing optimization",
+                "tool": "sizer",
+                "state": "Success",
+                **step_fields("Timing optimization", "sizer"),
+            },
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("route", "ecc"),
+            },
+        ],
     }
     return workspace
 
@@ -71,6 +85,7 @@ def test_failed_ledger_write_keeps_existing_files_and_stages(tmp_path, monkeypat
     step = _sizer_step(workspace)
     workspace.flow.path.write_text(json.dumps(workspace.flow.data, indent=2), encoding="utf-8")
     old_stages = {
+        "schema_version": 2,
         "path": str(step.subflow.path),
         "steps": [{"name": "old stage", "state": "Unstart"}],
     }
@@ -87,6 +102,53 @@ def test_failed_ledger_write_keeps_existing_files_and_stages(tmp_path, monkeypat
     assert workspace.flow.data == before_ledger
     assert json.loads(step.subflow.path.read_text()) == before_subflow
     assert step.subflow.steps == before_subflow["steps"]
+
+
+def test_read_only_matching_stages_survive_output_reset_without_ledger_write(tmp_path):
+    workspace = _workspace(tmp_path)
+    step = _sizer_step(workspace)
+    stages = [stage_template(name) for name in ("run sizer", "run legalization", "save data")]
+    step.subflow.path.write_text(
+        json.dumps({"schema_version": 2, "path": str(step.subflow.path), "steps": stages}),
+        encoding="utf-8",
+    )
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    before_ledger = workspace.flow.path.read_bytes()
+    before_subflow = step.subflow.path.read_bytes()
+    workspace.flow.read_only = True
+    assert step.output.dir is not None
+
+    _reset_output_dir(step.output.dir)
+
+    assert step.subflow.path.read_bytes() == before_subflow
+    sizer_builder.build_sub_flow(workspace, step)
+    assert workspace.flow.path.read_bytes() == before_ledger
+    assert json.loads(step.subflow.path.read_text())["steps"] == stages
+
+
+@pytest.mark.parametrize("stages", [None, [stage_template("old stage")]])
+def test_read_only_missing_or_mismatched_stages_fail_without_writes(tmp_path, stages):
+    workspace = _workspace(tmp_path)
+    step = _sizer_step(workspace)
+    if stages is not None:
+        step.subflow.path.write_text(
+            json.dumps({"schema_version": 2, "path": str(step.subflow.path), "steps": stages}),
+            encoding="utf-8",
+        )
+    workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
+    before_ledger = workspace.flow.path.read_bytes()
+    before_subflow = step.subflow.path.read_bytes() if step.subflow.path.exists() else None
+    before_data = deepcopy(workspace.flow.data)
+    workspace.flow.read_only = True
+
+    with pytest.raises(RuntimeError, match="Worker cannot rebuild persisted stages"):
+        sizer_builder.build_sub_flow(workspace, step)
+
+    assert workspace.flow.path.read_bytes() == before_ledger
+    assert workspace.flow.data == before_data
+    assert (
+        step.subflow.path.read_bytes() if step.subflow.path.exists() else None
+    ) == before_subflow
 
 
 def test_failed_subflow_write_keeps_the_committed_ledger_reset(tmp_path, monkeypatch):

@@ -15,15 +15,17 @@ from chipcompiler.project import (
 from chipcompiler.project.manifest import ManifestError, load_manifest
 from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
 from chipcompiler.project.manifest_write import append_workspace_entry, write_back_workspace_status
+from test.flow_fixture import step_fields
 
 
 def _write_workspace_facts(workspace, *, steps, parameters):
     """Materialize workspace directory facts: home/flow.json + home/params.toml."""
     from chipcompiler.data.parameter import Parameters, save_parameter
+    from test.flow_fixture import current_flow_document
 
     home = workspace / "home"
     home.mkdir(parents=True, exist_ok=True)
-    (home / "flow.json").write_text(json.dumps({"steps": steps}))
+    (home / "flow.json").write_text(json.dumps(current_flow_document(steps)))
     assert save_parameter(Parameters(path=home / "params.toml", data=parameters))
 
 
@@ -50,7 +52,7 @@ def test_register_workspace_uses_main_manifest_shape(tmp_path):
     workspace = tmp_path / "experiment"
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "Synthesis", "state": "Unstart"}]})
+        json.dumps({"schema_version": 2, "steps": [{"name": "Synthesis", "state": "Unstart"}]})
     )
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
 
@@ -71,33 +73,28 @@ def test_register_workspace_uses_main_manifest_shape(tmp_path):
     assert updated["workspaces"][0]["end_step"] == "Synth"
 
 
-def test_register_workspace_canonicalizes_studio_display_step_names(tmp_path):
+def test_register_workspace_rejects_studio_display_step_names(tmp_path):
     workspace = tmp_path / "ws_rerun"
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "postRouteLec", "state": "Unstart"}]})
+        json.dumps({"schema_version": 2, "steps": [{"name": "postRouteLec", "state": "Unstart"}]})
     )
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
 
-    updated = mutate_project_manifest(
-        tmp_path,
-        {
-            "type": "register_workspace",
-            "workspace_id": "ws_rerun",
-            "workspace_path": str(workspace),
-            "start_step": "Timing Opt",
-            "end_step": "Post-route LEC",
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-        },
-    )
-
-    assert updated == load_project_manifest(tmp_path)
-    assert updated["workspaces"][0]["start_step"] == "TimingOpt"
-    assert updated["workspaces"][0]["end_step"] == "PostRouteLEC"
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        mutate_project_manifest(
+            tmp_path,
+            {
+                "type": "register_workspace",
+                "workspace_id": "ws_rerun",
+                "workspace_path": str(workspace),
+                "start_step": "Timing Opt",
+                "end_step": "Post-route LEC",
+            },
+        )
 
 
-def test_manifest_with_studio_display_step_names_still_loads(tmp_path):
+def test_manifest_with_studio_display_step_names_is_rejected(tmp_path):
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     manifest_path = tmp_path / "project.json"
     document = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -112,10 +109,8 @@ def test_manifest_with_studio_display_step_names_still_loads(tmp_path):
     )
     manifest_path.write_text(json.dumps(document), encoding="utf-8")
 
-    loaded = load_project_manifest(tmp_path)
-
-    assert loaded["workspaces"][0]["start_step"] == "PostRouteLEC"
-    assert loaded["workspaces"][0]["end_step"] == "PostRouteLEC"
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        load_project_manifest(tmp_path)
 
 
 def test_register_workspace_rejects_unknown_step_without_poisoning_manifest(tmp_path):
@@ -157,8 +152,8 @@ def test_register_workspace_resolves_emir_range_from_flow(tmp_path):
     _write_workspace_facts(
         workspace,
         steps=[
-            {"name": "powerAnalysis", "state": "Unstart"},
-            {"name": "emir", "state": "Unstart"},
+            {"name": "powerAnalysis", "tool": "ecc", "state": "Unstart"},
+            {"name": "emir", "tool": "ecc", "state": "Unstart"},
         ],
         parameters={},
     )
@@ -182,8 +177,8 @@ def test_register_workspace_resolves_antenna_range_from_flow(tmp_path):
     _write_workspace_facts(
         workspace,
         steps=[
-            {"name": "drc", "state": "Unstart"},
-            {"name": "antennaCheck", "state": "Unstart"},
+            {"name": "drc", "tool": "ecc", "state": "Unstart"},
+            {"name": "antennaCheck", "tool": "ecc", "state": "Unstart"},
         ],
         parameters={},
     )
@@ -257,30 +252,37 @@ def test_power_analysis_cannot_precede_sta_in_a_flow_range(tmp_path):
         load_project_manifest(tmp_path)
 
 
-def test_power_analysis_display_name_self_heals_to_manifest_spelling(tmp_path):
+def test_power_analysis_display_name_is_rejected(tmp_path):
     workspace = tmp_path / "ws_power"
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "powerAnalysis", "state": "Unstart"}]})
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "powerAnalysis",
+                        "tool": "ecc",
+                        "state": "Unstart",
+                        **step_fields("powerAnalysis", "ecc"),
+                    }
+                ],
+            }
+        )
     )
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
 
-    updated = mutate_project_manifest(
-        tmp_path,
-        {
-            "type": "register_workspace",
-            "workspace_id": "ws_power",
-            "workspace_path": str(workspace),
-            "start_step": "Power Analysis",
-            "end_step": "Power Analysis",
-            "created_at": "2026-02-01T00:00:00Z",
-            "updated_at": "2026-02-01T00:00:00Z",
-        },
-    )
-
-    assert updated == load_project_manifest(tmp_path)
-    assert updated["workspaces"][0]["start_step"] == "PowerAnalysis"
-    assert updated["workspaces"][0]["end_step"] == "PowerAnalysis"
+    with pytest.raises(ManifestError, match="not on the canonical flow chain"):
+        mutate_project_manifest(
+            tmp_path,
+            {
+                "type": "register_workspace",
+                "workspace_id": "ws_power",
+                "workspace_path": str(workspace),
+                "start_step": "Power Analysis",
+                "end_step": "Power Analysis",
+            },
+        )
 
 
 def test_register_workspace_allows_existing_external_workspace(tmp_path):
@@ -318,8 +320,12 @@ def test_register_workspace_allows_existing_external_workspace(tmp_path):
 def test_reregister_workspace_completes_lineage_fields(tmp_path):
     workspace = tmp_path / "ws_0009"
     (workspace / "home").mkdir(parents=True)
+    from test.flow_fixture import current_flow_document
+
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "PostFloorplan", "state": "Unstart"}]})
+        json.dumps(
+            current_flow_document([{"name": "PostFloorplan", "tool": "ecc", "state": "Unstart"}])
+        )
     )
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     registered = mutate_project_manifest(
@@ -596,7 +602,7 @@ def test_refresh_workspace_derived_fields_freezes_archived_entries(tmp_path):
 def test_select_archived_workspace_as_baseline_and_best(tmp_path):
     workspace = tmp_path / "ws_0001"
     (workspace / "home").mkdir(parents=True)
-    (workspace / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+    (workspace / "home" / "flow.json").write_text(json.dumps({"schema_version": 2, "steps": []}))
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     mutate_project_manifest(
         tmp_path,
@@ -629,7 +635,9 @@ def test_repoint_generation_pointers_follows_backup_and_keeps_unrelated(tmp_path
     backup = tmp_path / ".ws_0001.replace-backup-1"
     for directory in (workspace, other, backup):
         (directory / "home").mkdir(parents=True)
-        (directory / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+        (directory / "home" / "flow.json").write_text(
+            json.dumps({"schema_version": 2, "steps": []})
+        )
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     for workspace_id, directory in (("ws_0001", workspace), ("ws_0002", other)):
         mutate_project_manifest(
@@ -665,7 +673,7 @@ def test_repoint_generation_pointers_follows_backup_and_keeps_unrelated(tmp_path
 def test_manifest_mutation_without_timestamp_keeps_audit_timestamp(tmp_path):
     workspace = tmp_path / "experiment"
     (workspace / "home").mkdir(parents=True)
-    (workspace / "home" / "flow.json").write_text(json.dumps({"steps": []}))
+    (workspace / "home" / "flow.json").write_text(json.dumps({"schema_version": 2, "steps": []}))
     create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
     mutate_project_manifest(
         tmp_path,

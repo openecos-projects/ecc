@@ -6,16 +6,15 @@ from chipcompiler.rtl2gds import build_flow_range
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
 from chipcompiler.tools.yosys.builder import build_step as build_yosys_step
-from chipcompiler.tools.yosys_lec.builder import build_step as build_yosys_lec_step
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 
-@pytest.mark.parametrize("lec_engine", ["kepler_formal", "yosys_lec"])
 @pytest.mark.parametrize("skip", [(), ("postRouteLec",)])
 @pytest.mark.parametrize("golden_source", ["default", "design", "step"])
 @pytest.mark.parametrize("with_synthesis", [False, True])
 def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
-    tmp_path, monkeypatch, lec_engine, skip, golden_source, with_synthesis
+    tmp_path, monkeypatch, skip, golden_source, with_synthesis
 ):
     import chipcompiler.tools as tools
 
@@ -29,17 +28,27 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         ),
     )
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
-            {"name": name.value, "tool": tool, "state": state.value}
-            for name, tool, state in build_flow_range(
-                "route", "Harden", skip=skip, lec_engine=lec_engine
-            )
-        ]
+            {
+                "name": name.value,
+                "tool": tool,
+                "state": state.value,
+                **step_fields(name.value, tool),
+            }
+            for name, tool, state in build_flow_range("route", "Harden", skip=skip)
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     if with_synthesis:
         workspace.flow.data["steps"].insert(
-            0, {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"}
+            0,
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": "Unstart",
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
         )
     if golden_source != "default":
         workspace.design.golden_verilog = tmp_path / "design_golden.v"
@@ -54,7 +63,6 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         builders = {
             "ecc": build_ecc_step,
             "kepler_formal": build_kepler_step,
-            "yosys_lec": build_yosys_lec_step,
             "yosys": build_yosys_step,
         }
         result = builders[eda](
@@ -124,7 +132,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         )
 
 
-def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
+def test_loading_existing_workspace_preserves_persisted_post_route_order(tmp_path):
     names = [
         "route",
         "filler",
@@ -137,14 +145,16 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
         "Harden",
     ]
     ledger = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
                 "tool": "kepler_formal" if name == "postRouteLec" else "ecc",
                 "state": "Success",
+                **step_fields(name, "kepler_formal" if name == "postRouteLec" else "ecc"),
             }
             for name in names
-        ]
+        ],
     }
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -154,3 +164,63 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
     flow = EngineFlow(workspace=workspace)
 
     assert [step["name"] for step in flow.workspace.flow.steps()] == names
+
+
+@pytest.mark.parametrize("golden_source", ["default", "design"])
+def test_an_inserted_lec_checks_its_steps_netlist_and_stays_out_of_the_chain(
+    tmp_path, monkeypatch, golden_source
+):
+    import chipcompiler.tools as tools
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd", origin_verilog=tmp_path / "origin.v"),
+    )
+    if golden_source == "design":
+        workspace.design.golden_verilog = tmp_path / "design_golden.v"
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": str(getattr(name, "value", name)),
+                "tool": tool,
+                "state": state.value,
+                **step_fields(str(getattr(name, "value", name)), tool),
+            }
+            for name, tool, state in build_flow_range(
+                "Synthesis", "legalization", insert=("lec@CTS",)
+            )
+        ],
+    }
+    flow_path = tmp_path / "flow.json"
+    workspace.flow.path = flow_path
+    json_write(flow_path, workspace.flow.data)
+
+    def create_step(workspace, step, eda, input_def, input_verilog, input_db=None, **kwargs):
+        # Non-LEC steps only need their output paths: the ECC builder makes them.
+        builder = {"kepler_formal": build_kepler_step, "yosys": build_yosys_step}.get(
+            eda, build_ecc_step
+        )
+        return builder(
+            workspace=workspace,
+            step_name=step,
+            input_def=input_def,
+            input_verilog=input_verilog,
+            input_db=input_db,
+        )
+
+    monkeypatch.setattr(tools, "create_step", create_step)
+    flow = EngineFlow(workspace=workspace)
+    flow.create_step_workspaces()
+    steps = {step.name: step for step in flow.workspace_steps}
+
+    cts, lec = steps["CTS"], steps["lec@CTS"]
+    golden = {
+        "default": steps[StepEnum.SYNTHESIS.value].output.verilog,
+        "design": workspace.design.golden_verilog,
+    }[golden_source]
+    assert (lec.input.gate_verilog, lec.input.golden_verilog) == (cts.output.verilog, golden)
+    assert (steps["legalization"].input.def_, steps["legalization"].input.verilog) == (
+        cts.output.def_,
+        cts.output.verilog,
+    )

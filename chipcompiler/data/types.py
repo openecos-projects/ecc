@@ -4,7 +4,7 @@ Zero IO and zero chipcompiler-internal imports: this module is the
 dependency-free root of the data layer's type vocabulary.
 """
 
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from enum import StrEnum
 from typing import Final
 
@@ -41,7 +41,6 @@ class StepEnum(StepBaseEnum):
     POST_FLOORPLAN = "postFloorplan"
     PREPLACE = "preplace"
     PLACEMENT = "place"
-    DIFF_BUFFERING = "diff_buffering"
     DIFF_SIZING = "diff_sizing"
     CTS = "CTS"
     LEGALIZATION = "legalization"
@@ -59,6 +58,9 @@ class StepEnum(StepBaseEnum):
     ABSTRACT_LEF = "Abstract lef"
     HARDEN = "Harden"
     DEFVIEW = "defview"
+    #: Logic equivalence check. Not a chain step: a selection inserts it after
+    #: a design-building step (``lec@CTS``; ``[flow] insert_steps``).
+    LEC = "lec"
 
 
 class SkippableStepEnum(StepBaseEnum):
@@ -68,7 +70,6 @@ class SkippableStepEnum(StepBaseEnum):
     do without; persisted string values match the former StepEnum members.
     """
 
-    LEC = "lec"
     DIFF_OPT = "diff_opt"
     POST_ROUTE_LEC = "postRouteLec"
     TIMING_OPT = "Timing optimization"
@@ -88,19 +89,85 @@ class FlowInputSource(StrEnum):
     FILLER = "filler"
 
 
+class DesignState(StrEnum):
+    """A milestone the design database has reached.
+
+    Design states travel with the design: a step that changes the design passes
+    on every state it received and adds the ones it provides.
+    """
+
+    RTL = "rtl"
+    NETLIST = "netlist"
+    FLOORPLAN = "floorplan"
+    MACROS_PLACED = "macros_placed"
+    PDN = "pdn"
+    PLACED = "placed"
+    CLOCK_TREE = "clock_tree"
+    #: Owned by :class:`PlacementLegality`; never listed in ``provides``.
+    LEGAL = "legal"
+    ROUTED = "routed"
+    FILLED = "filled"
+
+
+class AnalysisData(StrEnum):
+    """Data a step produces beside the design database.
+
+    Once produced, it stays available to every later step in the flow.
+    """
+
+    GOLDEN_NETLIST = "golden_netlist"
+    PARASITICS = "parasitics"
+    POWER = "power"
+
+
+DesignData = DesignState | AnalysisData
+
+
+class PlacementLegality(StrEnum):
+    """What a step does to the legality of the standard-cell placement."""
+
+    #: Does not move, resize or insert placed cells.
+    UNCHANGED = "unchanged"
+    #: Moves, resizes or inserts cells without legalizing them; a legalizing
+    #: step must run before routing.
+    NEEDS_LEGALIZATION = "needs_legalization"
+    #: Leaves a legal placement.
+    LEGALIZED = "legalized"
+
+
+def _data(*items: DesignData) -> frozenset[DesignData]:
+    return frozenset(items)
+
+
 @dataclass(frozen=True)
 class FlowStepPolicy:
-    """The flow's knowledge about one step: category and input source.
+    """The flow's knowledge about one step: category, inputs and design data.
 
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
     ``input_source`` declares the default edge; an explicit ledger
     ``input_step`` still overrides it.
+
+    ``requires`` must be present for the step to run; without an item of
+    ``uses`` the step still runs but its results are degraded (for example
+    routing without a clock tree). ``provides`` is what the step adds, and
+    ``legality`` alone decides whether the placement is legal afterwards.
     """
 
     category: FlowStepCategory
     input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
+    _: KW_ONLY
+    requires: frozenset[DesignData] = frozenset()
+    uses: frozenset[DesignData] = frozenset()
+    provides: frozenset[DesignData] = frozenset()
+    legality: PlacementLegality = PlacementLegality.UNCHANGED
+
+    def __post_init__(self) -> None:
+        if DesignState.LEGAL in self.provides:
+            raise ValueError("placement legality is declared by `legality`, not `provides`")
+        if overlap := self.requires & self.uses:
+            raise ValueError(f"design data both required and optional: {sorted(overlap)}")
 
 
 # Every flow step is declared here; a step missing from this table fails the
@@ -108,40 +175,136 @@ class FlowStepPolicy:
 FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
     StepEnum.RTL2GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.INIT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.SYNTHESIS.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.SYNTHESIS.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.RTL),
+        provides=_data(DesignState.NETLIST, AnalysisData.GOLDEN_NETLIST),
+    ),
     StepEnum.FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PREPLACE.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.PLACEMENT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.DIFF_BUFFERING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.DIFF_SIZING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.CTS.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LEGALIZATION.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.ROUTING.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.FILLER.value: FlowStepPolicy(FlowStepCategory.PNR),
-    StepEnum.LVS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
-    StepEnum.DRC.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.CHECKER_BATCH),
+    StepEnum.PRE_FLOORPLAN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.NETLIST),
+        provides=_data(DesignState.FLOORPLAN),
+    ),
+    StepEnum.MACRO_PLACEMENT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        provides=_data(DesignState.MACROS_PLACED),
+    ),
+    StepEnum.POST_FLOORPLAN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        uses=_data(DesignState.MACROS_PLACED),
+        provides=_data(DesignState.PDN),
+    ),
+    StepEnum.PREPLACE.value: FlowStepPolicy(
+        FlowStepCategory.PNR, requires=_data(DesignState.FLOORPLAN)
+    ),
+    StepEnum.PLACEMENT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.FLOORPLAN),
+        provides=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    SkippableStepEnum.DIFF_OPT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    StepEnum.DIFF_SIZING.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    # Inserted clock buffers are left for the legalization step.
+    StepEnum.CTS.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        provides=_data(DesignState.CLOCK_TREE),
+        legality=PlacementLegality.NEEDS_LEGALIZATION,
+    ),
+    StepEnum.LEGALIZATION.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
+    # Routing without a clock tree runs on ideal clocks.
+    StepEnum.ROUTING.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.LEGAL),
+        uses=_data(DesignState.CLOCK_TREE),
+        provides=_data(DesignState.ROUTED),
+    ),
+    StepEnum.FILLER.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.ROUTED),
+        provides=_data(DesignState.FILLED),
+    ),
+    StepEnum.LVS.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.CHECKER_BATCH,
+        requires=_data(DesignState.FILLED),
+    ),
+    StepEnum.DRC.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.CHECKER_BATCH,
+        requires=_data(DesignState.FILLED),
+    ),
     StepEnum.ANTENNA_CHECK.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        advisory=True,
+        requires=_data(DesignState.FILLED),
     ),
     SkippableStepEnum.POST_ROUTE_LEC.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.GOLDEN_NETLIST),
     ),
-    StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.RCX.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED),
+        provides=_data(AnalysisData.PARASITICS),
+    ),
+    StepEnum.STA.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+    ),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+        provides=_data(AnalysisData.POWER),
+    ),
     StepEnum.EMIR.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        advisory=True,
+        requires=_data(DesignState.FILLED, DesignState.PDN, AnalysisData.POWER),
     ),
-    StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR, FlowInputSource.FILLER),
+    StepEnum.HARDEN.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        FlowInputSource.FILLER,
+        requires=_data(DesignState.FILLED, AnalysisData.PARASITICS),
+        uses=_data(DesignState.CLOCK_TREE),
+    ),
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.GDS.value: FlowStepPolicy(FlowStepCategory.PNR),
     StepEnum.ABSTRACT_LEF.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.LEC.value: FlowStepPolicy(FlowStepCategory.PNR),
-    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(FlowStepCategory.PNR),
+    StepEnum.LEC.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.NETLIST, AnalysisData.GOLDEN_NETLIST),
+    ),
+    # Sizing legalizes its own changes before it finishes.
+    SkippableStepEnum.TIMING_OPT.value: FlowStepPolicy(
+        FlowStepCategory.PNR,
+        requires=_data(DesignState.PLACED),
+        legality=PlacementLegality.LEGALIZED,
+    ),
     StepEnum.DEFVIEW.value: FlowStepPolicy(FlowStepCategory.PNR),
 }
 
@@ -154,11 +317,41 @@ FLOW_STEP_CATEGORIES: Final[dict[str, FlowStepCategory]] = {
 }
 
 
+#: Steps a selection may insert after other steps (``[flow] insert_steps``).
+#: An inserted step is named ``<step>@<after>`` and follows the policy of
+#: ``<step>``; only LEC is insertable, because it reads a netlist and changes
+#: nothing (see ``chipcompiler.rtl2gds.lec_insert_anchors``).
+INSERTABLE_FLOW_STEPS: Final = frozenset({StepEnum.LEC.value})
+
+#: Separates an inserted step's kind from the step it follows.
+INSERTED_STEP_MARK: Final = "@"
+
+
+def inserted_step_kind(name: str) -> str | None:
+    """The insertable step an inserted step name is a copy of (``lec`` for ``lec@CTS``).
+
+    Only a canonical inserted name counts: ``lec@`` followed by a step an LEC
+    can be inserted after (``rtl2gds.lec_insert_anchors``), so ``lec@bogus`` or
+    ``lec@filler`` is no step at all.
+    """
+    kind, mark, _after = name.partition(INSERTED_STEP_MARK)
+    if not mark or kind not in INSERTABLE_FLOW_STEPS:
+        return None
+    # The rtl2gds chain, which builds on this module, owns the anchors.
+    from chipcompiler.rtl2gds.builder import parse_inserted_step
+
+    parsed = parse_inserted_step(name)
+    return None if parsed is None else parsed[0]
+
+
 def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
-    """The registered policy for a flow step; unknown names raise."""
+    """The registered policy for a flow step; unknown names raise.
+
+    An inserted step (``lec@CTS``) has the policy of the step it copies.
+    """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
     try:
-        return FLOW_STEP_POLICIES[value]
+        return FLOW_STEP_POLICIES[inserted_step_kind(value) or value]
     except KeyError:
         raise ValueError(f"no flow policy registered for step: {value!r}") from None
 
@@ -170,13 +363,17 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
     without a policy fails loudly rather than silently inheriting PNR.
     """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
-    policy = FLOW_STEP_POLICIES.get(value)
+    policy = FLOW_STEP_POLICIES.get(inserted_step_kind(value) or value)
     return policy.category if policy is not None else FlowStepCategory.PNR
 
 
-# New flows skip synthesis LEC and placement-parasitic diff_opt by default.
-# An explicit skip list replaces this policy; existing ledgers are preserved.
-DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.LEC.value, SkippableStepEnum.DIFF_OPT.value)
+# New flows skip placement-parasitic diff_opt by default. An explicit skip
+# list replaces this policy; existing ledgers are preserved.
+DEFAULT_SKIP_STEPS: Final = (SkippableStepEnum.DIFF_OPT.value,)
+
+# Upper bound on independent analysis steps a run executes at once; the
+# project ``[flow] max_parallel_steps`` key overrides it for a run.
+DEFAULT_MAX_PARALLEL_STEPS: Final = 4
 
 
 class ToolName(StrEnum):
@@ -186,57 +383,34 @@ class ToolName(StrEnum):
     ECC = "ecc"
     DREAMPLACE = "dreamplace"
     SIZER = "sizer"
-    YOSYS_LEC = "yosys_lec"
     KEPLER_FORMAL = "kepler_formal"
-    LEC_DUAL = "lec_dual"
     # Not a flow-step tool: the layout-image backend behind save_layout_image.
     KLAYOUT = "klayout"
 
 
 class LECEngineEnum(StrEnum):
-    """Engines that can own the lec/postRouteLec steps.
+    """Engines that can own LEC steps (inserted ``lec@<step>`` and postRouteLec)."""
 
-    DUAL is a composite: it runs both physical engines on the same inputs
-    and aggregates their verdicts.
-    """
-
-    YOSYS_LEC = "yosys_lec"
     KEPLER_FORMAL = "kepler_formal"
-    DUAL = "lec_dual"
 
     @classmethod
     def from_value(cls, raw: object) -> "LECEngineEnum":
         """The LEC engine for a persisted/declared spelling.
 
-        Accepts every member value plus the ``dual`` alias (normalized to
-        ``lec_dual``); anything else raises ValueError listing the legal
-        set. Persisted and ledger strings always use the member value,
-        never the alias.
+        Anything but a member value raises ValueError listing the legal set.
         """
         if isinstance(raw, cls):
             return raw
         token = str(raw or "").strip()
-        if token == "dual":
-            return cls.DUAL
         try:
             return cls(token)
         except ValueError:
             legal = ", ".join(sorted(member.value for member in cls))
-            raise ValueError(
-                f"unknown LEC engine: {raw!r}; available engines: {legal} (or the 'dual' alias)"
-            ) from None
-
-    @property
-    def spawn_engines(self) -> tuple["LECEngineEnum", ...]:
-        """The physical engines to probe/launch (DUAL fans out)."""
-        if self is LECEngineEnum.DUAL:
-            return (LECEngineEnum.YOSYS_LEC, LECEngineEnum.KEPLER_FORMAL)
-        return (self,)
+            raise ValueError(f"unknown LEC engine: {raw!r}; available engines: {legal}") from None
 
 
-# Tool identifiers that can own the lec/postRouteLec steps. Workspaces keep
-# the engine their ledger recorded, so every LEC-aware branch (input wiring,
-# result checks, DB skips) matches this set instead of one literal.
+# Tool identifiers that can own LEC steps. Every LEC-aware branch (input
+# wiring, result checks, DB skips) matches this set instead of one literal.
 LEC_STEP_TOOLS: Final = frozenset(member.value for member in LECEngineEnum)
 
 DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL
@@ -286,8 +460,7 @@ def is_finished_step_state(state: object) -> bool:
     """Whether a persisted step state counts as done for selection and skipping.
 
     Incomplete/Invalid steps are unfinished: resume and rerun selectors
-    re-execute them. A legacy ``Warning`` state (removed terminal state for
-    the synthesis LEC) is not finished and is normalized to Unstart on
-    resume.
+    re-execute them. The removed ``Warning`` state is rejected before rerun
+    rather than normalized.
     """
     return state in FINISHED_STEP_STATES

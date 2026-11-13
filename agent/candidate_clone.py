@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from chipcompiler.data.step.directories import is_step_directory_name
+
 from .runtime_support import AgentApplicationError as RuntimeApiError
 
 _ARTIFACT_DIR_NAMES = frozenset({"output", "data", "feature", "analysis", "report", "log"})
@@ -21,7 +23,14 @@ def candidate_clone_ignore(source_root: Path, target_step: str | None):
                 continue
             name, tool = step.get("name"), step.get("tool")
             rerun = rerun or name == target_step
-            if rerun and isinstance(name, str) and isinstance(tool, str):
+            if not rerun:
+                continue
+            # The directory the ledger records (``09_CTS_ecc``), else the
+            # legacy unindexed names.
+            directory = step.get("directory")
+            if isinstance(directory, str) and is_step_directory_name(directory):
+                skipped_step_roots.add(source_root / directory)
+            if isinstance(name, str) and isinstance(tool, str):
                 skipped_step_roots.add(source_root / f"{name}_{tool}")
                 skipped_step_roots.add(source_root / f"{'_'.join(name.split()).lower()}_{tool}")
 

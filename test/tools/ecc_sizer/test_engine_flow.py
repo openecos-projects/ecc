@@ -6,6 +6,7 @@ from typing import Any
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
 from chipcompiler.data.workspace.flow_types import FlowDocument
+from test.flow_fixture import step_fields
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
@@ -67,18 +68,21 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     # Preferred order is legalization then Timing Opt; a trailing extra
     # legalize sibling after Timing Opt is still a valid cached-DB boundary.
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             },
             {
                 "name": StepEnum.LEGALIZATION.value,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.LEGALIZATION.value, "ecc"),
             },
-        ]
+        ],
     }
 
     sizer_step = EccStep(
@@ -113,20 +117,17 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     engine_flow.workspace_steps = [sizer_step, post_sizer_step]
     monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
 
-    init_seen = []
+    worker_db_seen = []
     run_seen = []
 
-    def fake_init_db_engine():
-        current_db = engine_flow.engine_db
-        init_seen.append(None if current_db is None else current_db.engine)
-        if current_db is None:
-            assert pre_sizer_db_closed == [True]
-            monkeypatch.setattr(
-                engine_flow,
-                "engine_db",
-                SimpleNamespace(engine="post-sizer-db", has_init=lambda: True),
-            )
-        return True
+    def fake_worker_db(workspace):
+        assert pre_sizer_db_closed == [True]
+        worker_db_seen.append("post-sizer-db")
+        return SimpleNamespace(
+            engine="post-sizer-db",
+            initialization_error=None,
+            create_db_engine=lambda step: True,
+        )
 
     def fake_tool_run(workspace, step, ecc_module):
         del workspace
@@ -144,13 +145,13 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
                 file.write("\n")
         return True
 
-    monkeypatch.setattr(engine_flow, "init_db_engine", fake_init_db_engine)
+    monkeypatch.setattr("chipcompiler.engine.flow.EngineDB", fake_worker_db)
     monkeypatch.setattr(tools_api, "run_step", fake_tool_run)
     monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
 
     assert engine_flow.run_steps() is True
-    assert init_seen == ["pre-sizer-db", None]
+    assert worker_db_seen == ["post-sizer-db"]
     assert pre_sizer_db_closed == [True]
     assert run_seen == [("sizer", "pre-sizer-db"), ("ecc", "post-sizer-db")]
 
@@ -163,13 +164,15 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             }
-        ]
+        ],
     }
     sizer_step = EccStep(
         name=SkippableStepEnum.TIMING_OPT.value,
@@ -193,7 +196,6 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace_steps = [sizer_step]
     monkeypatch.setattr(engine_flow, "engine_db", CloseableDb())
-    monkeypatch.setattr(engine_flow, "init_db_engine", lambda: True)
     monkeypatch.setattr(tools_api, "run_step", lambda **kwargs: False)
     monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
@@ -212,18 +214,21 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     workspace.flow.path = Path(workspace.directory) / "home" / "flow.json"
     workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
     flow_data: FlowDocument = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
                 "tool": "sizer",
                 "state": StateEnum.Success.value,
+                **step_fields(SkippableStepEnum.TIMING_OPT.value, "sizer"),
             },
             {
                 "name": StepEnum.ROUTING.value,
                 "tool": "ecc",
                 "state": StateEnum.Success.value,
+                **step_fields(StepEnum.ROUTING.value, "ecc"),
             },
-        ]
+        ],
     }
     workspace.flow.path.write_text(json.dumps(flow_data), encoding="utf-8")
     workspace.flow.data = flow_data
@@ -244,6 +249,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     step.subflow.path.write_text(
         json.dumps(
             {
+                "schema_version": 2,
                 "path": str(step.subflow.path),
                 "steps": [
                     {

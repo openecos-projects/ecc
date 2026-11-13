@@ -5,6 +5,8 @@ import shlex
 
 import pytest
 
+from test.flow_fixture import current_flow_document
+
 
 def parse_plain_records(out: str) -> list[dict[str, str]]:
     """Parse `--plain` output (one key=value record per line) into dicts.
@@ -87,7 +89,7 @@ def create_flow_json(run_dir, steps=None, profile="inspect"):
     if steps is None:
         steps = FLOW_JSON_DEFAULTS[profile]
     with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump(current_flow_document(steps), f)
 
 
 def create_step_dir(run_dir, step_name, tool, subdirs=None, files=None):
@@ -250,5 +252,26 @@ def set_flow_run_fixture():
 def mock_pdk_validation_fixture(monkeypatch):
     def factory():
         mock_pdk_validation(monkeypatch)
+
+    return factory
+
+
+@pytest.fixture(name="scripted_terminal")
+def scripted_terminal_fixture(monkeypatch):
+    """Run the interactive editors in a terminal session typing the given keys, one read each."""
+    from contextlib import contextmanager
+
+    def factory(keys):
+        scripted = iter(keys)
+
+        @contextmanager
+        def scripted_keys():
+            yield lambda: next(scripted)
+
+        monkeypatch.setenv("TERM", "xterm-256color")
+        monkeypatch.setattr(
+            "chipcompiler.cli.interactive.terminal.interactive_terminal", lambda: True
+        )
+        monkeypatch.setattr("chipcompiler.cli.interactive.terminal.terminal_keys", scripted_keys)
 
     return factory

@@ -26,7 +26,7 @@ AI 大模型负责 spec、搜索范围、取舍、候选生成和阶段筛选，
 | 对 fresh workspace 设置候选参数 | 支持 | `ecc run --set KEY=VALUE` |
 | 对已有候选原地小步迭代 | 支持 | workspace scope 的 param set/apply；重跑被失效的后缀 |
 | 完整 RTL-to-GDS 执行、单步与范围重跑 | 支持 | run/preset/resume/from/to/only/force |
-| rtl2gds 前段 PNR 的分阶段 DSE | 用户/AI 编排 | 通过公开 workspace 派生与区间执行命令完成；详见 §17 |
+| rtl2gds 前段 PNR 的分阶段 DSE | 用户/AI 编排 | 通过公开 workspace fork 与区间执行命令完成；详见 §17 |
 | 获取阶段指标、时序/违例与总体 QoR | 支持 | report step、report qor、report project、signoff check |
 | 小规模确定性网格搜索 | 支持 | sweep create/run/verify/compare |
 | 排序、矩阵导出、记录选中候选 | 支持 | explore rank/export/promote |
@@ -199,7 +199,7 @@ AI 按阶段与预算选点；参数范围仍须经过当前 schema 和物理容
 预算耗尽或目标未达时如实总结，不自动再增加复验次数。
 
 spec 的 required_checkers 是独立验收要求，不会自动开启被 flow 默认 skip 的检查。
-若要求综合级 LEC，还需核对 flow 是否实际包含/启用及公开配置是否足够；
+若要求综合级 LEC，还需核对 flow 是否实际插入了它（`[flow] insert_steps` 中的 `lec@Synthesis`）及公开配置是否足够；
 无法通过当前接口满足时报告能力缺口，不能把“已声明”当成“已验证”。
 postRouteLec 要检查真实 proven 证据，不能仅看该步骤执行 success。
 signoff profile 也不能替代用户要求的 checker、全部 checklist 和额外物理验收。
@@ -425,7 +425,7 @@ die_size 模式下改变 core_util 可能不是控制尺寸的有效途径，应
 **推荐组合：先 AI 大模型诊断与单变量试验，再小 sweep 验证局部区域，最后 fresh 完整复验。**
 不用把十个参数同时做笛卡尔积；每轮增加一个有证据支持的参数组。
 
-前段 PNR 是这一策略的低成本入口：可用 `workspace derive --from` 保留有效前缀，
+前段 PNR 是这一策略的低成本入口：可用 `workspace fork --from` 保留有效前缀，
 再用 `run --from --to` 控制检查点。现有 sweep 没有范围选项，不能直接充当分阶段 DSE 调度器；
 早期阶段排名也不能依赖完整 QoR。具体复用条件、指标和命令见 §17。
 
@@ -814,7 +814,7 @@ signoff export 是另一套交付检查和设计产物打包；缺必需证据�
 
 ### 17.1 能支持到什么程度
 
-用户或 AI 通过公开 workspace 派生与区间执行命令，管理候选生成、目标、搜索空间、预算与逐级筛选。
+用户或 AI 通过公开 workspace fork 与区间执行命令，管理候选生成、目标、搜索空间、预算与逐级筛选。
 
 这里的 DSE（Design Space Exploration，设计空间探索）是在固定设计规格下，探索
 floorplan、placement、CTS 等参数组合，比较面积、互连、拥塞与时钟树质量，逐步缩小候选集合。
@@ -824,28 +824,28 @@ floorplan、placement、CTS 等参数组合，比较面积、互连、拥塞与�
 | --- | --- | --- |
 | fresh workspace 的 `run --from A --to B --set …` | 已有 | 创建独立候选，只执行指定范围 |
 | `workspace create --from A --to B --set …` | 已有 | 将创建与执行分开，先登记候选，再运行 |
-| `workspace derive SOURCE TARGET --from STEP` | 已有 | 保留指定步骤之前的状态/产物，重置该步骤及其后缀 |
+| `workspace fork SOURCE TARGET --from STEP` | 已有 | 保留指定步骤之前的状态/产物，重置该步骤及其后缀 |
 | workspace scope 的 `param set/apply` | 已有 | 修改分叉候选的参数，重生成配置并失效受影响后缀 |
 | `report step` 的 feature/analysis/checklist/outputs | 已有 | 收集阶段指标、执行证据与中间 DEF/Verilog |
 | `report snapshot`、同 workspace 的 `compare run` | 已有 | 固定检查点证据，核对原地迭代前后变化 |
 | sweep 的 `--from/--to`、早停与逐级晋级 | 尚无 | 用 AI 大模型 + 公开 CLI 编排，不能假定 sweep 已支持 |
 | 阶段多目标/Pareto | 用户/AI 负责 | 外部比较同口径实测指标；不冒充 ECC 总体 QoR |
 
-`derive --from place` 的含义是“place 及以后重新执行”，不是“从 place 开始复制文件”。
+`fork --from place` 的含义是“place 及以后重新执行”，不是“从 place 开始复制文件”。
 当前实现复制源 workspace，再清除目标中选定后缀的状态、产物与 checklist，保留更早步骤。
 源保持不变，目标获得新工程身份与分叉登记。它不是硬链接缓存或零复制操作，需预算磁盘和复制时间。
-**不带 `--from` 的 derive 会准备整个 flow 重跑，不能节省综合/前段执行。**
+**不带 `--from` 的 fork 会准备整个 flow 重跑，不能节省综合/前段执行。**
 
-derive 要求源是受管 workspace 且已有 Engineering Snapshot；旧 workspace 没有对应证据时
+fork 要求源是受管 workspace 且已有 Engineering Snapshot；旧 workspace 没有对应证据时
 不能强行复制或补造 snapshot。先按公开兼容/迁移流程处理，或使用下文的 fresh 范围入口。
-derive 也不会证明保留前缀的有效性，调用者仍需核对输入、参数、成功状态及产物完整性。
+fork 也不会证明保留前缀的有效性，调用者仍需核对输入、参数、成功状态及产物完整性。
 
 ### 17.2 阶段边界与值得探索的变量
 
 rtl2gds 的前段常见链路是：
 
 ```text
-Synthesis → lec（按现有 skip 策略）→ preFloorplan → macroPlacement
+Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorplan → macroPlacement
 → postFloorplan → place → CTS → legalization → Timing optimization → route → …
 ```
 
@@ -912,7 +912,7 @@ power、最终多 corner setup/hold、RC、route DRC/LVS 在前段一般没有�
 ### 17.4 推荐的逐级探索流程
 
 1. **准备固定前缀。** 核对 RTL、top、综合策略、SDC、PDK、工具、完整参数与输入内容。
-   已有可信综合结果可复用；没有则生成一次。选择现有完整受管 baseline 做 derive 时，
+   已有可信综合结果可复用；没有则生成一次。选择现有完整受管 baseline 做 fork 时，
    必须明确保留哪些步骤，以及其证据为何仍有效。
 2. **floorplan 粗筛。** 先用 core_util 的三个邻近值，aspect_ratio 固定。可先跑到
    postFloorplan，排除容量/宏/产物问题，保留面积与利用率不同的可行区域。
@@ -978,14 +978,14 @@ fresh 范围的两个端点必须一起给出，允许新建范围别名；不�
 
 源 workspace 必须包含拟探索步骤，前缀成功且产物可用。源若是完整 baseline，
 其结构已有后续步骤，适合按检查点逐级运行；源若是仅到 place 的范围 workspace，
-不能假定 derive 自动增加 CTS/route。应先检查持久化目标，再采用对应的公开入口创建后段。
+不能假定 fork 自动增加 CTS/route。应先检查持久化目标，再采用对应的公开入口创建后段。
 
 **placement 候选：复用同一 floorplan。** 下例在完整受管 baseline 上分叉。
 
 ```bash
 DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
-ecc workspace derive "$DSE_SOURCE" "$DSE_CANDIDATE" \
+ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
   --project "$DSE_PROJECT" --from place --plain
 ecc param set place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
@@ -1021,7 +1021,7 @@ ecc report step CTS --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
 
 已有 workspace 的范围端点使用持久化名称，例如 `place`、`CTS`、`legalization`、
 `Timing optimization`；不要把新建范围的所有别名都套用到已有 workspace。
-CTS 变体可以从可信 placement 候选再 derive，`--from CTS`，再设置公开 CTS 参数。
+CTS 变体可以从可信 placement 候选再 fork，`--from CTS`，再设置公开 CTS 参数。
 `cts.max_fanout` 还影响自动 SDC，涉及更多依赖时必须检查 param 实际失效范围；
 不能按参数名字断言一定只重跑 CTS。
 
@@ -1031,7 +1031,7 @@ CTS 变体可以从可信 placement 候选再 derive，`--from CTS`，再设置�
 
 ### 17.7 命令方式 C：固定中间输入，新建范围候选
 
-适用于不方便 derive、需要独立物理入口，或将已选检查点提供给后续阶段的情况。
+适用于不方便 fork、需要独立物理入口，或将已选检查点提供给后续阶段的情况。
 **准备独立 DSE project，避免用 `project set` 改掉正在使用的原 RTL project 输入。**
 通过 `ecc init PATH` 和公开 project/param 命令声明与 baseline 相同的 top、时钟、频率、
 PDK/资源/override、SDC 及完整固定参数；这里不把新项目的默认值当作原基线。
@@ -1092,7 +1092,7 @@ ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
 | run_state / checklist / stage_decision | 执行状态、阶段真实检查、筛选状态与原因 |
 | cost / promotion_reason / final_result | 复制与 EDA 成本、晋级理由、最终 PPA/checker/signoff |
 
-不同 derive 候选仍是不同 workspaceId，当前 `compare run` 可能返回 different_workspace。
+不同 fork 候选仍是不同 workspaceId，当前 `compare run` 可能返回 different_workspace。
 跨候选外部台账比较按 §12 对齐内容和条件；同一 workspace 前后迭代可以用 snapshot compare。
 `report project` 可观察各候选 steps 矩阵，但早期 QoR null 不参与“当作零分”的排名。
 
@@ -1203,7 +1203,7 @@ AI 大模型需要具备 shell/文件读取能力以及当前任务的执行授�
 3. 新任务按 §3 配置/登记设计输入，运行授权功能验证、doctor/check；已有任务核对快照与有效参数。
    参数/输入/环境错误先诊断，不用无目的参数搜索修复安装或连接问题。
 4. 没有可信 baseline 时在预算内生成；保存输入摘要、完整有效参数与基线证据。
-   原 project 默认与旧 workspace 不一致时，显式携带固定项或从可信 workspace derive。
+   原 project 默认与旧 workspace 不一致时，显式携带固定项或从可信 workspace fork。
 5. 按主目标选择少量合法变量和候选；记录假设、预算和范围，使用未占用名称。
    默认串行，阶段任务用 §17 的检查点；完整 sweep 不作为前段调度器。
 6. 每个候选运行后保存退出码、日志、step/metric/checklist/signoff 证据，更新台账。
@@ -1243,7 +1243,7 @@ baseline：<已有 workspace 或允许生成一次>
 纯调优保持 RTL、SDC、频率、PDK、corners 与活动模型固定。
 按参数白名单、容差和预算开展串行实验，完整记录有效参数与来源。
 先诊断必要 blocker；每个候选保存原始指标、步骤/checklist、退出码和成本。
-前段 DSE 用范围/derive 与阶段筛选，完整调优用原始 PPA/Pareto 和实际验收。
+前段 DSE 用范围/fork 与阶段筛选，完整调优用原始 PPA/Pareto 和实际验收。
 在已授权范围内自主连续迭代，不为每轮重复询问；预算与范围不可擅自扩大。
 缺失写 UNKNOWN/null，不降低频率、移除 corner、禁用 checker 或改状态伪装改善。
 完整任务按预算 fresh 复验，前段任务明确后段未验证。

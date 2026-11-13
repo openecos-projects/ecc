@@ -1,17 +1,16 @@
 import json
-import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 
 from chipcompiler.engine import resource_observation as resources
 from chipcompiler.engine.resource_observation import ResourceObservation, start_observation
+from test.flow_fixture import step_fields
 
 
 def _process(root, pid, parent=0, *, start="100", pages=10, children=""):
@@ -26,7 +25,9 @@ def _process(root, pid, parent=0, *, start="100", pages=10, children=""):
 
 def _observer(root, monkeypatch, *, isolated=True):
     monkeypatch.setattr(resources, "_PROC", root)
-    observation = ResourceObservation(100, isolated=isolated, step="place", tool="ecc")
+    observation = ResourceObservation(
+        100, attempt_id="test-attempt", isolated=isolated, step="place", tool="ecc"
+    )
     observation.start_id = "100"
     return observation
 
@@ -91,7 +92,9 @@ def test_shared_process_scope_never_claims_step_attribution(tmp_path, monkeypatc
 
 def test_unavailable_proc_is_not_reported_as_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(resources, "_PROC", tmp_path)
-    observation = start_observation(100, isolated=True, step="route", tool="ecc")
+    observation = start_observation(
+        100, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+    )
 
     result = observation.finish()
 
@@ -107,7 +110,9 @@ def test_sampling_errors_do_not_escape(monkeypatch):
         raise PermissionError("denied")
 
     monkeypatch.setattr(resources, "_stat", denied)
-    observation = start_observation(100, isolated=True, step="sta", tool="ecc")
+    observation = start_observation(
+        100, attempt_id="test-attempt", isolated=True, step="sta", tool="ecc"
+    )
 
     assert observation.finish()["status"] == "unavailable"
 
@@ -133,7 +138,9 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
         while not ready.is_file() and time.monotonic() < deadline:
             time.sleep(0.01)
         assert ready.is_file()
-        observation = start_observation(process.pid, isolated=True, step="route", tool="ecc")
+        observation = start_observation(
+            process.pid, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+        )
         assert observation is not None
         time.sleep(0.3)
         result = observation.finish()
@@ -149,27 +156,11 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
         process.wait()
 
 
-def test_in_process_execution_persists_shared_scope(monkeypatch, tmp_path):
-    from chipcompiler.engine.step_execution import execute_tool_step
-
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
-    monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: True)
-    workspace: Any = SimpleNamespace(logger=logging.getLogger("resource-test"))
-    step: Any = SimpleNamespace(name="route", tool="ecc", log=SimpleNamespace(file=""))
-
-    engine_db: Any = SimpleNamespace(engine=None)
-    result = execute_tool_step(workspace, step, engine_db)
-
-    assert result.error is None
-    assert result.resource_observation is not None
-    assert result.resource_observation["scope"] == "shared_process_tree"
-    assert result.resource_observation["status"] in {"partial", "unavailable"}
-    json.dumps(result.resource_observation, allow_nan=False)
-
-
 def test_frozen_execution_is_explicitly_shared(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    observation = start_observation(os.getpid(), isolated=False, step="place", tool="ecc")
+    observation = start_observation(
+        os.getpid(), attempt_id="test-attempt", isolated=False, step="place", tool="ecc"
+    )
 
     result = observation.finish()
 
@@ -181,11 +172,20 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     from chipcompiler.data import EccStep, StateEnum, Workspace
     from chipcompiler.engine.flow import EngineFlow
 
-    monkeypatch.setenv("ECC_STEP_SUBPROCESS", "0")
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: False)
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
-    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    workspace.flow.data = {
+        "schema_version": 2,
+        "steps": [
+            {
+                "name": "route",
+                "tool": "ecc",
+                "state": "Unstart",
+                **step_fields("route", "ecc"),
+            }
+        ],
+    }
     assert workspace.flow.path is not None
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
@@ -203,7 +203,6 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
         first["resource_observation"]["attempt_id"] != second["resource_observation"]["attempt_id"]
     )
     assert second["state"] == StateEnum.Imcomplete.value
-    assert second["resource_observation"]["scope"] == "shared_process_tree"
     flow.clear_states()
     assert "resource_observation" not in json.loads(workspace.flow.path.read_text())["steps"][0]
 
@@ -214,14 +213,16 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "route",
                 "tool": "ecc",
                 "state": "Success",
                 "resource_observation": {"attempt_id": "previous-execution"},
+                **step_fields("route", "ecc"),
             }
-        ]
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     assert workspace.flow.path is not None
@@ -248,6 +249,7 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "route",
@@ -255,8 +257,9 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
                 "state": "Unstart",
                 "info": {},
                 "resource_observation": {"attempt_id": "previous-execution"},
+                **step_fields("route", "ecc"),
             }
-        ]
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     assert workspace.flow.path is not None

@@ -120,14 +120,9 @@ uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --ho
 
 The default timing optimization flow after placement is
 `place → diff_sizing → CTS → legalization → Timing optimization → route`.
-Set `[flow] skip_steps = ["lec"]` to insert the optional `diff_opt` step
+Set `[flow] skip_steps = []` to insert the optional `diff_opt` step
 between `place` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
-while the legacy `diff_buffering` name remains an alias for existing workspaces.
 The controller's ordered mode/flow tuple configuration is documented in
-[the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
-The legacy alias runs the same placement-parasitic controller and
-commits physical buffers, and legalizes with zero padding. Its independent
-round count, selection fraction and objective coefficients are documented in
 [the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
 `diff_sizing` remains the DreamPlace standalone GR S50 lane; `Timing optimization`
 is the separate ECC-Sizer step after CTS and legalization.
@@ -303,7 +298,7 @@ pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main(), a thin wrapper
 chipcompiler/cli/app.py           # root typer app; invoke_typer_app() owns execution and exit codes; version / gdsview / chipview are registered here
 chipcompiler/cli/commands/        # typer command definition layer (thin)
-  ├── project.py                  # registration and option declarations for init/check/run/status/log/config/migrate
+  ├── project.py                  # registration and option declarations for init/check/run/status/log/config
   ├── doctor.py                   # doctor top-level command (environment check)
   ├── param.py                    # param sub-app (list/show/set/unset/diff)
   ├── macro.py                    # macro sub-app (set/remove/show/import)
@@ -317,7 +312,7 @@ chipcompiler/cli/commands/        # typer command definition layer (thin)
   ├── chipview.py                 # open a saved geometry snapshot in Chip Viewer
   └── gds_view.py                 # open a step GDS in KLayout
 chipcompiler/cli/command_handlers/  # business logic layer (stateful / heavy)
-  ├── project.py                  # init / check / run / migrate / workspace refresh (preset resolution and environment preflight)
+  ├── project.py                  # init / check / run / workspace refresh (preset resolution and environment preflight)
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor (assembles env_probe results into records)
   ├── param.py                    # the five param subcommands (validation + TOML edits via cli/project/toml_edit.py)
@@ -344,7 +339,7 @@ chipcompiler/cli/inspection/      # read-only probing logic
   ├── step_view.py                # per-step view records for ecc report step
   ├── env_probe.py                # environment probes for doctor/run preflight (the ProbeResult model)
   └── tool_versions.py            # environment tool versions for ecc version (yosys/sizer/klayout)
-chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / workspace_location.py (canonical explicit-path validation) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / migrate*.py (legacy-layout migration) / run_*.py (workspace target resolution and dispatch)
+chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) / config_fields.py (project declaration schema for `ecc project`) / params.py (parameter registry) / toml_edit.py (surgical TOML editing) / workspace_params.py (workspace-local override records) / manifest.py (project-state classification) / manifest_write.py (project.json status write-back) / workspace_registration.py (external workspace import) / workspace_location.py (canonical explicit-path validation) / effective_config.py / pdk_root_fallback.py (PDK root env-fallback warning) / spec_drift.py (workspace_spec_drift disclosure) / design_inputs.py (`[design]` input declarations) / config_params/ (direct-config schemas) / run_*.py (workspace target resolution and dispatch)
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
 chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
@@ -377,9 +372,10 @@ Using `ecc check --project gcd --plain` as the example:
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()` (`cli/core/invocation.py`) then:
-   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve a single-segment `--workspace NAME` through the `project.json` workspaces table, while an absolute `--workspace PATH` is canonicalized as an external target and matched by path before basename-based ID resolution. One active workspace auto-selects, multiple ones require the selector, and a new run target is registered before files are created. A legacy project must migrate before `ecc run`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain`, records whether the selector was an explicit path, and carries `project_state` / `manifest_error` (`cli/core/types.py`).
+   - `build_context()`: resolves the project directory (`--project`, defaulting to cwd) → reads its sole `ecc.toml` (an unreadable file is recorded in `config_error`) → classifies the project state via `cli/project/manifest.py::classify_project()` (manifest / legacy / virgin). Manifest projects resolve a single-segment `--workspace NAME` through the `project.json` workspaces table, while an absolute `--workspace PATH` is canonicalized as an external target and matched by path before basename-based ID resolution. One active workspace auto-selects, multiple ones require the selector, and a new run target is registered before files are created. A legacy project is rejected with `legacy_workspace_unsupported`; a corrupt manifest yields `manifest_invalid`. The context derives `OutputMode` from `--plain`, records whether the selector was an explicit path, and carries `project_state` / `manifest_error` (`cli/core/types.py`).
    - Calls the handler: `handler(command_input, ctx) -> CommandResult`.
-   - After the handler, records are appended as needed (`_with_legacy_hint` / `_with_config_shadow_hint`): `run/check/status` on a legacy project carry a migration hint (pointing at `ecc migrate`); when a workspace's `home/` holds both `params.toml` and the legacy `parameters.json`, a `workspace_config_shadowed` warning is emitted (the JSON is inert).
+   - Legacy `runs/` projects are rejected with `legacy_workspace_unsupported` instead of being migrated.
+
    - Renders: `rendering/renderers.py::render_command_result()` first looks up a custom renderer in `RENDERERS[(render_key, output_mode)]`, falling back to the generic `rendering/render.py::render_result()`.
    - `raise typer.Exit(code=result.exit_code)` passes the exit code through to `invoke_typer_app`.
 4. `invoke_typer_app` runs the click command and catches the `SystemExit`
@@ -617,8 +613,8 @@ in `_PROBES`/`ALL_COMPONENTS`; `probe_environment()` guards against exceptions
 (a crashing probe counts as a fail rather than aborting the sweep).
 `probe_components_for_preset()` decides the current run-preflight scope: it
 builds the preset's step chain (skip-filtered first) and maps each step's
-tool through `_TOOL_COMPONENTS` (`ecc` → ecc-tools, `yosys`/`yosys_lec` →
-yosys, `dreamplace` → dreamplace, `sizer` → sizer), so every needed
+tool through `_TOOL_COMPONENTS` (`ecc` → ecc-tools, `yosys` → yosys,
+`kepler_formal` → kepler-formal, `dreamplace` → dreamplace, `sizer` → sizer), so every needed
 component is probed exactly once. The PDK is covered
 by configuration validation, slang is left to synthesis, and Sizer is also
 required by doctor.
@@ -689,9 +685,7 @@ required by doctor.
   operations. Filesystems such as NFS can reject those flags with `EINVAL`; in
   that case refresh performs a lock-protected three-rename exchange and leaves
   snapshot/command-ledger evidence for `project reconcile` after a crash.
-  Legacy migration similarly rechecks the destination through already-bound
-  directory descriptors before a plain rename under the migration lock. A
-  destination conflict remains fail-closed and is never silently replaced.
+  A destination conflict remains fail-closed and is never silently replaced.
 - Workspace-scoped `param set/unset/list/diff --workspace NAME` mutate
   `home/params.toml` through `cli/command_handlers/workspace_params.py`
   (records in `workspace_param_overrides`, suffix invalidation via
@@ -749,9 +743,9 @@ uv run ecc pdk show
 `ecc run --preset <name>` overrides `[flow] preset` for a single run without
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
-`rtl2gds` preset is the full synthesis-to-harden chain (20 canonical steps,
-including a synthesis-level LEC immediately after Synthesis that the default
-skip policy excludes — see [Skippable Flow Steps](#skippable-flow-steps);
+`rtl2gds` preset is the full synthesis-to-harden chain (22 canonical steps;
+LEC checks other than `postRouteLec` are inserted with `[flow] insert_steps`,
+see [Skippable Flow Steps](#skippable-flow-steps);
 Harden emits GDS + abstract LEF + timing LIB):
 
 ```bash
@@ -774,8 +768,8 @@ All physical signoff steps in this sequence, including LVS, DRC, antennaCheck,
 RCX, STA, powerAnalysis, EMIR, and Harden, load the filler output as their
 physical design input. Their own DEF, Verilog, and database snapshots are
 evidence or reports and do not become the next physical source. Post-route LEC
-is the exception: it compares the synthesis golden netlist with the filler gate
-netlist.
+is the exception: it compares the synthesis netlist (or the declared golden
+netlist) with the filler gate netlist.
 
 The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
 destroy_mj`; it does not insert diodes or repair violations. The native report is
@@ -806,11 +800,11 @@ and EM limits are invented test data, **not foundry data**. A successful CI run
 with this fixture verifies execution and data handoff only; its IR/EM numbers
 must not be used for signoff. Normal projects do not select it automatically.
 
-Four optional steps can be excluded from a workspace at creation time:
-the synthesis LEC (`lec`), placement-parasitic optimization (`diff_opt`),
-the post-route LEC (`postRouteLec`), and timing
-optimization (`Timing optimization`). Skipped steps never enter the
-workspace's execution ledger — their inputs fall through to the previous
+Any step of the rtl2gds chain can be excluded from a workspace at creation
+time, not only the three optional steps — placement-parasitic optimization
+(`diff_opt`), the post-route LEC (`postRouteLec`), and timing optimization
+(`Timing optimization`). Skipped
+steps never enter the workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
 resume/rerun semantics are unchanged, and existing ledgers are never
 re-filtered: changing the policy later cannot insert or remove steps in a
@@ -822,27 +816,122 @@ The policy is declared on two surfaces, with the common precedence
 1. `ecc.toml` → `[flow] skip_steps` (project level; an explicit
    declaration — including an empty list — wins over the workspace entry),
 2. `project.json` → `workspaces[].skip_steps` (per-workspace base layer),
-3. code default `("lec", "diff_opt")` when neither declares the key.
+3. code default `("diff_opt",)` when neither declares the key.
 
 When both surfaces declare the policy with different effective values,
 `ecc run`/`ecc check` emit a `skip_steps_shadowed` warning naming the
 winning source.
 
-Set `skip_steps = ["lec"]` to enable `diff_opt` while leaving synthesis LEC
-disabled, or `["diff_opt"]` to enable synthesis LEC alone.
-An explicit `skip_steps = []` runs every step, enabling both.
-Selecting the `synthesis_lec` preset while the
-effective policy skips `lec` is a creation-time configuration error; the
-fix is `skip_steps = []`. Entries accept the same aliases as flow ranges
-(e.g. `LEC`, `postlec`, `TimingOpt`) and are validated against the
-skippable set.
+An explicit `skip_steps = []` runs every step, `diff_opt` included.
+Entries accept the same aliases as flow ranges (e.g. `postlec`, `synth`,
+`cts`, `TimingOpt`) and are validated against the steps of the chain;
+unknown names are rejected. `lec` is no chain step any more: `resolve_skip_steps`
+drops it, so existing files that list it keep loading. project.json and the
+GUI still treat `LEC` as a skippable range step, so
+`manifest_flow.manifest_synthesis_lec` turns a workspace entry whose declared
+policy keeps `LEC` into the insertion `lec@Synthesis`, and a range bounded by
+`LEC` is bounded by Synthesis plus that insertion (`manifest_flow.entry_flow_config`;
+`manifest.manifest_step_name` maps `lec@Synthesis` back to `LEC`).
+
+Whether a selection can run is decided by step capabilities — each step's
+required design data, optional design data, and what it provides
+(`plan_flow` in `chipcompiler/data/flow_plan.py`, checked by `check_flow` in
+`chipcompiler/data/flow_check.py`):
+
+- An enabled step that lacks required design data is a configuration error;
+  `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
+  naming the disabled steps to re-enable, e.g. skipping `legalization` and
+  `Timing optimization` gives
+  `route requires legal; enable Timing optimization or legalization`.
+- A step that lacks only optional data runs with degraded results and is
+  reported as a `flow_step_degraded` warning, e.g. skipping `CTS` warns
+  `route runs with degraded results without clock_tree; enable CTS` (likewise
+  sta, powerAnalysis, Harden). Routing/STA after a skipped CTS use the
+  pre-CTS (ideal clock) timing constraints.
+- The preset's final step is the flow target and cannot be skipped (Harden
+  for `rtl2gds`, Synthesis for `syn_sta`); neither can an explicit range start
+  (`params.toml [flow] start`, `ecc run --from`, `project.json` `start_step`).
+  A preset's first step may be skipped: skipping `Synthesis`
+  enters the run at `preFloorplan` with the declared `[design] netlist`
+  (postSynthesis input mode); the entry step's inputs are checked as before.
+- Skipping a signoff checker (drc, lvs, sta) means no signoff evidence:
+  `ecc signoff check` reports that gate as `unknown`, never pass.
+
+`[flow] insert_steps` (`["lec@CTS"]`) inserts an LEC after a design-building
+step, any of `rtl2gds.lec_insert_anchors()` (`Synthesis` .. `route`). LEC
+is the only entry of `data.types.INSERTABLE_FLOW_STEPS`: it changes nothing,
+provides nothing, and `FlowInputResolver` already skips LEC records, so the
+chain after it is unchanged. Other steps are not insertable: the capability
+check (`data/flow_check.py`) never takes design data away, so a second
+netlist-changing step after `route` would pass the check while breaking the
+routing, and the tool wrappers branch on the step name. An inserted step's
+ledger name is `lec@<step>` (spaces as underscores; `rtl2gds.inserted_step_name`
+/ `parse_inserted_step`), unique per step, so every name-keyed layer (ledger,
+`req.json` upstream links, `--from/--only`, the snapshot) keeps working;
+`flow_step_policy` resolves it to the `lec` policy. The insertion is applied
+after skip filtering and after range slicing (`rtl2gds.insert_flow_steps`), on
+every ledger-building path (`build_dynamic_flow_data`, the fresh-run seed in
+`run_prepare.py`, the reconcile target, `workspace_reset`), so an inserted step
+exists exactly when its step does; `rerun._through_index` and the derived range
+keep it with its step. `EngineFlow.create_step_workspaces` wires the golden:
+`lec@Synthesis` gets the RTL Synthesis read (`tools.yosys.builder.synthesis_rtl`:
+the filelist, else the RTL file), every other inserted LEC the `postRouteLec`
+golden. `tools.kepler_formal.builder.checks_rtl` selects kepler-formal's SEC
+config (`format: sv2v`, `verification: sec`) for `lec@Synthesis`. The RTL goes in
+as `sv_design1_flist` through a generated `data/rtl.f`
+(`sec_rtl_filelist_text`): `+define+SYNTHESIS`, as Synthesis reads it, then the
+RTL file or `-F <filelist>`, so the filelist's relative sources and `+incdir+`
+resolve against its own directory, not the step directory kepler-formal runs
+in. The runner reads the RTL as is and accepts SEC's dual-rail proof wording (`No binary-defined difference was
+found.`). The `synthesis_lec` preset builds `Synthesis` + `lec@Synthesis`. It travels with `skip_steps` and
+`lec_engine` in `workspace_config.FLOW_POLICY_KEYS`, so it is part of the
+persisted flow target (`home/params.toml` `_flow`) and of the mismatch check.
+ECOS Studio does not know inserted step names yet (`flowStepRegistry.ts`
+normalizes an unknown step to `Synth`).
+
+`ecc flow status` shows the selection as a table and checks it
+(`--enable`/`--disable`/`--insert`/`--remove` try one without writing
+`ecc.toml`). Its `flow_step` records carry `stage`, `slot`, `label`,
+`parallel_with`, `after`, `needs`, `check` and `inserted` besides the step's
+capabilities; the user guide (`ecc flow status`) defines them. `ecc flow edit`
+picks the steps in a terminal checkbox list (`i` inserts an LEC; or applies
+`--enable`/`--disable`/`--insert`/`--remove` and `--max-parallel-steps N`) and,
+once confirmed (or with `--yes`), writes `[flow]` `preset`, `lec_engine`,
+`skip_steps` and `max_parallel_steps` explicitly, plus `insert_steps` when an
+LEC is inserted. Like
+`ecc param`, both read the selection from `ecc.toml`. `ecc init` writes:
 
 ```toml
 [flow]
+# preset: rtl2gds | syn_sta | synthesis_lec
 preset = "rtl2gds"
-# Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
-skip_steps = ["lec", "diff_opt"]
+# lec_engine: kepler_formal
+lec_engine = "kepler_formal"
+# Steps the run skips. `ecc flow status` lists the steps and checks a selection;
+# `ecc flow edit` picks them in a checkbox list and rewrites this section.
+skip_steps = ["diff_opt"]
 ```
+
+`[flow] max_parallel_steps` (positive integer, default
+`DEFAULT_MAX_PARALLEL_STEPS` = 4; `ecc init` does not write it) is not part of
+the selection: `ecc run` applies it to `EngineFlow.max_parallel_steps` on fresh,
+resumed and `--from` runs, as the cap on independent analysis steps of one
+stage that run at once (`1`: one at a time; the engine's memory throttle can
+lower it further). It is never stored in a workspace, so it never makes an
+existing workspace count as a different selection (the
+`workspace_flow_mismatch` check ignores it). `flow status` shows it in the `flow_status` summary and the legend,
+`ecc config` as `flow.max_parallel_steps`.
+
+In the engine, `EngineFlow.run_steps` runs every selection wave by wave through
+`chipcompiler/engine/wave.py::run_wave`, one failure policy for one worker or
+several: outcomes stay paired with their steps in flow order, a blocking
+failure or an exception stops queued steps before they start, every started
+step is waited for before an exception propagates, and Ctrl-C interrupts the
+running steps before the wave waits for them. Sibling steps share a
+`WaveObserver` (`chipcompiler/engine/observers.py`) whose callbacks run under
+the ledger lock, and `EngineFlow.run_step` persists a terminal state, publishes
+its completion (the snapshot commit) and rolls back a failed commit in one
+ledger transaction, so the ledger lock is the only lock to order.
 
 ### Reports
 
@@ -896,7 +985,8 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# Optional: skip_steps = ["lec", "diff_opt"] (default); [] runs everything
+# Optional: skip_steps = ["diff_opt"] (default); any chain step may be
+# listed (check with `ecc flow status`); [] runs everything
 ```
 
 For filelist mode, set `design.rtl` to a single filelist path, for example
@@ -931,7 +1021,8 @@ export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
 
 ### Kepler Formal (LEC engine)
 
-The `lec` and `postRouteLec` steps run the kepler-formal equivalence checker
+Every LEC step (inserted `lec@<step>` checks and `postRouteLec`) runs the
+kepler-formal equivalence checker
 (GPL-3.0, invoked as a separate process). Resolution priority in
 `chipcompiler/tools/kepler_formal/utility.py`:
 
@@ -957,63 +1048,28 @@ ecc doctor   # kepler-formal should report pass
 ECOS Studio detects a Resource Manager installation of kepler-formal and
 exports `CHIPCOMPILER_KEPLER_FORMAL_ROOT` for the ECC sidecar automatically;
 the env var above is the CLI-only equivalent. Verdict parsing relies on the
-tool's stdout evidence (`No difference was found.`); upgrading kepler-formal
-requires rerunning the LEC integration tests, because the tool exits 0 even
-for an unequal design pair.
+tool's stdout evidence (`No difference was found.`, or for SEC
+`No binary-defined difference was found.`); upgrading kepler-formal requires
+rerunning the LEC integration tests, because the tool exits 0 even for an
+unequal netlist pair.
 
-### LEC Engine Selection (`lec_engine`)
+### LEC Engine (`lec_engine`)
 
-The `lec`/`postRouteLec` steps run one of three engines, selected by the
-`[flow] lec_engine` key (ecc.toml, params.toml, or the GUI flow_config):
+kepler-formal is the only LEC engine; `[flow] lec_engine` accepts
+`kepler_formal`, its default, and stays a declared key so existing files and
+the persisted flow target keep their shape. The Yosys (`yosys_lec`) and dual
+(`lec_dual`) engines were removed: a ledger that records one of them no longer
+matches its target (`flow_mismatch`) and the workspace must be recreated.
 
-```toml
-[flow]
-preset = "rtl2gds"
-lec_engine = "yosys_lec"   # kepler_formal (default) | yosys_lec | dual
-```
-
-An absent key keeps `kepler_formal`. The `dual` spelling is an alias for
-the `lec_dual` tool id; params.toml always stores the normalized
-`lec_dual` value. Engine identity is one ledger property: a workspace
-keeps the engine its ledger recorded, and editing `lec_engine` later never
-rewrites an existing ledger (reconcile classifies engines as
-interchangeable, so a yosys_lec ledger stays compatible with a
-kepler_formal target — the recorded engine keeps owning reruns).
-Editing `lec_engine` on an existing workspace therefore never switches
-its engine; the key only takes effect at workspace creation.
-
-### Dual Cross-Checking (`lec_dual`)
-
-`lec_engine = "dual"` runs both physical engines concurrently inside the
-single LEC ledger step and merges their verdicts conservatively into
-`lec_dual/output/<design>_<step>_result.json`. The aggregate keeps the
-single-engine result contract (status, golden/gate paths and digests — so
-freshness checks and the signoff gate read it unchanged) and adds:
-
-- `engines`: per-engine status (plus the unavailable engine's reason in
-  degraded mode),
-- `agreement`: tri-state — `true`/`false` when both engines produced a
-  parseable verdict and their statuses match/differ, `null` when either
-  result is missing or unparseable.
-
-The aggregate is `proven` only when BOTH engines prove equivalence; any
-other outcome is `incomplete`. A disagreement usually means modeling
-differences, not a real bug: kepler-formal strips physical cells during
-netlist prep while yosys compares the raw netlists — start triage there.
-
-Dual is degraded-mode available: with one physical engine missing, the
-step still runs the available engine, records the missing one in
-`engines`, and reports `incomplete` + `agreement=null` — a degraded run
-never reports `proven`. Only when BOTH engines are missing does preflight
-(`ecc doctor` / `ecc run` preflight reports the `lec-dual` component with
-each engine's availability separately) fail the step before it starts.
-Both engines always run to completion (one engine's failure never kills
-the sibling — its verdict is the cross-check evidence), and prior result
-files are deleted before each run so a kill mid-run leaves no readable
-prior verdict. Dual holds both engines in memory at once; it is opt-in
-and never the default. Note: the aggregate JSON is written plainly (no
-temp-file rename) and carries no per-run identifier — both are deliberate
-deferrals, not contracts.
+`lec@Synthesis` checks the synthesized netlist against the RTL with
+kepler-formal's SEC (its SystemVerilog front end accepts RTL only for
+sequential equivalence). No reset sequence is applied. Its strength depends on
+kepler-formal: on `gcd`, SEC under the default dual-rail encoding proved three
+hand-made RTL mutations equivalent to the netlist of the correct RTL (one
+inverted the 16-bit `resp_msg` output) while catching the same inversion made
+in the netlist; `--sec-encoding binary` caught two of the three. A small
+registered design's mutations were caught. Keep that in mind before treating a
+pass as signoff evidence, and recheck when kepler-formal is upgraded.
 
 
 ### Sizer

@@ -11,10 +11,10 @@ Python 库，不是网络或 stdio 服务，也不再提供 ECC RPC 入口。
 
 - `operations.py` 仅协调候选执行，不承担 GUI Flow 生命周期。普通 GUI Flow 使用
   ECC CLI 进程目录和 Workspace `flow.json`。
-- `runtime_support.py` 只保留候选 worker 需要的少量 Engine 适配，不包含 transport。
+- `runtime_support.py` 只保留候选执行共享的少量值语义辅助，不包含 transport。
 - `workspace_api.py` 是优化调用方使用的库 facade，不再挂载 method registry/server。
-- DREAMPlace、sizer 和日志重定向具有进程全局状态，因此候选原生步骤仍在隔离
-  worker 中运行。
+- DREAMPlace、sizer 和日志重定向具有进程全局状态，因此候选原生步骤与主流程一样，
+  使用 one-shot step worker 运行。
 - 执行前继续校验 Workspace 路径、固化配置、回执和摘要。
 
 测试命令：

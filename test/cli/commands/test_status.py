@@ -1,7 +1,9 @@
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
+from test.data.handshake.helpers import answer
 
 
 class TestStatus:
@@ -211,7 +213,7 @@ class TestRunStatusStates:
         from chipcompiler.cli.inspection.discovery import get_run_status
 
         def flow(*states):
-            return {"steps": [{"state": state} for state in states]}
+            return {"schema_version": 2, "steps": [{"state": state} for state in states]}
 
         assert get_run_status(flow("Success", "Unstart")) == "partial"
         assert get_run_status(flow("Success")) == "success"
@@ -236,3 +238,37 @@ class TestRunStatusStates:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert records[0]["status"] == "partial"
+
+
+def test_status_reports_steps_built_on_a_rerun_upstream_step(
+    capsys, create_cli_project, create_flow_json
+):
+    project_dir = create_cli_project()
+    run_dir = os.path.join(project_dir, "default")
+    create_flow_json(
+        run_dir,
+        [
+            {"name": name, "tool": "ecc", "state": "Success", "directory": directory}
+            for name, directory in (
+                ("CTS", "01_CTS_ecc"),
+                ("route", "02_route_ecc"),
+                ("filler", "03_filler_ecc"),
+            )
+        ],
+    )
+    root = Path(run_dir)
+    answer(root, "01_CTS_ecc", "cts-1")
+    answer(root, "02_route_ecc", "route-1", ("01_CTS_ecc", "cts-1"))
+    answer(root, "03_filler_ecc", "filler-1", ("02_route_ecc", "route-1"))
+    answer(root, "01_CTS_ecc", "cts-2")  # CTS reran on its own
+
+    assert cli_main.run(["status", "--json", "--project", project_dir]) == 0
+    records = json.loads(capsys.readouterr().out)
+
+    assert records[0]["rerun_cmd"].startswith("ecc run --from routing")
+    assert [
+        (record["step"], record.get("stale_from")) for record in records if "step" in record
+    ] == [("cts", None), ("routing", ["01_CTS_ecc"]), ("filler", ["02_route_ecc"])]
+
+    assert cli_main.run(["status", "--project", project_dir]) == 0
+    assert "stale from: 01_CTS_ecc" in capsys.readouterr().out

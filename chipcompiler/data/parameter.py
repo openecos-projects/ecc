@@ -110,9 +110,6 @@ ICS55_DESIGN_PARAMETERS = {
         "top_module": "gcd",
         "clock": "clk",
         "frequency_max": 100,
-        "lec": {
-            "use_undef": True,
-        },
     }
 }
 
@@ -142,11 +139,7 @@ def _workspace_dir_for(path: Path) -> Path:
 
 
 def load_parameter(path: Path) -> Parameters:
-    from .workspace_config import (
-        LEGACY_PARAMETERS_FILENAME,
-        legacy_parameters_fallback,
-        load_workspace_config,
-    )
+    from .workspace_config import load_workspace_config
 
     parameter = Parameters()
     parameter.path = Path(path)
@@ -154,13 +147,7 @@ def load_parameter(path: Path) -> Parameters:
     try:
         payload = load_workspace_config(workspace_dir)
     except FileNotFoundError:
-        if parameter.path.name == LEGACY_PARAMETERS_FILENAME:
-            # An explicit legacy parameters.json read on a workspace whose
-            # TOML migration was deferred: load the JSON itself (normalized)
-            # instead of silently returning nothing.
-            parameter.data = legacy_parameters_fallback(workspace_dir)
-        else:
-            parameter.data = {}
+        parameter.data = {}
         return parameter
     flow = payload.pop("_flow", {})
     parameter.data = payload

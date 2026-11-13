@@ -149,79 +149,86 @@ mutate_json "${ws}/postRouteLec_kepler_formal/output/gcd_postRouteLec_result.jso
   '.golden_sha256 = ("0" * 64)'
 check_export "LEC stale netlist fails" "${ws}" fail
 
-# 4. LEC: cross-engine residue must not satisfy the selected engine.
+# 4. LEC: a kepler-formal result must not satisfy a ledger naming another
+#    engine (one built with the removed yosys_lec engine).
 ws="${tmp}/lec-residue"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json" \
   '(.steps[] | select(.name == "postRouteLec") | .tool) = "yosys_lec"'
 check_export "LEC cross-engine residue fails" "${ws}" fail
 
-# 5. LEC: supported yosys_lec engine passes when its own result exists.
-ws="${tmp}/lec-yosys"
-fresh_workspace "${ws}"
-mv "${ws}/postRouteLec_kepler_formal" "${ws}/postRouteLec_yosys_lec"
-mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "yosys_lec"'
-check_export "LEC yosys_lec passes" "${ws}" pass
-
-# 6. LEC: supported lec_dual engine is not hidden by directory filtering.
-ws="${tmp}/lec-dual"
-fresh_workspace "${ws}"
-mv "${ws}/postRouteLec_kepler_formal" "${ws}/postRouteLec_dual"
-mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "lec_dual"'
-check_export "LEC lec_dual passes" "${ws}" pass
-
-# 7. DRC: clean gate reported as fail -> mandatory gate fails.
+# 5. DRC: clean gate reported as fail -> mandatory gate fails.
 ws="${tmp}/drc-fail"
 fresh_workspace "${ws}"
 mutate_json "${ws}/drc_ecc/analysis/qor_summary.json" \
   '(.gates[] | select(.id == "qor.drc.clean") | .state) = "fail"'
 check_export "DRC gate fail fails" "${ws}" fail
 
-# 8. DRC: metric missing while gate claims pass -> inconsistent evidence fails.
+# 6. DRC: metric missing while gate claims pass -> inconsistent evidence fails.
 ws="${tmp}/drc-missing-metric"
 fresh_workspace "${ws}"
 mutate_json "${ws}/drc_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id != "drc_count")]'
 check_export "DRC missing metric fails" "${ws}" fail
 
-# 9. STA: a missing mandatory metric -> present=false fails.
+# 7. STA: a missing mandatory metric -> present=false fails.
 ws="${tmp}/sta-missing"
 fresh_workspace "${ws}"
 mutate_json "${ws}/sta_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id != "sta_setup_wns")]'
 check_export "STA missing metric fails" "${ws}" fail
 
-# 10. Harden: missing final artifact -> present=false fails.
+# 8. Harden: missing final artifact -> present=false fails.
 ws="${tmp}/harden-missing-artifact"
 fresh_workspace "${ws}"
 rm -f "${ws}/Harden_ecc/output/gcd_Harden.gds"
 check_export "Harden missing artifact fails" "${ws}" fail
 
-# 11. Fallback shape: no flow.json.design; design comes from params.toml.
+# 9. Fallback shape: no flow.json.design; design comes from params.toml.
 ws="${tmp}/no-flow-json"
 fresh_workspace "${ws}"
 rm -f "${ws}/home/flow.json"
 check_export "no flow.json still passes from params design" "${ws}" pass
 
-# 12. postRouteLec omitted from the ledger is not a mandatory LEC gate.
+# 10. postRouteLec omitted from the ledger is not a mandatory LEC gate.
 ws="${tmp}/lec-skipped"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "postRouteLec")]'
 check_export "postRouteLec omitted from ledger is skipped and passes" "${ws}" pass
 
-# 13. postRouteLec present but non-success must fail, never read stale residue.
+# 11. postRouteLec present but non-success must fail, never read stale residue.
 ws="${tmp}/lec-non-success"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "postRouteLec") | .state) = "Incomplete"'
 check_export "postRouteLec non-success fails despite stale result" "${ws}" fail
 
-# 14. Harden area metrics are optional; final artifacts still satisfy the gate.
+# 12. Harden area metrics are optional; final artifacts still satisfy the gate.
 ws="${tmp}/harden-optional-area"
 fresh_workspace "${ws}"
 mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
 check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
+
+# 13. Indexed step directories must populate CSV data used by the job summary.
+ws="${tmp}/indexed"
+fresh_workspace "${ws}"
+mv "${ws}/Synthesis_yosys" "${ws}/01_Synthesis_yosys"
+mv "${ws}/postFloorplan_ecc" "${ws}/04_postFloorplan_ecc"
+mv "${ws}/drc_ecc" "${ws}/14_drc_ecc"
+mv "${ws}/sta_ecc" "${ws}/18_sta_ecc"
+mv "${ws}/postRouteLec_kepler_formal" "${ws}/16_postRouteLec_kepler_formal"
+mv "${ws}/Harden_ecc" "${ws}/21_Harden_ecc"
+mutate_json "${ws}/home/flow.json" \
+  '.steps = [.steps[] | . + {directory: ({
+    "Synthesis": "01_Synthesis_yosys",
+    "postFloorplan": "04_postFloorplan_ecc",
+    "drc": "14_drc_ecc",
+    "sta": "18_sta_ecc",
+    "postRouteLec": "16_postRouteLec_kepler_formal",
+    "Harden": "21_Harden_ecc"
+  }[.name] // (.name + "_" + .tool))}]'
+check_export "indexed step directories pass" "${ws}" pass
+grep -q '^Synthesis,synthesis_cell_area,4200.0,um^2,01_Synthesis_yosys/analysis/qor_metrics.json,true$' \
+  "${ws}/out/area.csv" || fail "indexed Synthesis area is missing from the summary CSV"
 
 echo "all signoff CSV negative-path checks passed"

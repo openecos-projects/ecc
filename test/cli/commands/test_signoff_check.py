@@ -40,7 +40,7 @@ def test_flow_gate_requires_all_steps_success(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "flow.json").write_text(
-        json.dumps({"steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
+        json.dumps({"schema_version": 2, "steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
         encoding="utf-8",
     )
 
@@ -230,7 +230,9 @@ def test_sta_gate_separates_setup_and_hold(tmp_path):
 def test_flow_gate_reports_ongoing_as_fail(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Ongoing"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps({"schema_version": 2, "steps": [{"state": "Ongoing"}]}), encoding="utf-8"
+    )
 
     assert _flow_gate(tmp_path)["status"] == "fail"
 
@@ -318,7 +320,23 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "Harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "category": "PNR",
+                        "directory": "Harden_ecc",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     (home / "qor_report.json").write_text(json.dumps({"score": 90}), encoding="utf-8")
     monkeypatch.setattr(
         module,
@@ -342,3 +360,34 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     assert result.exit_code == expected_code
     assert result.records[0]["status"] == status
     assert all("status" in record for record in result.records[1:])
+
+
+@pytest.mark.parametrize(
+    ("checker", "metric_id"),
+    [
+        ("drc", "drc_count"),
+        ("lvs", "lvs_count"),
+        ("sta", "sta_setup_violation_count"),
+    ],
+)
+def test_skipped_checker_never_passes_signoff(tmp_path, checker, metric_id):
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": [checker]})
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text(json.dumps(ledger))
+    # Clean evidence left in the tree (a copied or reused directory) is not
+    # evidence of a checker this ledger does not run.
+    _write_metric(tmp_path, checker, {metric_id: 0})
+
+    result = _metric_checker_gate(tmp_path, checker, metric_id)
+
+    assert result == {
+        "source": None,
+        "violation_count": None,
+        "failed_items": [],
+        "stale": False,
+        "provisional": True,
+        "status": "unknown",
+        "reason": f"{checker}_evidence_unavailable",
+    }

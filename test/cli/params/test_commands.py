@@ -504,7 +504,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 2, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -530,7 +530,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 2, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -553,7 +553,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 2, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0

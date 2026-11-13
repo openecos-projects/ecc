@@ -94,7 +94,7 @@ def _power_workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",
-        lambda _workspace: [
+        lambda _workspace, _step: [
             {
                 "corner": "TYP",
                 "rcx_corner": "TYPICAL",
@@ -211,7 +211,7 @@ def test_power_analysis_uses_typical_signoff_item_even_when_configured_later(tmp
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",
-        lambda _workspace: [
+        lambda _workspace, _step: [
             {
                 "corner": "MAX",
                 "rcx_corner": "Cworst",

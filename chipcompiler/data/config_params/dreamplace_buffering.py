@@ -1,7 +1,6 @@
 """Controls for standalone discrete sizing and candidate buffering."""
 
 from .common import config_param
-from .dreamplace_sizing import DEFAULT_DIFF_SIZING_COEFFICIENTS
 
 SCHEMAS = (
     config_param(
@@ -44,32 +43,6 @@ SCHEMAS = (
             "ordered diff_opt tuples [action, steps, [wns, tns, slew, cap]]; "
             "uses placement parasitics only; defaults to ten S1+B1 cycles"
         ),
-    ),
-    config_param(
-        "place.diff_buffering_rounds",
-        "dreamplace",
-        ("diff_buffering_rounds",),
-        10,
-        range=(1, 1000),
-        applies="diff_buffering",
-        description="maximum discrete candidate buffering rounds after placement",
-    ),
-    config_param(
-        "place.diff_buffering_selection_fraction",
-        "dreamplace",
-        ("diff_buffering_selection_fraction",),
-        0.001,
-        range=(0, 1),
-        applies="diff_buffering",
-        description="candidate-bearing net fraction selected per buffering round; must be positive",
-    ),
-    config_param(
-        "place.diff_buffering_coefficients",
-        "dreamplace",
-        ("diff_buffering_coefficients",),
-        DEFAULT_DIFF_SIZING_COEFFICIENTS,
-        applies="diff_buffering",
-        description="standalone buffering WNS/TNS/cap/slew coefficients with outer timing weight 1",
     ),
     config_param(
         "place.buffering_candidate_strategy",

@@ -6,6 +6,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.engine.snapshot import create_engineering_snapshot
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
@@ -14,7 +15,19 @@ def saved_snapshots(tmp_path):
     (root / "home").mkdir(parents=True)
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 2,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            }
+        ),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd", "frequency_mhz": 100}),
         design=SimpleNamespace(name="gcd"),

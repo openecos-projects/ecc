@@ -1,25 +1,8 @@
 from chipcompiler.cli import main as cli_main
 
 
-def _ready_project(tmp_path, monkeypatch):
-    project = tmp_path / "project"
-    pdk = tmp_path / "pdk"
-    pdk.mkdir()
-    assert cli_main.run(["init", str(project)]) == 0
-    monkeypatch.setattr(
-        "chipcompiler.cli.project.config._validate_pdk_contents",
-        lambda name, root, overrides=None: None,
-    )
-    config = project / "ecc.toml"
-    config.write_text(
-        config.read_text(encoding="utf-8").replace('root = ""', f'root = "{pdk}"'),
-        encoding="utf-8",
-    )
-    return project
-
-
-def test_project_parameter_apply_is_atomic(tmp_path, monkeypatch):
-    project = _ready_project(tmp_path, monkeypatch)
+def test_project_parameter_apply_is_atomic(ready_project):
+    project = ready_project
 
     rc = cli_main.run(
         [
@@ -40,8 +23,8 @@ def test_project_parameter_apply_is_atomic(tmp_path, monkeypatch):
     assert "target_density = 0.65" in text
 
 
-def test_parameter_apply_rejects_conflicting_batch_without_writes(tmp_path, monkeypatch):
-    project = _ready_project(tmp_path, monkeypatch)
+def test_parameter_apply_rejects_conflicting_batch_without_writes(ready_project):
+    project = ready_project
     before = (project / "ecc.toml").read_bytes()
 
     rc = cli_main.run(

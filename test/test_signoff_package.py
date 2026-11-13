@@ -6,6 +6,7 @@ from chipcompiler.data import OriginDesign, Parameters, StateEnum, Workspace
 from chipcompiler.engine import EngineFlow
 from chipcompiler.engine.signoff import SignoffPackageOptions
 from chipcompiler.utility import file_digest
+from test.flow_fixture import step_directory, step_fields
 
 STA_REPORT_NAMES = (
     "qor_summary.rpt",
@@ -70,26 +71,76 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "home" / "flow.json",
         {
+            "schema_version": 2,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": StateEnum.Success.value},
-                {"name": "route", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "drc", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "lvs", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "filler", "tool": "ecc", "state": StateEnum.Success.value},
+                {
+                    "name": "Synthesis",
+                    "tool": "yosys",
+                    "state": StateEnum.Success.value,
+                    **step_fields("Synthesis", "yosys"),
+                },
+                {
+                    "name": "route",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("route", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("drc", "ecc"),
+                },
+                {
+                    "name": "lvs",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("lvs", "ecc"),
+                },
+                {
+                    "name": "filler",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("filler", "ecc"),
+                },
                 {
                     "name": "postRouteLec",
-                    "tool": "yosys_lec",
+                    "tool": "kepler_formal",
                     "input_step": "lvs",
                     "state": StateEnum.Success.value,
+                    **step_fields("postRouteLec", "kepler_formal"),
                 },
-                {"name": "RCX", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "sta", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "powerAnalysis", "tool": "ecc", "state": StateEnum.Success.value},
-                {"name": "Harden", "tool": "ecc", "state": StateEnum.Success.value},
+                {
+                    "name": "RCX",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("RCX", "ecc"),
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("sta", "ecc"),
+                },
+                {
+                    "name": "powerAnalysis",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("powerAnalysis", "ecc"),
+                },
+                {
+                    "name": "Harden",
+                    "tool": "ecc",
+                    "state": StateEnum.Success.value,
+                    **step_fields("Harden", "ecc"),
+                },
             ],
         },
     )
-    _write_json(workspace_dir / "home" / "checklist.json", {"checklist": []})
+    _write_json(
+        workspace_dir / "home" / "checklist.json",
+        {"schema_version": 3, "kind": "signoff_checklist", "checklist": []},
+    )
 
     _write_json(
         workspace_dir / "config" / "sta_ecc.json",
@@ -116,7 +167,10 @@ def _make_signoff_workspace(
     golden_digest: Any = file_digest(golden)
     gate_digest: Any = file_digest(gate)
     _write_json(
-        workspace_dir / "postRouteLec_yosys_lec" / "output" / f"{design}_postRouteLec_result.json",
+        workspace_dir
+        / "postRouteLec_kepler_formal"
+        / "output"
+        / f"{design}_postRouteLec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(golden),
@@ -126,20 +180,20 @@ def _make_signoff_workspace(
             "golden_size_bytes": golden_digest[1],
             "gate_size_bytes": gate_digest[1],
             "equiv_status": str(
-                workspace_dir / "postRouteLec_yosys_lec" / "report" / "equiv_status.rpt"
+                workspace_dir / "postRouteLec_kepler_formal" / "report" / "equiv_status.rpt"
             ),
             "status_report": str(
-                workspace_dir / "postRouteLec_yosys_lec" / "report" / "run_lec_status.rpt"
+                workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt"
             ),
         },
     )
     _write(
-        workspace_dir / "postRouteLec_yosys_lec" / "report" / "equiv_status.rpt",
+        workspace_dir / "postRouteLec_kepler_formal" / "report" / "equiv_status.rpt",
         "Equivalence successfully proven!\n",
     )
     _write(
-        workspace_dir / "postRouteLec_yosys_lec" / "report" / "run_lec_status.rpt",
-        "Yosys LEC completed with proven equivalence.\n",
+        workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt",
+        "LEC completed with proven equivalence.\n",
     )
 
     sta_dir = workspace_dir / "sta_ecc" / "report" / "MAX_125" / "RCworst"
@@ -361,7 +415,7 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
     golden_digest: Any = file_digest(old_golden)
     gate_digest: Any = file_digest(old_gate)
     _write_json(
-        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(old_golden),
@@ -391,7 +445,7 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
 def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
-        workspace_dir / "postRouteLec_yosys_lec" / "checklist.json",
+        workspace_dir / "postRouteLec_kepler_formal" / "checklist.json",
         {
             "schema_version": 3,
             "kind": "signoff_checklist",
@@ -404,8 +458,8 @@ def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path
                     "policy": "block",
                     "state": "failed",
                     "blocked": True,
-                    "title": "Yosys LEC result",
-                    "summary": "Yosys LEC did not prove equivalence.",
+                    "title": "LEC result",
+                    "summary": "LEC did not prove equivalence.",
                     "source": {},
                     "evidence": [],
                 }
@@ -424,7 +478,7 @@ def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path
 def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
-        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
         {"status": "incomplete"},
     )
 
@@ -460,6 +514,10 @@ def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_pat
 
 def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> None:
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
+    first_step = {
+        **first_step,
+        **step_fields(first_step["name"], first_step["tool"]),
+    }
     flow["steps"] = [
         first_step,
         *[step for step in flow["steps"] if step.get("name") != "Synthesis"],
@@ -471,7 +529,7 @@ def _bind_post_route_lec(workspace_dir: Path, golden: Path, gate: Path) -> None:
     golden_digest: Any = file_digest(golden)
     gate_digest: Any = file_digest(gate)
     _write_json(
-        workspace_dir / "postRouteLec_yosys_lec" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(golden),
@@ -692,7 +750,17 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
     (workspace_dir / "Harden_ecc" / "output" / "gcd_Harden.gds").unlink()
     _write_json(
         workspace_dir / "home" / "flow.json",
-        {"steps": [{"name": "RCX", "state": "Failed"}]},
+        {
+            "schema_version": 2,
+            "steps": [
+                {
+                    "name": "RCX",
+                    "tool": "ecc",
+                    "state": "Failed",
+                    **step_fields("RCX", "ecc"),
+                }
+            ],
+        },
     )
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False)
@@ -852,26 +920,6 @@ def test_collect_signoff_package_rewrites_absolute_filelist_entries(tmp_path):
     assert packaged_filelist == '"gcd.sv"  # top\n'
 
 
-def test_collect_signoff_package_packages_legacy_parameters_when_toml_absent(tmp_path):
-    workspace_dir = _make_signoff_workspace(tmp_path)
-    # A read-only legacy workspace whose TOML migration was deferred runs
-    # on parameters.json: the package carries the file it actually runs on.
-    (workspace_dir / "home" / "params.toml").unlink()
-    _write_json(
-        workspace_dir / "home" / "parameters.json",
-        {"design": "gcd", "top_module": "gcd", "pdk": "ics55"},
-    )
-    engine_flow = _make_engine_flow(workspace_dir)
-
-    result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
-
-    package_dir = Path(result.package_dir)
-    assert result.ok is True
-    assert (package_dir / "initial" / "parameters.json").is_file()
-    summary = json.loads((package_dir / "summary.json").read_text())
-    assert summary["initial"]["parameters"] == "initial/parameters.json"
-
-
 def test_signoff_required_qor_steps_contain_no_skippable_step():
     """The QoR required set must stay free of skippable steps: a workspace
     that skipped one would false-fail its signoff. A future skippable
@@ -881,136 +929,6 @@ def test_signoff_required_qor_steps_contain_no_skippable_step():
 
     skippable = {member.value for member in SkippableStepEnum}
     assert not (SIGNOFF_REQUIRED_QOR_STEPS & skippable)
-
-
-def _make_dual_signoff_workspace(tmp_path: Path) -> Path:
-    """A signoff workspace whose postRouteLec ledger records the dual engine."""
-    workspace_dir = _make_signoff_workspace(tmp_path)
-    design = "gcd"
-
-    flow_path = workspace_dir / "home" / "flow.json"
-    flow = json.loads(flow_path.read_text(encoding="utf-8"))
-    for step in flow["steps"]:
-        if step["name"] == "postRouteLec":
-            step["tool"] = "lec_dual"
-    flow_path.write_text(json.dumps(flow), encoding="utf-8")
-
-    yosys_result = json.loads(
-        (
-            workspace_dir
-            / "postRouteLec_yosys_lec"
-            / "output"
-            / f"{design}_postRouteLec_result.json"
-        ).read_text(encoding="utf-8")
-    )
-    contract = {
-        key: yosys_result[key]
-        for key in (
-            "status",
-            "golden_verilog",
-            "gate_verilog",
-            "golden_sha256",
-            "gate_sha256",
-            "golden_size_bytes",
-            "gate_size_bytes",
-        )
-    }
-    kepler_result = dict(contract)
-    _write_json(
-        workspace_dir
-        / "postRouteLec_kepler_formal"
-        / "output"
-        / f"{design}_postRouteLec_result.json",
-        kepler_result,
-    )
-    _write(
-        workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt",
-        "kepler-formal LEC completed with proven equivalence.\n",
-    )
-    _write_json(
-        workspace_dir / "postRouteLec_dual" / "output" / f"{design}_postRouteLec_result.json",
-        {
-            **contract,
-            "engines": {"yosys_lec": yosys_result, "kepler_formal": kepler_result},
-            "agreement": True,
-        },
-    )
-    return workspace_dir
-
-
-def test_collect_signoff_package_dual_packages_aggregate_and_engine_evidence(tmp_path):
-    workspace_dir = _make_dual_signoff_workspace(tmp_path)
-
-    result = _make_engine_flow(workspace_dir).collect_signoff_package(
-        SignoffPackageOptions(archive=True)
-    )
-
-    package_dir = Path(result.package_dir)
-    assert result.ok is True
-    # The aggregate drives the require_lec gate...
-    assert (package_dir / "final" / "reports" / "postRouteLec" / "result.json").is_file()
-    # ...plus both per-engine result JSONs and present status reports.
-    engines_dir = package_dir / "final" / "reports" / "postRouteLec" / "engines"
-    assert (engines_dir / "yosys_lec" / "result.json").is_file()
-    assert (engines_dir / "kepler_formal" / "result.json").is_file()
-    assert (engines_dir / "yosys_lec" / "report" / "run_lec_status.rpt").is_file()
-    assert (engines_dir / "kepler_formal" / "report" / "run_lec_status.rpt").is_file()
-    # The dual branch does not require single-engine report files.
-    assert not (package_dir / "final" / "reports" / "postRouteLec" / "report").exists()
-
-    summary = json.loads((package_dir / "summary.json").read_text())
-    assert summary["lec"]["status"] == "proven"
-    # The summary advertises only paths the dual branch actually packages:
-    # per-engine links, never the single-engine report leaves.
-    assert "equiv_status" not in summary["lec"]
-    assert "status_report" not in summary["lec"]
-    engines_root = "final/reports/postRouteLec/engines"
-    assert summary["lec"]["engines"] == {
-        "yosys_lec": {
-            "result": f"{engines_root}/yosys_lec/result.json",
-            "status_report": f"{engines_root}/yosys_lec/report/run_lec_status.rpt",
-        },
-        "kepler_formal": {
-            "result": f"{engines_root}/kepler_formal/result.json",
-            "status_report": f"{engines_root}/kepler_formal/report/run_lec_status.rpt",
-        },
-    }
-    copied_roles = {entry["role"] for entry in result.copied}
-    assert "lec.result" in copied_roles
-    assert "lec.yosys_lec.result" in copied_roles
-    assert "lec.kepler_formal.status_report" in copied_roles
-
-
-def test_collect_signoff_package_dual_absent_engine_status_report_is_not_fatal(tmp_path):
-    workspace_dir = _make_dual_signoff_workspace(tmp_path)
-    (workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt").unlink()
-
-    result = _make_engine_flow(workspace_dir).collect_signoff_package(
-        SignoffPackageOptions(archive=False, materialize=False)
-    )
-
-    assert result.ok is True
-    assert any(
-        issue.destination
-        == "final/reports/postRouteLec/engines/kepler_formal/report/run_lec_status.rpt"
-        and not issue.required
-        for issue in result.issues
-    )
-
-
-def test_collect_signoff_package_dual_without_aggregate_fails_the_gate(tmp_path):
-    workspace_dir = _make_dual_signoff_workspace(tmp_path)
-    (workspace_dir / "postRouteLec_dual" / "output" / "gcd_postRouteLec_result.json").unlink()
-
-    result = _make_engine_flow(workspace_dir).collect_signoff_package(
-        SignoffPackageOptions(archive=False, materialize=False)
-    )
-
-    assert result.ok is False
-    assert any(
-        issue.destination == "final/reports/postRouteLec/result.json" and issue.required
-        for issue in result.issues
-    )
 
 
 def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
@@ -1033,14 +951,16 @@ def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
     assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": "postRouteLec",
                 "tool": "kepler_formal",
                 "state": "Success",
                 "category": "CHECKER",
+                **step_directory("postRouteLec", "kepler_formal"),
             }
-        ]
+        ],
     }
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
     engine_flow = EngineFlow(workspace)

@@ -127,7 +127,7 @@ Current implementation status:
 | --- | --- |
 | `ecc init` | `--plain` |
 | `ecc check`, `ecc doctor` | `--plain` |
-| `ecc run`, `ecc status`, `ecc log`, `ecc config`, `ecc migrate` | `--plain` |
+| `ecc run`, `ecc status`, `ecc log`, `ecc config` | `--plain` |
 | `ecc param list/show/set/unset/diff` | `--plain` |
 | `ecc pdk set-root/show/unset` | `--plain` |
 | `ecc project set/unset/add/remove/show/doctor` | `--plain` |
@@ -204,7 +204,6 @@ ecc run
 ecc status
 ecc log
 ecc config
-ecc migrate
 ecc param
 ecc macro
 ecc pdk
@@ -231,7 +230,6 @@ Responsibilities:
 | `ecc status` | Summarize run and step state |
 | `ecc log` | Show available logs or complete step log content |
 | `ecc config` | Show the resolved project or step configuration |
-| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout (deprecated; slated for removal after the transition period) |
 | `ecc param` | List, inspect, set, unset, and diff parameter overrides |
 | `ecc macro` | Manage manual macro placement (`macro_location.tcl`): `set`, `remove`, `import`, `show` |
 | `ecc pdk` | `set-root`/`show`/`unset` manage the `[pdk] root` path |
@@ -243,8 +241,8 @@ Responsibilities:
 | `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
 | `ecc chipview` | Open a workspace step's saved geometry snapshot in Chip Viewer |
 
-`ecc run` preflights the tools its preset needs (yosys for synthesis and
-LEC, dreamplace for macro placement/placement/legalization, sizer for timing
+`ecc run` preflights the tools its preset needs (yosys for synthesis,
+kepler-formal for LEC steps, dreamplace for macro placement/placement/legalization, sizer for timing
 optimization, ecc-tools for the ecc-driven steps) and fails with
 `env_not_ready` before creating a workspace. `ecc signoff inspect` is
 advisory — a blocked readiness review still exits 0; `ecc signoff export`
@@ -285,7 +283,7 @@ serve a process expose only the options meaningful for that operation.
 The command graph follows these rules; new commands must follow them too:
 
 - **Architecture.** Top-level commands are workflow-scale verbs (`init`,
-  `check`, `run`, `status`, `log`, `config`, `doctor`, `migrate`, `version`)
+  `check`, `run`, `status`, `log`, `config`, `doctor`, `version`)
   plus the frozen tool invocations (`gdsview`, `chipview`). Resource management and
   reporting live in noun groups (`param`, `pdk`, `project`, `workspace`,
   `signoff`, `report`).
@@ -597,16 +595,38 @@ then copied into that workspace's `origin/`; `project.json` carries source
 declarations but no per-workspace input snapshot. Valid
 flow presets are discovered from the `build_*_flow` defs in
 `chipcompiler/rtl2gds/builder.py` (currently `rtl2gds`, `syn_sta`, and
-`synthesis_lec`). The `rtl2gds` preset includes synthesis-level LEC immediately
-after synthesis, followed by every physical-design step
-through RCX, STA, and Harden; the synthesis LEC is skipped by default
-(`[flow] skip_steps` defaults to `["lec"]`; an explicit `[]` enables it);
+`synthesis_lec`). The `rtl2gds` preset runs synthesis followed by every
+physical-design step through RCX, STA, and Harden; `diff_opt` is skipped by
+default (`[flow] skip_steps` defaults to `["diff_opt"]`; an explicit `[]` runs
+every step). LEC checks other than `postRouteLec` are not chain steps:
+`[flow] insert_steps` (e.g. `["lec@Synthesis"]`) inserts an LEC after any
+step from `Synthesis` to `route`. `lec@Synthesis` checks the RTL against the
+synthesized netlist with kepler-formal's SEC; a later insertion checks that
+step's netlist against the synthesis netlist. `synthesis_lec` builds
+`Synthesis` + `lec@Synthesis`;
 `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace. An explicit `ecc.toml` `[flow] skip_steps` takes precedence over
 the `project.json` workspace entry; when the two declare different effective
 values, the run warns `skip_steps_shadowed`.
+`skip_steps` may name any step of the rtl2gds chain (aliases accepted, unknown
+names rejected). Step capabilities (required design data, optional design
+data, provided design data) decide whether a selection can run: an enabled step
+that lacks required design data is a configuration error for `ecc check`,
+`ecc run`, and workspace creation, with a fix hint naming the disabled steps
+to re-enable; a step that lacks only optional data runs with degraded results
+and warns `flow_step_degraded`. The preset's final step (the flow target) and
+an explicit range start cannot be skipped; the first step can (skipping
+`Synthesis` enters at `preFloorplan` with the declared
+`[design] netlist`). A skipped signoff checker (drc, lvs, sta) leaves its
+`ecc signoff check` gate `unknown`. Existing workspace ledgers are never
+re-filtered. `ecc flow status` checks a selection read-only, and `ecc flow edit`
+chooses one (interactive checkbox list, where `i` inserts an LEC, or
+`--enable`/`--disable`/`--insert`/`--remove`), asks to confirm unless `--yes`
+is given (required without a terminal), and writes `[flow]` `preset`,
+`lec_engine`, and `skip_steps` explicitly, plus `insert_steps` when an LEC is
+inserted.
 `design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
 `.filelist`) is also accepted; multiple direct source entries are assembled
 into a generated filelist when the workspace is created. If `pdk.root` is

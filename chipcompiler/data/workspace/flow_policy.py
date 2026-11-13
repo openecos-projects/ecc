@@ -15,6 +15,7 @@ read ``filler`` directly, and the parallel checker batch immediately after
 
 from collections.abc import Mapping, Sequence
 
+from chipcompiler.data.flow_check import step_provides
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,
@@ -47,39 +48,33 @@ def explicit_input_step(record: Mapping[str, object]) -> str | None:
     return str(value) if value else None
 
 
-def _declared_category(record: Mapping[str, object]) -> FlowStepCategory | None:
+def _declared_category(record: Mapping[str, object]) -> FlowStepCategory:
+    """The category every current ledger record declares explicitly."""
     value = record.get("category")
-    if not value:
-        info = record.get("info")
-        value = info.get("category") if isinstance(info, Mapping) else None
-    if not value:
-        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(
+            f"flow step {step_name(record) or '<unnamed>'} has no declared category; "
+            "create a new workspace"
+        )
     try:
-        return FlowStepCategory(str(value).upper())
+        return FlowStepCategory(value.upper())
     except ValueError:
-        return None
+        raise ValueError(f"unknown flow step category: {value!r}") from None
 
 
 def ledger_category(record: Mapping[str, object]) -> FlowStepCategory:
-    """The category the ledger declares: top level, then ``info.category``.
+    """The category declared at the ledger record's top level.
 
-    A ledger without either predates the category field; execution treats its
-    steps as PNR so the historical chaining is preserved. An unregistered step
-    name raises before any category is honored.
+    An unregistered step name or missing category raises before execution.
     """
     flow_step_policy(step_name(record))
-    return _declared_category(record) or FlowStepCategory.PNR
+    return _declared_category(record)
 
 
 def flow_category(record: Mapping[str, object]) -> FlowStepCategory:
-    """The category for classification: declared, else the registered policy.
-
-    An unregistered step name raises rather than silently reading as PNR,
-    even when the record carries an explicit category.
-    """
-    policy = flow_step_policy(step_name(record))
-    declared = _declared_category(record)
-    return declared if declared is not None else policy.category
+    """The declared category for classification."""
+    flow_step_policy(step_name(record))
+    return _declared_category(record)
 
 
 def is_checker_batch_step(record: Mapping[str, object]) -> bool:
@@ -211,3 +206,36 @@ class FlowInputResolver:
         """
         name, _explicit = self._resolve(index, require_created=True)
         return None if name is None else self._created[name]
+
+
+def analysis_wave_end(records: Sequence[Mapping[str, object]], start: int) -> int:
+    """The end (exclusive) of the analysis wave that starts at ledger step *start*.
+
+    An analysis wave is a run of consecutive CHECKER steps none of which needs
+    another step of the run: none requires or uses design data another
+    provides, names another as its explicit input, or reads another as its
+    input source. The steps of a wave can run in parallel. A step that is not a
+    CHECKER step is a wave of its own.
+    """
+    resolver = FlowInputResolver(records)
+    members: list[str] = []
+    end = start
+    while end < len(records):
+        record = records[end]
+        try:
+            if ledger_category(record) != FlowStepCategory.CHECKER:
+                break
+            policy = flow_step_policy(step_name(record))
+            source = resolver.input_step_name(end)
+        except (ValueError, FlowInputStepError):
+            break
+        needs = policy.requires | policy.uses
+        if (
+            any(step_provides(member, item) for member in members for item in needs)
+            or source in members
+            or explicit_input_step(record) in members
+        ):
+            break
+        members.append(step_name(record))
+        end += 1
+    return max(end, start + 1)

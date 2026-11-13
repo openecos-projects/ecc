@@ -15,17 +15,19 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 
 
+def _declared_selection(flow_config) -> dict:
+    """The declared skipped and inserted steps a run's flow config carries."""
+    if not isinstance(flow_config, dict):
+        return {}
+    return {key: flow_config[key] for key in ("skip_steps", "insert_steps") if key in flow_config}
+
+
 def _workspace_range_target(run_dir: str, flow_config) -> dict | None:
-    """Preserve an explicit workspace range while applying declared skip policy.
+    """Preserve an explicit workspace range while applying the declared selection.
 
     Project presets seed fresh workspaces. An explicit persisted range (for
     example a bounded derive) remains the target of subsequent resumes.
     """
-    declared = (
-        flow_config.get("skip_steps")
-        if isinstance(flow_config, dict) and "skip_steps" in flow_config
-        else None
-    )
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -38,7 +40,7 @@ def _workspace_range_target(run_dir: str, flow_config) -> dict | None:
         return None
     if "start" not in workspace_flow or "end" not in workspace_flow:
         return None
-    return {**workspace_flow, **({"skip_steps": declared} if declared is not None else {})}
+    return {**workspace_flow, **_declared_selection(flow_config)}
 
 
 def _diverging_workspace_param_fixes(
@@ -175,16 +177,20 @@ def _resume_existing_workspace(
         _workspace_range_target(run_dir, flow_config) if command_input.preset is None else None
     )
     if target_section is None and not cfg.manifest_driven:
-        # The target carries the preset plus the effective declared skip
-        # policy (already resolved through the shared ecc.toml-over-manifest
-        # precedence onto the flow config), so an existing workspace
-        # classifies against the same policy a fresh creation would use.
+        # The target carries the preset plus the effective declared skipped
+        # and inserted steps (already resolved through the shared
+        # ecc.toml-over-manifest precedence onto the flow config), so an
+        # existing workspace classifies against the same selection a fresh
+        # creation would use.
         target_section = {"preset": cfg.flow_preset} if cfg.flow_preset else None
         if target_section is not None:
-            if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                target_section["skip_steps"] = flow_config["skip_steps"]
-            elif "flow.skip_steps" in cfg._explicit_keys:
-                target_section["skip_steps"] = cfg.flow_skip_steps
+            target_section.update(_declared_selection(flow_config))
+            for key, value in (
+                ("skip_steps", cfg.flow_skip_steps),
+                ("insert_steps", cfg.flow_insert_steps),
+            ):
+                if key not in target_section and f"flow.{key}" in cfg._explicit_keys:
+                    target_section[key] = value
 
     from chipcompiler.cli.project.run_process import run_log_stdio
     from chipcompiler.project.runtime_processes import RuntimeProcessError
@@ -231,7 +237,7 @@ def _execute_existing_run(
     project_dir = ctx.project_dir
     warnings = list(warning_records)
     from chipcompiler.data import load_workspace
-    from chipcompiler.data.schema_migrations import UnsupportedSchemaVersionError
+    from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
@@ -285,14 +291,14 @@ def _execute_existing_run(
             ]
         )
 
-    # Pure-read preflight: a divergent flow is rejected BEFORE load_workspace
-    # can migrate configs, create checklist state, or take the lock.
+    # Pure-read preflight: reject a divergent flow before loading the workspace,
+    # creating checklist state, or taking the lock.
     probe = classify_workspace(run_dir, target_section)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "flow_mismatch")
 
-    # Execution ownership: the ledger revalidation, migration, reconcile,
-    # and the engine run all hold the workspace lock, so two `ecc run`
+    # Execution ownership: ledger revalidation, reconciliation, and the engine
+    # run all hold the workspace lock, so two `ecc run`
     # processes can never execute the same workspace concurrently.
     from chipcompiler.engine.reconcile import reconcile_workspace_locked
     from chipcompiler.utility.workspace_lock import workspace_lock
@@ -394,6 +400,7 @@ def _execute_existing_run(
                 ]
             )
 
+        from chipcompiler.cli.project.config import resolve_max_parallel_steps
         from chipcompiler.cli.rendering.progress import (
             preserve_cli_stdio,
             run_with_step_progress,
@@ -425,6 +432,7 @@ def _execute_existing_run(
                 process_context = nullcontext()
             with process_context:
                 engine_flow = EngineFlow(workspace=workspace)
+                engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
                 flow_ok = True
                 explicit_selector = (
                     command_input.only is not None or command_input.from_step is not None

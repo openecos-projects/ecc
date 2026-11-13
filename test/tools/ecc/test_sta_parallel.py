@@ -2,6 +2,7 @@ import json
 import multiprocessing
 import os
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -46,6 +47,20 @@ def test_worker_arms_parent_death_signal_and_closes_startup_race(stale_parent):
         process.close()
         receiver.close()
         sender.close()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux parent-death signal")
+def test_explicit_parent_pid_mismatch_kills_corner_process():
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "from chipcompiler.engine.worker import arm_parent_death_signal; "
+            "arm_parent_death_signal(1)",
+        ]
+    )
+
+    assert process.wait(timeout=10) == -signal.SIGKILL
 
 
 def _guarded_slow_worker(connection):
@@ -291,7 +306,7 @@ def test_failed_validation_clears_stale_corner_and_aggregate(tmp_path, monkeypat
         (directory / "qor_summary.json").write_text("old")
     step.analysis.dir.mkdir()
     (step.analysis.dir / "qor_metrics.json").write_text("old")
-    monkeypatch.setattr(sta.runner, "collect_sta_signoff_items", lambda _: [item])
+    monkeypatch.setattr(sta.runner, "collect_sta_signoff_items", lambda *_: [item])
     monkeypatch.setattr(sta.runner, "get_eda_instance", lambda *_: object())
     monkeypatch.setattr(sta.runner, "run_sta", lambda *_: False)
     assert sta.run_parallel_sta(workspace, step, None, 2) is False
@@ -327,6 +342,8 @@ def test_memory_headroom_limits_dispatch(tmp_path, monkeypatch, headroom, expect
 
 
 def test_memory_reserves_host_and_cgroup_headroom(tmp_path, monkeypatch):
+    from chipcompiler.engine import memory as memory_probe
+
     def mapped_path(value):
         return tmp_path / value.lstrip("/")
 
@@ -340,7 +357,7 @@ def test_memory_reserves_host_and_cgroup_headroom(tmp_path, monkeypatch):
         path = mapped_path(name)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
-    monkeypatch.setattr(sta, "Path", mapped_path)
+    monkeypatch.setattr(memory_probe, "Path", mapped_path)
     assert sta._memory_headroom_mb() == 1024
     mapped_path("/proc/self/cgroup").write_text("5:memory:/test\n")
     assert sta._memory_headroom_mb() == 0

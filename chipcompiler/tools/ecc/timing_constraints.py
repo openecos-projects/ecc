@@ -3,13 +3,16 @@
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
+from chipcompiler.data.handshake import input_design_states, load_request
+from chipcompiler.data.handshake.files import HandshakeError
+from chipcompiler.data.types import DesignState
 from chipcompiler.data.workspace.sdc import custom_step_sdc_path, is_generated_sdc
 from chipcompiler.data.workspace.timing_constraints import (
     generate_timing_scripts,
     scenario_tcl_path,
     timing_scenarios,
 )
-from chipcompiler.rtl2gds import build_rtl2gds_flow
+from chipcompiler.rtl2gds import rtl2gds_step_names
 from chipcompiler.utility import json_read
 
 from .module import ECCToolsModule
@@ -26,9 +29,7 @@ def step_tcl_path(
     source = workspace.pdk.sdc
     if source is None:
         return None
-    names = [entry[0].value for entry in build_rtl2gds_flow()]
-    name = StepEnum.DIFF_SIZING.value if step.name == StepEnum.DIFF_BUFFERING.value else step.name
-    post_cts = names.index(name) > names.index(StepEnum.CTS.value)
+    post_cts = _reads_clock_tree(step)
     if not is_generated_sdc(source):
         return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
     scenario = next(
@@ -38,6 +39,25 @@ def step_tcl_path(
     if scenario is None:
         raise ValueError(f"No configured timing scenario for {corner}/{rc}")
     return scenario_tcl_path(workspace.directory, scenario, post_cts=post_cts)
+
+
+def _reads_clock_tree(step: WorkspaceStep) -> bool:
+    """Whether the design *step* reads carries a clock tree.
+
+    A design from an upstream step carries the design states its response
+    published, so a flow that skips CTS keeps the pre-CTS (ideal clock)
+    constraints. A declared design, or a step without a request, stands in
+    for the canonical chain before the step.
+    """
+    if step.directory is not None:
+        try:
+            request = load_request(Path(step.directory))
+        except HandshakeError:
+            request = None
+        if request is not None and request.design_source is not None:
+            return DesignState.CLOCK_TREE in input_design_states(request)
+    names = rtl2gds_step_names()
+    return names.index(step.name) > names.index(StepEnum.CTS.value)
 
 
 def prepare_timing_context(

@@ -9,6 +9,7 @@ from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import rerun
 from chipcompiler.engine.flow import EngineFlow
+from test.flow_fixture import step_fields
 
 
 def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
@@ -19,6 +20,7 @@ def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
+        "schema_version": 2,
         "steps": [
             {
                 "name": name,
@@ -27,9 +29,10 @@ def _make_run_flow(tmp_path, steps, tools_by_name=None) -> Any:
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, tools_by_name.get(name, "ecc")),
             }
             for name, state in steps
-        ]
+        ],
     }
     engine_flow.save()
     engine_flow.workspace_steps = []
@@ -50,7 +53,7 @@ def _fake_execution(engine_flow, monkeypatch, outcomes=None):
     calls = []
     outcomes = outcomes or {}
 
-    def run_step(workspace_step, *, rerun=False):
+    def run_step(workspace_step, *, rerun=False, observer: Any = None):
         calls.append((workspace_step.name, rerun))
         state = outcomes.get(workspace_step.name, StateEnum.Success)
         # Simulate lifecycle: Unstart/Incomplete → Ongoing → target state
@@ -59,7 +62,6 @@ def _fake_execution(engine_flow, monkeypatch, outcomes=None):
         return state
 
     monkeypatch.setattr(engine_flow, "run_step", run_step)
-    monkeypatch.setattr(engine_flow, "init_db_engine_for_step", lambda step: True)
     return calls
 
 
@@ -121,6 +123,23 @@ class TestSelectedStepNames:
         flow = _make_run_flow(tmp_path, [("lec", "Warning")])
 
         assert rerun.selected_step_names(flow, only="lec") == ["lec"]
+
+    def test_a_range_ending_at_a_step_keeps_its_inserted_check(self, tmp_path):
+        flow = _make_run_flow(
+            tmp_path,
+            [
+                ("place", "Success"),
+                ("CTS", "Success"),
+                ("lec@CTS", "Success"),
+                ("legalization", "Success"),
+            ],
+            tools_by_name={"lec@CTS": "kepler_formal"},
+        )
+
+        assert (
+            rerun.selected_step_names(flow, from_step="place", through="CTS"),
+            rerun.selected_step_names(flow, only="CTS", force=True),
+        ) == (["place", "CTS", "lec@CTS"], ["CTS"])
 
     def test_resume_still_selects_incomplete_suffix(self, tmp_path):
         flow = _make_run_flow(
@@ -248,7 +267,7 @@ class TestRunFrom:
         )
         persisted = []
 
-        def run_step(workspace_step, *, rerun=False):
+        def run_step(workspace_step, *, rerun=False, observer: Any = None):
             disk = json.loads(flow.workspace.flow.path.read_text(encoding="utf-8"))
             persisted.append([step["state"] for step in disk["steps"]])
             flow.set_state(workspace_step.name, workspace_step.tool, StateEnum.Ongoing)
@@ -256,7 +275,6 @@ class TestRunFrom:
             return StateEnum.Success
 
         monkeypatch.setattr(flow, "run_step", run_step)
-        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
 
         assert rerun.run_from(flow, "place").ok
         # the suffix is already persisted Unstart when the first selected step runs
@@ -355,6 +373,44 @@ class TestRunOnly:
         assert not stale_place.exists()
         assert keep_cts.read_text(encoding="utf-8") == "old"
 
+    @pytest.mark.parametrize(
+        ("selected", "expected"),
+        [
+            # sta read RCX's parasitics; Harden ran before steps answered.
+            ("RCX", ["Success", "Success", "Success", "Unstart", "Unstart"]),
+            # Nothing that answered was built on drc.
+            ("drc", ["Success", "Success", "Success", "Success", "Unstart"]),
+        ],
+    )
+    def test_force_invalidates_only_later_steps_built_on_the_selected_step(
+        self, monkeypatch, tmp_path, selected, expected
+    ):
+        from chipcompiler.data.handshake import load_response
+        from chipcompiler.data.types import AnalysisData
+        from test.data.handshake.helpers import answer
+
+        names = ("filler", "drc", "RCX", "sta", "Harden")
+        flow = _make_run_flow(tmp_path, [(name, "Success") for name in names])
+        filler = ("filler_ecc", "filler-1")
+        answer(tmp_path, "filler_ecc", "filler-1")
+        answer(tmp_path, "drc_ecc", "drc-1", filler)
+        answer(tmp_path, "RCX_ecc", "rcx-1", filler)
+        answer(
+            tmp_path,
+            "sta_ecc",
+            "sta-1",
+            filler,
+            upstream={AnalysisData.PARASITICS: ("RCX_ecc", "rcx-1")},
+        )
+        _fake_execution(flow, monkeypatch)
+
+        result = rerun.run_only(flow, selected, force=True)
+
+        assert result.executed == (selected,)
+        assert _flow_states(flow) == expected
+        # The rerun step's previous response was removed before it ran.
+        assert load_response(tmp_path / f"{selected}_ecc") is None
+
     def test_alias_runs_persisted_canonical_step(self, monkeypatch, tmp_path):
         flow = _make_run_flow(tmp_path, [("Synthesis", "Success")])
         calls = _fake_execution(flow, monkeypatch)
@@ -436,7 +492,6 @@ class TestRunResume:
             return StateEnum.Success
 
         monkeypatch.setattr(flow, "run_step", run_step)
-        monkeypatch.setattr(flow, "init_db_engine_for_step", lambda step: True)
 
         result = rerun.run_resume(flow, event_sink=Sink())
 
@@ -447,6 +502,44 @@ class TestRunResume:
             ("step_completed", "place", "Success", None),
             ("execution_finished", "Success", None),
         ]
+
+
+@pytest.mark.parametrize("selector", ["from", "only", "resume"])
+def test_rerun_never_initializes_native_db_or_redirects_in_parent(monkeypatch, tmp_path, selector):
+    from chipcompiler.engine import EngineDB
+    from chipcompiler.tools.ecc.module import ECCToolsModule
+
+    flow = _make_run_flow(
+        tmp_path,
+        [("Synthesis", "Success"), ("place", "Incomplete"), ("CTS", "Incomplete")],
+    )
+    calls = _fake_execution(flow, monkeypatch)
+    redirects = []
+    monkeypatch.setattr(
+        rerun,
+        "redirect_stdio_to_file",
+        lambda path: redirects.append(path),
+        raising=False,
+    )
+
+    def fail_native_init(*_args, **_kwargs):
+        raise AssertionError("parent native DB initialization must not run")
+
+    monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
+    monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
+    monkeypatch.setattr(flow, "init_db_engine_for_step", fail_native_init)
+
+    if selector == "from":
+        result = rerun.run_from(flow, "place")
+    elif selector == "only":
+        result = rerun.run_only(flow, "place", force=True)
+    else:
+        result = rerun.run_resume(flow)
+
+    assert result.ok
+    assert redirects == []
+    expected = ["place"] if selector == "only" else ["place", "CTS"]
+    assert [name for name, _rerun in calls] == expected
 
 
 class TestInitDbEngineForStep:
@@ -479,8 +572,10 @@ class TestInitDbEngineForStep:
         from chipcompiler.engine import EngineDB
 
         # LEC compares netlists and has no ECC DB: explicit reruns
-        # (--only lec) must not build one from the LEC workspace.
-        flow = _make_run_flow(tmp_path, [("lec", "Incomplete")], tools_by_name={"lec": "yosys_lec"})
+        # (--only lec@CTS) must not build one from the LEC workspace.
+        flow = _make_run_flow(
+            tmp_path, [("lec@CTS", "Incomplete")], tools_by_name={"lec@CTS": "kepler_formal"}
+        )
         created = []
 
         def create_db_engine(self, step):

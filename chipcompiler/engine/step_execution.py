@@ -1,15 +1,14 @@
 import logging
 import os
-import time
 from dataclasses import dataclass
-from threading import Event, Thread
 
-from chipcompiler.data import Workspace, WorkspaceStep, is_sta_step
+from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.engine.db import EngineDB
-from chipcompiler.engine.resource_observation import start_observation
-from chipcompiler.utility.log import Logger, capture_stdio_to_file, flush_cstdio
+from chipcompiler.utility.log import Logger, flush_cstdio
 
 logger = logging.getLogger(__name__)
+
+STEP_WORKER_MODULE = "chipcompiler.engine.step_subprocess"
 
 
 @dataclass(frozen=True)
@@ -34,11 +33,26 @@ def get_process_rss_mb(pid: int) -> float:
     return rss_mb
 
 
-def track_current_process_memory(pid: int, stop_event: Event, peak_memory: list[float]) -> None:
-    while not stop_event.is_set():
-        peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
-        stop_event.wait(0.1)
-    peak_memory[0] = max(peak_memory[0], get_process_rss_mb(pid))
+def _execute_in_worker(
+    workspace: Workspace,
+    workspace_step: WorkspaceStep,
+    engine_db: EngineDB | None,
+    *,
+    observer=None,
+    started_at: float | None = None,
+    worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
+) -> StepExecutionResult:
+    from chipcompiler.engine import step_subprocess
+
+    return step_subprocess.execute_step_subprocess(
+        workspace,
+        workspace_step,
+        observer=observer,
+        started_at=started_at,
+        worker_module=worker_module,
+        layout_image=layout_image,
+    )
 
 
 def execute_tool_step(
@@ -48,103 +62,17 @@ def execute_tool_step(
     *,
     observer=None,
     started_at: float | None = None,
+    worker_module: str = STEP_WORKER_MODULE,
+    layout_image: bool = True,
 ) -> StepExecutionResult:
-    """Run one tool while containing its stdio, memory monitor, and failures."""
-    from chipcompiler.engine import step_subprocess
-
-    if step_subprocess.is_enabled():
-        return step_subprocess.execute_step_subprocess(
-            workspace,
-            workspace_step,
-            observer=observer,
-            started_at=started_at,
-        )
-    start_time = time.time() if started_at is None else started_at
-    step_tag = f"{workspace_step.name}({workspace_step.tool})"
-    log_file = _prepare_log_file(workspace_step)
-    pid = os.getpid()
-    resources = start_observation(
-        pid, isolated=False, step=workspace_step.name, tool=workspace_step.tool
-    )
-    start_memory_mb = 0.0
-    peak_memory = [0.0]
-    stop_memory_monitor = Event()
-    memory_monitor = None
-    previous_observer = getattr(workspace, "_runtime_flow_observer", None)
-    observer_installed = False
-    step_error = None
-    try:
-        workspace.logger.info(f"[STEP] {step_tag} pid={pid} started")
-        start_memory_mb = get_process_rss_mb(pid)
-        peak_memory[0] = start_memory_mb
-        memory_tracker = track_current_process_memory
-        if is_sta_step(workspace_step):
-            from chipcompiler.tools.ecc.sta_parallel import track_sta_process_memory
-
-            memory_tracker = track_sta_process_memory
-        memory_monitor = Thread(
-            target=memory_tracker,
-            args=(pid, stop_memory_monitor, peak_memory),
-            daemon=True,
-        )
-        memory_monitor.start()
-        if observer is not None:
-            workspace._runtime_flow_observer = observer
-            observer_installed = True
-        with capture_stdio_to_file(log_file):
-            try:
-                from chipcompiler.tools import run_step
-
-                if engine_db is None:
-                    raise AttributeError("'NoneType' object has no attribute 'engine'")
-                initialization_error = getattr(engine_db, "initialization_error", None)
-                if initialization_error is not None:
-                    raise initialization_error
-                result = run_step(
-                    workspace=workspace,
-                    step=workspace_step,
-                    ecc_module=engine_db.engine,
-                )
-                workspace.logger.info(f"[STEP] {step_tag} finished result={result}")
-                if result is not True:
-                    step_error = f"{step_tag} reported failure (run_step returned {result!r})."
-            except (Exception, SystemExit) as exc:
-                step_error = record_tool_failure(workspace.logger, step_tag, exc)
-    except (Exception, SystemExit) as exc:
-        failure_message = record_tool_failure(workspace.logger, step_tag, exc)
-        step_error = step_error or failure_message
-    finally:
-        resource_observation = resources.finish()
-        stop_memory_monitor.set()
-        if memory_monitor is not None:
-            try:
-                memory_monitor.join()
-            except (Exception, SystemExit) as exc:
-                failure_message = record_tool_failure(
-                    workspace.logger,
-                    step_tag,
-                    exc,
-                )
-                step_error = step_error or failure_message
-        try:
-            if observer_installed:
-                if previous_observer is None:
-                    delattr(workspace, "_runtime_flow_observer")
-                else:
-                    workspace._runtime_flow_observer = previous_observer
-        except (Exception, SystemExit) as exc:
-            failure_message = record_tool_failure(workspace.logger, step_tag, exc)
-            step_error = step_error or failure_message
-
-    peak_memory_mb = peak_memory[0] - start_memory_mb
-    peak_memory_mb = 0 if peak_memory_mb < 0 else round(peak_memory_mb, 3)
-    elapsed = time.time() - start_time
-    return StepExecutionResult(
-        error=step_error,
-        elapsed_seconds=elapsed,
-        peak_memory_mb=peak_memory_mb,
-        runtime=f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}",
-        resource_observation=resource_observation,
+    return _execute_in_worker(
+        workspace,
+        workspace_step,
+        engine_db,
+        observer=observer,
+        started_at=started_at,
+        worker_module=worker_module,
+        layout_image=layout_image,
     )
 
 

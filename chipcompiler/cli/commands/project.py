@@ -5,12 +5,12 @@ import typer
 from chipcompiler.cli.command_handlers import inspect as inspect_handlers
 from chipcompiler.cli.command_handlers import project as project_handlers
 from chipcompiler.cli.core.apps import create_app
+from chipcompiler.cli.core.completion import complete_flow_step
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     ConfigInput,
     InitInput,
     LogInput,
-    MigrateInput,
     RtlImportInput,
     RunInput,
     StatusInput,
@@ -36,9 +36,6 @@ def register_project_commands(app: typer.Typer) -> None:
     )(status_cmd)
     app.command("log", help="Show available logs or step log content")(log_cmd)
     app.command("config")(config_cmd)
-    app.command("migrate", help="Migrate a legacy runs/ project to the manifest layout")(
-        migrate_cmd
-    )
 
 
 rtl_app = create_app(help="Import project RTL sources")
@@ -122,15 +119,27 @@ def run_cmd(
     ] = False,
     from_step: Annotated[
         str | None,
-        typer.Option("--from", help="Re-execute a step and its persisted suffix"),
+        typer.Option(
+            "--from",
+            help="Re-execute a step and its persisted suffix",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     to_step: Annotated[
         str | None,
-        typer.Option("--to", help="Inclusive final step when running a bounded range"),
+        typer.Option(
+            "--to",
+            help="Inclusive final step when running a bounded range",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     only: Annotated[
         str | None,
-        typer.Option("--only", help="Run exactly one persisted step"),
+        typer.Option(
+            "--only",
+            help="Run exactly one persisted step",
+            autocompletion=complete_flow_step,
+        ),
     ] = None,
     force: Annotated[
         bool,
@@ -227,23 +236,6 @@ def log_cmd(
     execute_command("log", command_input, inspect_handlers.log)
 
 
-def migrate_cmd(
-    *,
-    project: ProjectOption = None,
-    yes: Annotated[
-        bool,
-        typer.Option("--yes", help="Migrate without interactive confirmation"),
-    ] = False,
-    plain: PlainOption = False,
-) -> None:
-    command_input = MigrateInput(
-        output=output_options(plain=plain),
-        project=project_options(project),
-        yes=yes,
-    )
-    execute_command("migrate", command_input, project_handlers.migrate)
-
-
 def config_cmd(
     *,
     step: Annotated[str | None, typer.Argument()] = None,
@@ -255,9 +247,10 @@ def config_cmd(
     """Show resolved project or step configuration.
 
     Without STEP: resolved project-level configuration. With STEP: the
-    configuration files actually in effect for that step. `lec`, `lvs`,
-    `postroutelec`, and `harden` have no step-specific configuration
-    (Tcl-driven, tool-default, or reusing `db_ecc.json`).
+    configuration files actually in effect for that step. Inserted LEC
+    checks (`lec@<step>`), `lvs`, `postroutelec`, and `harden` have no
+    step-specific configuration (Tcl-driven, tool-default, or reusing
+    `db_ecc.json`).
 
     See 'ecc doc config' for the full reference.
     """

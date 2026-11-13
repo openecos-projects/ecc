@@ -14,7 +14,6 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
-from chipcompiler.tools.klayout_tool.viewer import KlayoutUnavailableError, view_gds
 
 
 def _display_available() -> bool:
@@ -87,6 +86,19 @@ def _resolve_gds(workspace: Path, step: str) -> dict:
     return {**resolved, "gds": candidates[0]}
 
 
+def _klayout_unavailable(resolved: dict, error: Exception) -> CommandResult:
+    return CommandResult.err(
+        [
+            error_record(
+                "gds_view_klayout_unavailable",
+                gds=str(resolved["gds"]),
+                reason=f"KLayout's GUI executable is unavailable: {error}",
+                remediation="install the KLayout GUI executable or set KLAYOUT_BIN",
+            )
+        ]
+    )
+
+
 @command_handler
 def gds_view(command_input, ctx: CommandContext) -> CommandResult:
     if sys.platform != "linux":
@@ -128,18 +140,14 @@ def gds_view(command_input, ctx: CommandContext) -> CommandResult:
         )
 
     try:
+        from chipcompiler.tools.klayout_tool.viewer import KlayoutUnavailableError, view_gds
+    except ImportError as exc:
+        return _klayout_unavailable(resolved, exc)
+
+    try:
         view_gds(resolved["gds"])
     except (ImportError, KlayoutUnavailableError) as exc:
-        return CommandResult.err(
-            [
-                error_record(
-                    "gds_view_klayout_unavailable",
-                    gds=str(resolved["gds"]),
-                    reason=f"KLayout's GUI executable is unavailable: {exc}",
-                    remediation="install the KLayout GUI executable or set KLAYOUT_BIN",
-                )
-            ]
-        )
+        return _klayout_unavailable(resolved, exc)
     except (OSError, RuntimeError, ValueError) as exc:
         return CommandResult.err(
             [

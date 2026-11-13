@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from chipcompiler.engine.interrupted_run import recover_interrupted_run
+from test.flow_fixture import step_fields
 
 
 def _flow(tmp_path: Path, info: dict | None) -> Path:
@@ -18,6 +19,7 @@ def _flow(tmp_path: Path, info: dict | None) -> Path:
                         "tool": "yosys",
                         "state": "Ongoing",
                         "info": info or {},
+                        **step_fields("Synthesis", "yosys"),
                     }
                 ],
             }

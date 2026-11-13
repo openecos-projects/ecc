@@ -1,24 +1,9 @@
 import logging
-import os
-import time
-import traceback
 from pathlib import Path
-from threading import Event, Thread
 
-from chipcompiler.data import StateEnum, WorkspaceStep
+from chipcompiler.data import StateEnum, StepEnum, WorkspaceStep
+from chipcompiler.data.step import next_step_index
 from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_completion import (
-    normalize_legacy_terminal_state,
-    sync_step_checklist,
-)
-from chipcompiler.engine.flow_completion import (
-    notify_flow_observer as _notify_flow_observer,
-)
-from chipcompiler.engine.step_execution import get_process_rss_mb, track_current_process_memory
-from chipcompiler.utility.log import redirect_stdio_to_file, stdio_redirect_lock
-
-from .sta_parallel import track_sta_process_memory
-from .tools import run_step as run_agent_step
 
 
 def _is_candidate_workspace(workspace) -> bool:
@@ -41,14 +26,26 @@ def _wait_for_step_rendered(observer, workspace_step: WorkspaceStep, state: Stat
 
 
 class AgentEngineFlow(EngineFlow):
+    step_worker_module = "agent.step_worker"
+    # The agent's operation observer tracks one current step; keep waves sequential.
+    max_parallel_steps = 1
+
     def build_default_steps(self):
         super().build_default_steps()
         steps = self.workspace.flow.data.get("steps", [])
-        if any(step["name"] == "DRC" for step in steps):
+        if any(step["name"].casefold() == StepEnum.DRC.value for step in steps):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")
-        steps.insert(filler_index, self.init_flow_step("DRC", "ecc", StateEnum.Unstart))
+        steps.insert(
+            filler_index,
+            self.init_flow_step(
+                StepEnum.DRC.value, "ecc", StateEnum.Unstart, index=next_step_index(steps)
+            ),
+        )
         self.save()
+
+    def _should_save_layout_image(self) -> bool:
+        return not _is_candidate_workspace(self.workspace)
 
     def run_step(
         self,
@@ -57,164 +54,9 @@ class AgentEngineFlow(EngineFlow):
         rerun: bool = False,
         observer=None,
     ) -> StateEnum:
-        step_tag = f"{workspace_step.name}({workspace_step.tool})"
-        if self._apply_checklist_gate(workspace_step) is not None:
-            return StateEnum.Invalid
-        if not rerun and self.check_state(
-            name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
-        ):
-            self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
-            self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
-            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
-            return StateEnum.Success
-
-        normalize_legacy_terminal_state(self, workspace_step, step_tag)
-
-        start_time = time.time()
-        timing_constraints = self.timing_constraint_facts()
-        self.set_state(name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Ongoing)
-        _notify_flow_observer(observer, "on_step_started", workspace_step)
-        self._redirect_step_stdio(workspace_step)
-        start_memory, peak_memory, stop_monitor, monitor = self._start_memory_monitor(
-            workspace_step
-        )
-        result = False
-        engine_db = self.engine_db
-        if engine_db is None:
-            raise RuntimeError("agent engine database is not initialized")
-        previous_observer = getattr(self.workspace, "_runtime_flow_observer", None)
-        if observer is not None:
-            self.workspace._runtime_flow_observer = observer
-        try:
-            result = run_agent_step(
-                workspace=self.workspace, step=workspace_step, ecc_module=engine_db.engine
-            )
-            self.workspace.logger.info("[STEP] %s finished result=%s", step_tag, result)
-        except Exception:
-            self.workspace.logger.error("[STEP] %s failed with exception", step_tag)
-            traceback.print_exc()
-        finally:
-            self._stop_memory_monitor(stop_monitor, monitor)
-            if observer is not None:
-                if previous_observer is None:
-                    delattr(self.workspace, "_runtime_flow_observer")
-                else:
-                    self.workspace._runtime_flow_observer = previous_observer
-
-        elapsed = time.time() - start_time
-        state = self._step_state(workspace_step, result)
-        self._finish_step(
-            workspace_step,
-            state,
-            elapsed,
-            timing_constraints,
-            max(0, round(peak_memory[0] - start_memory, 3)),
-        )
-        _notify_flow_observer(observer, "on_step_completed", workspace_step, state)
+        state = super().run_step(workspace_step, rerun=rerun, observer=observer)
         if state == StateEnum.Success and not _wait_for_step_rendered(
-            observer,
-            workspace_step,
-            state,
+            observer, workspace_step, state
         ):
             return StateEnum.Invalid
         return state
-
-    def _redirect_step_stdio(self, workspace_step: WorkspaceStep) -> None:
-        log_file = workspace_step.log.file or ""
-        if not log_file:
-            return
-        try:
-            log_file = os.path.abspath(log_file)
-            os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-            # ponytail: fd-level redirect is process-global; the lock only
-            # keeps the dup2+rebind atomic across concurrent candidate steps.
-            # A parent-process print during an overlap may still land in the
-            # other candidate's log; step tools inherit fds at spawn, so
-            # per-candidate tool logs stay correctly routed.
-            with stdio_redirect_lock:
-                redirect_stdio_to_file(log_file)
-        except Exception:
-            traceback.print_exc()
-
-    def _start_memory_monitor(self, step) -> tuple[float, list[float], Event, Thread]:
-        start_memory = get_process_rss_mb(os.getpid())
-        peak_memory = [start_memory]
-        stop_monitor = Event()
-        monitor = Thread(
-            target=(
-                track_sta_process_memory
-                if step.name == "sta" and _is_candidate_workspace(self.workspace)
-                else track_current_process_memory
-            ),
-            args=(os.getpid(), stop_monitor, peak_memory),
-            daemon=True,
-        )
-        monitor.start()
-        return start_memory, peak_memory, stop_monitor, monitor
-
-    @staticmethod
-    def _stop_memory_monitor(stop_monitor: Event, monitor: Thread) -> None:
-        stop_monitor.set()
-        monitor.join()
-
-    def _step_state(self, workspace_step: WorkspaceStep, result: object) -> StateEnum:
-        if result is StateEnum.Invalid:
-            return StateEnum.Invalid
-        if result is True or result is StateEnum.Success:
-            return (
-                StateEnum.Success
-                if self.check_step_result(workspace_step=workspace_step)
-                else StateEnum.Imcomplete
-            )
-        return StateEnum.Imcomplete
-
-    def _finish_step(
-        self,
-        workspace_step: WorkspaceStep,
-        state: StateEnum,
-        elapsed: float,
-        timing_constraints: dict,
-        peak_memory_mb: float,
-    ) -> None:
-        runtime = f"{int(elapsed // 3600)}:{int((elapsed % 3600) // 60)}:{int(elapsed % 60)}"
-        self.set_state(
-            name=workspace_step.name,
-            tool=workspace_step.tool,
-            state=state,
-            runtime=runtime,
-            peak_memory=peak_memory_mb,
-        )
-        sync_step_checklist(self, workspace_step)
-        if state == StateEnum.Success:
-            self._save_agent_step_facts(
-                workspace_step,
-                state,
-                elapsed,
-                peak_memory_mb,
-                timing_constraints,
-            )
-        self.clear_db_engine_after_step(workspace_step, state)
-
-    def _save_agent_step_facts(
-        self,
-        workspace_step: WorkspaceStep,
-        state: StateEnum,
-        elapsed: float,
-        peak_memory: float,
-        timing_constraints: dict,
-    ) -> None:
-        from chipcompiler.tools import build_step_metrics, save_layout_image
-
-        if self.save_step_flow_facts(
-            workspace_step=workspace_step,
-            state=state,
-            runtime_seconds=elapsed,
-            peak_memory_mb=peak_memory,
-            timing_constraints=timing_constraints,
-        ):
-            try:
-                build_step_metrics(workspace=self.workspace, step=workspace_step)
-            except Exception:
-                self.workspace.logger.exception("[QOR] failed to refresh analysis")
-        if not _is_candidate_workspace(self.workspace):
-            save_layout_image(workspace=self.workspace, step=workspace_step)
