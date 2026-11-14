@@ -96,7 +96,7 @@ def build_step(
     script_dir = step.script.dir or step_directory / "script"
     step.script.sizer_env = script_dir / f"{workspace.design.name}.env_file"
     step.script.sizer_cmd = script_dir / f"{workspace.design.name}.cmd_file"
-    if step_name == StepEnum.PREPLACE.value:
+    if step_name == SkippableStepEnum.PREPLACE.value:
         step.output.db = None
     step.script.sizer_hold_env = script_dir / SIZER_HOLD_ENV_NAME
     step.script.sizer_hold_cmd = script_dir / SIZER_HOLD_CMD_NAME
@@ -361,7 +361,7 @@ def _cmd_text(workspace: Workspace, step: EccStep) -> str:
 
     command.flag("useOpenSTA")
     command.option("use_gr_rc", int(step.name == SkippableStepEnum.TIMING_OPT.value))
-    if step.name == StepEnum.PREPLACE.value:
+    if step.name == SkippableStepEnum.PREPLACE.value:
         command.flag("preplace")
     command.option("top", workspace.design.top_module or workspace.design.name)
     command.option(
