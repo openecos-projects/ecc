@@ -168,10 +168,11 @@ jobs:
           name: icsprout55-pdk
           path: ../pdk
 
-      - name: Extract PDK
+      - name: Fetch private PDK
+        env:
+          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
         run: |
-          mkdir -p ../pdk/icsprout55-pdk
-          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
+          bash ../pdk/fetch-pdk.sh ../pdk/pdk-source.json ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
@@ -307,38 +308,38 @@ jobs:
       PDK_RELEASE: ${{ needs.list-versions.outputs.pdk_release }}
       PDK_GIT_COMMIT: ${{ needs.list-versions.outputs.pdk_git_commit }}
     outputs:
-      revision: ${{ steps.checkout.outputs.revision }}
-      release: ${{ steps.unpack.outputs.release }}
+      revision: ${{ needs.list-versions.outputs.pdk_git_commit }}
+      release: ${{ needs.list-versions.outputs.pdk_release }}
     steps:
-      - name: Checkout PDK
-        id: checkout
-        run: |
-          git init pdk
-          git -C pdk remote add origin "https://github.com/${PDK_REPO}.git"
-          git -C pdk fetch --depth 1 origin "$PDK_GIT_COMMIT"
-          git -C pdk checkout --detach FETCH_HEAD
-          test "$(git -C pdk rev-parse HEAD)" = "$PDK_GIT_COMMIT"
-          echo "revision=$PDK_GIT_COMMIT" >> "$GITHUB_OUTPUT"
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Unpack PDK
-        id: unpack
+      - name: Write PDK source manifest
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          source = {key: os.environ['PDK_' + key.upper()] for key in ('repo', 'git_commit', 'release')}
+          Path('pdk-source.json').write_text(json.dumps(source, indent=2) + '\n')
+          PY
+
+      - name: Validate private PDK
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
         run: |
-          cd pdk
-          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
-          make unzip
-          sha256sum --check --quiet release-files.sha256
-          echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
+          bash .github/actions/setup-pdk/fetch-pdk.sh pdk-source.json "$RUNNER_TEMP/pdk"
 
-      - name: Package PDK
-        run: tar -czf icsprout55-pdk.tar.gz -C pdk .
+      - name: Stage PDK provenance and downloader
+        run: |
+          mkdir pdk-provenance
+          cp pdk-source.json .github/actions/setup-pdk/fetch-pdk.sh pdk-provenance/
 
-      - name: Upload PDK
+      - name: Upload PDK provenance and downloader
         uses: actions/upload-artifact@v4
         with:
           name: icsprout55-pdk
-          path: icsprout55-pdk.tar.gz
+          path: pdk-provenance/
 
   sizer:
     name: Fetch Sizer
@@ -547,6 +548,16 @@ jobs:
         with:
           name: ecc-sizer
           path: ${{ runner.temp }}/e2e-stage-input
+
+      - name: Fetch private PDK for shared storage
+        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
+        run: |
+          bash "$RUNNER_TEMP/e2e-stage-input/fetch-pdk.sh" \
+            "$RUNNER_TEMP/e2e-stage-input/pdk-source.json" "$RUNNER_TEMP/e2e-pdk/icsprout55-pdk"
+          tar -czf "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" \
+            -C "$RUNNER_TEMP/e2e-pdk/icsprout55-pdk" .
 
       - name: Stage PDK on shared storage
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
