@@ -328,6 +328,7 @@ jobs:
           cd pdk
           gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
           make unzip
+          sha256sum --check --quiet release-files.sha256
           echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Package PDK

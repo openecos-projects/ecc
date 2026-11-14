@@ -1,0 +1,17 @@
+# v2 LVT/HVT OBS reference these implant layers. Their GDS numbers are
+# already defined in the PDK layermap, but its technology LEF omits them.
+# Match NP/PP's non-routing layer type; add no geometry or routing rules.
+VERSION 5.8 ;
+LAYER NVT1
+  TYPE MASTERSLICE ;
+END NVT1
+LAYER PVT1
+  TYPE MASTERSLICE ;
+END PVT1
+LAYER NVT3
+  TYPE MASTERSLICE ;
+END NVT3
+LAYER PVT3
+  TYPE MASTERSLICE ;
+END PVT3
+END LIBRARY

@@ -10,7 +10,7 @@
     },
     "die_builder": {
         "mode": "die_util",
-        "site_name": "core7",
+        "site_name": "SC9T_site",
         "margin": {
             "left_micron": 2.0,
             "right_micron": 2.0,
@@ -36,47 +36,47 @@
     },
     "phy_placer": {
         "well_tap": {
-            "cell_name": "FILLTAPH7R",
+            "cell_name": "TAPX1_9TSVT",
             "distance_micron": 58.0
         },
         "side_endcap": {
-            "left_cell_name": "FILLTAPH7R",
-            "right_cell_name": "FILLTAPH7R"
+            "left_cell_name": "TAPX1_9TSVT",
+            "right_cell_name": "TAPX1_9TSVT"
         },
         "edge_endcap": {
             "top_cell_name_list": [
-                "FILLCAP4H7R",
-                "FILLCAP8H7R",
-                "FILLCAP16H7R",
-                "FILLCAP32H7R",
-                "FILLER2H7R",
-                "FILLER1H7R"
+                "FILLCAP4_9TSVT",
+                "FILLCAP8_9TSVT",
+                "FILLCAP16_9TSVT",
+                "FILLCAP32_9TSVT",
+                "FILL2_9TSVT",
+                "FILL1_9TSVT"
             ],
             "bottom_cell_name_list": [
-                "FILLCAP4H7R",
-                "FILLCAP8H7R",
-                "FILLCAP16H7R",
-                "FILLCAP32H7R",
-                "FILLER2H7R",
-                "FILLER1H7R"
+                "FILLCAP4_9TSVT",
+                "FILLCAP8_9TSVT",
+                "FILLCAP16_9TSVT",
+                "FILLCAP32_9TSVT",
+                "FILL2_9TSVT",
+                "FILL1_9TSVT"
             ]
         },
         "boundary_tap": {
             "top_cell_name_list": [
-                "FILLCAP4H7R",
-                "FILLCAP8H7R",
-                "FILLCAP16H7R",
-                "FILLCAP32H7R",
-                "FILLER2H7R",
-                "FILLER1H7R"
+                "FILLCAP4_9TSVT",
+                "FILLCAP8_9TSVT",
+                "FILLCAP16_9TSVT",
+                "FILLCAP32_9TSVT",
+                "FILL2_9TSVT",
+                "FILL1_9TSVT"
             ],
             "bottom_cell_name_list": [
-                "FILLCAP4H7R",
-                "FILLCAP8H7R",
-                "FILLCAP16H7R",
-                "FILLCAP32H7R",
-                "FILLER2H7R",
-                "FILLER1H7R"
+                "FILLCAP4_9TSVT",
+                "FILLCAP8_9TSVT",
+                "FILLCAP16_9TSVT",
+                "FILLCAP32_9TSVT",
+                "FILL2_9TSVT",
+                "FILL1_9TSVT"
             ],
             "rule_micron": 30.0
         }
@@ -91,6 +91,16 @@
             {
                 "net_name": "VSS",
                 "instance_pin_name": "VSS",
+                "is_power": false
+            },
+            {
+                "net_name": "VDD",
+                "instance_pin_name": "VNW",
+                "is_power": true
+            },
+            {
+                "net_name": "VSS",
+                "instance_pin_name": "VPW",
                 "is_power": false
             }
         ],

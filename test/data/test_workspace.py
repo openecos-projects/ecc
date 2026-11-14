@@ -913,7 +913,7 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     tech = next((pdk_root / "prtech").rglob("*.lef"))
-    lef = next(pdk_root.rglob("ics55_LLSC_H7CR_ecos.lef"))
+    lef = next(pdk_root.rglob("ICsprout55_9TSVT_basic.lef"))
     lib = next(pdk_root.rglob("*.lib"))
     sdc_source = tmp_path / "source.sdc"
     sdc_source.write_text("# sdc\n")
@@ -1057,7 +1057,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert workspace.parameters.data["step_params"] == {"placement": placement_edits}
     assert floorplan["die_builder"] == {
         "mode": "die_util",
-        "site_name": "core7",
+        "site_name": "SC9T_site",
         "margin": {
             "left_micron": 2,
             "right_micron": 2,
@@ -1248,7 +1248,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
             "corner": "MAX",
             "temperature": 125,
             "path": [
-                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+                "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"
             ],
         }
     ]
@@ -1287,7 +1287,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
             "corner": "MAX",
             "temperature": 125,
             "path": [
-                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+                "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"
             ],
         }
     ]

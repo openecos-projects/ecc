@@ -486,7 +486,9 @@ class ECCToolsModule:
             raise ValueError(
                 "PDK layer mapping file is required for GDS export; set pdk.mapping_file"
             )
-        return self.ecc.gds_save(gds_name=output_path, layer_map_path=layer_map_path)
+        if not self.ecc.gds_save(gds_name=output_path, layer_map_path=layer_map_path):
+            raise RuntimeError(f"GDS export failed: {output_path}")
+        return True
 
     def tcl_save(self, output_path: PathArg) -> bool:
         """Save hard-macro placement commands in Tcl format."""
