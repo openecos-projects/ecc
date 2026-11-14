@@ -17,8 +17,10 @@ from chipcompiler.data import PDK, EccStep, OriginDesign, Parameters, Workspace
 
 
 def _workspace(tmp_path):
+    directory = tmp_path / "workspace"
+    directory.mkdir(parents=True, exist_ok=True)
     workspace = Workspace(
-        directory=tmp_path / "workspace",
+        directory=directory,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(
             tech=Path("tech.lef"),

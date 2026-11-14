@@ -12,7 +12,7 @@ from chipcompiler.cli.core.inputs import (
     WorkspaceImportInput,
 )
 from chipcompiler.cli.core.output import disclosure_cmd
-from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.project.manifest import CONFIG_FILENAME
 
@@ -62,8 +62,6 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     if ctx.manifest_error:
         # Hybrid projects also resolve the run selector through the
         # manifest; an unresolvable selection is an error, not a warning.
-        from chipcompiler.cli.core.records import manifest_error_record
-
         return CommandResult.err(
             [
                 manifest_error_record(
@@ -340,6 +338,12 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
                     reason="refresh requires a workspace declared in project.json",
                 )
             ]
+        )
+    if ctx.manifest_error:
+        # An undeclared name still resolves run_dir to <project>/<name>.
+        # Refreshing it would rebuild a directory the project does not manage.
+        return CommandResult.err(
+            [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
         )
     from chipcompiler.data.workspace.config_manifest import modified_derived_configs
 
@@ -673,9 +677,7 @@ def _manage_workspace_lifecycle(
     )
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err(
-            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
-        )
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
@@ -741,9 +743,7 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err(
-            [error_record("workspace_not_declared", reason=ctx.manifest_error)]
-        )
+        return CommandResult.err([manifest_error_record(ctx.manifest_error)])
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]

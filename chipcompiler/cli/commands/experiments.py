@@ -8,6 +8,7 @@ import typer
 
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.experiments.operations import (
+    UnknownSweepParameterError,
     compare_sweep,
     create_sweep,
     diagnose_workspace,
@@ -20,7 +21,9 @@ from chipcompiler.cli.experiments.operations import (
     project_path,
     read_package,
     run_sweep,
+    select_experiment_workspace,
     sweep_matrix,
+    sweep_root,
     verify_package,
     verify_sweep,
 )
@@ -35,10 +38,19 @@ diagnose_app = create_app(help="Diagnose workspace flow, checklist, QoR, and rec
 def diagnose_run(
     *,
     project: Annotated[str | None, typer.Option("--project")] = None,
-    workspace: Annotated[str, typer.Option("--workspace")] = "default",
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    result = diagnose_workspace(project_path(project), workspace)
+    project_root = project_path(project)
+    workspace_name, workspace_dir, reason = select_experiment_workspace(project_root, workspace)
+    if reason is not None:
+        if json_output:
+            error = {"status": "error", "error": reason.partition(":")[0], "reason": reason}
+            typer.echo(json.dumps(error, indent=2, sort_keys=True))
+        else:
+            typer.echo(reason, err=True)
+        raise typer.Exit(1)
+    result = diagnose_workspace(project_root, workspace_name, workspace_dir)
     if json_output:
         typer.echo(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -62,15 +74,25 @@ def diagnose_run(
 def reproducible_export(
     *,
     project: Annotated[str | None, typer.Option("--project")] = None,
-    workspace: Annotated[str, typer.Option("--workspace")] = "default",
+    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     output: Annotated[str, typer.Option("--output")],
 ) -> None:
     try:
         root = project_path(project)
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from exc
+    workspace_name, workspace_dir, reason = select_experiment_workspace(root, workspace)
+    if reason is not None:
+        typer.echo(reason, err=True)
+        raise typer.Exit(1)
+    if workspace_dir is None:
+        workspace_dir = (root / workspace_name).resolve()
+    try:
         output_path = Path(output).expanduser()
         if not output_path.is_absolute():
             output_path = Path.cwd() / output_path
-        result = export_package(root, (root / workspace).resolve(), output_path.resolve())
+        result = export_package(root, workspace_dir, output_path.resolve())
         typer.echo(json.dumps(result, sort_keys=True))
     except ValueError as exc:
         typer.echo(str(exc), err=True)
@@ -154,6 +176,20 @@ def reproducible_report(
         raise typer.Exit(6)
 
 
+def _sweep_root(project: Path, name: str) -> Path:
+    try:
+        return sweep_root(project, name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+def _compare_sweep(project: Path, name: str) -> list[dict]:
+    try:
+        return compare_sweep(project, name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 @sweep_app.command("create")
 def sweep_create(
     *,
@@ -163,6 +199,9 @@ def sweep_create(
 ) -> None:
     try:
         result = create_sweep(project_path(project), name, parse_parameters(param))
+    except UnknownSweepParameterError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
     except ValueError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(2) from exc
@@ -176,7 +215,7 @@ def sweep_show(
     name: Annotated[str, typer.Option("--name")],
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    payload = load_json(project_path(project) / "experiments" / name / "sweep.json")
+    payload = load_json(_sweep_root(project_path(project), name) / "sweep.json")
     if payload is None:
         raise typer.BadParameter(f"sweep does not exist: {name}")
     typer.echo(json.dumps(payload, indent=2, sort_keys=True))
@@ -215,7 +254,7 @@ def sweep_compare(
     name: Annotated[str, typer.Option("--name")],
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    rows = compare_sweep(project_path(project), name)
+    rows = _compare_sweep(project_path(project), name)
     if json_output:
         typer.echo(json.dumps(sweep_matrix(rows), indent=2, sort_keys=True))
         return
@@ -236,7 +275,10 @@ def sweep_verify(
     project: Annotated[str | None, typer.Option("--project")] = None,
     name: Annotated[str, typer.Option("--name")],
 ) -> None:
-    result = verify_sweep(project_path(project), name)
+    try:
+        result = verify_sweep(project_path(project), name)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
     typer.echo(json.dumps(result, indent=2, sort_keys=True))
     if result["status"] != "pass":
         raise typer.Exit(6)
@@ -248,7 +290,7 @@ def explore_rank(
     project: Annotated[str | None, typer.Option("--project")] = None,
     name: Annotated[str, typer.Option("--name")],
 ) -> None:
-    typer.echo(json.dumps(compare_sweep(project_path(project), name), indent=2, sort_keys=True))
+    typer.echo(json.dumps(_compare_sweep(project_path(project), name), indent=2, sort_keys=True))
 
 
 @explore_app.command("export")
@@ -292,7 +334,7 @@ def explore_promote(
             report = sweep_pareto(project_root, name, objectives or [])
             selected = select_front(report, candidate, weights)
             report["selection"] = {"candidate": selected, "weights": weights}
-            root = project_root / "experiments" / name
+            root = sweep_root(project_root, name)
             (root / "pareto.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
             if selected:
                 (root / "winner.json").write_text(
@@ -316,7 +358,7 @@ def explore_promote(
         return
     if not candidate or objectives or weights:
         raise typer.BadParameter("Use --candidate, or --pareto with --objective")
-    root = project_path(project) / "experiments" / name
+    root = _sweep_root(project_path(project), name)
     if not (root / "sweep.json").exists():
         raise typer.BadParameter(f"sweep does not exist: {name}")
     results = load_json(root / "results.json", {"results": []}).get("results", [])

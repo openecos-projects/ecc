@@ -98,6 +98,10 @@ app.add_typer(diagnose_app, name="diagnose")
 
 
 def invoke_typer_app(argv: Sequence[str]) -> int:
+    if argv and argv[0] == "--step-worker":
+        from chipcompiler.engine.step_subprocess import main as step_worker_main
+
+        return step_worker_main()
     command = typer.main.get_command(app)
     # Shell completion requests carry their arguments in env vars, not argv.
     if not argv and "_ECC_COMPLETE" not in os.environ:

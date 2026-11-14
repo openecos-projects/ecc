@@ -7,7 +7,7 @@ and the post-route LEC gate all call this module instead of re-deriving the
 rule.
 
 Input chaining follows the physical chain: a step consumes the output of the
-previous non-LEC, non-advisory step, the step named by its explicit
+previous non-LEC, non-advisory, non-skipped step, the step named by its explicit
 ``input_step``, or the source declared by its policy. Physical signoff steps
 read ``filler`` directly, and the parallel checker batch immediately after
 ``filler`` also reads that anchor.
@@ -20,6 +20,7 @@ from chipcompiler.data.types import (
     LEC_STEP_TOOLS,
     FlowInputSource,
     FlowStepCategory,
+    StateEnum,
     StepEnum,
     flow_step_policy,
 )
@@ -109,6 +110,10 @@ def is_advisory_record(record: Mapping[str, object]) -> bool:
     return step_name(record) in ADVISORY_FLOW_STEPS
 
 
+def is_skipped_record(record: Mapping[str, object]) -> bool:
+    return str(record.get("state") or "") == StateEnum.Skipped.value
+
+
 def checker_batch_anchor(records: Sequence[Mapping[str, object]], index: int) -> str | None:
     """The step a parallel checker batch reads: the step before the batch.
 
@@ -190,7 +195,11 @@ class FlowInputResolver:
             return anchor, False
 
         for previous in reversed(self._records[:index]):
-            if is_lec_record(previous) or is_advisory_record(previous):
+            if (
+                is_lec_record(previous)
+                or is_advisory_record(previous)
+                or is_skipped_record(previous)
+            ):
                 continue
             name = step_name(previous)
             if require_created and name not in self._created:

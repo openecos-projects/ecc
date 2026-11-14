@@ -94,13 +94,37 @@ def _normalize_dict(data: dict, path: str) -> dict:
     return result
 
 
+def _registered_top_level_keys() -> set:
+    """Top-level key each registered parameter is stored under.
+
+    ``maps_to`` is either a top-level key or a one-entry ``{subtree: key}``
+    mapping, so subtrees the PDK templates do not spell out (``sdc``,
+    ``dreamplace``, ...) are part of the vocabulary as well.
+    """
+    from .parameter_schema import list_schemas
+
+    keys: set = set()
+    for schema in list_schemas():
+        target = schema.maps_to
+        if isinstance(target, dict):
+            keys.update(target)
+        elif isinstance(target, str):
+            keys.add(target)
+    return keys
+
+
 def _known_top_level_keys() -> frozenset:
-    """Top-level keys of the canonical vocabulary (both PDK templates)."""
+    """Top-level keys of the canonical vocabulary.
+
+    Both PDK templates plus the key every registered parameter is stored
+    under: a parameter ECC itself registers is never an unknown key.
+    """
     from .parameter import ICS55_PARAMETERS_TEMPLATE, SG13G2_PARAMETERS_TEMPLATE
 
     return frozenset(
         set(ICS55_PARAMETERS_TEMPLATE)
         | set(SG13G2_PARAMETERS_TEMPLATE)
+        | _registered_top_level_keys()
         | set(_GEOMETRY_TO_PARAMETERS)
         | set(_RESERVED_PAYLOAD_KEYS)
         | {"pdk_root", "pdk_config", "file_list", "die_area_mode"}
@@ -118,8 +142,9 @@ def geometry_to_parameters(flat: dict) -> dict:
     """
     normalized = normalize_parameter_dict(flat)
     normalized.pop("die_area_mode", None)
+    known = _known_top_level_keys()
     for key in normalized:
-        if key not in _known_top_level_keys():
+        if key not in known:
             logger.warning("unknown GUI parameter key kept: %s", key)
     for alias, (subtree, key, index) in _GEOMETRY_TO_PARAMETERS.items():
         if alias not in normalized:

@@ -23,22 +23,28 @@ _VALID_TRANSITIONS: dict[str, set[str]] = {
     StateEnum.Unstart.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
+        StateEnum.Skipped.value,
     },
     StateEnum.Pending.value: {
         StateEnum.Ongoing.value,
         StateEnum.Imcomplete.value,
+        StateEnum.Skipped.value,
     },
     StateEnum.Ongoing.value: {
         StateEnum.Success.value,
         StateEnum.Imcomplete.value,
         StateEnum.Invalid.value,
+        StateEnum.Skipped.value,
     },
-    # Terminal states have no outgoing lifecycle transitions. Batch resets
+    # Terminal states have no normal outgoing lifecycle transitions. An
+    # Incomplete optional step may still be deliberately skipped. Batch resets
     # (clear_flow_states, suffix invalidation) assign Unstart directly and
     # bypass this guard by design.
     StateEnum.Success.value: set(),
-    StateEnum.Imcomplete.value: set(),
+    # A failed optional step may still be deliberately skipped by the user.
+    StateEnum.Imcomplete.value: {StateEnum.Skipped.value},
     StateEnum.Invalid.value: set(),
+    StateEnum.Skipped.value: set(),
 }
 
 _LOCKS: dict[str, threading.RLock] = {}
@@ -95,7 +101,8 @@ def save_ledger(flow) -> bool:
 def validate_transition(old_state: str | None, new_state: str, step_name: str, tool: str) -> None:
     """Raise ``ValueError`` on illegal lifecycle transitions.
 
-    Applies only to :func:`set_flow_state`; batch resets bypass it by design.
+    Used by :func:`set_flow_state` and explicit deliberate-skip transitions;
+    batch resets bypass it by design.
     """
     if old_state is None or old_state == new_state:
         return
@@ -137,6 +144,7 @@ def set_flow_state(
             step["state"] = state_value
             if state_value in {StateEnum.Ongoing.value, StateEnum.Unstart.value}:
                 step.pop("resource_observation", None)
+                step.pop("checklist_waiver", None)
             if runtime is not None:
                 step["runtime"] = runtime
             if peak_memory is not None:
@@ -171,6 +179,7 @@ def clear_flow_states(flow, *, persist=None) -> bool:
             step["runtime"] = ""
             step["peak memory (mb)"] = 0
             step.pop("resource_observation", None)
+            step.pop("checklist_waiver", None)
         if write():
             return True
         flow.data = previous_data

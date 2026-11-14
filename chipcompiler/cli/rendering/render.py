@@ -35,7 +35,15 @@ def render_plain(records: tuple[dict, ...], file=None) -> None:
 def _plain_value(value) -> str:
     s = str(value)
     if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
-        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+        # Plain output is one record per line: line breaks and tabs are
+        # written as escapes, matching serialize_line_records (#407).
+        escaped = (
+            s.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
         return f'"{escaped}"'
     return s
 

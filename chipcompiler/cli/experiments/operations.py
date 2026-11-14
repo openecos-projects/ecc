@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import csv
+import difflib
 import hashlib
 import io
 import itertools
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -27,9 +29,11 @@ from chipcompiler.cli.inspection.evidence_summary import (
     step_status,
 )
 from chipcompiler.data import ADVISORY_FLOW_STEPS
+from chipcompiler.data.parameter_schema import is_known_key, list_schemas
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 
 SCHEMA_VERSION = 1
+_SWEEP_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*")
 
 
 def payload_fingerprint(payload: Any) -> str:
@@ -94,8 +98,51 @@ def project_path(value: str | None) -> Path:
     return path
 
 
-def diagnose_workspace(project: Path, workspace_name: str) -> dict[str, Any]:
-    workspace = workspace_path(project, workspace_name)
+def select_experiment_workspace(
+    project: Path, selector: str | None
+) -> tuple[str, Path | None, str | None]:
+    """Select the workspace an experiment command reads: (name, directory, error).
+
+    Used by ``diagnose run`` (#396) and ``reproducible export`` (#418). A
+    manifest project uses the same selection rules as ``status`` and
+    ``check``: an omitted selector picks the only active workspace, an id
+    resolves to its declared directory, an absolute path must be declared,
+    and an unreadable manifest is an error. The error text is "kind: reason".
+    Other projects keep the directory convention ``<project>/<name>``.
+    """
+    from chipcompiler.cli.core.invocation import _resolve_manifest_workspace
+    from chipcompiler.cli.project.workspace_location import (
+        WorkspacePathError,
+        canonical_explicit_workspace_path,
+    )
+    from chipcompiler.project.manifest import ManifestError, classify_project
+
+    if classify_project(str(project)) != "manifest":
+        return selector or "default", None, None
+    name, declared_path = selector, None
+    if selector is not None and os.path.isabs(selector):
+        try:
+            declared_path = canonical_explicit_workspace_path(selector, str(project))
+        except WorkspacePathError as exc:
+            return selector, None, f"{exc.code}: {exc}"
+        name = os.path.basename(declared_path)
+    try:
+        directory, workspace_id, error = _resolve_manifest_workspace(
+            str(project),
+            name,
+            allow_create=False,
+            workspace_path=declared_path,
+            path_selector=declared_path is not None,
+        )
+    except ManifestError as exc:
+        return selector or "default", None, f"manifest_invalid: {exc}"
+    return workspace_id or selector or "default", Path(directory), error
+
+
+def diagnose_workspace(
+    project: Path, workspace_name: str, workspace_dir: Path | None = None
+) -> dict[str, Any]:
+    workspace = workspace_dir or workspace_path(project, workspace_name)
     flow_value = load_json(workspace / "home" / "flow.json", {})
     checklist_value = load_json(workspace / "home" / "checklist.json", {})
     qor_value = load_json(workspace / "home" / "qor_report.json", {})
@@ -404,6 +451,25 @@ def package_file_matches(path: str, kind: str) -> bool:
     raise ValueError(f"unknown package file type: {kind}")
 
 
+class UnknownSweepParameterError(ValueError):
+    """A sweep plan names a parameter that is not in the parameter registry."""
+
+
+def check_sweep_parameter_names(parameters: dict[str, list[str]]) -> None:
+    """Reject parameter names that ``ecc run --set`` would not accept (#395)."""
+    unknown = sorted(key for key in parameters if not is_known_key(key))
+    if not unknown:
+        return
+    known = [schema.param for schema in list_schemas()]
+    messages = []
+    for key in unknown:
+        close = difflib.get_close_matches(key, known, n=3)
+        hint = f" (did you mean: {', '.join(close)}?)" if close else ""
+        messages.append(f"unknown_parameter: {key}{hint}")
+    messages.append("Run 'ecc param list' to see valid parameter names.")
+    raise UnknownSweepParameterError("\n".join(messages))
+
+
 def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
     for value in values:
@@ -419,10 +485,25 @@ def parse_parameters(values: list[str]) -> dict[str, list[str]]:
     return result
 
 
+def sweep_root(project: Path, name: str) -> Path:
+    """Return ``<project>/experiments/<name>`` for a sweep name.
+
+    A sweep name is a plain identifier. Path separators, ``..`` and absolute
+    paths are rejected so a sweep can never live outside the project (#394).
+    """
+    if not _SWEEP_NAME.fullmatch(name):
+        raise ValueError(
+            f"invalid sweep name: {name!r} "
+            "(use letters, digits, '_', '-' or '.'; it must not start with '.')"
+        )
+    return project / "experiments" / name
+
+
 def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> dict[str, Any]:
-    root = project / "experiments" / name
+    root = sweep_root(project, name)
     if root.exists():
         raise ValueError(f"sweep already exists: {name}")
+    check_sweep_parameter_names(parameters)
     keys = sorted(parameters)
     candidates = [
         {"id": f"candidate_{index:04d}", "parameters": dict(zip(keys, values, strict=True))}
@@ -443,11 +524,11 @@ def create_sweep(project: Path, name: str, parameters: dict[str, list[str]]) -> 
 
 
 def sweep_result(project: Path, name: str) -> Path:
-    return project / "experiments" / name / "results.json"
+    return sweep_root(project, name) / "results.json"
 
 
 def verify_sweep(project: Path, name: str) -> dict[str, Any]:
-    root = project / "experiments" / name
+    root = sweep_root(project, name)
     plan = load_json(root / "sweep.json")
     errors: list[str] = []
     if not isinstance(plan, dict):
@@ -675,7 +756,8 @@ def collect_candidate_evidence(project: Path, workspace: Path, exit_code: int) -
 
 
 def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str, Any]:
-    plan = load_json(project / "experiments" / name / "sweep.json")
+    root = sweep_root(project, name)
+    plan = load_json(root / "sweep.json")
     if not plan:
         raise ValueError(f"sweep does not exist: {name}")
     candidates = plan["candidates"][:max_candidates]
@@ -685,7 +767,7 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
     }
     results = []
     for candidate in candidates:
-        candidate_root = project / "experiments" / name / "candidates" / candidate["id"]
+        candidate_root = root / "candidates" / candidate["id"]
         candidate_project = candidate_root / "project"
         if not candidate_project.exists():
 

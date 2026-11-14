@@ -3,8 +3,8 @@
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from threading import RLock
 
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
@@ -28,7 +28,6 @@ from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
     explicit_input_step,
     flow_category,
-    is_checker_batch_step,
     ledger_category,
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
@@ -63,13 +62,13 @@ from chipcompiler.utility import file_digest
 logger = logging.getLogger(__name__)
 
 #: Checker-batch memory policy: fallback step estimate, minimum estimate,
-#: available-memory reserve fraction, observed-peak multiplier and worker cap.
+#: available-memory reserve fraction and observed-peak multiplier.
 _CHECKER_DEFAULT_STEP_MB = 1024.0
 _CHECKER_MIN_STEP_MB = 4096.0
 _CHECKER_MIN_RESERVE_MB = 1024.0
 _CHECKER_MEMORY_RESERVE_FRACTION = 0.20
 _CHECKER_OBSERVED_MEMORY_FACTOR = 1.5
-_CHECKER_MAX_WORKERS = 4
+_CHECKER_MAX_WORKERS = 8
 
 
 _GEOMETRY_SNAPSHOT_STEPS = frozenset(
@@ -98,6 +97,7 @@ class EngineFlow:
         self.workspace = workspace
         self.workspace_steps = []
         self.engine_db = engine_db  # db engine for this flow
+        self._completion_lock = RLock()
 
         if self.workspace is not None:
             self.load()
@@ -560,12 +560,11 @@ class EngineFlow:
                     self.workspace_steps[batch_end]
                 ):
                     batch_end += 1
-                states = self._run_checker_batch(self.workspace_steps[index:batch_end], rerun=rerun)
-                for batch_step, state in zip(
-                    self.workspace_steps[index:batch_end], states, strict=True
-                ):
+                batch_steps = self.workspace_steps[index:batch_end]
+                states = self._run_checker_batch(batch_steps, rerun=rerun, observer=observer)
+                for batch_step, state in zip(batch_steps, states, strict=True):
                     log_flow(workspace=self.workspace)
-                    if state != StateEnum.Success and not (
+                    if state not in {StateEnum.Success, StateEnum.Skipped} and not (
                         batch_step.name in ADVISORY_FLOW_STEPS and state == StateEnum.Imcomplete
                     ):
                         return False
@@ -591,6 +590,8 @@ class EngineFlow:
 
             match state:
                 case StateEnum.Success:
+                    pass
+                case StateEnum.Skipped:
                     pass
                 case StateEnum.Invalid:
                     return False
@@ -630,10 +631,10 @@ class EngineFlow:
         return ledger_category(flow_step) == FlowStepCategory.CHECKER
 
     def _is_checker_batch_step(self, workspace_step: WorkspaceStep) -> bool:
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-        if flow_step is None:
+        try:
+            return self._is_checker_step(workspace_step)
+        except ValueError:
             return False
-        return is_checker_batch_step(flow_step)
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
         from chipcompiler.engine import step_subprocess
@@ -642,7 +643,6 @@ class EngineFlow:
             index > 0
             and self._is_checker_batch_step(workspace_step)
             and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
-            and observer is None
             and step_subprocess.is_enabled()
         )
 
@@ -717,12 +717,20 @@ class EngineFlow:
                     break
 
         for prerequisite in prerequisites:
+            if prerequisite.get("state") == StateEnum.Skipped.value:
+                continue
+            if prerequisite.get("checklist_waiver"):
+                continue
             checklist = prerequisite.get("checklist_status") or prerequisite.get("checklist")
             if isinstance(checklist, dict) and checklist.get("status") == "blocked":
                 return str(prerequisite.get("name") or "previous step")
         return None
 
-    def _run_checker_batch(self, steps: list[WorkspaceStep], *, rerun: bool) -> list[StateEnum]:
+    def _run_checker_batch(
+        self, steps: list[WorkspaceStep], *, rerun: bool, observer=None
+    ) -> list[StateEnum]:
+        from chipcompiler.engine.checker_schedule import run_checker_dag
+
         workers = self._checker_parallelism(steps)
         self.workspace.logger.info(
             "[FLOW] checker batch size=%d workers=%d available_memory_mb=%.1f",
@@ -730,11 +738,13 @@ class EngineFlow:
             workers,
             _available_memory_mb(),
         )
-        if workers == 1:
-            return [self.run_step(step, rerun=rerun) for step in steps]
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="checker") as executor:
-            futures = [executor.submit(self.run_step, step, rerun=rerun) for step in steps]
-            return [future.result() for future in futures]
+        return run_checker_dag(
+            self,
+            steps,
+            rerun=rerun,
+            observer=observer,
+            workers=workers,
+        )
 
     def run_step(
         self,
@@ -748,62 +758,73 @@ class EngineFlow:
         """
         step_tag = f"{workspace_step.name}({workspace_step.tool})"
 
-        if self._apply_checklist_gate(workspace_step) is not None:
-            return StateEnum.Invalid
+        with self._completion_lock:
+            if self._apply_checklist_gate(workspace_step) is not None:
+                return StateEnum.Invalid
 
-        if not rerun and self.check_state(
-            name=workspace_step.name, tool=workspace_step.tool, state=StateEnum.Success
-        ):
-            self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
-            self.clear_db_engine_after_step(workspace_step, StateEnum.Success)
-            _notify_flow_observer(observer, "on_step_skipped", workspace_step)
-            _refresh_qor_report(self.workspace, step_tag)
-            return StateEnum.Success
+            if not rerun:
+                flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+                persisted_state = flow_step.get("state") if flow_step is not None else None
+            else:
+                flow_step = None
+                persisted_state = None
+            if is_finished_step_state(persisted_state):
+                finished_state = StateEnum(str(persisted_state))
+                if finished_state == StateEnum.Skipped:
+                    reason = str((flow_step or {}).get("skip_reason") or "").strip()
+                    suffix = f": {reason}" if reason else ""
+                    self.workspace.logger.info("[SKIP] %s is marked Skipped%s", step_tag, suffix)
+                else:
+                    self.workspace.logger.info("[SKIP] %s already succeeded", step_tag)
+                self.clear_db_engine_after_step(workspace_step, finished_state)
+                _notify_flow_observer(observer, "on_step_skipped", workspace_step)
+                _refresh_qor_report(self.workspace, step_tag)
+                return finished_state
 
-        _normalize_legacy_terminal_state(self, workspace_step, step_tag)
+            _normalize_legacy_terminal_state(self, workspace_step, step_tag)
 
-        # set state ongoing
-        start_time = time.time()
-        timing_constraints = self.timing_constraint_facts()
-        flow_step = self.get_step(workspace_step.name, workspace_step.tool)
-        execution_marker = getattr(observer, "execution", None)
-        operation_marker = getattr(observer, "runtime_operation", None)
-        if isinstance(execution_marker, dict) or isinstance(operation_marker, dict):
-            if flow_step is None:
-                raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
-            previous_state = flow_step.get("state")
-            validate_transition(
-                previous_state,
-                StateEnum.Ongoing.value,
-                workspace_step.name,
-                workspace_step.tool,
-            )
-            previous_info = dict(flow_step.get("info", {}))
-            info = flow_step.setdefault("info", {})
-            previous_resources = flow_step.pop("resource_observation", None)
-            if isinstance(execution_marker, dict):
-                info["execution"] = {**execution_marker, "started_at": start_time}
-            elif isinstance(operation_marker, dict):
-                info["runtime_operation"] = {
-                    **operation_marker,
-                    "started_at": start_time,
-                }
-            flow_step["state"] = StateEnum.Ongoing.value
-            if not self.save():
-                flow_step["state"] = previous_state
-                flow_step["info"] = previous_info
-                if previous_resources is not None:
-                    flow_step["resource_observation"] = previous_resources
-                raise RuntimeError(f"failed to persist runtime operation marker for {step_tag}")
-        else:
-            if flow_step is not None and not self.set_state(
-                name=workspace_step.name,
-                tool=workspace_step.tool,
-                state=StateEnum.Ongoing,
-            ):
-                raise RuntimeError(f"failed to persist ongoing state for {step_tag}")
-        _notify_flow_observer(observer, "on_step_started", workspace_step)
-        previous_step = deepcopy(flow_step) if flow_step is not None else None
+            # set state ongoing
+            start_time = time.time()
+            timing_constraints = self.timing_constraint_facts()
+            flow_step = self.get_step(workspace_step.name, workspace_step.tool)
+            execution_marker = getattr(observer, "execution", None)
+            operation_marker = getattr(observer, "runtime_operation", None)
+            if isinstance(execution_marker, dict) or isinstance(operation_marker, dict):
+                if flow_step is None:
+                    raise RuntimeError(f"cannot persist runtime operation marker for {step_tag}")
+                previous_state = flow_step.get("state")
+                validate_transition(
+                    previous_state,
+                    StateEnum.Ongoing.value,
+                    workspace_step.name,
+                    workspace_step.tool,
+                )
+                previous_info = dict(flow_step.get("info", {}))
+                info = flow_step.setdefault("info", {})
+                previous_resources = flow_step.pop("resource_observation", None)
+                if isinstance(execution_marker, dict):
+                    info["execution"] = {**execution_marker, "started_at": start_time}
+                elif isinstance(operation_marker, dict):
+                    info["runtime_operation"] = {
+                        **operation_marker,
+                        "started_at": start_time,
+                    }
+                flow_step["state"] = StateEnum.Ongoing.value
+                if not self.save():
+                    flow_step["state"] = previous_state
+                    flow_step["info"] = previous_info
+                    if previous_resources is not None:
+                        flow_step["resource_observation"] = previous_resources
+                    raise RuntimeError(f"failed to persist runtime operation marker for {step_tag}")
+            else:
+                if flow_step is not None and not self.set_state(
+                    name=workspace_step.name,
+                    tool=workspace_step.tool,
+                    state=StateEnum.Ongoing,
+                ):
+                    raise RuntimeError(f"failed to persist ongoing state for {step_tag}")
+            _notify_flow_observer(observer, "on_step_started", workspace_step)
+            previous_step = deepcopy(flow_step) if flow_step is not None else None
 
         try:
             execution = execute_tool_step(
@@ -819,7 +840,8 @@ class EngineFlow:
             runtime = execution.runtime
             resources = getattr(execution, "resource_observation", None)
             if flow_step is not None and resources is not None:
-                flow_step["resource_observation"] = resources
+                with self._completion_lock:
+                    flow_step["resource_observation"] = resources
         except (Exception, SystemExit) as exc:
             step_error = record_tool_failure(self.workspace.logger, step_tag, exc)
             elapsed = time.time() - start_time
@@ -867,49 +889,53 @@ class EngineFlow:
                 raise RuntimeError(f"failed to persist terminal state for {step_tag}")
             terminal_persisted = True
 
-            # QoR facts persist only after the ledger commits: a refresh
-            # failure degrades to a warning, never a state rollback attempt.
-            if state == StateEnum.Success:
-                try:
-                    if self.save_step_flow_facts(
-                        workspace_step=workspace_step,
-                        state=state,
-                        runtime_seconds=elapsed,
-                        peak_memory_mb=peak_memory_mb,
-                        timing_constraints=timing_constraints,
-                    ):
-                        try:
-                            from chipcompiler.tools import build_step_metrics
+            with self._completion_lock:
+                # QoR facts persist only after the ledger commits: a refresh
+                # failure degrades to a warning, never a state rollback attempt.
+                if state == StateEnum.Success:
+                    try:
+                        if self.save_step_flow_facts(
+                            workspace_step=workspace_step,
+                            state=state,
+                            runtime_seconds=elapsed,
+                            peak_memory_mb=peak_memory_mb,
+                            timing_constraints=timing_constraints,
+                        ):
+                            try:
+                                from chipcompiler.tools import build_step_metrics
 
-                            if not placement_only and (
-                                build_step_metrics(workspace=self.workspace, step=workspace_step)
-                                is None
-                            ):
-                                self.workspace.logger.warning(
-                                    "[QOR] %s run facts saved; analysis refresh unavailable",
+                                if not placement_only and (
+                                    build_step_metrics(
+                                        workspace=self.workspace, step=workspace_step
+                                    )
+                                    is None
+                                ):
+                                    self.workspace.logger.warning(
+                                        "[QOR] %s run facts saved; analysis refresh unavailable",
+                                        step_tag,
+                                    )
+                            except Exception:
+                                self.workspace.logger.exception(
+                                    "[QOR] %s failed to refresh analysis after saving run facts",
                                     step_tag,
                                 )
-                        except Exception:
-                            self.workspace.logger.exception(
-                                "[QOR] %s failed to refresh analysis after saving run facts",
+                        else:
+                            self.workspace.logger.warning(
+                                "[QOR] %s has no step feature path; run facts were not saved",
                                 step_tag,
                             )
-                    else:
-                        self.workspace.logger.warning(
-                            "[QOR] %s has no step feature path; run facts were not saved",
+                    except Exception:
+                        self.workspace.logger.exception(
+                            "[QOR] %s failed to save run facts after the step succeeded",
                             step_tag,
                         )
-                except Exception:
-                    self.workspace.logger.exception(
-                        "[QOR] %s failed to save run facts after the step succeeded",
-                        step_tag,
-                    )
 
-            # The workspace QoR report renders the per-step analysis
-            # artifacts refreshed above, so it runs after they exist; a
-            # failure degrades to a warning like the facts refresh.
-            if state == StateEnum.Success and not placement_only:
-                _refresh_qor_report(self.workspace, step_tag)
+                # The workspace QoR report renders the per-step analysis
+                # artifacts refreshed above, so it runs after they exist; a
+                # failure degrades to a warning like the facts refresh.
+                if state == StateEnum.Success and not placement_only:
+                    with self._completion_lock:
+                        _refresh_qor_report(self.workspace, step_tag)
         except (Exception, SystemExit) as exc:
             failure_message = record_tool_failure(self.workspace.logger, step_tag, exc)
             step_error = step_error or failure_message
@@ -932,21 +958,23 @@ class EngineFlow:
             terminal_persisted = True
         finally:
             if terminal_persisted:
-                _refresh_signoff_checklist(self.workspace, workspace_step)
-                _sync_step_checklist(self, workspace_step)
+                with self._completion_lock:
+                    _refresh_signoff_checklist(self.workspace, workspace_step)
+                    _sync_step_checklist(self, workspace_step)
             try:
                 self.clear_db_engine_after_step(workspace_step, state)
             except (Exception, SystemExit):
                 logger.exception("Failed to release DB engine after %s", step_tag)
             if terminal_persisted:
-                notify_step_completed(
-                    self,
-                    observer,
-                    workspace_step,
-                    state,
-                    step_error,
-                    previous_step,
-                )
+                with self._completion_lock:
+                    notify_step_completed(
+                        self,
+                        observer,
+                        workspace_step,
+                        state,
+                        step_error,
+                        previous_step,
+                    )
 
         self.workspace.logger.info(
             "[RESULT] %s state=%s runtime=%s mem=%sMB",

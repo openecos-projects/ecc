@@ -99,12 +99,14 @@ class FlowStepPolicy:
     ``advisory`` steps keep their execution state but neither gate the flow nor
     become the source of physical design artifacts for downstream steps.
     ``input_source`` declares the default edge; an explicit ledger
-    ``input_step`` still overrides it.
+    ``input_step`` still overrides it. ``depends_on`` adds artifact-producing
+    predecessors that must finish before a concurrent checker starts.
     """
 
     category: FlowStepCategory
     input_source: FlowInputSource = FlowInputSource.PREVIOUS
     advisory: bool = False
+    depends_on: tuple[str, ...] = ()
 
 
 # Every flow step is declared here; a step missing from this table fails the
@@ -135,10 +137,21 @@ FLOW_STEP_POLICIES: Final[dict[str, FlowStepPolicy]] = {
         FlowStepCategory.CHECKER, FlowInputSource.FILLER
     ),
     StepEnum.RCX.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.STA.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
-    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(FlowStepCategory.CHECKER, FlowInputSource.FILLER),
+    StepEnum.STA.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        depends_on=(StepEnum.RCX.value,),
+    ),
+    StepEnum.POWER_ANALYSIS.value: FlowStepPolicy(
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        depends_on=(StepEnum.RCX.value,),
+    ),
     StepEnum.EMIR.value: FlowStepPolicy(
-        FlowStepCategory.CHECKER, FlowInputSource.FILLER, advisory=True
+        FlowStepCategory.CHECKER,
+        FlowInputSource.FILLER,
+        advisory=True,
+        depends_on=(StepEnum.POWER_ANALYSIS.value,),
     ),
     StepEnum.HARDEN.value: FlowStepPolicy(FlowStepCategory.PNR, FlowInputSource.FILLER),
     StepEnum.SIGNOFF.value: FlowStepPolicy(FlowStepCategory.PNR),
@@ -291,10 +304,11 @@ class StateEnum(StrEnum):
     Ongoing = "Ongoing"  # step is running
     Pending = "Pending"  # step is pending
     Imcomplete = "Incomplete"  # step is failed
+    Skipped = "Skipped"  # step deliberately excluded from this flow
     # Ignored = "Ignored" # step result do not affect flow step
 
 
-FINISHED_STEP_STATES = frozenset({StateEnum.Success.value})
+FINISHED_STEP_STATES = frozenset({StateEnum.Success.value, StateEnum.Skipped.value})
 
 
 def is_finished_step_state(state: object) -> bool:

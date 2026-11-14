@@ -79,6 +79,7 @@ def derive_workspace(
     # target's sibling lock file is created (#400).
     locks = sorted((source, target), key=str) if blocking else (source, target)
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
+        _sweep_stale_staging(target)
         if target.exists():
             if command_id and command_retry_matches(target, command_id, fingerprint):
                 workspace = load_workspace(target)
@@ -162,6 +163,16 @@ def derive_workspace(
             return derived
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+
+def _sweep_stale_staging(target: Path) -> None:
+    """Remove staging siblings left by an interrupted derive of the same target."""
+    prefix = f".{target.name}.staging-"
+    for sibling in target.parent.iterdir():
+        if not sibling.name.startswith(prefix) or sibling.is_symlink() or not sibling.is_dir():
+            continue
+        shutil.rmtree(sibling)
+        Path(f"{sibling}.lock").unlink(missing_ok=True)
 
 
 def _reset_step_suffix(engine_flow, reset_from_step: str) -> list:

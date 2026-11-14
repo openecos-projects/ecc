@@ -200,6 +200,9 @@ def _mutate(
     from chipcompiler.engine import EngineFlow, rerun
     from chipcompiler.utility.workspace_lock import workspace_lock
 
+    # Reject a workspace that was not selected before taking its lock:
+    # workspace_lock would create <name>.lock for an undeclared name.
+    _workspace_scope_error(ctx)
     try:
         with workspace_lock(Path(ctx.run_dir)):
             workspace = _load_workspace(ctx)

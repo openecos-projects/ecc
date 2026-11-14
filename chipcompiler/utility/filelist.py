@@ -44,8 +44,8 @@ def resolve_initial_rtl(
 
     Mirrors the synthesis input priority (input_filelist over origin_verilog).
     Configured paths win when they exist; otherwise glob the origin directory
-    by suffix, since load_workspace drops these attributes for .sv and
-    filelist inputs. A configured path missing on disk is returned last so
+    by suffix, since load_workspace drops these attributes for filelist
+    inputs. A configured path missing on disk is returned last so
     callers can report it as failed.
     """
     configured = (input_filelist, origin_verilog)

@@ -6,7 +6,7 @@ shape every real workspace has, with ``category``) and a legacy ledger without
 module does not assert that they agree.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -401,3 +401,41 @@ def test_post_route_gate_and_checker_chain_gate_semantics(tmp_path, monkeypatch,
 
     prerequisites = _checklist_prerequisite_sources(workspace, ledger)
     assert prerequisites == {"filler": "route", "Harden": "emir"}
+
+
+def test_skipped_and_waived_checkers_do_not_gate_downstream(tmp_path):
+    from chipcompiler.data import EccStep
+
+    workspace = _workspace(tmp_path)
+    flow = EngineFlow(workspace)
+    flow.workspace.flow.data = cast(
+        FlowDocument,
+        {
+            "steps": [
+                {"name": "filler", "tool": "ecc", "state": "Success", "category": "PNR"},
+                {
+                    "name": "postRouteLec",
+                    "tool": "kepler_formal",
+                    "state": "Skipped",
+                    "category": "CHECKER",
+                    "checklist_status": {"status": "skipped", "blocked": False},
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Success",
+                    "category": "CHECKER",
+                    "checklist_status": {"status": "blocked", "blocked": True},
+                    "checklist_waiver": {"reason": "accepted for flow completion"},
+                },
+                {"name": "Harden", "tool": "ecc", "state": "Unstart", "category": "PNR"},
+            ]
+        },
+    )
+    harden = EccStep(name="Harden", tool="ecc")
+
+    assert flow._blocked_checklist_prerequisite(harden) is None
+
+    steps = cast(list[dict[str, Any]], flow.workspace.flow.data.get("steps", []))
+    steps[2].pop("checklist_waiver")
+    assert flow._blocked_checklist_prerequisite(harden) == "sta"

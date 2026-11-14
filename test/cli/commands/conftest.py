@@ -49,11 +49,25 @@ class DummyFlow:
 def flow_mocks(monkeypatch):
     """Install create_workspace/EngineFlow mocks for `ecc run` tests.
 
-    Returns a namespace with `capture` (the create_workspace kwargs) and
-    `flow` (the DummyFlow class, for instance/state assertions).
+    Returns a namespace with `capture` (the create_workspace kwargs and the
+    flow options projections requested for the stub workspace) and `flow`
+    (the DummyFlow class, for instance/state assertions).
     """
-    capture: dict[str, Any] = {"create_kwargs": None}
+    from chipcompiler.data.workspace import flow_options
+
+    capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}
     workspace_obj = SimpleNamespace(name="workspace", flow=SimpleNamespace(data={"steps": []}))
+    project_flow_options = flow_options.sync_flow_options_projection
+
+    def fake_flow_options_projection(workspace, *, persist=False):
+        # The stub workspace has no ledger on disk to project into; record the
+        # request. Real workspaces built by a test keep the real projection.
+        if workspace is not workspace_obj:
+            return project_flow_options(workspace, persist=persist)
+        capture["options_projections"].append({"persist": persist})
+        return False
+
+    monkeypatch.setattr(flow_options, "sync_flow_options_projection", fake_flow_options_projection)
 
     DummyFlow.instances = []
     DummyFlow.has_init_value = False

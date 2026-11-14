@@ -70,6 +70,7 @@ def prepare_steps_for_rerun(workspace: Any, engine_flow: Any, workspace_steps: l
         if record is None:
             continue
         record.update({"state": "Unstart", "runtime": "", "peak memory (mb)": 0, "info": {}})
+        record.pop("checklist_waiver", None)
         updated_record = True
     if updated_record and not engine_flow.save():
         raise WorkspaceLifecycleError("workspace_reset_failed", "Failed to persist flow reset")

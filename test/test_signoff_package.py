@@ -458,6 +458,23 @@ def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_pat
     assert not any("postRouteLec" in entry for entry in result.missing_required)
 
 
+def test_collect_signoff_package_skips_deliberately_skipped_post_route_lec(tmp_path):
+    workspace_dir = _make_signoff_workspace(tmp_path)
+    flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
+    next(step for step in flow["steps"] if step.get("name") == "postRouteLec")["state"] = (
+        StateEnum.Skipped.value
+    )
+    _write_json(workspace_dir / "home" / "flow.json", flow)
+
+    result = _make_engine_flow(workspace_dir).collect_signoff_package(
+        SignoffPackageOptions(archive=False, materialize=False)
+    )
+
+    assert result.ok is True
+    assert not any(issue.location == "postRouteLec" and issue.required for issue in result.issues)
+    assert not any("postRouteLec" in entry for entry in result.missing_required)
+
+
 def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> None:
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
     flow["steps"] = [
