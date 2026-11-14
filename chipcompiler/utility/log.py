@@ -151,7 +151,9 @@ class Logger:
         if not self.logger.handlers:
             formatter = logging.Formatter(fmt)
 
-            console_handler = logging.StreamHandler(sys.stdout)
+            # A command's stdout carries its records (--plain, --json), so
+            # console diagnostics go to stderr.
+            console_handler = logging.StreamHandler(sys.stderr)
             console_handler.setFormatter(formatter)
             console_handler.setLevel(logging.WARNING if console_level is None else console_level)
             self.logger.addHandler(console_handler)
