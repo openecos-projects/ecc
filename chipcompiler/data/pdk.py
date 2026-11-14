@@ -333,7 +333,6 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
         stdcell_dir / f"ICsprout55_SC9T_BASIC_{vt}" / "lef" / f"ICsprout55_9T{vt}_basic.lef"
         for vt in variants
     ]
-    lef_paths.insert(0, root / "chipcompiler/tools/ecc/configs/ics55_v2_implants.lef")
     lib_paths = [
         stdcell_dir
         / f"ICsprout55_SC9T_BASIC_{vt}"
