@@ -140,7 +140,7 @@ SCHEMAS = (
         "place.openroad_vt_suffixes",
         "dreamplace",
         ("openroad_vt_suffixes",),
-        ["H7H", "H7R", "H7L"],
+        ["_9THVT", "_9TSVT", "_9TLVT"],
         applies="placement",
         description="OpenROAD VT suffixes used to classify equivalent Liberty cells",
     ),

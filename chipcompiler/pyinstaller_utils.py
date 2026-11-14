@@ -69,6 +69,18 @@ def filter_collected_payloads(payloads):
     return [item for item in payloads if not payload_is_excluded(item)]
 
 
+def filter_chipcompiler_payloads(payloads):
+    """Exclude vendored checkouts from collect_all's (source, destination) pairs.
+
+    Native runtimes and their data are collected explicitly into their import
+    locations. Recursively collecting the checkouts also picks up stale local
+    build products with the same library names.
+    """
+    return [
+        item for item in payloads if not payload_path_matches(item[1], "chipcompiler/thirdparty")
+    ]
+
+
 def hiddenimport_is_excluded(module_name):
     return any(
         module_name == prefix or module_name.startswith(f"{prefix}.")

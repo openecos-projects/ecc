@@ -432,10 +432,10 @@ class TestMissingConfigErrorRecord:
             f.write(
                 "\n[pdk.overrides]\n"
                 'tech = "prtech/techLEF/N551P6M_ecos.lef"\n'
-                'lefs = ["IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR'
-                '/lef/ics55_LLSC_H7CR_ecos.lef"]\n'
-                'libs = ["IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR'
-                '/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"]\n'
+                'lefs = ["IP/STD_cell/ICsprout55_SC9T_BASIC_SVT'
+                '/lef/ICsprout55_9TSVT_basic.lef"]\n'
+                'libs = ["IP/STD_cell/ICsprout55_SC9T_BASIC_SVT'
+                '/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"]\n'
             )
 
         rc = cli_main.run(["check", "--project", project_dir])

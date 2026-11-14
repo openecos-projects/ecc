@@ -14,7 +14,7 @@
     "joint_alternating_buffering_rounds": 1,
     "joint_alternating_buffering_selection_fraction": 0.001,
     "joint_alternating_buffer_commit_policy": "final_only",
-    "buffering_fixed_buffer_master": "BUFX1H7L",
+    "buffering_fixed_buffer_master": "BUFX1_9TLVT",
     "place_io_engine": "ecc",
     "rc_tcl": "",
     "gpu": 0,
@@ -196,9 +196,9 @@
     ],
     "placement_sizing_mode": "place_only",
     "openroad_vt_suffixes": [
-        "H7H",
-        "H7R",
-        "H7L"
+        "_9THVT",
+        "_9TSVT",
+        "_9TLVT"
     ],
     "l_direction_use_gpugr": 0,
     "l_shape_use_ggr_topology": 0,

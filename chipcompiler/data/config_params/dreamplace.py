@@ -224,7 +224,7 @@ SCHEMAS = (
     _place("bndry_padding_x", 0),
     _place("bndry_padding_y", 0),
     _place("buffering_continuous_steps", 120),
-    _place("buffering_fixed_buffer_master", "BUFX1H7L"),
+    _place("buffering_fixed_buffer_master", "BUFX1_9TLVT"),
     _place("buffering_segment_count_timing_backend", "cpp_cuda_segment_transfer_explicit_autograd"),
     _place("density_weight", 0.00008),
     _place("cell_model_schema", "main_id_arc_offset_piecewise_linear", type="str"),

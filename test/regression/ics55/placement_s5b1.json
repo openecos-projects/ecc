@@ -72,7 +72,7 @@
   "buffering_mode": "segment",
   "buffering_segment_strategy": "discrete_net_gradient",
   "buffering_segment_count_z_init": 0.0,
-  "buffering_fixed_buffer_master": "BUFX16H7L",
+  "buffering_fixed_buffer_master": "BUFX16_9TLVT",
   "buffering_fixed_bsu_index": null,
   "buffering_max_repeaters_per_segment": 3,
   "buffering_route_b_selection_fraction": 0.001,

@@ -586,12 +586,45 @@ def _lec_artifact_items(
     ]
 
 
+def _lvs_coverage_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]:
+    if step.name != StepEnum.LVS.value:
+        return []
+    path = getattr(step.feature, "step", None)
+    feature = json_read(path) if path and Path(path).is_file() else {}
+    terminals = feature.get("non_routing_supply_terminals", {}) if isinstance(feature, dict) else {}
+    if not terminals:
+        return []
+    evidence = {
+        "kind": "feature",
+        "path": _path_text(workspace, path),
+        "selector": "/non_routing_supply_terminals",
+    }
+    return [
+        _item(
+            item_id="coverage.lvs.substrate",
+            step=step.name,
+            category="coverage",
+            owner="checklist",
+            policy="warn",
+            state="unavailable",
+            title="Substrate and well connectivity",
+            summary=(
+                f"{len(terminals)} non-routing supply terminals require foundry "
+                "well/substrate extraction; metal LVS does not check them."
+            ),
+            source=evidence,
+            evidence=[evidence],
+        )
+    ]
+
+
 def refresh_step_checklist(workspace: Workspace, step: WorkspaceStep) -> bool:
     """Replace one step checklist with its current signoff-relevant evidence."""
     checklist_path = Path(step.checklist.path or _step_directory(step) / "checklist.json")
     checklist_path.parent.mkdir(parents=True, exist_ok=True)
     checklist = Checklist(checklist_path)
     items = [*_quality_gate_items(workspace, step), *_step_artifact_items(workspace, step)]
+    items.extend(_lvs_coverage_items(workspace, step))
     if step.name in ADVISORY_FLOW_STEPS:
         items.extend(item for item in _flow_items(workspace) if item["step"] == step.name)
     step.checklist.checklist = checklist.replace(items)

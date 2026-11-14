@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.pyinstaller_utils import (
     collect_package_extension_binaries,
+    filter_chipcompiler_payloads,
     filter_collected_payloads,
     filter_hiddenimports,
 )
@@ -85,6 +86,17 @@ def test_pyinstaller_payload_filter_keeps_torch_runtime_binaries():
     ]
 
     assert filter_collected_payloads(payloads) == payloads
+
+
+def test_chipcompiler_collection_excludes_build_copies_but_keeps_runtime_destinations():
+    source = "/repo/chipcompiler/thirdparty/ecc-dreamplace/xplace-native/libxplace_common.so"
+    payloads = [
+        (source, "chipcompiler/thirdparty/ecc-dreamplace/xplace-native"),
+        (source, "thirdparty/xplace/cpp_to_py/cpybin"),
+        ("/repo/chipcompiler/tools/ecc/configs/cts_ecc.json", "chipcompiler/tools/ecc/configs"),
+    ]
+
+    assert filter_chipcompiler_payloads(payloads) == payloads[1:]
 
 
 def test_pyinstaller_payload_filter_keeps_ecc_tools_python_extension():

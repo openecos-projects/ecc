@@ -289,10 +289,10 @@ timing_exception_txt = '''
 | 字段 | 示例值（harden 步运行时） | 来源 | 含义 |
 |---|---|---|---|
 | `INPUT.tech_lef_path` | `…/prtech/techLEF/N551P6M_ecos.lef` | PDK | 工艺 LEF（层定义/规则） |
-| `INPUT.lef_paths` | `[H7CR_lef, H7CL_lef, H7CH_lef]` | PDK | 标准单元 LEF（抽象）；IO LEF 需通过 `pdk.lefs` 配置 |
+| `INPUT.lef_paths` | `[SVT_lef, LVT_lef, HVT_lef]` | PDK | 标准单元 LEF（抽象）；IO LEF 需通过 `pdk.lefs` 配置 |
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
-| `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
+| `INPUT.lib_path` | SVT/LVT/HVT SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 HVT |
 | `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认时序入口（生成的 Tcl 或用户提供的完整约束） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
@@ -314,22 +314,22 @@ timing_exception_txt = '''
 | `synth_stat_json` / `synth_check_rpt` 等 | `report/`、`feature/` 下 | 步骤调度 | 统计与检查报告输出 |
 | `keep_hierarchy` | `false` | 模板 | 是否保留模块层级 |
 | `dont_use_cells` | `[DFFSRQX* … ICG*]` | PDK/模板 | 综合禁用单元（通配符） |
-| `tie_low_cell/port` | `TIELOH7R` / `Z` | PDK | 低电平约束单元及输出端口 |
-| `tie_high_cell/port` | `TIEHIH7R` / `Z` | PDK | 高电平约束单元及输出端口 |
-| `abc_driver_cell` | `BUFX0P5H7L` | PDK | ABC 映射假设的驱动单元 |
+| `tie_low_cell/port` | `TIELOX1_9TSVT` / `Y` | PDK | 低电平约束单元及输出端口 |
+| `tie_high_cell/port` | `TIEHIX1_9TSVT` / `Y` | PDK | 高电平约束单元及输出端口 |
+| `abc_driver_cell` | `BUFX0P5_9TSVT` | PDK | ABC 映射假设的驱动单元 |
 | `abc_load` | `0.015` | PDK | ABC 映射负载电容（pF） |
-| `lib_stdcell_list` | H7CR/H7CL | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表；`pdk.libs` 中配置的 IO 库也会传入，不额外排除 |
-| `lib_list` | H7CR/H7CL | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；配置 IO 库后用于识别已有 IO 实例，H7CH 仍不加载 |
+| `lib_stdcell_list` | SVT/LVT | PDK（排除 HVT） | 传给 ABC、DFF 和 clockgate 的库列表；`pdk.libs` 中配置的 IO 库也会传入，不额外排除 |
+| `lib_list` | SVT/LVT | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；配置 IO 库后用于识别已有 IO 实例，HVT 仍不加载 |
 | `tmp_dir` | `Synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
 
 ICS55 内置 PDK 不默认加载 IO cell 的 LEF 和 Liberty。设计需要 IO cell 时，在
-`[pdk.overrides]` 中把 `IP/IO/ICsprout_55LLULP1233_IO_251013/lef/ICSIOA_N55_3P3_1P6M1TM_ecos.lef`
-加入 `lefs`，把同目录 `liberty/` 下的 `ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib` 加入
+`[pdk.overrides]` 中把 `IP/IO/lef/IC055L_GPIO3P3V_CDG_6M.lef`
+加入 `lefs`，把同目录 `liberty/` 下的 `ic055l_gpio3p3v_cdg_ss_v1p08_v2p97_125c_nldm.lib` 加入
 `libs`。覆盖是整列表替换，需同时列出标准单元文件。CTS、setup Sizer 及综合后 STA
 从该列表取得 IO 库；最终 STA 和 hold Sizer 使用 §13 的 `sta.liberty`。Sizer 要求
 Liberty 单元有对应的 LEF master，因此 IO 的 LEF 与 Liberty 必须同时配置。
 
-PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 IO 库的
+旧 PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 IO 库的
 上升延迟和上升转换表仍为错误值（约 200 ns）。它们出现在 `pdk.libs` 中时 PDK 校验
 直接失败，错误信息会给出同工艺角的已修正库。已创建 workspace 的 DB 库列表不会自动
 移除此前默认加载的 IO 库。
@@ -361,7 +361,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `mode` | `die_util` | 布图模式：`die_util`=按利用率反推尺寸；`die_size`=直接给 die 尺寸 |
-| `site_name` | PDK → `core7` | 标准单元行 site 名 |
+| `site_name` | PDK → `SC9T_site` | 标准单元行 site 名 |
 | `margin.left/right/top/bottom_micron` | 参数 `floorplan.core_margin` → 2.0 | core 到 die 边缘留白（µm） |
 | `die_util.aspect_ratio` | 参数 `floorplan.aspect_ratio` → 1.0 | core 宽高比 |
 | `die_util.utilization` | 参数 `floorplan.core_util` → 0.4 | core 利用率（单元面积/核心面积） |
@@ -379,9 +379,9 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `well_tap.cell_name` | PDK → `FILLTAPH7R` | well tap 单元 |
+| `well_tap.cell_name` | PDK → `TAPX1_9TSVT` | well tap 单元 |
 | `well_tap.distance_micron` | 58.0 | tap 插入间距（µm，满足阱接触规则） |
-| `side_endcap.left/right_cell_name` | PDK → `FILLTAPH7R` | 行首/行尾 endcap 单元 |
+| `side_endcap.left/right_cell_name` | PDK → `TAPX1_9TSVT` | 行首/行尾 endcap 单元 |
 | `edge_endcap.top/bottom_cell_name_list` | FILLCAP/FILLER 系列 | die 上下边缘 endcap 备选单元（按宽度择优） |
 | `boundary_tap.top/bottom_cell_name_list` | 同上 | die 边界 tap 备选单元 |
 | `boundary_tap.rule_micron` | 30.0 | 边界 tap 插入规则距离（µm） |
@@ -493,7 +493,7 @@ skip_steps = ["lec"]  # 开启 diff_opt；默认值为 ["lec", "diff_opt"]
 
 启用后，它从上一阶段的 DEF/Verilog 开始，只支持 placement parasitic，
 并可以执行 discrete sizing、candidate buffering 或二者交错：每个 segment 保留三个候选位置，
-使用 ICS55 的 BUFX8H7L、BUFX12H7L、BUFX16H7L、BUFX20H7L 四档 buffer，
+使用 ICS55 的 BUFX8_9TLVT、BUFX12_9TLVT、BUFX16_9TLVT、BUFX24_9TLVT 四档 buffer，
 每轮每条 net 最多接受一个动作，再按全局梯度收益排序选取配置比例的 net。
 启用后的默认 joint 配置为下例的十组 S1+B1，权重均为 500/5/1/1。
 每轮 buffering 的选择比例为 0.1%。buffer 实体化后完整刷新拓扑，
@@ -791,7 +791,7 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 | `max_cap` | `"0.15"` | 0.15 | 缓冲最大负载电容（pF） |
 | `max_fanout` | `"32"` | 32 `*cts.max_fanout` | 时钟缓冲最大扇出 |
 | `routing_layer` | `[4,5]` | [4,5] | 时钟走线层范围（层序号，MET4–MET5） |
-| `buffer_type` | `[]` | PDK → `[BUFX8H7L, BUFX12H7L, BUFX16H7L, BUFX20H7L]` | 可选时钟缓冲单元（驱动强度递增） |
+| `buffer_type` | `[]` | PDK → `[BUFX8_9TLVT, BUFX12_9TLVT, BUFX16_9TLVT, BUFX24_9TLVT]` | 可选时钟缓冲单元（驱动强度递增） |
 
 ## 8. routing（ecc-tools）
 
@@ -883,7 +883,7 @@ lec_engine = "kepler_formal"  # yosys_lec | lec_dual（或 dual）
 |---|---|---|
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
-| `liberty[].path` | H7CR + H7CL + H7CH | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
+| `liberty[].path` | SVT + LVT + HVT | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
 | `signoff[0]` | TYP:[TYPICAL]；MIN:[Cworst,RCworst,Cbest,RCbest] | 默认签核要跑的「liberty corner × RC corner」组合，共 5 个分析 corner |
 
 默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。

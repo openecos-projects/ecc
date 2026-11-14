@@ -17,6 +17,7 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metada
 
 from chipcompiler.pyinstaller_utils import (
     collect_package_extension_binaries,
+    filter_chipcompiler_payloads,
     filter_collected_payloads,
     filter_hiddenimports,
 )
@@ -316,7 +317,7 @@ dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("d
 torch_datas, torch_binaries, torch_hiddenimports = collect_all("torch")
 
 datas = []
-datas.extend(ecc_datas)
+datas.extend(filter_chipcompiler_payloads(ecc_datas))
 datas.extend(ecc_tools_datas)
 datas.extend(klayout_datas)
 datas.extend(dreamplace_datas)
@@ -329,7 +330,7 @@ datas.extend(xplace_datas)
 datas.extend(collect_doc_guides())
 
 binaries = []
-binaries.extend(ecc_binaries)
+binaries.extend(filter_chipcompiler_payloads(ecc_binaries))
 binaries.extend(ecc_tools_binaries)
 binaries.extend(collect_ecc_tools_extension_binaries())
 binaries.extend(klayout_binaries)

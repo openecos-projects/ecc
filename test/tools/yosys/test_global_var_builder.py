@@ -184,7 +184,7 @@ def test_lists_are_emitted_as_tcl_lists_without_split(tmp_path):
 
 
 @pytest.mark.parametrize("library_source", ["pdk", "db", "both"])
-def test_h7ch_is_excluded_from_synthesis_but_preserved_for_backend(
+def test_hvt_is_excluded_from_synthesis_but_preserved_for_backend(
     tmp_path, minimal_ics55_pdk_factory, library_source
 ):
     workspace, step, _ = _build_workspace_and_step(tmp_path)
@@ -194,19 +194,19 @@ def test_h7ch_is_excluded_from_synthesis_but_preserved_for_backend(
 
     sta_template = Path(yosys_builder.__file__).resolve().parents[1] / "ecc/configs/sta_ecc.json"
     sta = json.loads(sta_template.read_text())
-    h7ch_libs = [
+    hvt_libs = [
         _write_file(pdk_root / path.lstrip("/"))
         for corner in sta["liberty"]
         for path in corner["path"]
-        if Path(path).name.startswith("ics55_LLSC_H7CH_")
+        if "_9THVT_" in Path(path).name
     ]
-    assert h7ch_libs
+    assert hvt_libs
     if library_source in ("pdk", "both"):
-        workspace.pdk.libs.extend(h7ch_libs)
+        workspace.pdk.libs.extend(hvt_libs)
     db_path = Path(workspace.config["db"])
     db = json.loads(db_path.read_text())
     if library_source in ("db", "both"):
-        db["INPUT"]["lib_path"].extend(str(path) for path in h7ch_libs)
+        db["INPUT"]["lib_path"].extend(str(path) for path in hvt_libs)
         db_path.write_text(json.dumps(db))
     backend_pdk = deepcopy(workspace.pdk)
 

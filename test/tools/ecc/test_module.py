@@ -477,6 +477,15 @@ def test_gds_save_requires_layer_map():
     assert module.ecc.calls == []
 
 
+def test_gds_save_propagates_native_export_failure(monkeypatch):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    monkeypatch.setattr(module.ecc, "gds_save", lambda **_kwargs: False)
+
+    with pytest.raises(RuntimeError, match="GDS export failed"):
+        module.gds_save(Path("/ws/output/gcd.gds"), Path("/pdk/layers.map"))
+
+
 def test_ecc_metrics_qor_summary_marks_blocking_lvs_violations(tmp_path):
     workspace = Workspace(
         directory=tmp_path,

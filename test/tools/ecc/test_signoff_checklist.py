@@ -22,6 +22,7 @@ from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_pay
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,
     _lec_artifact_items,
+    _lvs_coverage_items,
     _step_artifact_items,
     _workspace_items,
     rebuild_home_checklist,
@@ -36,6 +37,23 @@ def _record(metric_id, value, path="feature/step.json"):
         "value": value,
         "source": {"kind": "feature", "path": path, "selector": f"/{metric_id}"},
     }
+
+
+def test_lvs_surfaces_substrate_coverage_without_claiming_connectivity(tmp_path):
+    path = tmp_path / "lvs.json"
+    workspace = Workspace(directory=tmp_path)
+    step = EccStep(name=StepEnum.LVS.value, feature=EccFeature(step=path))
+    path.write_text(json.dumps({"non_routing_supply_terminals": {"u0/VNW": "VDD"}}))
+
+    items = _lvs_coverage_items(workspace, step)
+
+    assert len(items) == 1
+    assert items[0]["state"] == "unavailable"
+    assert items[0]["blocked"] is False
+    assert "1 non-routing supply terminals" in items[0]["summary"]
+    assert items[0]["evidence"][0]["selector"] == "/non_routing_supply_terminals"
+    path.write_text(json.dumps({"non_routing_supply_terminals": {}}))
+    assert _lvs_coverage_items(workspace, step) == []
 
 
 def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):

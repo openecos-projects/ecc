@@ -476,13 +476,13 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # Follow mapped DFF cell names, not library filenames. For designs without
-# mapped ICS55 DFFs, select from the loaded latch library cells.
-set ics55_cells [tee -q -s result.string select -list-mod =*/t:DFF*H7? %M]
+# mapped ICS55 DFFs, select from the loaded v2 latch library cells.
+set ics55_cells [tee -q -s result.string select -list-mod =*/t:DFF* %M]
 if {[string trim $ics55_cells] eq ""} {
-  set ics55_cells [tee -q -s result.string select -list-mod =LATLX1H7?]
+  set ics55_cells [tee -q -s result.string select -list-mod =LATNQX1* %M]
 }
 set ics55_latch_suffix ""
-regexp {H7[HLR]\M} $ics55_cells ics55_latch_suffix
+regexp {(_9T(HVT|LVT|SVT))\M} $ics55_cells ics55_latch_suffix
 
 # Positive asynchronous controls are inverted for the active-low library pins.
 if {$ics55_latch_suffix ne ""} {
@@ -492,25 +492,25 @@ if {$ics55_latch_suffix ne ""} {
 module \$_DLATCH_N_ (E, D, Q);
   input E, D;
   output Q;
-  LATLX1%s _TECHMAP_REPLACE_ (.D(D), .GN(E), .Q(Q));
+  LATNQX1%s _TECHMAP_REPLACE_ (.D(D), .CKN(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_P_ (E, D, Q);
   input E, D;
   output Q;
-  LATHX1%s _TECHMAP_REPLACE_ (.D(D), .G(E), .Q(Q));
+  LATQX1%s _TECHMAP_REPLACE_ (.D(D), .CK(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_NN0_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .GN(E), .Q(Q));
+  LATNRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .CKN(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_NN1_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .GN(E), .Q(Q));
+  LATNSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .CKN(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_NP0_ (E, R, D, Q);
@@ -518,7 +518,7 @@ module \$_DLATCH_NP0_ (E, R, D, Q);
   output Q;
   wire RN;
   INVX1%s inv_reset (.A(R), .Y(RN));
-  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .GN(E), .Q(Q));
+  LATNRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .CKN(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_NP1_ (E, R, D, Q);
@@ -526,19 +526,19 @@ module \$_DLATCH_NP1_ (E, R, D, Q);
   output Q;
   wire SN;
   INVX1%s inv_set (.A(R), .Y(SN));
-  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .GN(E), .Q(Q));
+  LATNSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .CKN(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_PN0_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .G(E), .Q(Q));
+  LATRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .CK(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_PN1_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .G(E), .Q(Q));
+  LATSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .CK(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_PP0_ (E, R, D, Q);
@@ -546,7 +546,7 @@ module \$_DLATCH_PP0_ (E, R, D, Q);
   output Q;
   wire RN;
   INVX1%s inv_reset (.A(R), .Y(RN));
-  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .G(E), .Q(Q));
+  LATRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .CK(E), .Q(Q));
 endmodule
 
 module \$_DLATCH_PP1_ (E, R, D, Q);
@@ -554,7 +554,7 @@ module \$_DLATCH_PP1_ (E, R, D, Q);
   output Q;
   wire SN;
   INVX1%s inv_set (.A(R), .Y(SN));
-  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .G(E), .Q(Q));
+  LATSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .CK(E), .Q(Q));
 endmodule
 } $ics55_latch_suffix $ics55_latch_suffix \
   $ics55_latch_suffix $ics55_latch_suffix \

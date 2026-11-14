@@ -4,25 +4,10 @@ import os
 def complete_ics55_pdk_available(pdk_root: str = "") -> bool:
     """Return true when the real ICS55 PDK files required by integration tests exist."""
     root = _resolve_ics55_root(pdk_root)
-    stdcell_dir = os.path.join(root, "IP", "STD_cell", "ics55_LLSC_H7C_V1p10C100")
-    required = [
-        os.path.join(root, "prtech", "techLEF", "N551P6M_ecos.lef"),
-        os.path.join(stdcell_dir, "ics55_LLSC_H7CR", "lef", "ics55_LLSC_H7CR_ecos.lef"),
-        os.path.join(stdcell_dir, "ics55_LLSC_H7CL", "lef", "ics55_LLSC_H7CL_ecos.lef"),
-        os.path.join(
-            stdcell_dir,
-            "ics55_LLSC_H7CR",
-            "liberty",
-            "ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib",
-        ),
-        os.path.join(
-            stdcell_dir,
-            "ics55_LLSC_H7CL",
-            "liberty",
-            "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib",
-        ),
-    ]
-    return all(os.path.isfile(path) for path in required)
+    from chipcompiler.data.pdk import PDK_ICS55
+
+    pdk = PDK_ICS55(root)
+    return all(path and path.is_file() for path in [pdk.tech, *pdk.lefs, *pdk.libs])
 
 
 def _resolve_ics55_root(pdk_root: str = "") -> str:

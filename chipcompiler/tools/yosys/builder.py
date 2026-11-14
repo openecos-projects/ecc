@@ -41,8 +41,10 @@ def _synthesis_libraries(paths: list[Path]) -> list[str]:
     for path in paths:
         if not path or not path.is_file():
             continue
-        # H7CH is backend-only; latch techmap also selects from loaded libraries.
-        if path.name.startswith("ics55_LLSC_H7CH_"):
+        # HVT is backend-only for ICS55; keep the legacy H7CH spelling and
+        # recognize the v2 9T library name without coupling to its directory.
+        name = path.name.lower()
+        if "h7ch" in name or "_9thvt_" in name:
             continue
         abs_path = os.path.abspath(path)
         if abs_path in seen:
@@ -154,7 +156,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     tie_low_port = pdk.tie_low_port if pdk.tie_low_port else ""
     tie_high_cell = pdk.tie_high_cell if pdk.tie_high_cell else ""
     tie_high_port = pdk.tie_high_port if pdk.tie_high_port else ""
-    abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX4H7L"
+    abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX0P5_9TSVT"
     abc_load = pdk.abc_load if pdk.abc_load else DEFAULT_ABC_LOAD
 
     lib_stdcell_paths = workspace.pdk.libs if workspace.pdk.libs else []
