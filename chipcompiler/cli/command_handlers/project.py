@@ -873,7 +873,7 @@ def _run_project(
         flow_config = _attach_lec_engine(flow_config, lec_engine)
         no_clock_decision = _project_no_clock_decision(cfg)
         cfg._no_clock_source = no_clock_decision.source
-        flow_config = _attach_no_clock(flow_config, no_clock=no_clock_decision.enabled)
+        flow_config = _attach_no_clock(flow_config, no_clock_decision=no_clock_decision)
 
     if cfg is None:
         return CommandResult.err([error_record("missing_config")])
