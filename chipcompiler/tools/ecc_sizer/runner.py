@@ -204,6 +204,10 @@ def run_step(
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
     prepare_timing_context(workspace, step)
+    if is_preplace:
+        from chipcompiler.tools.replay import capture_step_database
+
+        capture_step_database(workspace, step)
     if not _run_sizer_pass(
         env_path,
         cmd_path,
@@ -234,6 +238,9 @@ def run_step(
         finally:
             _delete_staging_outputs(step)
         sub_flow.update_step(step_name=save_data_step, state=StateEnum.Success)
+        from chipcompiler.tools.replay import capture_step_database
+
+        capture_step_database(workspace, step, final=True)
         return True
 
     hold_libs = min_corner_libs(workspace)

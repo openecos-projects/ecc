@@ -104,4 +104,7 @@ class SubFlow:
                 from chipcompiler.engine.subflow_events import publish_subflow_stage
 
                 publish_subflow_stage(self.workspace, self.workspace_step, step_dict)
+                from chipcompiler.tools.replay import capture_subflow
+
+                capture_subflow(step_name, state)
                 break
