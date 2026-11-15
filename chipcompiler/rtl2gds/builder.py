@@ -31,25 +31,24 @@ class NoClockDecision:
     source: str  # explicit | inferred | off
 
 
-def _coerce_no_clock_flag(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
-
-
 def flow_no_clock(flow_config: object) -> bool:
     """Whether a flow config requests the no-clock (omit CTS) mode.
 
     Flag-only: ignores design materials. Prefer :func:`resolve_no_clock` when
     clock port / parameters are available.
     """
-    if not isinstance(flow_config, dict):
-        return False
-    return _coerce_no_clock_flag(flow_config.get("no_clock", False))
+    from chipcompiler.data.workspace_config import flow_no_clock as data_flow_no_clock
+
+    return data_flow_no_clock(flow_config)
+
+
+def _with_no_clock(flow_config: dict | None, *, no_clock: bool) -> dict | None:
+    """Attach an explicit ``no_clock`` policy to a flow config, if enabled."""
+    if not no_clock:
+        return flow_config
+    result = dict(flow_config or {})
+    result["no_clock"] = True
+    return result
 
 
 def _clock_name_from_materials(materials: Mapping[str, object]) -> str:
@@ -87,7 +86,9 @@ def resolve_no_clock(
     """
     flag: bool | None = None
     if isinstance(flow_config, dict) and "no_clock" in flow_config:
-        flag = _coerce_no_clock_flag(flow_config["no_clock"])
+        from chipcompiler.data.workspace_config import coerce_bool
+
+        flag = coerce_bool(flow_config["no_clock"])
     if flag is True:
         return NoClockDecision(enabled=True, source=NO_CLOCK_SOURCE_EXPLICIT)
     if flag is False:

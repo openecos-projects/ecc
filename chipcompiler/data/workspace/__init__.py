@@ -1085,9 +1085,10 @@ def create_workspace(
     # skips) is an error, never a partial workspace.
     from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
 
-    resolve_skip_steps(flow_config)
+    materials = parameters.data if isinstance(parameters, Parameters) else parameters
+    resolve_skip_steps(flow_config, materials=materials)
     resolve_lec_engine(flow_config)
-    dynamic_flow_data = build_dynamic_flow_data(flow_config)
+    dynamic_flow_data = build_dynamic_flow_data(flow_config, materials=materials)
 
     # create workspace directory
     import shutil
@@ -1194,7 +1195,7 @@ def create_workspace(
         if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
     elif isinstance(flow_config, dict) and (
-        "skip_steps" in flow_config or "lec_engine" in flow_config
+        "skip_steps" in flow_config or "lec_engine" in flow_config or "no_clock" in flow_config
     ):
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
@@ -1202,7 +1203,11 @@ def create_workspace(
         from ..workspace_config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
-            {key: flow_config[key] for key in ("skip_steps", "lec_engine") if key in flow_config}
+            {
+                key: flow_config[key]
+                for key in ("skip_steps", "lec_engine", "no_clock")
+                if key in flow_config
+            }
         )
 
     if workspace.pdk.root:

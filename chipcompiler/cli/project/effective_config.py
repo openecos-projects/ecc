@@ -92,9 +92,14 @@ def _attach_lec_engine(flow_config: dict | None, lec_engine: str | None) -> dict
     return _attach_flow_key(flow_config, "lec_engine", lec_engine)
 
 
-def _attach_no_clock(flow_config: dict | None, *, no_clock: bool) -> dict | None:
-    """Carry ``no_clock`` on the flow config so resolve_skip_steps omits CTS."""
-    if not no_clock:
+def _attach_no_clock(flow_config: dict | None, *, no_clock: bool, explicit: bool) -> dict | None:
+    """Carry an explicit ``no_clock`` on the flow config.
+
+    Inference is intentionally left to :func:`resolve_no_clock`: attaching an
+    inferred flag here would make it look like the author declared it and
+    would break explicit-false override semantics.
+    """
+    if not no_clock or not explicit:
         return flow_config
     flow_config = dict(flow_config or {})
     flow_config["no_clock"] = True
@@ -184,7 +189,11 @@ def resolve_effective_config(
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
     no_clock = _project_no_clock_decision(cfg)
     cfg._no_clock_source = no_clock.source
-    flow_config = _attach_no_clock(flow_config, no_clock=no_clock.enabled)
+    flow_config = _attach_no_clock(
+        flow_config,
+        no_clock=no_clock.enabled,
+        explicit="flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()),
+    )
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
         cfg._skip_steps_source = (

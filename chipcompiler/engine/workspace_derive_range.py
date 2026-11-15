@@ -43,7 +43,7 @@ def bound_derived_flow(
         **{
             key: value
             for key, value in workspace.parameters.data.get("_flow", {}).items()
-            if key in {"skip_steps", "lec_engine"}
+            if key in {"skip_steps", "lec_engine", "no_clock"}
         },
     }
     workspace.parameters.data["_flow"] = flow_section_from_flow_config(config)

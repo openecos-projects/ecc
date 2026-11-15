@@ -125,7 +125,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     skip_steps = flow.get("skip_steps")
     lec_engine = flow.get("lec_engine")
 
-    from chipcompiler.data.workspace_config import coerce_bool
+    from chipcompiler.data.workspace_config import flow_no_clock
 
     cfg = ProjectConfig(
         design_name=_str(design.get("name", "")),
@@ -143,7 +143,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
         flow_skip_steps=skip_steps,
-        flow_no_clock=coerce_bool(flow.get("no_clock", False)),
+        flow_no_clock=flow_no_clock(flow),
         flow_lec_engine=lec_engine,
         config_path=config_path,
         project_dir=project_dir,

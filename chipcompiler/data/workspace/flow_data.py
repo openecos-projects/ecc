@@ -6,6 +6,8 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
+from collections.abc import Mapping
+
 from chipcompiler.data.types import (
     FlowStepCategory,
     StateEnum,
@@ -54,7 +56,11 @@ def _flow_entries_for_config(flow_config: dict) -> list[tuple[str, str, str]]:
     return _canonical_rtl2gds_flow_entries()
 
 
-def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
+def build_dynamic_flow_data(
+    flow_config: dict | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> FlowDocument:
     """Build initial flow.json data from GUI-provided flow_config.
 
     A non-contiguous explicit selection degrades to the contiguous
@@ -79,7 +85,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
 
     import chipcompiler.rtl2gds as rtl2gds_api
 
-    skip = rtl2gds_api.resolve_skip_steps(flow_config)
+    skip = rtl2gds_api.resolve_skip_steps(flow_config, materials=materials)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
     # Filter the whole chain first so a skipped boundary is an unknown step,
     # exactly like a range outside the chain.
