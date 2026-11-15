@@ -190,7 +190,25 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ),
 )
 
-PARAM_REGISTRY = _SEMANTIC_PARAM_REGISTRY + CONFIG_PARAM_SCHEMAS + MACRO_SCHEMAS
+_REPLAY_SCHEMA = ParamSchema(
+    param="replay.enabled",
+    group="replay",
+    name="enabled",
+    type="bool",
+    default=False,
+    applies="all",
+    description="Capture offline layout Replay data for supported steps on the next execution",
+    maps_to={"replay": "enabled"},
+    example="true",
+    output_only=True,
+)
+
+PARAM_REGISTRY = (
+    _SEMANTIC_PARAM_REGISTRY
+    + CONFIG_PARAM_SCHEMAS
+    + MACRO_SCHEMAS
+    + (_REPLAY_SCHEMA,)
+)
 _REGISTRY_INDEX = {schema.param: schema for schema in PARAM_REGISTRY}
 _REQUIRED_FIELDS = ("param", "group", "name", "type", "default", "applies", "description")
 

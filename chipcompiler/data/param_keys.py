@@ -53,6 +53,7 @@ DISPLAY_KEY_MAP: dict[str, str] = {
     "target_density": "place.target_density",
     "target_overflow": "place.stop_overflow",
     "clock_tree": "geometry.clock_tree",
+    "replay_enabled": "replay.enabled",
     "manual_macro_placement": "macro.manual_placement",
 }
 

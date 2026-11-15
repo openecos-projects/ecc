@@ -338,6 +338,10 @@ def get_eda_instance(
         )
         prepare_timing_context(workspace, step, ecc_module)
 
+        from chipcompiler.tools.replay import capture_native
+
+        capture_native(ecc_module)
+
     return ecc_module
 
 
@@ -450,6 +454,9 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
+    from chipcompiler.tools.replay import capture_native
+
+    capture_native(ecc_module, final=True)
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -859,6 +866,9 @@ def run_pre_floorplan(
         simple_floorplan["macro_placer"]["file_path"] = ""
         json_write(simple_floorplan_config, simple_floorplan)
 
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.init_fp(config=simple_floorplan_config)
         ecc_module.run_simple_fp()
         ecc_module.destroy_fp()
@@ -895,6 +905,9 @@ def run_post_floorplan(
         )
         json_write(floorplan_config, floorplan)
 
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.init_fp(config=floorplan_config)
         ecc_module.run_fp()
         sub_flow.update_step(step_name=EccSubFlowEnum.create_tracks.value, state=StateEnum.Success)
