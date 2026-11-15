@@ -9,7 +9,36 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
-SUPPORTED = {"preFloorplan", "macroPlacement", "postFloorplan", "place"}
+SUPPORTED = {
+    "Synthesis",
+    "lec",
+    "preFloorplan",
+    "macroPlacement",
+    "postFloorplan",
+    "preplace",
+    "place",
+    "diff_opt",
+    "diff_buffering",
+    "diff_sizing",
+    "CTS",
+    "legalization",
+    "Timing optimization",
+    "route",
+    "filler",
+    "lvs",
+    "drc",
+    "antennaCheck",
+    "postRouteLec",
+    "RCX",
+    "sta",
+    "powerAnalysis",
+    "emir",
+    "Harden",
+}
+REPORT_ONLY = {"Synthesis", "lec", "postRouteLec"}
+UNCHANGED_LAYOUT = {
+    "Harden", "powerAnalysis", "emir", "RCX", "sta", "antennaCheck", "lvs", "drc"
+}
 ENV_KEYS = (
     "ECC_REPLAY_CAPTURE_DIR",
     "ECC_REPLAY_START_NS",
@@ -98,6 +127,38 @@ def capture_native(ecc_module, *, final: bool = False) -> None:
             logger.warning("Cannot write Replay failure marker", exc_info=True)
 
 
+def capture_step_database(workspace, step, *, final: bool = False) -> None:
+    """Load a real input or committed DEF through ECC for tools outside ECC's runner."""
+    directory = os.environ.get("ECC_REPLAY_CAPTURE_DIR")
+    if not directory:
+        return
+    from chipcompiler.data import StepInput
+    from chipcompiler.tools.ecc import runner
+
+    source = (
+        replace(step, input=StepInput(def_=step.output.def_, verilog=step.output.verilog))
+        if final
+        else step
+    )
+    try:
+        module = runner.create_db_engine(workspace, source)
+        if module is None:
+            raise ValueError("Cannot load step database for Replay")
+        capture_native(module, final=final)
+    except Exception as error:
+        logger.warning("Replay database capture failed: %s", error)
+        try:
+            atomic_json(Path(directory) / "error.json", {"error": str(error)})
+        except OSError:
+            logger.warning("Cannot write Replay failure marker", exc_info=True)
+    finally:
+        if "module" in locals() and module is not None:
+            try:
+                module.close()
+            except Exception as error:
+                logger.warning("Cannot close Replay database capture: %s", error)
+
+
 def anchor_native_capture() -> None:
     if os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
         os.environ["ECC_REPLAY_OFFSET_NS"] = str(
@@ -139,7 +200,46 @@ def publish(
         sample = json.loads(path.read_text())
         samples.append((sample["elapsed_ns"], sample["sequence"], path, sample["state_domain"]))
     samples.sort(key=lambda entry: (entry[0], entry[1]))
-    if not samples or samples[-1][3] != "native_committed":
+    capture_dir = directory / "capture"
+    if not samples and step in REPORT_ONLY:
+        timing_path = capture_dir / "subflows.jsonl"
+        events = (
+            [json.loads(line) for line in timing_path.read_text().splitlines()]
+            if timing_path.exists()
+            else []
+        )
+        if not events:
+            events = [{"name": "analysis", "state": "Success", "elapsed_ns": duration_ns}]
+        for sequence, event in enumerate(events):
+            final = sequence == len(events) - 1
+            path = capture_dir / f"report-{sequence:06d}.json"
+            state_domain = "analysis_complete" if final else "analysis_state"
+            atomic_json(
+                path,
+                {
+                    "sequence": sequence,
+                    "elapsed_ns": event["elapsed_ns"],
+                    "phase": "analysis_complete" if final else "analysis_progress",
+                    "subflow": event["name"],
+                    "state_domain": state_domain,
+                    "objects": {},
+                },
+            )
+            samples.append((event["elapsed_ns"], sequence, path, state_domain))
+    if samples and samples[-1][3] == "native_input" and step in UNCHANGED_LAYOUT:
+        elapsed_ns, sequence, source, _ = samples[-1]
+        sample = json.loads(source.read_text())
+        sample.update(
+            sequence=sequence + 1,
+            elapsed_ns=max(elapsed_ns, duration_ns),
+            phase="analysis_complete",
+            subflow="analysis",
+            state_domain="native_committed",
+        )
+        path = capture_dir / "native-analysis-final.json"
+        atomic_json(path, sample)
+        samples.append((sample["elapsed_ns"], sequence + 1, path, "native_committed"))
+    if not samples or samples[-1][3] not in {"native_committed", "analysis_complete"}:
         raise ValueError("tool did not provide a committed final Replay sample")
     objects, touched, frames, subflows = {}, set(), [], []
     for sequence, (_, _, path, _) in enumerate(samples):
@@ -227,8 +327,12 @@ def publish(
     timings = []
     previous_end = 0
     if timing_path.exists():
-        for line in timing_path.read_text().splitlines():
-            event = json.loads(line)
+        events = [json.loads(line) for line in timing_path.read_text().splitlines()]
+        stage_starts = {}
+        for event in events:
+            if event["state"] == "Ongoing":
+                stage_starts.setdefault(event["name"], event["elapsed_ns"])
+                continue
             end = event["elapsed_ns"]
             # run_fp returns once for four native stages; the Python ledger
             # acknowledges them together. Use each native stage's last sample.
@@ -242,11 +346,12 @@ def publish(
                     (f["elapsed_ns"] for f in frames if f["subflow"] == event["name"]),
                     default=end,
                 )
+            start = stage_starts.pop(event["name"], previous_end)
             timings.append(
                 {
                     "name": event["name"],
                     "state": event["state"],
-                    "start_ns": previous_end,
+                    "start_ns": start,
                     "end_ns": end,
                 }
             )
@@ -259,11 +364,15 @@ def publish(
         "source": "captured",
         "history_completeness": "sampled",
         "status": "complete",
-        "duration_ns": max(duration_ns, frames[-1]["elapsed_ns"]),
+        "duration_ns": max(
+            duration_ns,
+            frames[-1]["elapsed_ns"],
+            *(timing["end_ns"] for timing in timings),
+        ),
         "frames": frames,
         "subflows": subflows,
         "subflow_timing": timings,
-        "geometry_detail": "physical_bounds",
+        "geometry_detail": "report_only" if step in REPORT_ONLY else "physical_bounds",
         "started_at_unix_ns": started_unix_ns,
         **(results or {}),
     }
@@ -289,7 +398,15 @@ def capture_step(workspace, step):
     """Freeze opt-in per execution and clear inherited capture state for every tool."""
     previous = {key: os.environ.pop(key, None) for key in ENV_KEYS}
     geometry = getattr(step.output, "geometry", None)
-    root = Path(geometry) / "replay" if geometry else None
+    output_dir = getattr(step.output, "dir", None)
+    if geometry:
+        root = Path(geometry) / "replay"
+    elif output_dir:
+        root = Path(output_dir) / "geometry" / "replay"
+    elif getattr(step, "directory", None):
+        root = Path(step.directory) / "output" / "geometry" / "replay"
+    else:
+        root = None
     outcome = {"ok": False}
     started = time.monotonic_ns()
     started_unix_ns = time.time_ns()
@@ -325,7 +442,12 @@ def capture_step(workspace, step):
                     raise ValueError("EDA step failed or was interrupted")
                 from chipcompiler.tools.replay_results import collect_results
 
-                results = collect_results(step, root / "attempts" / attempt, started_unix_ns)
+                results = collect_results(
+                    step,
+                    root / "attempts" / attempt,
+                    started_unix_ns,
+                    workspace.directory,
+                )
                 publish(
                     root,
                     attempt,

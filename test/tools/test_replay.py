@@ -117,6 +117,56 @@ def test_settings_reject_truthy_string(execution):
         read_settings(workspace)
 
 
+def test_all_standard_flow_steps_are_supported_for_replay():
+    from chipcompiler.tools.replay import SUPPORTED
+
+    assert {
+        "Synthesis", "lec", "preFloorplan", "macroPlacement", "postFloorplan", "preplace",
+        "place", "diff_opt", "diff_sizing", "CTS", "legalization", "Timing optimization",
+        "route", "filler", "lvs", "drc", "antennaCheck", "postRouteLec", "RCX", "sta",
+        "powerAnalysis", "emir", "Harden",
+    } <= SUPPORTED
+
+
+def test_report_only_steps_publish_real_subflow_timeline(tmp_path):
+    capture = tmp_path / "attempts/a/capture"
+    capture.mkdir(parents=True)
+    (capture / "subflows.jsonl").write_text(
+        '{"name":"run yosys","state":"Success","elapsed_ns":100}\n'
+        '{"name":"analysis","state":"Success","elapsed_ns":200}\n'
+    )
+    publish(tmp_path, "a", "Synthesis", "yosys", 200)
+    manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
+    assert manifest["geometry_detail"] == "report_only"
+    assert [frame["subflow"] for frame in manifest["frames"]] == ["run yosys", "analysis"]
+    assert [frame["state_domain"] for frame in manifest["frames"]] == [
+        "analysis_state", "analysis_complete"
+    ]
+
+
+def test_report_only_step_without_geometry_path_still_publishes(tmp_path):
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        parameters=SimpleNamespace(data={"replay": {"enabled": True}}),
+    )
+    step_dir = tmp_path / "Synthesis_yosys"
+    step = SimpleNamespace(
+        name="Synthesis",
+        tool="yosys",
+        directory=step_dir,
+        output=SimpleNamespace(dir=step_dir / "output"),
+    )
+    with capture_step(workspace, step) as outcome:
+        from chipcompiler.tools.replay import capture_subflow
+
+        capture_subflow("run yosys", "Success")
+        outcome["ok"] = True
+    replay_root = step_dir / "output/geometry/replay"
+    pointer = json.loads((replay_root / "manifest.json").read_text())
+    manifest = json.loads((replay_root / pointer["manifest"]).read_text())
+    assert manifest["geometry_detail"] == "report_only"
+
+
 def test_partial_samples_preserve_master_and_orientation(tmp_path):
     capture = tmp_path / "attempts/a/capture"
     baseline = {"inst:a": {**instance(0), "master": "BUF_X1", "orient": 1}}
@@ -203,4 +253,19 @@ def test_floorplan_timing_uses_native_stage_end_not_batched_ledger(tmp_path):
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     assert manifest["subflow_timing"] == [
         {"name": "create tracks", "state": "Success", "start_ns": 0, "end_ns": 100}
+    ]
+
+
+def test_subflow_ongoing_and_success_form_one_timed_node(tmp_path):
+    capture = tmp_path / "attempts/a/capture"
+    sample(capture, 0, {"inst:a": instance(0)})
+    sample(capture, 1, {"inst:a": instance(5)}, final=True)
+    (capture / "subflows.jsonl").write_text(
+        '{"name":"run placement","state":"Ongoing","elapsed_ns":20}\n'
+        '{"name":"run placement","state":"Success","elapsed_ns":80}\n'
+    )
+    publish(tmp_path, "a", "place", "dreamplace", 100)
+    manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
+    assert manifest["subflow_timing"] == [
+        {"name": "run placement", "state": "Success", "start_ns": 20, "end_ns": 80}
     ]

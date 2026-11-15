@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 
-def collect_results(step, directory: Path, started_unix_ns: int) -> dict:
+def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=None) -> dict:
     result: dict[str, object] = {"result_metrics": []}
     metrics = getattr(getattr(step, "analysis", None), "qor_metrics", None)
     if metrics and metrics.is_file() and metrics.stat().st_mtime_ns >= started_unix_ns:
@@ -17,7 +17,28 @@ def collect_results(step, directory: Path, started_unix_ns: int) -> dict:
             for metric in json.loads(metrics.read_text()).get("metrics", [])
             if metric.get("category") != "runtime"
         ]
+    if step.name in {"lec", "postRouteLec"}:
+        output_json = getattr(getattr(step, "output", None), "json", None)
+        if output_json and Path(output_json).is_file():
+            try:
+                verdict = json.loads(Path(output_json).read_text()).get("status", "unknown")
+            except (OSError, ValueError):
+                verdict = "unavailable"
+            result["result_metrics"].append(
+                {"id": "equivalence", "display_name": "Equivalence", "value": verdict}
+            )
     feature = getattr(getattr(step, "feature", None), "dir", None)
+    if step.name == "CTS" and workspace_dir:
+        geometry_manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
+        if geometry_manifest:
+            manifest_path = Path(geometry_manifest)
+            workspace_path = Path(workspace_dir).resolve()
+            try:
+                resolved = manifest_path.resolve()
+                if resolved.is_file() and resolved.stat().st_mtime_ns >= started_unix_ns:
+                    result["clock_tree_manifest"] = resolved.relative_to(workspace_path).as_posix()
+            except (OSError, ValueError):
+                pass
     if step.name != "place" or not feature:
         return result
     # Existing map CSVs carry a layout.csv with explicit DBU rectangles. Never
