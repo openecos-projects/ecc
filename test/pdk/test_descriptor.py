@@ -183,6 +183,7 @@ def test_resolved_context_reports_selected_site_and_database_units(tmp_path):
 
     (tmp_path / "tech.lef").write_text(
         "UNITS DATABASE MICRONS 2000 ; END UNITS\n"
+        "MACRO example SITE selected ; SIZE 99 BY 99 ; END example\n"
         "SITE selected SIZE 0.25 BY 1.0 ; END selected\n"
         "SITE unused SIZE 0.5 BY 2.0 ; END unused\n"
     )

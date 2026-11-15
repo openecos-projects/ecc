@@ -37,7 +37,10 @@ def site_width_dbu(root: Path, descriptor: Descriptor) -> int | None:
         float(match[1])
         for text in texts
         for body in re.findall(
-            rf"SITE\s+{site}\s+(.*?)END\s+{site}\b", text, re.IGNORECASE | re.DOTALL
+            rf"\bSITE\s+{site}\b\s+(?=(?:CLASS|SIZE|SYMMETRY|ROWPATTERN)\b)"
+            rf"(.*?)\bEND\s+{site}\b",
+            text,
+            re.IGNORECASE | re.DOTALL,
         )
         if (match := re.search(r"SIZE\s+([0-9.]+)\s+BY", body, re.IGNORECASE))
     }
