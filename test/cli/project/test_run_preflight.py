@@ -72,6 +72,7 @@ def test_build_run_preflight_checks_tools_pdk_and_config(tmp_path, monkeypatch):
             mapping_file=None,
             sdc=None,
             validate=lambda: None,
+            description={},
         ),
     )
     flow = SimpleNamespace(
@@ -129,6 +130,7 @@ def test_build_run_preflight_accepts_present_pdk_and_config_resources(tmp_path, 
                 mapping_file=mapping_file,
                 sdc=None,
                 validate=lambda: None,
+                description={},
             ),
         ),
         workspace_steps=[
@@ -157,6 +159,7 @@ def test_fresh_target_pdk_preflight_does_not_require_generated_sdc(tmp_path, mon
         mapping_file=tmp_path / "pdk" / "icsprout55.layermap",
         sdc=None,
         validate=lambda: None,
+        description={},
     )
     pdk.mapping_file.parent.mkdir()
     pdk.mapping_file.write_text("layermap")

@@ -1130,29 +1130,13 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 
 ### PDK
 
-Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
+New projects select a root containing `ecc-pdk.json` and freeze its descriptor
+and resource hashes. See [PDK descriptions and project bindings](multi-pdk.md)
+for authoring commands, shared inventory, defaults, relocation and backend limits.
+There is no implicit checkout or process-family configuration fallback.
 
-1. Explicit `pdk_root` argument.
-2. `CHIPCOMPILER_ICS55_PDK_ROOT` environment variable.
-3. Legacy `ICS55_PDK_ROOT` environment variable.
-4. Default: `../pdk/icsprout55-pdk` next to the ecc checkout (the ecos-studio
-   workspace location).
-
-The runtime path is carried by the manifest project's PDK bindings
-(`pdk_root` in `base_design`) and, for CLI projects, by `ecc pdk set-root`.
-Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`
-(under `[pdk] root`), so a workspace resolves identically on every machine.
-Loading an existing workspace whose persisted root is empty/missing still
-falls back to the environment variables, but `ecc run` then emits a
-`pdk_root_env_fallback` warning naming the variable it resolved from — the
-warning only fires when the workspace names the ics55 PDK (or no PDK at all),
-since those environment variables only apply to ics55. Run
-`ecc run --overwrite` to pin the root into the workspace.
-
-Example:
-
-```bash
-CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk uv run ecc
+```sh
+ecc init /path/to/project --pdk-root /path/to/pdk
 ```
 
 ## Common Workflows

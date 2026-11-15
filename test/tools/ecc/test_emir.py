@@ -1,3 +1,5 @@
+import json
+import shutil
 from pathlib import Path
 from unittest.mock import Mock, call
 
@@ -24,47 +26,47 @@ from chipcompiler.utility import json_read, json_write
 from test.flow_fixture import publish_response
 
 
-def test_emir_default_technology_path_uses_workspace_config_copy(
+def test_description_without_em_model_does_not_inject_synthetic_data(
     tmp_path, minimal_ics55_pdk_factory
 ):
-    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     workspace = create_workspace(
         directory=tmp_path / "workspace",
         origin_def="",
-        origin_verilog=fixtures / "gcd/gcd.v",
+        origin_verilog=Path(__file__).parents[2] / "fixtures/gcd/gcd.v",
         pdk="ics55",
-        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk"),
         parameters={},
     )
-
     assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
-    technology_path = Path(json_read(config_path)["technology_file_path"])
+    assert json_read(config_path)["technology_file_path"] == ""
+    json_write(config_path, {"technology_file_path": "stale-model.tech"})
+    refresh_workspace_config(workspace)
+    assert json_read(config_path)["technology_file_path"] == ""
 
-    assert technology_path == config_path.parent / "ics55_synthetic.tech"
-    assert technology_path.is_file()
 
-
-def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
-    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
-    technology_path = fixtures / "emir/ics55_synthetic.tech"
-    override = {"technology_file_path": str(technology_path)}
+def test_declared_em_model_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
+    root = minimal_ics55_pdk_factory(tmp_path / "pdk")
+    model = root / "test-model.tech"
+    shutil.copyfile(Path(__file__).parents[2] / "fixtures/emir/ics55_synthetic.tech", model)
+    path = root / "ecc-pdk.json"
+    descriptor = json.loads(path.read_text())
+    descriptor["resources"]["test-em"] = {"path": model.name, "role": "em"}
+    path.write_text(json.dumps(descriptor))
     workspace = create_workspace(
         directory=tmp_path / "workspace",
         origin_def="",
-        origin_verilog=fixtures / "gcd/gcd.v",
+        origin_verilog=Path(__file__).parents[2] / "fixtures/gcd/gcd.v",
         pdk="ics55",
-        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
-        parameters={"config_overrides": {"emir": override}},
+        pdk_root=root,
+        parameters={},
     )
     assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
-    assert json_read(config_path) == override
-
-    assert json_write(config_path, {"technology_file_path": "stale-path.tech"})
+    assert json_read(config_path)["technology_file_path"] == str(model)
+    json_write(config_path, {"technology_file_path": "stale-model.tech"})
     refresh_workspace_config(workspace)
-
-    assert json_read(config_path) == override
+    assert json_read(config_path)["technology_file_path"] == str(model)
 
 
 @pytest.fixture

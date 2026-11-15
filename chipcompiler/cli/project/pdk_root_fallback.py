@@ -12,7 +12,7 @@ naming the winning source.
 
 import os
 
-_ENV_KEYS = ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT")
+_ENV_KEYS = ("ECC_PDK_ROOT", "CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT")
 
 
 def pdk_root_env_fallback_warning(run_dir: str) -> dict | None:
@@ -33,7 +33,10 @@ def pdk_root_env_fallback_warning(run_dir: str) -> dict | None:
         return None
     if str(payload.get("pdk_root") or "").strip():
         return None
-    if str(payload.get("pdk") or "").strip().lower() not in ("", "ics55"):
+    if not os.environ.get("ECC_PDK_ROOT") and str(payload.get("pdk") or "").strip().lower() not in (
+        "",
+        "ics55",
+    ):
         return None
     env_root = _pdk_root_from_env()
     if not env_root:

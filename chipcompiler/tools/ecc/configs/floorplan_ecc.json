@@ -10,7 +10,7 @@
     },
     "die_builder": {
         "mode": "die_util",
-        "site_name": "SC9T_site",
+        "site_name": "",
         "margin": {
             "left_micron": 2.0,
             "right_micron": 2.0,
@@ -29,55 +29,24 @@
     "io_placer": {
         "mode": "auto",
         "file_path": "",
-        "io_layer_list": [
-            "MET3",
-            "MET4"
-        ]
+        "io_layer_list": []
     },
     "phy_placer": {
         "well_tap": {
-            "cell_name": "TAPX1_9TSVT",
+            "cell_name": "",
             "distance_micron": 58.0
         },
         "side_endcap": {
-            "left_cell_name": "TAPX1_9TSVT",
-            "right_cell_name": "TAPX1_9TSVT"
+            "left_cell_name": "",
+            "right_cell_name": ""
         },
         "edge_endcap": {
-            "top_cell_name_list": [
-                "FILLCAP4_9TSVT",
-                "FILLCAP8_9TSVT",
-                "FILLCAP16_9TSVT",
-                "FILLCAP32_9TSVT",
-                "FILL2_9TSVT",
-                "FILL1_9TSVT"
-            ],
-            "bottom_cell_name_list": [
-                "FILLCAP4_9TSVT",
-                "FILLCAP8_9TSVT",
-                "FILLCAP16_9TSVT",
-                "FILLCAP32_9TSVT",
-                "FILL2_9TSVT",
-                "FILL1_9TSVT"
-            ]
+            "top_cell_name_list": [],
+            "bottom_cell_name_list": []
         },
         "boundary_tap": {
-            "top_cell_name_list": [
-                "FILLCAP4_9TSVT",
-                "FILLCAP8_9TSVT",
-                "FILLCAP16_9TSVT",
-                "FILLCAP32_9TSVT",
-                "FILL2_9TSVT",
-                "FILL1_9TSVT"
-            ],
-            "bottom_cell_name_list": [
-                "FILLCAP4_9TSVT",
-                "FILLCAP8_9TSVT",
-                "FILLCAP16_9TSVT",
-                "FILLCAP32_9TSVT",
-                "FILL2_9TSVT",
-                "FILL1_9TSVT"
-            ],
+            "top_cell_name_list": [],
+            "bottom_cell_name_list": [],
             "rule_micron": 30.0
         }
     },
@@ -104,35 +73,8 @@
                 "is_power": false
             }
         ],
-        "rail": [
-            {
-                "routing_layer_name": "MET1",
-                "width_micron": 0.16
-            }
-        ],
-        "stripe": [
-            {
-                "routing_layer_name": "MET4",
-                "width_micron": 1.0,
-                "pitch_micron": 16.0,
-                "offset_micron": 0.5
-            },
-            {
-                "routing_layer_name": "MET5",
-                "width_micron": 1.0,
-                "pitch_micron": 16.0,
-                "offset_micron": 0.5
-            }
-        ],
-        "connect_layers": [
-            {
-                "bottom_routing_layer_name": "MET1",
-                "top_routing_layer_name": "MET4"
-            },
-            {
-                "bottom_routing_layer_name": "MET4",
-                "top_routing_layer_name": "MET5"
-            }
-        ]
+        "rail": [],
+        "stripe": [],
+        "connect_layers": []
     }
 }

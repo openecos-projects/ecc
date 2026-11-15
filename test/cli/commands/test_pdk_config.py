@@ -80,7 +80,7 @@ class TestPdkSetRoot:
         assert rc == 0  # advisory: set-root still succeeds
         assert data[0]["status"] == "set"
         assert data[1]["status"] == "incomplete"
-        assert "make unzip" in data[1]["hint"]
+        assert "ecc pdk configure init" in data[1]["hint"]
 
     def test_set_root_preserves_other_keys(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project(pdk_root="/old/location")
@@ -158,7 +158,7 @@ class TestPdkShow:
             {
                 "kind": "error",
                 "error": "pdk_root_unavailable",
-                "reason": "no PDK root is configured and the repository default is unavailable",
+                "reason": "no PDK root is configured; select a PDK description",
                 "set_root": "ecc pdk set-root <path>",
             }
         ]

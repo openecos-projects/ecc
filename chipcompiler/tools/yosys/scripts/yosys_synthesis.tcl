@@ -189,7 +189,9 @@ set abc_area_recovery_3 "${abc_choice2}; ${abc_amap}; ${abc_choice}; map;"
 #===========================================================
 set abc_constr_path "${tmp_dir}/abc.constr"
 set abc_constr_file [open $abc_constr_path w]
-puts $abc_constr_file "set_driving_cell ${abc_driver_cell}"
+if {$abc_driver_cell ne ""} {
+  puts $abc_constr_file "set_driving_cell ${abc_driver_cell}"
+}
 puts $abc_constr_file "set_load ${abc_load}"
 close $abc_constr_file
 
@@ -475,121 +477,9 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
-# Follow mapped DFF cell names, not library filenames. For designs without
-# mapped ICS55 DFFs, select from the loaded v2 latch library cells.
-set ics55_cells [tee -q -s result.string select -list-mod =*/t:DFF* %M]
-if {[string trim $ics55_cells] eq ""} {
-  set ics55_cells [tee -q -s result.string select -list-mod =LATNQX1* %M]
-}
-set ics55_latch_suffix ""
-regexp {(_9T(HVT|LVT|SVT))\M} $ics55_cells ics55_latch_suffix
-
-# Positive asynchronous controls are inverted for the active-low library pins.
-if {$ics55_latch_suffix ne ""} {
-  set ics55_latch_map "${tmp_dir}/ics55_latch_map.v"
-  set latch_map_file [open $ics55_latch_map "w"]
-  puts $latch_map_file [format {
-module \$_DLATCH_N_ (E, D, Q);
-  input E, D;
-  output Q;
-  LATNQX1%s _TECHMAP_REPLACE_ (.D(D), .CKN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_P_ (E, D, Q);
-  input E, D;
-  output Q;
-  LATQX1%s _TECHMAP_REPLACE_ (.D(D), .CK(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_NN0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATNRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .CKN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_NN1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATNSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .CKN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_NP0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire RN;
-  INVX1%s inv_reset (.A(R), .Y(RN));
-  LATNRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .CKN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_NP1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire SN;
-  INVX1%s inv_set (.A(R), .Y(SN));
-  LATNSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .CKN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PN0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .CK(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PN1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .CK(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PP0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire RN;
-  INVX1%s inv_reset (.A(R), .Y(RN));
-  LATRNQX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .CK(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PP1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire SN;
-  INVX1%s inv_set (.A(R), .Y(SN));
-  LATSNQX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .CK(E), .Q(Q));
-endmodule
-} $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix]
-  close $latch_map_file
-  techmap -map $ics55_latch_map
-  opt -fast -purge
-
-  # Map Yosys tri-state buffers to the same ICS55 voltage-threshold variant
-  # selected for the sequential cells.
-  set ics55_tri_map "${tmp_dir}/ics55_tri_map.v"
-  set tri_map_file [open $ics55_tri_map "w"]
-  puts $tri_map_file [format {
-(* techmap_celltype = "\$_TBUF_" *)
-module _tbuf_disabled (A, E, Y);
-  input A, E;
-  output Y;
-  parameter _TECHMAP_CONSTMSK_E_ = 1'b0;
-  parameter _TECHMAP_CONSTVAL_E_ = 1'bx;
-  wire _TECHMAP_FAIL_ = !(_TECHMAP_CONSTMSK_E_ && !_TECHMAP_CONSTVAL_E_);
-  wire [1023:0] _TECHMAP_DO_ = "connect -unset Y";
-endmodule
-
-(* techmap_celltype = "\$_TBUF_" *)
-module _tbuf_enabled (A, E, Y);
-  input A, E;
-  output Y;
-  TBUFX1%s _TECHMAP_REPLACE_ (.A(A), .OE(E), .Y(Y));
-endmodule
-} $ics55_latch_suffix]
-  close $tri_map_file
-  techmap -map $ics55_tri_map
+# Mappings are generated from the selected PDK's validated declarative config.
+if {[info exists primitive_mapping_file] && $primitive_mapping_file ne ""} {
+  techmap -map $primitive_mapping_file
   opt -fast -purge
 }
 
@@ -605,25 +495,25 @@ abc -D "$abc_delay_target" \
   -script "$strategy_script" \
   -showtmp
 
-# Lower existing tie cells too, so mapped-netlist inputs get the same policy.
-set tie_map "${tmp_dir}/tie_cells.v"
-set tie_map_file [open $tie_map "w"]
-foreach {cell port value} [list \
-    $tie_high_cell $tie_high_port 1 \
-    $tie_low_cell $tie_low_port 0] {
-  puts $tie_map_file [format {
+# Logical-only profiles may retain constants as wires. Physical profiles declare
+# both tie roles explicitly; never synthesize an empty module or infer masters.
+setundef -zero
+opt_clean -purge
+if {$tie_high_cell ne "" && $tie_high_port ne "" && $tie_low_cell ne "" && $tie_low_port ne ""} {
+  set tie_map "${tmp_dir}/tie_cells.v"
+  set tie_map_file [open $tie_map "w"]
+  foreach {cell port value} [list $tie_high_cell $tie_high_port 1 $tie_low_cell $tie_low_port 0] {
+    puts $tie_map_file [format {
 module \%s (output \%s );
   assign \%s = 1'b%s;
 endmodule
 } $cell $port $port $value]
+  }
+  close $tie_map_file
+  techmap -map $tie_map
+  opt_clean -purge
+  hilomap -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 }
-close $tie_map_file
-techmap -map $tie_map
-
-# Resolve undefined bits and constant aliases before creating one tie per load.
-setundef -zero
-opt_clean -purge
-hilomap -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 
 # Multiple clean passes to catch all redundant logic
 opt_clean -purge

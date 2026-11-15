@@ -140,7 +140,7 @@ SCHEMAS = (
         "place.openroad_vt_suffixes",
         "dreamplace",
         ("openroad_vt_suffixes",),
-        ["_9THVT", "_9TSVT", "_9TLVT"],
+        [],
         applies="placement",
         description="OpenROAD VT suffixes used to classify equivalent Liberty cells",
     ),
@@ -288,7 +288,7 @@ SCHEMAS = (
         "place.gpugr_bottom_routing_layer",
         "dreamplace",
         ("gpugr_bottom_routing_layer",),
-        "MET2",
+        "",
         applies="placement",
         description=(
             "inclusive bottom routing-layer name passed to GPUGR; "
@@ -299,7 +299,7 @@ SCHEMAS = (
         "place.gpugr_top_routing_layer",
         "dreamplace",
         ("gpugr_top_routing_layer",),
-        "MET5",
+        "",
         applies="placement",
         description=(
             "inclusive top routing-layer name passed to GPUGR; "

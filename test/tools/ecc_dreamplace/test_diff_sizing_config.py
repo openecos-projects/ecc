@@ -134,8 +134,8 @@ def test_old_config_uses_s50_defaults_without_inheriting_gp_weights(dreamplace_d
             "timing_grad_balance_weight",
         )
     } == {
-        "gpugr_bottom_routing_layer": "MET2",
-        "gpugr_top_routing_layer": "MET5",
+        "gpugr_bottom_routing_layer": "",
+        "gpugr_top_routing_layer": "",
         "timing_wns_coeff": policy["wns"],
         "timing_tns_coeff": policy["tns"],
         "timing_grad_balance_weight": 1.0,

@@ -252,6 +252,20 @@ def _refresh_emir_config(workspace: Workspace) -> None:
     if not isinstance(config, dict):
         raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
 
+    if workspace.pdk.description:
+        from chipcompiler.pdk.manifest import Descriptor, DescriptorError, resource_path
+
+        descriptor = Descriptor.model_validate(workspace.pdk.description)
+        models = [
+            resource_path(workspace.pdk.require_root(), resource)
+            for resource in descriptor.resources.values()
+            if resource.role == "em"
+        ]
+        if len(models) > 1:
+            raise DescriptorError("mapping_conflict", "select exactly one EM technology model")
+        config["technology_file_path"] = str(models[0]) if models else ""
+        json_write(config_path, config)
+        return
     technology_path = config_path.parent / "ics55_synthetic.tech"
     if config.get("technology_file_path"):
         return
@@ -304,8 +318,34 @@ def _refresh_sta_config(workspace: Workspace) -> None:
             )
             for path in liberty.get("path", [])
         ]
-    errors = invalid_io_liberty_errors(
-        path for liberty in sta.get("liberty", []) for path in liberty["path"]
+    if workspace.pdk.description:
+        from chipcompiler.pdk.catalog import write_sta_catalog
+        from chipcompiler.pdk.manifest import Descriptor, DescriptorError, resource_path
+
+        descriptor = Descriptor.model_validate(workspace.pdk.description)
+        declared = {
+            resource_path(workspace.pdk.require_root(), resource)
+            for resource in descriptor.resources.values()
+            if resource.role == "liberty"
+        }
+        catalog_path = sta_path.parent / "cell_catalog.tsv"
+        write_sta_catalog(workspace.pdk.description, catalog_path)
+        sta.setdefault("STA", {})["-cell_catalog"] = str(catalog_path)
+        for view in sta.get("liberty", []):
+            for library in view.get("path", []):
+                if Path(library).resolve() not in declared:
+                    raise DescriptorError(
+                        "undeclared_resource",
+                        f"STA library is not a declared PDK resource: {library}",
+                    )
+                if not Path(library).is_file():
+                    raise ValueError(f"STA liberty resource missing: {library}")
+    errors = (
+        []
+        if workspace.pdk.description
+        else invalid_io_liberty_errors(
+            path for liberty in sta.get("liberty", []) for path in liberty["path"]
+        )
     )
     if errors:
         raise ValueError("STA liberty validation failed:\n  " + "\n  ".join(errors))
@@ -320,7 +360,11 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     if not config_path:
         return
 
-    default_floorplan = _load_default_floorplan_config()
+    from chipcompiler.pdk.workspace import default_floorplan as description_floorplan
+
+    default_floorplan = description_floorplan(workspace.pdk)
+    if default_floorplan is None:
+        default_floorplan = _load_default_floorplan_config()
     floorplan = json_read(config_path) if Path(config_path).exists() else {}
     if not _has_new_floorplan_schema(floorplan):
         floorplan = default_floorplan
@@ -435,9 +479,15 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    _copy_missing_files(ecc_config_dir, config_dir)
-    if not workspace.config["dreamplace"].exists():
-        shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
+    migrate_workspace_config_filenames(workspace.directory)
+
+    from chipcompiler.pdk.workspace import initialize_tool_configs
+
+    initialized = initialize_tool_configs(workspace)
+    if not initialized:
+        _copy_missing_files(ecc_config_dir, config_dir)
+        if not workspace.config["dreamplace"].exists():
+            shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
     _ensure_writable(config_dir)
 
     refresh_workspace_config(workspace)
@@ -450,6 +500,12 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     from chipcompiler.utility import json_read, json_write
 
     _reload_workspace_parameters(workspace)
+    from chipcompiler.pdk.context import verify_workspace_context
+
+    verify_workspace_context(workspace)
+    from chipcompiler.pdk.overrides import check_config_overrides
+
+    check_config_overrides(workspace)
 
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
@@ -825,7 +881,15 @@ def create_workspace(
     if isinstance(parameters, dict):
         # format parameters
         pdk_name = workspace.pdk.name or (pdk if isinstance(pdk, str) else "")
-        workspace.parameters = get_parameters(pdk_name)
+        if workspace.pdk.description:
+            from copy import deepcopy
+
+            workspace.parameters = Parameters(
+                data=deepcopy(workspace.pdk.description["parameters"])
+            )
+            workspace.parameters.data["pdk"] = pdk_name
+        else:
+            workspace.parameters = get_parameters(pdk_name)
         update_parameters(parameters_src=parameters, parameters_target=workspace.parameters.data)
 
         workspace.design.name = workspace.parameters.data["design"]
@@ -910,6 +974,10 @@ def create_workspace(
         pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)
         workspace.parameters.data["pdk_config"] = str(pdk_config_path)
+
+    from chipcompiler.pdk.workspace import persist_description
+
+    persist_description(workspace, home_dir)
 
     # save parameter
     if not save_parameter(workspace.parameters):

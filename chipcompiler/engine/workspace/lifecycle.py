@@ -15,6 +15,13 @@ from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, 
 from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from chipcompiler.engine.workspace.backup import retain_replaced_tree
 from chipcompiler.engine.workspace.spec import validate_workspace_spec
+from chipcompiler.data.parameter_schema import (
+    build_backend_overrides,
+    build_config_overrides,
+    list_schemas,
+    resolve_parameters,
+)
+from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.params import carried_parameters, invalid_carried_parameters
 from chipcompiler.rtl2gds import get_flow_builders
 
@@ -162,6 +169,29 @@ def _create_workspace_from_spec(
             "Carried Workspace parameters are invalid for the new PDK",
             {"issues": carried_errors},
         )
+    parameters, parameter_errors = resolve_parameters(toml_overrides=resolved["parameters"])
+    if parameter_errors:
+        raise WorkspaceLifecycleError(
+            "workspace_spec_invalid",
+            "Workspace parameters are invalid",
+            {"issues": parameter_errors},
+        )
+    backend_parameters.update(build_backend_overrides(parameters, include_defaults=False))
+    config_override_parameters = None
+    if config_override_parameters is None:
+        requested_spec = _string_keyed_dict(spec)
+        requested_parameters = _string_keyed_dict(requested_spec.get("parameters"))
+        config_override_parameters = requested_parameters.keys()
+    explicit_config_parameters = set(config_override_parameters)
+    config_overrides = build_config_overrides(
+        item for item in parameters if item.param in explicit_config_parameters
+    )
+    if config_overrides:
+        carried_config = backend_parameters.get(CONFIG_OVERRIDES_KEY, {})
+        backend_parameters[CONFIG_OVERRIDES_KEY] = {
+            **(carried_config if isinstance(carried_config, dict) else {}),
+            **config_overrides,
+        }
     backend_parameters.update(
         {
             "design": resolved["design"]["name"],
@@ -185,6 +215,15 @@ def _create_workspace_from_spec(
     pdk, pdk_root, pdk_overrides = _bound_pdk(
         resolved["pdk"], _string_keyed_dict(binding_map["pdk"])
     )
+
+    if isinstance(pdk, PDK) and pdk.description:
+        from chipcompiler.pdk.locking import bind_project
+        from chipcompiler.pdk.manifest import Descriptor
+
+        for parent in target.parents:
+            if (parent / "project.json").is_file() or (parent / "ecc.toml").is_file():
+                bind_project(parent, Path(pdk_root), Descriptor.model_validate(pdk.description))
+                break
 
     generated_filelist: str | None = None
     generated_pdk_config: str | None = None
@@ -494,6 +533,8 @@ def _merge_missing_config_fields(destination: dict, source: dict) -> bool:
 
 
 def _pdk_config(pdk: PDK) -> dict[str, Any]:
+    if pdk.description:
+        return pdk.description
     return {
         "name": pdk.name,
         "version": pdk.version,
@@ -509,35 +550,28 @@ def _pdk_config(pdk: PDK) -> dict[str, Any]:
 
 def _bound_pdk(spec: dict, binding: dict) -> tuple[PDK | str, str, dict | None]:
     root = Path(str(binding["root"]))
-    overrides = spec.get("overrides", {})
-    if spec["mode"] != "manual":
-        return (
-            spec["familyId"],
-            str(root),
-            {
-                **({"dont_use": overrides["dont_use"]} if "dont_use" in overrides else {}),
-                **({"abc_load": overrides["abc_load"]} if "abc_load" in overrides else {}),
-            },
+    if spec.get("overrides"):
+        raise WorkspaceLifecycleError(
+            "project_pdk_immutable", "save PDK overrides in a new description profile"
         )
-    files = binding.get("files", {})
-    by_role: dict[str, list[Path]] = {}
-    for item in spec.get("files", []):
-        by_role.setdefault(item["role"], []).append(Path(str(files[item["fileId"]])))
-    return (
-        PDK(
-            name=spec["familyId"],
-            version=spec.get("version", ""),
-            root=root,
-            tech=by_role["tech"][0],
-            lefs=by_role.get("lef", []),
-            libs=by_role.get("liberty", []),
-            mapping_file=(by_role.get("mapping") or [None])[0],
-            dont_use=overrides.get("dont_use", []),
-            abc_load=float(overrides.get("abc_load", DEFAULT_ABC_LOAD)),
-        ),
-        "",
-        None,
-    )
+    pdk = get_pdk(spec["familyId"], pdk_root=root)
+    if spec["mode"] == "manual":
+        files = binding.get("files", {})
+        expected = {
+            "tech": {pdk.tech},
+            "lef": set(pdk.lefs),
+            "liberty": set(pdk.libs),
+            "mapping": {pdk.mapping_file} if pdk.mapping_file else set(),
+        }
+        for item in spec.get("files", []):
+            selected = Path(str(files[item["fileId"]])).resolve()
+            if selected not in expected.get(item["role"], set()):
+                raise WorkspaceLifecycleError(
+                    "project_pdk_immutable",
+                    "manual resources must match ecc-pdk.json; "
+                    "configure a new profile to change them",
+                )
+    return pdk, str(root), None
 
 
 def _string_keyed_dict(value: object) -> dict[str, Any]:
@@ -681,7 +715,11 @@ def _rewrite_workspace_paths(source_root: Path, target_root: Path) -> None:
 
 def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
     if isinstance(value, str):
-        return target + value[len(source) :] if value.startswith(source) else value
+        return (
+            target + value[len(source) :]
+            if value == source or value.startswith(source.rstrip("/") + "/")
+            else value
+        )
     if isinstance(value, list):
         return [_replace_string_prefix(item, source, target) for item in value]
     if isinstance(value, dict):

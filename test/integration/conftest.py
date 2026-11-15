@@ -1,4 +1,6 @@
+import json
 import os
+import shutil
 import sys
 from contextlib import suppress
 from pathlib import Path
@@ -32,15 +34,38 @@ def run_workspace_flow(
     parameters.data["design"] = design_name
     parameters.data["top_module"] = design_name
     parameters.data["clock"] = "clk"
-    if emir_technology_file is not None:
-        parameters.data["config_overrides"] = {
-            "emir": {"technology_file_path": str(emir_technology_file)}
-        }
-
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)
     else:
         pdk = get_pdk(pdk_name, pdk_root=str(pdk_root))
+
+    if emir_technology_file is not None and pdk.description:
+        # Qualify synthetic EMIR only in a separate, explicitly labelled fixture
+        # profile. Never mutate the user's installed/private PDK resources.
+        from chipcompiler.pdk.manifest import Descriptor, resource_path
+
+        descriptor = Descriptor.model_validate(pdk.description)
+        fixture_root = workspace_base / f"{workspace_suffix}-test-pdk"
+        fixture_root.mkdir()
+        for resource in descriptor.resources.values():
+            destination = fixture_root / resource.path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if not destination.exists():
+                source = resource_path(pdk.require_root(), resource)
+                try:
+                    os.link(source, destination)
+                except OSError:
+                    shutil.copyfile(source, destination)
+        shutil.copyfile(emir_technology_file, fixture_root / "synthetic-test-em.tech")
+        description = descriptor.model_dump()
+        description["profile_revision"] += "-synthetic-em-test-only"
+        description["resources"]["test-em"] = {"path": "synthetic-test-em.tech", "role": "em"}
+        (fixture_root / "ecc-pdk.json").write_text(json.dumps(description))
+        pdk = get_pdk(pdk_name, fixture_root)
+    elif emir_technology_file is not None:
+        parameters.data["config_overrides"] = {
+            "emir": {"technology_file_path": str(emir_technology_file)}
+        }
 
     workspace = create_workspace(
         directory=str(workspace_dir),

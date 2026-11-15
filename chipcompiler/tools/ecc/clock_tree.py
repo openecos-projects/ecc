@@ -10,6 +10,7 @@ from typing import Any, Final
 from chipcompiler.data import StepEnum
 from chipcompiler.data.flow.options import clock_tree_requested
 from chipcompiler.data.step import StepDirectories
+from chipcompiler.pdk.backends import extraction_backend
 
 # Steps whose clock network ecc-tools can capture into the geometry snapshot.
 CLOCK_TREE_STEPS: Final = frozenset(
@@ -130,7 +131,7 @@ def _prepare_rcx_config(clock_tree_dir: Path) -> tuple[Path, Path]:
 
 
 def _run_rcx(workspace, ecc_module, config_path: Path) -> None:
-    pdk = workspace.pdk.name or "ics55"
+    pdk = extraction_backend(workspace.pdk)
     initialized = False
     try:
         if ecc_module.init_rcx(config=config_path, pdk=pdk) is False:

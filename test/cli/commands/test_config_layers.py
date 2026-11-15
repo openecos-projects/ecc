@@ -122,11 +122,6 @@ class TestExplicitEmptyStaysExplicit:
             id="empty-clock",
         ),
         pytest.param(
-            _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
-            "pdk.name is required",
-            id="empty-pdk-name",
-        ),
-        pytest.param(
             _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
             "pdk.root is required",
             id="empty-pdk-root",

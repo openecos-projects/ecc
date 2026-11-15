@@ -65,6 +65,13 @@ def create_minimal_ics55_pdk(root):
         lib_path.parent.mkdir(parents=True, exist_ok=True)
         lib_path.write_text("library(test) { }\n")
 
+    fixture_spec = importlib.util.spec_from_file_location(
+        "fixture_description", TEST_DIR / "pdk" / "fixture_description.py"
+    )
+    assert fixture_spec is not None and fixture_spec.loader is not None
+    module = importlib.util.module_from_spec(fixture_spec)
+    fixture_spec.loader.exec_module(module)
+    module.write_fixture_description(root)
     return root
 
 

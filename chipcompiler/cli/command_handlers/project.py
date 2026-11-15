@@ -253,7 +253,7 @@ def _preflight_failures(
     from chipcompiler.cli.inspection import env_probe
 
     failures = [p for p in probes if p.status == env_probe.FAIL]
-    failures.extend(extra_issues)
+    failures.extend(issue for issue in extra_issues if issue.get("required", True))
     if not failures:
         return None
 

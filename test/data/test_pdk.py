@@ -48,31 +48,24 @@ def test_get_pdk_raises_on_missing_pdk_files(tmp_path):
     invalid_root = tmp_path / "broken_ics55"
     invalid_root.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(ValueError, match="PDK validation failed"):
+    with pytest.raises(ValueError, match="PDK description is missing"):
         get_pdk("ics55", pdk_root=str(invalid_root))
 
 
-def test_get_pdk_rejects_ics55_io_liberty_with_invalid_timing(tmp_path, minimal_ics55_pdk_factory):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55").resolve()
-    io_liberty_dir = pdk_root / "IP" / "IO" / "ICsprout_55LLULP1233_IO_251013" / "liberty"
-    io_liberty_dir.mkdir(parents=True)
-    valid = io_liberty_dir / "ICSIOA_N55_3P3_ss_1p08_2p97_125c.lib"
-    invalid = io_liberty_dir / "ICSIOA_N55_3P3_ss_1p08_2p97_m40c.lib"
-    for path in (valid, invalid):
-        path.write_text("library(io) { }\n")
-    stdcell_libs = get_pdk("ics55", pdk_root=pdk_root).libs
-    stdcell_lib_texts = [str(path) for path in stdcell_libs]
+def test_description_does_not_reject_repaired_library_by_filename(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    import json
 
-    pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={"libs": [*stdcell_lib_texts, str(valid)]})
-    assert pdk.libs == [*stdcell_libs, valid]
-
-    with pytest.raises(ValueError) as exc_info:
-        get_pdk("ics55", pdk_root=pdk_root, overrides={"libs": [*stdcell_lib_texts, str(invalid)]})
-    assert str(exc_info.value) == (
-        "PDK validation failed:\n"
-        f"  ICS55 IO liberty has invalid rise timing tables: {invalid}; "
-        f"use {valid.name} instead"
-    )
+    root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    library = root / "ICsprout55IO_tt_1p2V_3p3V_25C.lib"
+    library.write_text("library(repaired) {}")
+    path = root / "ecc-pdk.json"
+    description = json.loads(path.read_text())
+    description["resources"]["repaired"] = {"role": "liberty", "path": library.name}
+    description["views"]["TYP"]["libraries"].append("repaired")
+    path.write_text(json.dumps(description))
+    assert library in get_pdk("ics55", pdk_root=root).libs
 
 
 def test_get_pdk_sg13g2_prefers_explicit_root_over_env(
@@ -120,7 +113,7 @@ def test_get_pdk_sg13g2_raises_on_missing_pdk_files(tmp_path, monkeypatch):
     invalid_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("CHIPCOMPILER_SG13G2_PDK_ROOT", str(invalid_root))
 
-    with pytest.raises(ValueError, match="PDK validation failed"):
+    with pytest.raises(ValueError, match="PDK description is missing"):
         get_pdk("sg13g2")
 
 
@@ -154,7 +147,7 @@ def test_apply_pdk_overrides_replaces_whole_field(tmp_path, minimal_ics55_pdk_fa
     from dataclasses import replace
 
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
+    base_pdk = replace(get_pdk("ics55", pdk_root=pdk_root), description={})
 
     overridden = apply_pdk_overrides(base_pdk, {"dont_use": ["ICG*"]})
     expected = replace(base_pdk, dont_use=["ICG*"])
@@ -258,16 +251,10 @@ def test_apply_pdk_overrides_root_rejected(tmp_path, minimal_ics55_pdk_factory):
         apply_pdk_overrides(base_pdk, {"root": "/other/pdk"})
 
 
-def test_get_pdk_with_overrides(tmp_path, minimal_ics55_pdk_factory):
-    from dataclasses import replace
-
+def test_get_pdk_rejects_process_overrides_on_a_description(tmp_path, minimal_ics55_pdk_factory):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    base_pdk = get_pdk("ics55", pdk_root=pdk_root)
-
-    pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={"dont_use": ["DFFSRQX*"]})
-    expected = replace(base_pdk, dont_use=["DFFSRQX*"])
-
-    assert pdk == expected
+    with pytest.raises(ValueError, match="immutable"):
+        get_pdk("ics55", pdk_root=pdk_root, overrides={"dont_use": ["DFFSRQX*"]})
 
 
 def test_get_pdk_overrides_none_is_noop(tmp_path, minimal_ics55_pdk_factory):
@@ -289,14 +276,14 @@ def test_get_pdk_overrides_unknown_key_raises(tmp_path, minimal_ics55_pdk_factor
 def test_get_pdk_overrides_validated(tmp_path, minimal_ics55_pdk_factory):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
 
-    with pytest.raises(ValueError, match="PDK validation failed"):
+    with pytest.raises(ValueError, match="immutable"):
         get_pdk("ics55", pdk_root=pdk_root, overrides={"tech": "/no/such.lef"})
 
 
 @pytest.mark.parametrize(
     ("field", "message"),
     [
-        ("mapping_file", "PDK mapping file not found"),
+        ("mapping_file", "immutable"),
         ("sdc", "PDK SDC file not found"),
         ("spef", "PDK SPEF file not found"),
     ],
@@ -316,6 +303,10 @@ def test_get_pdk_optional_path_override_existing_ok(tmp_path, minimal_ics55_pdk_
     real_file = tmp_path / f"{field}.file"
     real_file.write_text("content\n")
 
+    if field == "mapping_file":
+        with pytest.raises(ValueError, match="immutable"):
+            get_pdk("ics55", pdk_root=pdk_root, overrides={field: str(real_file)})
+        return
     pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={field: str(real_file)})
 
     assert getattr(pdk, field) == real_file
@@ -330,7 +321,7 @@ def test_pdk_validate_optional_paths_absent_ok(tmp_path, minimal_ics55_pdk_facto
     assert pdk.spef is None
 
 
-def test_get_pdk_discovers_conventional_ics55_layer_map(tmp_path, minimal_ics55_pdk_factory):
+def test_get_pdk_uses_only_declared_layer_map(tmp_path, minimal_ics55_pdk_factory):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     layer_map = pdk_root / "techfile" / "icsprout55.layermap"
     layer_map.parent.mkdir()
@@ -338,7 +329,16 @@ def test_get_pdk_discovers_conventional_ics55_layer_map(tmp_path, minimal_ics55_
 
     pdk = get_pdk("ics55", pdk_root=pdk_root)
 
-    assert pdk.mapping_file == layer_map
+    assert pdk.mapping_file is None
+
+    descriptor_path = pdk_root / "ecc-pdk.json"
+    descriptor = json.loads(descriptor_path.read_text())
+    descriptor["resources"]["layer_map"] = {
+        "path": str(layer_map.relative_to(pdk_root)),
+        "role": "mapping",
+    }
+    descriptor_path.write_text(json.dumps(descriptor))
+    assert get_pdk("ics55", pdk_root=pdk_root).mapping_file == layer_map
 
 
 def test_builtin_pdk_external_config_keeps_explicit_buffer_override(

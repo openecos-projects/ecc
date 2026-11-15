@@ -1,6 +1,7 @@
 """Handlers for the `ecc pdk` command group (PDK path configuration)."""
 
 import os
+from pathlib import Path
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -26,8 +27,19 @@ def _write_root_or_error(config_path: str, value: str, project: str | None) -> C
     from chipcompiler.cli.core.output import disclosure_cmd
 
     try:
+        lock_path = Path(config_path).parent / "pdk.lock.json"
+        if lock_path.exists():
+            from chipcompiler.pdk.locking import read_lock, verify_lock
+            from chipcompiler.pdk.manifest import load_descriptor
+
+            if not value:
+                raise ValueError("cannot unset the PDK of a locked project")
+            lock = read_lock(lock_path)
+            verify_lock(Path(value), lock)
+            if load_descriptor(Path(value)) != lock.descriptor:
+                raise ValueError("project PDK is immutable; copy the project to change it")
         _write_pdk_root(config_path, value)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         return CommandResult.err(
             [
                 error_record(
@@ -47,14 +59,11 @@ def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
         from chipcompiler.cli.project.config import _resolve_path
 
         return _resolve_path(cfg.project_dir or project_dir, cfg.pdk_root), "ecc.toml"
-    for var in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
+    for var in ("ECC_PDK_ROOT", "CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
         value = os.environ.get(var, "").strip()
         if value and os.path.isdir(os.path.abspath(value)):
             return os.path.abspath(value), var
-    repo_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
-    return os.path.join(os.path.dirname(repo_root), "pdk", "icsprout55-pdk"), "repo-default"
+    return "", "unbound"
 
 
 def set_root(command_input, ctx: CommandContext) -> CommandResult:
@@ -72,10 +81,7 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                 error_record(
                     "invalid_pdk_path",
                     path=path,
-                    reason=(
-                        "not a directory (clone icsprout55-pdk first, "
-                        "then run make unzip inside it)"
-                    ),
+                    reason=("not a PDK directory"),
                 )
             ]
         )
@@ -118,9 +124,7 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                     "pdk": "contents",
                     "status": "incomplete",
                     "reason": problem.replace("\n", " "),
-                    "hint": (
-                        "run `make unzip` inside the PDK checkout, then verify with `ecc doctor`"
-                    ),
+                    "hint": ("create ecc-pdk.json with `ecc pdk configure init`, then validate it"),
                 }
             )
     return CommandResult.ok(records)
@@ -143,18 +147,18 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
         )
     cfg = ctx.config if ctx.config is not None else load_run_config(ctx.project_dir)
     root, source = _resolve_root_source(cfg, ctx.project_dir)
-    if source == "repo-default" and not os.path.isdir(root):
+    if not root:
         return CommandResult.err(
             [
                 error_record(
                     "pdk_root_unavailable",
-                    reason="no PDK root is configured and the repository default is unavailable",
+                    reason="no PDK root is configured; select a PDK description",
                     set_root="ecc pdk set-root <path>",
                 )
             ]
         )
 
-    pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
+    pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else ""
     records: list[dict[str, object]] = [
         {
             "pdk": "show",
@@ -220,7 +224,7 @@ def unset(command_input, ctx: CommandContext) -> CommandResult:
             {
                 "pdk": "unset",
                 "status": "unset",
-                "source": "env CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT / repo default",
+                "source": "explicit PDK environment selection",
             }
         ]
     )

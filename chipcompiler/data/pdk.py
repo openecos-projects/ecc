@@ -66,6 +66,8 @@ class PDK:
     abc_load: float = DEFAULT_ABC_LOAD  # ABC output load (fF)
     sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
 
+    description: dict = field(default_factory=dict)  # resolved portable description
+
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
         self.tech = optional_path(self.tech)
@@ -75,8 +77,27 @@ class PDK:
         self.sdc = optional_path(self.sdc)
         self.spef = optional_path(self.spef)
 
+    def require_root(self) -> Path:
+        if self.root is None:
+            raise ValueError("PDK resources require an explicit root")
+        return self.root
+
     def validate(self) -> None:
         """Check that critical PDK paths exist. Raises ValueError if not."""
+        if self.description:
+            from chipcompiler.pdk.manifest import Descriptor
+            from chipcompiler.pdk.validation import validate_resources
+
+            result = validate_resources(
+                self.require_root(), Descriptor.model_validate(self.description)
+            )
+            _raise_pdk_validation_error([item["message"] for item in result["diagnostics"]])
+            # Missing resource roles are checked for the requested stage, not
+            # globally: a synthesis-only description need not contain a LEF.
+            for path in [self.tech, *self.lefs, *self.libs]:
+                if path and not path.is_file():
+                    _raise_pdk_validation_error([f"PDK resource not found: {path}"])
+            return
         errors = []
         if self.root and not self.root.is_dir():
             errors.append(f"PDK root directory not found: {self.root}")
@@ -108,7 +129,7 @@ def _raise_pdk_validation_error(errors: list) -> None:
 
 
 _DEFAULT_PDK = PDK()
-_PROTECTED_FIELDS = {"name", "version"}
+_PROTECTED_FIELDS = {"name", "version", "description"}
 
 # Fields whose values are filesystem paths, derived from the dataclass
 # annotations so CLI path resolution and override validation stay in sync
@@ -198,6 +219,9 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
                         f"got {type(element).__name__} at index {index}"
                     )
 
+    if pdk.description and set(overrides) - {"sdc", "spef"}:
+        raise ValueError("project PDK is immutable; create a new description profile and project")
+
     return replace(pdk, **overrides)
 
 
@@ -282,6 +306,33 @@ def get_pdk(
     Return the PDK instance based on the given pdk name.
     """
     pdk_name_normalized = (pdk_name or "").strip().lower()
+    from chipcompiler.pdk.resolver import resolve_pdk
+
+    root_selection = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
+    if not root_selection:
+        # Compatibility aliases select a resource root only, never defaults.
+        env_family = pdk_name_normalized.upper().replace("-", "_").replace(".", "_")
+        root_selection = (
+            os.environ.get(f"CHIPCOMPILER_{env_family}_PDK_ROOT", "").strip()
+            or os.environ.get(f"{env_family}_PDK_ROOT", "").strip()
+        )
+    descriptor_root = Path(root_selection).expanduser() if root_selection else None
+    if pdk_config and "schema_version" in _read_external_pdk_config(pdk_config):
+        if descriptor_root is None:
+            raise ValueError("a portable PDK description requires an explicit resource root")
+        pdk = resolve_pdk(
+            descriptor_root, name=pdk_name_normalized, descriptor_path=Path(pdk_config)
+        )
+        pdk = apply_pdk_overrides(pdk, overrides or {})
+        if validate:
+            _validate_resolved_pdk(pdk, overrides or {})
+        return pdk
+    if descriptor_root is not None and not pdk_config:
+        pdk = resolve_pdk(descriptor_root, name=pdk_name_normalized)
+        pdk = apply_pdk_overrides(pdk, overrides or {})
+        if validate:
+            _validate_resolved_pdk(pdk, overrides or {})
+        return pdk
     if pdk_config:
         external_data = _read_external_pdk_config(pdk_config)
         external_pdk = _pdk_from_external_config(
@@ -298,20 +349,23 @@ def get_pdk(
             else external_pdk
         )
     else:
-        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
+        raise ValueError("PDK root is required; set pdk.root or ECC_PDK_ROOT")
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
     if validate:
-        pdk.validate()
-        errors = []
-        for key, label in _OPTIONAL_PATH_LABELS.items():
-            if key not in overrides:
-                continue
+        _validate_resolved_pdk(pdk, overrides)
+    return pdk
+
+
+def _validate_resolved_pdk(pdk: PDK, overrides: dict) -> None:
+    pdk.validate()
+    errors = []
+    for key, label in _OPTIONAL_PATH_LABELS.items():
+        if key in overrides:
             path = getattr(pdk, key)
             if path and not path.is_file():
                 errors.append(f"{label}: {path}")
-        _raise_pdk_validation_error(errors)
-    return pdk
+    _raise_pdk_validation_error(errors)
 
 
 def PDK_ICS55(pdk_root: str | Path = "") -> PDK:

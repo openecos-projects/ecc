@@ -1252,6 +1252,11 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
             ],
         }
     ]
+    description_path = pdk_root / "ecc-pdk.json"
+    description = json.loads(description_path.read_text())
+    description["tools"]["configs"]["sta"]["liberty"] = deepcopy(relative_liberty)
+    description["tools"]["configs"]["sta"]["signoff"] = [{"MAX": ["Cworst"]}]
+    description_path.write_text(json.dumps(description))
     workspace_dir = tmp_path / "workspace"
     workspace = create_workspace(
         directory=str(workspace_dir),
@@ -1344,12 +1349,7 @@ def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
             },
             pdk_root=str(pdk_root),
         )
-    assert str(exc_info.value) == (
-        "STA liberty validation failed:\n"
-        "  ICS55 IO liberty has invalid rise timing tables: "
-        f"{pdk_root / invalid_io_liberty.lstrip('/')}; "
-        "use ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib instead"
-    )
+    assert "not a declared PDK resource" in str(exc_info.value)
 
 
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
@@ -1615,13 +1615,17 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
-def test_create_workspace_with_pdk_overrides_str_branch(
+def test_create_workspace_with_configured_description_cells(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
+    descriptor_path = pdk_root / "ecc-pdk.json"
+    description = json.loads(descriptor_path.read_text())
+    description["cells"]["dont_use"] = ["ICG*"]
+    descriptor_path.write_text(json.dumps(description))
     workspace_dir = tmp_path / "workspace"
     workspace = create_workspace(
         directory=str(workspace_dir),
@@ -1630,7 +1634,6 @@ def test_create_workspace_with_pdk_overrides_str_branch(
         pdk="ics55",
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
-        pdk_overrides={"dont_use": ["ICG*"]},
     )
     assert workspace is not None
 
@@ -1664,15 +1667,20 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
     assert workspace.pdk.dont_use == original_dont_use
 
 
-def test_workspace_pdk_overrides_persisted_on_reload(
+def test_workspace_description_profile_persisted_on_reload(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-    layer_map = tmp_path / "layers.map"
+    layer_map = pdk_root / "layers.map"
     layer_map.write_text("MET1 1 0\n")
 
+    descriptor_path = pdk_root / "ecc-pdk.json"
+    description = json.loads(descriptor_path.read_text())
+    description["cells"]["dont_use"] = ["ICG*"]
+    description["resources"]["map"] = {"role": "mapping", "path": layer_map.name}
+    descriptor_path.write_text(json.dumps(description))
     workspace_dir = tmp_path / "workspace"
     workspace = create_workspace(
         directory=str(workspace_dir),
@@ -1681,7 +1689,6 @@ def test_workspace_pdk_overrides_persisted_on_reload(
         pdk="ics55",
         parameters=default_ics55_parameters,
         pdk_root=str(pdk_root),
-        pdk_overrides={"dont_use": ["ICG*"], "mapping_file": str(layer_map)},
     )
     assert workspace is not None
     assert workspace.pdk.dont_use == ["ICG*"]

@@ -19,7 +19,19 @@ def workspace(tmp_path):
     return Workspace(
         directory=tmp_path,
         design=OriginDesign(name="design", top_module="chip"),
-        pdk=PDK(),
+        pdk=PDK(
+            description={
+                "tools": {
+                    "configs": {
+                        "sta": json.loads(
+                            (
+                                Path(__file__).parents[1] / "pdk/fixtures/tool_defaults.json"
+                            ).read_text()
+                        )["sta"]
+                    }
+                }
+            }
+        ),
         parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
 

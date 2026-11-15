@@ -18,7 +18,12 @@ from chipcompiler.cli.core.options import (
     ProjectOption,
 )
 
+from .pdk_configure import configure_app
+from .pdk_library import library_app
+
 pdk_app = create_app(help="Show and configure the PDK path used by this project")
+pdk_app.add_typer(configure_app, name="configure")
+pdk_app.add_typer(library_app, name="library")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:
@@ -30,7 +35,7 @@ def set_root_cmd(
     *,
     path: Annotated[
         str,
-        typer.Argument(help="Path to an icsprout55-pdk checkout (absolute after expansion)"),
+        typer.Argument(help="Path to a PDK with ecc-pdk.json (absolute after expansion)"),
     ],
     project: ProjectOption = None,
     plain: PlainOption = False,
@@ -80,7 +85,9 @@ def verify_cmd(
     _finish("verify", command_input, pdk_handlers.verify)
 
 
-@pdk_app.command("unset", help="Clear [pdk] root (fall back to env vars / repo default)")
+@pdk_app.command(
+    "unset", help="Clear [pdk] root (fall back to explicit environment or selected library default)"
+)
 def unset_cmd(
     *,
     project: ProjectOption = None,
@@ -91,3 +98,22 @@ def unset_cmd(
         project=project_options(project),
     )
     _finish("unset", command_input, pdk_handlers.unset)
+
+
+@pdk_app.command("clone-with-pdk")
+def clone_with_pdk_cmd(
+    source: Annotated[str, typer.Option(help="Source RTL project")],
+    target: Annotated[str, typer.Option(help="New project directory; must not exist")],
+    root: Annotated[str, typer.Option(help="Selected PDK directory")],
+) -> None:
+    from pathlib import Path
+
+    from chipcompiler.pdk.clone import clone_with_pdk
+
+    from .pdk_configure import _failure, _print
+
+    try:
+        created = clone_with_pdk(Path(source), Path(target), Path(root))
+        _print({"project": str(created), "status": "created"})
+    except (ValueError, OSError, RuntimeError) as exc:
+        _failure(exc)

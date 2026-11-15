@@ -192,8 +192,8 @@ def test_hvt_is_excluded_from_synthesis_but_preserved_for_backend(
     workspace.pdk = get_pdk("ics55", pdk_root=pdk_root)
     baseline = yosys_builder.generate_global_var_tcl(workspace, step)
 
-    sta_template = Path(yosys_builder.__file__).resolve().parents[1] / "ecc/configs/sta_ecc.json"
-    sta = json.loads(sta_template.read_text())
+    sta_template = Path(__file__).resolve().parents[2] / "pdk/fixtures/tool_defaults.json"
+    sta = json.loads(sta_template.read_text())["sta"]
     hvt_libs = [
         _write_file(pdk_root / path.lstrip("/"))
         for corner in sta["liberty"]

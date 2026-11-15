@@ -14,8 +14,8 @@ from chipcompiler.data.workspace.timing_constraints import scenario_tcl_path, ti
 
 @pytest.fixture
 def sta_template():
-    path = Path(__file__).resolve().parents[2] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
-    return json.loads(path.read_text())
+    path = Path(__file__).resolve().parents[1] / "pdk/fixtures/tool_defaults.json"
+    return json.loads(path.read_text())["sta"]
 
 
 @pytest.mark.parametrize("read_only", [False, True])
@@ -173,6 +173,16 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
     }
     overrides = {key: choices[key] for key in override_keys}
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "pdk")
+    (pdk_root / "liberty").mkdir()
+    (pdk_root / "liberty/custom.lib").write_text("library(fixture) {}")
+    description_path = pdk_root / "ecc-pdk.json"
+    description = json.loads(description_path.read_text())
+    description["resources"]["custom"] = {"path": "liberty/custom.lib", "role": "liberty"}
+    if "liberty" in overrides:
+        description["tools"]["configs"]["sta"]["liberty"] = overrides["liberty"]
+        description["tools"]["configs"]["sta"]["signoff"] = [{"MAX": ["Cworst"]}]
+        template = deepcopy(description["tools"]["configs"]["sta"])
+    description_path.write_text(json.dumps(description))
     workspace = create_workspace(
         directory=tmp_path / "run",
         origin_def="",
@@ -181,7 +191,9 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
         pdk_root=pdk_root,
         parameters={
             **default_ics55_parameters,
-            "config_overrides": {"sta": overrides},
+            "config_overrides": {
+                "sta": {key: value for key, value in overrides.items() if key != "liberty"}
+            },
         },
     )
     assert workspace is not None
@@ -202,6 +214,9 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
             for phase in ("pre_CTS", "post_CTS")
         )
     expected_sta = deepcopy(template | overrides)
+    expected_sta["STA"] = {
+        "-cell_catalog": str(workspace.config["sta"].parent / "cell_catalog.tsv")
+    }
     for library in expected_sta["liberty"]:
         library["path"] = [str(pdk_root / path.lstrip("/")) for path in library["path"]]
     assert set((workspace.directory / "origin").rglob("*.tcl")) == expected_scripts

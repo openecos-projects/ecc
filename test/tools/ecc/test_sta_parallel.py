@@ -144,8 +144,8 @@ def _workspace(tmp_path):
 
 
 def _sta_config(**overrides):
-    template = Path(sta.__file__).parent / "configs" / "sta_ecc.json"
-    return {**json.loads(template.read_text()), **overrides}
+    template = Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json"
+    return {**json.loads(template.read_text())["sta"], **overrides}
 
 
 def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatch):

@@ -803,6 +803,83 @@ def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
     assert not any(path.exists() for path in stale_reports)
 
 
+def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta_ecc.json"
+    rcx_config = config_dir / "rcx_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
+    )
+    rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}))
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
+        config={"sta": sta_config, "RCX": rcx_config},
+    )
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
+
+
+def test_sta_entry_workspace_uses_declared_spef(tmp_path):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    sta_config = config_dir / "sta_ecc.json"
+    sta_config.write_text(
+        json.dumps(
+            {
+                "liberty": [{"corner": "MAX", "temperature": 125, "path": ["max.lib"]}],
+                "signoff": [{"MAX": ["Cworst"]}],
+            }
+        )
+    )
+    declared_spef = tmp_path / "origin" / "gcd.spef"
+    declared_spef.parent.mkdir()
+    declared_spef.write_text("*SPEF\n", encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+        config={"sta": sta_config},
+    )
+    workspace.pdk.spef = declared_spef
+    # An STA-entry flow has no RCX step.
+    workspace.flow.data = {
+        "steps": [{"name": StepEnum.STA.value, "tool": "ecc", "state": "Unstart"}]
+    }
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [item["spef_file"] for item in items] == [str(declared_spef)]
+
+
+def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
+    template = Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json"
+    sta_config = tmp_path / "config" / "sta_ecc.json"
+    sta_config.parent.mkdir()
+    sta_config.write_text(json.dumps(json.loads(template.read_text())["sta"]), encoding="utf-8")
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+
+    items = ecc_runner.collect_sta_signoff_items(workspace)
+
+    assert [(item["corner"], item["rcx_corner"]) for item in items] == [
+        ("TYP", "TYPICAL"),
+        ("MIN", "Cworst"),
+        ("MIN", "RCworst"),
+        ("MIN", "Cbest"),
+        ("MIN", "RCbest"),
+    ]
+
+
 def _make_rcx_step(tmp_path):
     return EccStep(
         name=StepEnum.RCX.value,
@@ -813,6 +890,7 @@ def _make_rcx_step(tmp_path):
 
 def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule(init_ok=False)
     sub_flow = _fake_subflow()
@@ -832,6 +910,7 @@ def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
 
 def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule(run_ok=False)
     sub_flow = _fake_subflow()
@@ -851,6 +930,7 @@ def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
 
 def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
@@ -883,6 +963,7 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
 
 def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
@@ -904,6 +985,7 @@ def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp
 
 def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule()
     sub_flow = _fake_subflow()

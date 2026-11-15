@@ -32,8 +32,7 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
             _issue(
                 "pdk",
                 f"pdk.name={cfg.pdk_name}",
-                "Set pdk.root in ecc.toml, or export CHIPCOMPILER_ICS55_PDK_ROOT / "
-                "ICS55_PDK_ROOT pointing at the icsprout55-pdk checkout.",
+                "Set pdk.root in ecc.toml or ECC_PDK_ROOT to a directory containing ecc-pdk.json.",
             )
         ]
     try:
@@ -56,6 +55,18 @@ def pdk_issues(pdk, step_names, *, check_sdc: bool = True) -> list[dict]:
         pdk.validate()
     except (OSError, ValueError) as exc:
         issues.append(_issue("pdk", root, str(exc)))
+
+    from chipcompiler.pdk.capabilities import stage_diagnostics
+
+    for diagnostic in stage_diagnostics(pdk, step_names):
+        issues.append(
+            _issue(
+                "pdk-capability",
+                diagnostic["stage"],
+                diagnostic["message"],
+                required=not (diagnostic["stage"] == "emir" and len(set(step_names)) > 1),
+            )
+        )
 
     selected = set(step_names)
     mapping_steps = sorted(selected & _PDK_MAPPING_STEPS)
@@ -174,7 +185,7 @@ def preflight_failure(preflight: dict) -> dict | None:
             "reason": str(missing),
             "missing_inputs": missing,
         }
-    issues = preflight.get("issues", [])
+    issues = [issue for issue in preflight.get("issues", []) if issue.get("required", True)]
     if not issues:
         return None
     reason = "; ".join(
@@ -226,7 +237,7 @@ def build_run_preflight(flow, selected: list[str], *, only: str | None, force: b
         "pdk_issues": pdk_problems,
         "config_issues": config_problems,
         "issues": issues,
-        "ready": not missing and not issues,
+        "ready": not missing and not any(issue.get("required", True) for issue in issues),
     }
 
 

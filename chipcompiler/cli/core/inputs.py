@@ -57,6 +57,8 @@ class InitInput:
     project: ProjectOptions = ProjectOptions()
     project_name: str | None = None
     design_name: str | None = None
+    pdk_root: str | None = None
+    pdk_default_client: str = "ecc"
     mpc_resource_id: str | None = None
     mpc_display_name: str | None = None
     mpc_version: str | None = None

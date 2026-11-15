@@ -37,7 +37,12 @@ def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
 
     template = Path(__file__).resolve().parents[2] / "tools/ecc/configs/sta_ecc.json"
     path = workspace_config_key_path(workspace.directory, "sta")
-    configs = (json_read(template), json_read(path) if path else {})
+    baseline = (
+        workspace.pdk.description.get("tools", {}).get("configs", {}).get("sta", {})
+        if workspace.pdk.description
+        else json_read(template)
+    )
+    configs = (baseline, json_read(path) if path else {})
     scenarios = {
         (scenario.corner, scenario.rc): scenario
         for config in configs
@@ -74,5 +79,12 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
                 rc_para=scenario.rc,
                 has_io_cells=has_io_cells,
             )
-    typical = next(item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL"))
+    default_view = workspace.pdk.description.get("tools", {}).get("timing", {}).get("signoff_view")
+    typical = next(
+        (item for item in scenarios if item.corner == default_view),
+        next(
+            (item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL")),
+            scenarios[0],
+        ),
+    )
     workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)
