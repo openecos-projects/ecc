@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from enum import Enum
 
-from chipcompiler.data import SkippableStepEnum, StepBaseEnum, StepEnum, step_from_value
+from chipcompiler.data import SkippableStepEnum, StateEnum, StepBaseEnum, StepEnum, step_from_value
 from chipcompiler.tools.subflow import SubFlow
 
 
@@ -126,6 +126,12 @@ _STAGES: dict[StepBaseEnum, tuple[EccSubFlowEnum, ...]] = {
 
 
 class EccSubFlow(SubFlow):
+    def update_step(self, step_name: str, state: str | StateEnum, info: dict | None = None):
+        super().update_step(step_name, state, info)
+        from chipcompiler.tools.replay import capture_subflow
+
+        capture_subflow(step_name, state.value if isinstance(state, StateEnum) else state)
+
     def stages(self) -> tuple[str, ...]:
         step = step_from_value(self.workspace_step.name)
         return tuple(stage.value for stage in _STAGES.get(step, ()))

@@ -98,6 +98,42 @@ def _write_manifest(project_dir: str) -> None:
     )
 
 
+def test_replay_cli_parameter_persists_without_invalidating_or_reordering_flow(
+    create_cli_project, monkeypatch
+):
+    import tomllib
+    from copy import deepcopy
+
+    project_dir = create_cli_project()
+    _write_manifest(project_dir)
+    workspace = _workspace(Path(project_dir) / "baseline")
+    before = deepcopy(workspace.flow.data["steps"])
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _: workspace)
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda _: True)
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+    assert (
+        cli_main.run(
+            [
+                "param",
+                "set",
+                "replay.enabled",
+                "true",
+                "--workspace",
+                "baseline",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    assert workspace.parameters.data["replay"] == {"enabled": True}
+    assert workspace.flow.data["steps"] == before
+    assert tomllib.loads(workspace.parameters.path.read_text())["params"]["replay"] == {
+        "enabled": True
+    }
+
+
 def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, monkeypatch):
     from chipcompiler.data.workspace.config_overrides import apply_config_overrides
 

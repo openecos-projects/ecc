@@ -57,6 +57,7 @@ def execute_step_subprocess(
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
     layout_image: bool = True,
+    replay_attempt: str | None = None,
 ) -> StepExecutionResult:
     start_time = time.time() if started_at is None else started_at
     step_tag = f"{workspace_step.name}({workspace_step.tool})"
@@ -82,6 +83,7 @@ def execute_step_subprocess(
         "schema_version": PAYLOAD_SCHEMA_VERSION,
         "step_directory": str(request.directory),
         "attempt_id": attempt_id,
+        "replay_attempt": replay_attempt,
     }
 
     try:
@@ -361,7 +363,19 @@ def run_step_worker(
 
         with capture_stdio_to_file(step.log.file):
             engine = flow.engine_db.engine
-            ok = tool_runner(workspace=workspace, step=step, ecc_module=engine) is True
+            replay_attempt = payload.get("replay_attempt")
+            if replay_attempt is not None and (
+                not isinstance(replay_attempt, str)
+                or len(replay_attempt) != 32
+                or any(c not in "0123456789abcdef" for c in replay_attempt)
+            ):
+                raise ValueError("Invalid Replay attempt token")
+            ok = tool_runner(
+                workspace=workspace,
+                step=step,
+                ecc_module=engine,
+                **({"replay_attempt": replay_attempt} if replay_attempt else {}),
+            ) is True
         outputs_complete = ok and flow.check_step_result(workspace_step=step)
     except (Exception, SystemExit):
         # Downstream steps must see this attempt failed, not a missing answer.

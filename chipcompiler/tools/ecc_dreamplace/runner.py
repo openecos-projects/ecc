@@ -226,6 +226,9 @@ def _run_placement_mode(
     ):
         # DreamplaceModule already saved DEF and Verilog. A terminal placement
         # must finish before native feature evaluation starts routing analysis.
+        from chipcompiler.tools.replay import capture_placement_result
+
+        capture_placement_result(workspace, step, ecc_module)
         sub_flow.update_step(
             step_name=EccSubFlowEnum.run_placement.value,
             state=StateEnum.Success,

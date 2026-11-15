@@ -235,6 +235,22 @@ class DreamplaceModule:
         with self._configure_root_logging(mode=mode):
             params = self._build_params(Params, mode=mode)
 
+            if os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
+                try:
+                    from dreamplace.replay_capture import initialize
+
+                    initialize(params)
+                except ImportError:
+                    logging.getLogger(__name__).warning(
+                        "Installed DreamPlace does not support Replay sampling"
+                    )
+                    from chipcompiler.tools.replay import atomic_json
+
+                    atomic_json(
+                        Path(os.environ["ECC_REPLAY_CAPTURE_DIR"]) / "error.json",
+                        {"error": "DreamPlace Replay API unavailable"},
+                    )
+
             engine = PlacementEngine(params)
             place_io_engine = getattr(params, "place_io_engine", "ieda")
             if place_io_engine == "openroad":
