@@ -1194,21 +1194,15 @@ def create_workspace(
             steps[0].setdefault("info", {})["spef"] = str(workspace.pdk.spef)
         if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-    elif isinstance(flow_config, dict) and (
-        "skip_steps" in flow_config or "lec_engine" in flow_config or "no_clock" in flow_config
-    ):
+    elif isinstance(flow_config, dict):
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
-        from ..workspace_config import validate_flow_config
+        from ..workspace_config import flow_section_from_flow_config
 
-        workspace.parameters.data["_flow"] = validate_flow_config(
-            {
-                key: flow_config[key]
-                for key in ("skip_steps", "lec_engine", "no_clock")
-                if key in flow_config
-            }
-        )
+        flow_section = flow_section_from_flow_config(flow_config)
+        if flow_section:
+            workspace.parameters.data["_flow"] = flow_section
 
     if workspace.pdk.root:
         workspace.parameters.data["pdk_root"] = str(workspace.pdk.root)
