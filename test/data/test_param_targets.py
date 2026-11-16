@@ -219,3 +219,12 @@ def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative() 
     assert carried["workspace_param_overrides"] == [
         {"key": "sta.liberty", "baseline": liberty("lib/a.lib"), "value": liberty("lib/c.lib")}
     ]
+
+
+def test_carried_stored_tunables_are_validated_against_the_new_pdk() -> None:
+    from chipcompiler.params import invalid_carried_parameters
+
+    assert invalid_carried_parameters({"core": {"utilitization": 0.5}}, "sg13g2") == []
+    assert invalid_carried_parameters({"core": {"utilitization": 5.0}}, "sg13g2") == [
+        "value 5.0 out of range [0.01, 1.0] for floorplan.core_util"
+    ]

@@ -99,10 +99,17 @@ def _rebind_liberty(carried: dict[str, object], pdk_root: str) -> None:
 def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -> list[str]:
     """Range and choice errors of carried values under the new PDK family.
 
-    Covers the journaled workspace edits and the direct config patch, which also
-    holds the values given at creation through ``ecc.toml`` or ``--set``.
+    Covers the journaled workspace edits, the direct config patch (which also
+    holds the values given at creation through ``ecc.toml`` or ``--set``) and the
+    stored tunables.
     """
     errors: list[str] = []
+    for schema in list_schemas():
+        if schema.maps_to is None:
+            continue
+        stored = stored_value(carried, schema.maps_to)
+        if stored is not MISSING:
+            errors.extend(validate_value(stored, schema, pdk))
     records = carried.get(WORKSPACE_PARAM_OVERRIDES_KEY)
     for record in records if isinstance(records, list) else []:
         if not isinstance(record, dict) or "value" not in record:
