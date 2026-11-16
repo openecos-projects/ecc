@@ -40,6 +40,7 @@ from chipcompiler.engine.step_execution import (
     _prepare_log_file,
     get_process_rss_mb,
 )
+from chipcompiler.params import write_step_parameter_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -346,8 +347,11 @@ def run_step_worker(
         outputs_complete = ok and flow.check_step_result(workspace_step=step)
     except (Exception, SystemExit):
         # Downstream steps must see this attempt failed, not a missing answer.
+        write_step_parameter_evidence(workspace, step, request.directory)
         write_response(request.directory, build_step_response(request, step, succeeded=False))
         raise
+    # The tool has finalized its config: record the parameters that fed the step.
+    write_step_parameter_evidence(workspace, step, request.directory)
     # rsp.json describes the step's design data; the layout thumbnail below is
     # not part of it, so the response is published before rendering.
     write_response(

@@ -50,6 +50,21 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
   被重跑的步骤按当前参数重新生成配置输入，下游步骤标记为未开始。
 - **GUI 运行**：`workspace.open` 本身不做配置刷新。派生配置在两条时机刷新：通过 GUI 保存参数时（`workspace.step_configuration.update` / `workspace.configuration.update`），以及运行前 flow 中存在 stale 步骤时。因此同一 `home/params.toml` 下 GUI 会话与 CLI 会话收敛到同一套 `config/*.json`。
 
+## 步骤参数的记录位置
+
+Workspace Spec 只描述结构（设计、输入、PDK、flow），不再携带参数。新建
+workspace 从 PDK 模板与 schema 默认值起步，之后通过 `ecc param set --workspace`
+或 `apply_workspace_parameters` 设置参数。经 `update_workspace_from_spec`
+重建 workspace 时，已存储的参数、直接 config 补丁和基线 journal 会被带入新
+workspace；journal 中的值会按新 PDK 家族重新校验。
+
+每个步骤目录在 `req.json`/`rsp.json` 旁还有 `params.json`，由步骤 worker 在
+工具确定最终 config 之后写入。它列出适用于该步骤的每个参数的 `value`、
+`default` 与 `source`（`default`、`ecc.toml`、`cli`、`project.json` 或
+`workspace`），以及这些参数当前在工具 config 中的取值（按 config 文件与 JSON
+路径索引）。它只作为开发者与 agent 追溯步骤输入的证据，不会被回读。每个显式
+参数创建时所属的层记录在 `home/params.toml` 的 `[params._param_sources]` 下。
+
 ## CLI 与 GUI 差异
 
 | 关注点 | CLI（`ecc`） | GUI（ECOS Studio） |
@@ -70,7 +85,7 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 | 文件 | 字段 | 必需版本 |
 | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 2 |
+| `home/params.toml` | `schema_version` | 3 |
 | `home/flow.json` | `schema_version` | 2 |
 | `home/engineering-snapshot.json` | `schemaVersion` | 6 |
 

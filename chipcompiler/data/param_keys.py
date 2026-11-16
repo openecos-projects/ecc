@@ -62,7 +62,6 @@ AGENT_KNOB_MAP: dict[str, AgentKnob] = {
     "floorplan.aspect_ratio": AgentKnob("floorplan.aspect_ratio"),
     "floorplan.die_width": AgentKnob("floorplan.die_builder.die_size.width_micron"),
     "floorplan.die_height": AgentKnob("floorplan.die_builder.die_size.height_micron"),
-    "floorplan.global_right_padding": AgentKnob("place.global_right_padding"),
     "place.target_density": AgentKnob("place.target_density"),
     "place.target_overflow": AgentKnob("place.stop_overflow"),
     "place.cell_padding_x": AgentKnob("place.cell_padding_x"),

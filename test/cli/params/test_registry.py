@@ -37,7 +37,6 @@ REQUIRED_KEYS = [
     "cts.max_fanout",
     "place.target_density",
     "place.stop_overflow",
-    "place.global_right_padding",
     "place.cell_padding_x",
     "place.routability_opt_flag",
     "route.bottom_layer",

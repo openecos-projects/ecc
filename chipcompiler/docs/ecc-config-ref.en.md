@@ -116,10 +116,9 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
 | `cts.max_fanout` | int [1, 200] | 32 | auto-generated SDC `set_max_fanout` + cts `max_fanout` | Design and clock-tree maximum fanout constraint |
 | `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | Global placement target density |
-| `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
-| `place.global_right_padding` | int [0, 100] | 0 | recorded only in params.toml | Global padding on the right side of placement sites (not yet wired into a tool config field in the current version) |
+| `place.stop_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | Global placement overflow convergence target |
 | `place.cell_padding_x` | int [0, 10000] (dbu) | 200 | dreamplace `cell_padding_x` | Cell padding in X (routing congestion relief) |
-| `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | Enable routability (congestion-driven) optimization during placement |
+| `place.routability_opt_flag` | {0, 1} | 1 | dreamplace `routability_opt_flag` | Enable routability (congestion-driven) optimization during placement |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | Lowest routing layer |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | Highest routing layer |
 | `sta.max_paths` | int [1, 100000] | 1000 | STA engine parameter (not written to JSON; passed at runtime) | Maximum number of paths per STA timing report |
@@ -423,7 +422,7 @@ These steps share `config/dreamplace_ecc.json`; before each step runs, `def_inpu
 | `legalize_flag` | 1 | Run legalization |
 | `detailed_place_flag` | 1 | Run detailed placement |
 | `enable_fillers` | 0 | Do not insert fillers during standalone placement |
-| `routability_opt_flag` | 1 `*place.routability_opt` | Routing-congestion-driven placement optimization |
+| `routability_opt_flag` | 1 `*place.routability_opt_flag` | Routing-congestion-driven placement optimization |
 | `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | Legacy timing optimization is off; timing evaluation is enabled |
 | `macro_place_flag` | 0 | Enabled for the dedicated `macroPlacement` step |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | Plotting / congestion-map export / placement evaluation |
@@ -748,7 +747,7 @@ timing_metric_scope = "setup_plus_recovery"
 | Parameter | Default | Meaning |
 |---|---|---|
 | `target_density` | 0.4 `*place.target_density` (template 0.4) | Target placement density (lower = looser, friendlier to routing) |
-| `stop_overflow` | 0.1 `*place.target_overflow` | Overflow convergence threshold; stop once met |
+| `stop_overflow` | 0.1 `*place.stop_overflow` | Overflow convergence threshold; stop once met |
 | `overflow_reference_mode` | `initial` | Overflow normalization: `initial` freezes GP-entry area; `ordinary` preserves the original PR's area publication behavior, using published native + virtual area when available, otherwise PlaceDB area. Both exclude fillers; normalized overflow also feeds gamma and overflow-based scheduling |
 | `density_weight` | 8e-05 | Initial weight of the density term (starting point of auto-adjustment) |
 | `inflation_density_weight_scale` | 0.001 | Scale on the Xplace-style `||grad wirelength||_1 / ||grad density||_1` restart ratio after inflation; the default keeps the restarted density force small, `1.0` uses the normalized ratio directly, and `0.1` reproduces the historical DreamPlace restart scale |
@@ -1103,7 +1102,7 @@ ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
 
 ### 15.4 placement / legalization
 
-Placement and legalization share `dreamplace_ecc.json`, so they use the same `place.*` parameters. `aux_input`, the LEF/DEF/netlist inputs, result directory, and design name are workflow-managed and have no CLI parameters. `place.global_right_padding` is retained as a compatibility parameter, but does not currently map to DreamPlace JSON.
+Placement and legalization share `dreamplace_ecc.json`, so they use the same `place.*` parameters. `aux_input`, the LEF/DEF/netlist inputs, result directory, and design name are workflow-managed and have no CLI parameters.
 
 ```bash
 ecc param list --step placement

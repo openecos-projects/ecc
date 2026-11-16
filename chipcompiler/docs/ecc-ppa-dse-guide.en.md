@@ -447,8 +447,8 @@ and the persisted flow determine execution.
 | `floorplan.core_margin` | JSON pair of integers, µm | Edge/IO/PDN space | floorplan |
 | `floorplan.die_builder.mode`, die_size width/height_micron | Mode and fixed dimensions | Fixed-die experiments | floorplan |
 | `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | place |
-| `place.target_overflow` | float; 0–1 | Placement stopping threshold | place |
-| `place.routability_opt` | int; 0/1 | Congestion-driven placement | place |
+| `place.stop_overflow` | float; 0–1 | Placement stopping threshold | place |
+| `place.routability_opt_flag` | int; 0/1 | Congestion-driven placement | place |
 | `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | place |
 | `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | place |
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
@@ -465,7 +465,6 @@ inspect the effective configuration.
 
 Do not initially use these as PPA search variables:
 
-- `place.global_right_padding` currently has no actual tool-field mapping.
 - `place.num_threads` and `sta.max_parallel_corners` mainly manage resources.
 - Process rules, PDN, and acceptance corners cannot be weakened as optimization knobs.
 - Invented keys such as `cts.target_skew` or guessed sizing/DRC fields do not replace schema keys.
@@ -723,7 +722,7 @@ PPA_ITER=ppa-iter-001
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-before.snapshot.json" --json
 ecc param apply --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
-  --set place.target_density=0.25 --set place.target_overflow=0.08 --plain
+  --set place.target_density=0.25 --set place.stop_overflow=0.08 --plain
 ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_ITER" --resume --plain
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
@@ -980,7 +979,7 @@ If hold is a real bottleneck, then explore the existing Sizer's
 | --- | --- | --- | --- |
 | preFloorplan / postFloorplan | `floorplan.core_util`, `floorplan.aspect_ratio`; core_margin/supported die_size when needed | Outline, area, actual core utilization, available capacity, macro/channel/PDN evidence | Reuse fixed synthesis; rerun floorplan and later stages |
 | macroPlacement | Public `macro.placements` / macro commands; legal coordinates/orientations | Macro legality, channels, pin access, later routability | Reuse only the unchanged prefix before macro placement |
-| place | `place.target_density`, `place.cell_padding_x`, `place.routability_opt` | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid postFloorplan; rerun place and later stages |
+| place | `place.target_density`, `place.cell_padding_x`, `place.routability_opt_flag` | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid postFloorplan; rerun place and later stages |
 | CTS / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
 | Timing optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
 
@@ -995,7 +994,7 @@ definitions of placeable area, macros/blockages, and padding before changing the
 Schema validity does not establish capacity. Fixed die_size also does not imply
 core_util changes shrink the die.
 
-place.target_overflow is a placement stopping objective; EGR overflow is a different
+place.stop_overflow is a placement stopping objective; EGR overflow is a different
 congestion observation. Lowering the stopping threshold does not prove routing
 violations are eliminated. Relaxing the stopping condition is not quality improvement.
 Freeze seed, threads, and device in round one. Measure random robustness separately

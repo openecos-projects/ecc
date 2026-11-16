@@ -1335,10 +1335,9 @@ $ ecc param list
     cts.max_fanout                 32
   place
     place.target_density           0.4
-    place.target_overflow          0.1
-    place.global_right_padding     0
+    place.stop_overflow          0.1
     place.cell_padding_x           200
-    place.routability_opt          1
+    place.routability_opt_flag          1
   route
     route.bottom_layer             MET2
     route.top_layer                MET5
@@ -1401,10 +1400,9 @@ Legacy semantic parameters:
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
 | `cts.max_fanout` | int | 32 | [1, 200] | cts |
 | `place.target_density` | float | 0.4 | [0.1, 1.0] | placement |
-| `place.target_overflow` | float | 0.1 | [0.0, 1.0] | placement |
-| `place.global_right_padding` | int | 0 | [0, 100] | placement |
+| `place.stop_overflow` | float | 0.1 | [0.0, 1.0] | placement |
 | `place.cell_padding_x` | int | 200 | [0, 10000] | placement |
-| `place.routability_opt` | int | 1 | {0, 1} | placement |
+| `place.routability_opt_flag` | int | 1 | {0, 1} | placement |
 | `route.bottom_layer` | str | MET2 | MET1–MET5 | routing |
 | `route.top_layer` | str | MET5 | MET2–MET6 | routing |
 | `sta.max_paths` | int | 1000 | [1, 100000] | sta |

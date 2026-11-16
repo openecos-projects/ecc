@@ -6,6 +6,7 @@ from copy import deepcopy
 from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, validate_value
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.data.workspace_parameters import (
+    PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
     set_workspace_param,
     unset_workspace_param,
@@ -18,6 +19,7 @@ from chipcompiler.data.workspace_parameters import (
 from .targets import MISSING, stored_value
 
 __all__ = [
+    "PARAM_SOURCES_KEY",
     "WORKSPACE_PARAM_OVERRIDES_KEY",
     "carried_parameters",
     "invalid_carried_parameters",
@@ -52,7 +54,7 @@ def carried_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
             nested = carried.setdefault(parent, {})
             if isinstance(nested, dict):
                 nested[child] = deepcopy(value)
-    for key in (CONFIG_OVERRIDES_KEY, WORKSPACE_PARAM_OVERRIDES_KEY):
+    for key in (CONFIG_OVERRIDES_KEY, WORKSPACE_PARAM_OVERRIDES_KEY, PARAM_SOURCES_KEY):
         if key in parameters:
             carried[key] = deepcopy(parameters[key])
     return carried

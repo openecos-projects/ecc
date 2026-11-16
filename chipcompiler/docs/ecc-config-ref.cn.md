@@ -115,10 +115,9 @@ graph LR
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
 | `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
 | `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | 全局布局目标密度 |
-| `place.target_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
-| `place.global_right_padding` | int [0, 100] | 0 | 仅记录于 params.toml | 布局 site 右侧全局 padding（当前版本尚未接入工具配置字段） |
+| `place.stop_overflow` | float [0.0, 1.0] | 0.1 | dreamplace `stop_overflow` | 全局布局溢出收敛目标 |
 | `place.cell_padding_x` | int [0, 10000]（dbu） | 200 | dreamplace `cell_padding_x` | 单元 X 方向 padding（绕线拥塞缓解） |
-| `place.routability_opt` | {0, 1} | 1 | dreamplace `routability_opt_flag` | 布局阶段开启绕线拥塞驱动优化 |
+| `place.routability_opt_flag` | {0, 1} | 1 | dreamplace `routability_opt_flag` | 布局阶段开启绕线拥塞驱动优化 |
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | 绕线最低层 |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | 绕线最高层 |
 | `sta.max_paths` | int [1, 100000] | 1000 | STA 引擎参数（不落 JSON，运行时传入） | 每份 STA 时序报告的最大路径数 |
@@ -419,7 +418,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 | `legalize_flag` | 1 | 执行合法化 |
 | `detailed_place_flag` | 1 | 执行详细布局 |
 | `enable_fillers` | 0 | 独立布局阶段不插入 filler |
-| `routability_opt_flag` | 1 `*place.routability_opt` | 绕线拥塞驱动的布局优化 |
+| `routability_opt_flag` | 1 `*place.routability_opt_flag` | 绕线拥塞驱动的布局优化 |
 | `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | 旧版时序优化开关关闭；启用时序评估 |
 | `macro_place_flag` | 0 | 专用 `macroPlacement` 步骤会启用该开关 |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | 出图 / 拥塞图导出 / 布局评估 |
@@ -686,7 +685,7 @@ timing_metric_scope = "setup_plus_recovery"
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `target_density` | 0.4 `*place.target_density`（模板 0.4） | 目标布局密度（越低越松、越利绕线） |
-| `stop_overflow` | 0.1 `*place.target_overflow` | 溢出收敛阈值，达标即停 |
+| `stop_overflow` | 0.1 `*place.stop_overflow` | 溢出收敛阈值，达标即停 |
 | `overflow_reference_mode` | `initial` | overflow 面积归一化模式：`initial` 固定 GP 起始面积；`ordinary` 保留原 PR 的面积发布行为，有联合面积时使用 native + virtual，否则沿用 PlaceDB 面积。均不含 filler；归一化值也用于 gamma 和基于 overflow 的调度 |
 | `density_weight` | 8e-05 | 密度项初始权重（自动调整的起点） |
 | `inflation_density_weight_scale` | 0.001 | inflation 后按 Xplace 的 `||∇WL||₁ / ||∇density||₁` 重启密度权重时的倍率，默认让重启后的密度力保持较小；设为 `1.0` 直接使用归一化比例，设为 `0.1` 可复现 DreamPlace 历史重启比例 |
@@ -1025,7 +1024,7 @@ ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
 
 ### 15.4 placement / legalization
 
-placement 与 legalization 共用 `dreamplace_ecc.json`，因此使用同一组 `place.*` 参数。`aux_input`、LEF/DEF/网表输入、结果目录和设计名由流程管理，不提供 CLI 参数；`place.global_right_padding` 仅保存为兼容参数，当前不映射到 DreamPlace JSON。
+placement 与 legalization 共用 `dreamplace_ecc.json`，因此使用同一组 `place.*` 参数。`aux_input`、LEF/DEF/网表输入、结果目录和设计名由流程管理，不提供 CLI 参数。
 
 ```bash
 ecc param list --step placement

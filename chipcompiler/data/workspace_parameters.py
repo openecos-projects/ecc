@@ -13,6 +13,8 @@ from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
 WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
+# Layer (``ecc.toml`` / ``cli``) that supplied each explicit parameter at creation.
+PARAM_SOURCES_KEY = "_param_sources"
 _APPLIES_TO_STEP = {
     "synthesis": "Synthesis",
     "floorplan": "Floorplan",

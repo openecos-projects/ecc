@@ -376,8 +376,19 @@ def execute_fresh_run(
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
         pdk_cli_overrides = build_pdk_overrides(resolved)
+        param_sources = {item.param: item.source for item in resolved if item.is_explicit}
     else:
         pdk_cli_overrides = {}
+        param_sources = {}
+    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
+        # [design] frequency_mhz is not a [params] key; a value ecc.toml leaves
+        # unset was filled from project.json.
+        explicit = "design.frequency_mhz" in cfg._explicit_keys
+        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
+    if param_sources:
+        from chipcompiler.params import PARAM_SOURCES_KEY
+
+        parameters[PARAM_SOURCES_KEY] = param_sources
 
     from chipcompiler.utility.workspace_lock import workspace_lock
 

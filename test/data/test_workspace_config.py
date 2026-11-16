@@ -551,3 +551,16 @@ def test_save_persists_normalized_skip_steps(tmp_path):
     assert "Timing optimization" in raw
     assert "TimingOpt" not in raw
     assert load_workspace_config(tmp_path)["_flow"]["skip_steps"] == ["Timing optimization"]
+
+
+def test_parameter_sources_round_trip_with_dotted_parameter_ids(tmp_path):
+    payload = {
+        "design": "gcd",
+        "_param_sources": {"cts.max_fanout": "cli", "design.frequency_mhz": "ecc.toml"},
+    }
+    assert save_workspace_config(tmp_path, payload)
+
+    loaded = load_workspace_config(tmp_path)
+    loaded.pop("_flow", None)
+
+    assert loaded == payload

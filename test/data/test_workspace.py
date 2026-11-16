@@ -992,12 +992,6 @@ def test_workspace_config_refresh_uses_updated_parameters(
 
     workspace = load_workspace(str(workspace_dir))
     assert workspace is not None
-    parameter_path = workspace_dir / "home" / "params.toml"
-    params = _read_parameters(parameter_path)
-    params["max_fanout"] = 88
-    params["global_right_padding"] = 13
-    _write_parameters(parameter_path, params)
-
     init_workspace_config(workspace)
 
     filler = json_read(workspace.config["filler"])
@@ -1028,7 +1022,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
 
     edits = {
         "cts.max_fanout": 91,
-        "place.global_right_padding": 17,
         "route.bottom_layer": "MET3",
         "route.top_layer": "MET6",
         "place.target_density": 0.42,

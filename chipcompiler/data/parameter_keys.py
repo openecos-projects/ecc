@@ -24,12 +24,12 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 # "-thread_number" -> "thread_number") and rewrite JSON values such as
 # sta.signoff corner names, so their subtrees round-trip untouched.
 _RESERVED_PAYLOAD_KEYS = frozenset(
-    {"config_overrides", "workspace_param_overrides", "pdk_overrides"}
+    {"config_overrides", "workspace_param_overrides", "pdk_overrides", "_param_sources"}
 )
 
 # Internal workspace controls are canonical identifiers too. They are kept
 # out of the user-facing schema, but must survive params.toml round-trips.
-_INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode", "_flow"})
+_INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode", "_flow", "_param_sources"})
 
 
 def normalize_key(key: object) -> str:

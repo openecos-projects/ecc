@@ -4,7 +4,9 @@ Callers outside ``chipcompiler.data`` import parameter functionality from
 here; the submodules are an internal split.
 """
 
+from .evidence import EVIDENCE_FILE, write_step_parameter_evidence
 from .journal import (
+    PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
     carried_parameters,
     invalid_carried_parameters,
@@ -39,7 +41,9 @@ from .registry import (
 )
 
 __all__ = [
+    "EVIDENCE_FILE",
     "PARAM_REGISTRY",
+    "PARAM_SOURCES_KEY",
     "WORKSPACE_PARAM_OVERRIDES_KEY",
     "ConfigTarget",
     "ParamSchema",
@@ -68,4 +72,5 @@ __all__ = [
     "workspace_param_diff",
     "workspace_param_step",
     "workspace_param_value",
+    "write_step_parameter_evidence",
 ]
