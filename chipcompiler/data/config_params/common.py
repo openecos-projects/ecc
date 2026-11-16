@@ -1,10 +1,66 @@
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+
+ValueTransform = Callable[[object], object]
+
+
+def flag_to_int(value: object) -> int:
+    """Coerce a boolean-like flag (``True``, ``"on"``, ``"0"``...) to 0 or 1."""
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "on"}:
+            return 1
+        if normalized in {"false", "no", "off", ""}:
+            return 0
+        try:
+            return int(float(normalized))
+        except ValueError:
+            return 1
+    return int(bool(value))
 
 
 @dataclass(frozen=True)
 class ConfigTarget:
+    """One destination of a parameter inside a managed tool config JSON.
+
+    ``to_config``/``to_parameter`` translate between the parameter value and
+    the value stored in the config. ``element`` marks a target that carries
+    one element of a list-valued parameter, so a ``[horizontal, vertical]``
+    margin can fan out into per-side scalars and be read back as a list.
+    """
+
     config_key: str
     json_path: tuple[str, ...]
+    to_config: ValueTransform | None = None
+    to_parameter: ValueTransform | None = None
+    element: int | None = None
+
+    def render(self, value: object) -> object:
+        """The config value this target stores for a parameter *value*."""
+        if self.element is not None:
+            if (
+                not isinstance(value, Sequence)
+                or isinstance(value, str | bytes)
+                or len(value) <= self.element
+            ):
+                raise ValueError(
+                    f"{self.config_key}.{'.'.join(self.json_path)} needs element "
+                    f"{self.element} of a list value, got {value!r}"
+                )
+            value = value[self.element]
+        return self.to_config(value) if self.to_config is not None else value
+
+    def parse(self, config_value: object) -> object:
+        """The parameter value (or element) a stored config value represents."""
+        return self.to_parameter(config_value) if self.to_parameter is not None else config_value
+
+
+@dataclass(frozen=True)
+class PdkVariant:
+    """Default and allowed choices of a parameter for one PDK family."""
+
+    default: object
+    choices: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -24,10 +80,32 @@ class ParamSchema:
     unit: str | None = None
     example: str | None = None
     output_only: bool = False
+    # Further destinations of the same value; only valid beside ``config_target``.
+    extra_config_targets: tuple[ConfigTarget, ...] = ()
+    # Per-PDK-family overrides of ``default`` and ``choices`` (keys lower-case).
+    pdk_variants: Mapping[str, PdkVariant] = field(default_factory=dict)
 
     @property
     def has_direct_target(self) -> bool:
         return self.config_target is not None or self.pdk_target is not None
+
+    @property
+    def config_targets(self) -> tuple[ConfigTarget, ...]:
+        """Every config destination, the primary target first."""
+        if self.config_target is None:
+            return ()
+        return (self.config_target, *self.extra_config_targets)
+
+    def default_for(self, pdk: str | None) -> object:
+        variant = self._variant(pdk)
+        return self.default if variant is None else variant.default
+
+    def choices_for(self, pdk: str | None) -> tuple[str, ...] | None:
+        variant = self._variant(pdk)
+        return self.choices if variant is None or variant.choices is None else variant.choices
+
+    def _variant(self, pdk: str | None) -> PdkVariant | None:
+        return self.pdk_variants.get(pdk.lower()) if pdk else None
 
 
 _CONFIG_KEYS = {

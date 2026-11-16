@@ -330,7 +330,7 @@ def parse_value(raw: str, schema: ParamSchema) -> object:
     raise ValueError(f"unsupported type '{schema.type}' for {schema.param}")
 
 
-def validate_value(value: object, schema: ParamSchema) -> list[str]:
+def validate_value(value: object, schema: ParamSchema, pdk: str | None = None) -> list[str]:
     if value is None and schema.default is None:
         return []
     errors = []
@@ -342,8 +342,9 @@ def validate_value(value: object, schema: ParamSchema) -> list[str]:
                 f"value {value} out of range [{schema.range[0]}, {schema.range[1]}] "
                 f"for {schema.param}"
             )
-    if schema.choices is not None and str(value) not in schema.choices:
-        errors.append(f"value '{value}' not in allowed choices {schema.choices} for {schema.param}")
+    choices = schema.choices_for(pdk)
+    if choices is not None and str(value) not in choices:
+        errors.append(f"value '{value}' not in allowed choices {choices} for {schema.param}")
     return errors
 
 
@@ -360,7 +361,9 @@ class ResolvedParam:
         return self.source != "default"
 
 
-def resolve_parameters(toml_overrides=None, cli_overrides=None, manifest_overrides=None):
+def resolve_parameters(
+    toml_overrides=None, cli_overrides=None, manifest_overrides=None, pdk: str | None = None
+):
     layers = (
         (cli_overrides or {}, "cli"),
         (toml_overrides or {}, "ecc.toml"),
@@ -368,7 +371,8 @@ def resolve_parameters(toml_overrides=None, cli_overrides=None, manifest_overrid
     )
     resolved, errors = [], []
     for schema in PARAM_REGISTRY:
-        value, source = schema.default, "default"
+        default = schema.default_for(pdk)
+        value, source = default, "default"
         for layer, layer_source in layers:
             if schema.param not in layer:
                 continue
@@ -377,9 +381,9 @@ def resolve_parameters(toml_overrides=None, cli_overrides=None, manifest_overrid
                 value, type_error = validate_schema_type(value, schema)
                 if type_error:
                     errors.append(type_error)
-            errors.extend(validate_value(value, schema))
+            errors.extend(validate_value(value, schema, pdk))
             break
-        resolved.append(ResolvedParam(schema.param, value, schema.default, source, schema))
+        resolved.append(ResolvedParam(schema.param, value, default, source, schema))
     return resolved, errors
 
 
@@ -400,13 +404,13 @@ def build_backend_overrides(resolved, *, include_defaults: bool = False):
 def build_config_overrides(resolved):
     overrides = {}
     for item in resolved:
-        target = item.schema.config_target
-        if target is None or not item.is_explicit:
+        if not item.is_explicit:
             continue
-        current = overrides.setdefault(target.config_key, {})
-        for key in target.json_path[:-1]:
-            current = current.setdefault(key, {})
-        current[target.json_path[-1]] = item.value
+        for target in item.schema.config_targets:
+            current = overrides.setdefault(target.config_key, {})
+            for key in target.json_path[:-1]:
+                current = current.setdefault(key, {})
+            current[target.json_path[-1]] = target.render(item.value)
     return overrides
 
 
