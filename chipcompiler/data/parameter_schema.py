@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 
 from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
-from chipcompiler.data.config_params.common import ParamSchema
+from chipcompiler.data.config_params.common import ConfigTarget, ParamSchema, PdkVariant
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
 from chipcompiler.data.config_params.sdc import SCHEMAS as SDC_SCHEMAS
 
@@ -37,6 +37,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         {"core": "utilitization"},
         range=(0.01, 1.0),
         example="0.45",
+        config_target=ConfigTarget("Floorplan", ("die_builder", "die_util", "utilization")),
     ),
     ParamSchema(
         "floorplan.core_margin",
@@ -48,6 +49,14 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "Core margin in micrometers [horizontal, vertical]",
         {"core": "margin"},
         example="[2, 2]",
+        config_target=ConfigTarget(
+            "Floorplan", ("die_builder", "margin", "left_micron"), element=0
+        ),
+        extra_config_targets=(
+            ConfigTarget("Floorplan", ("die_builder", "margin", "right_micron"), element=0),
+            ConfigTarget("Floorplan", ("die_builder", "margin", "top_micron"), element=1),
+            ConfigTarget("Floorplan", ("die_builder", "margin", "bottom_micron"), element=1),
+        ),
     ),
     ParamSchema(
         "floorplan.aspect_ratio",
@@ -60,6 +69,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         {"core": "aspect_ratio"},
         range=(0.1, 10.0),
         example="1.0",
+        config_target=ConfigTarget("Floorplan", ("die_builder", "die_util", "aspect_ratio")),
     ),
     ParamSchema(
         "cts.max_fanout",
@@ -69,9 +79,10 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         32,
         "cts",
         "Maximum fanout for clock tree synthesis",
-        "max_fanout",
         range=(1, 200),
         example="16",
+        config_target=ConfigTarget("CTS", ("max_fanout",)),
+        fork=True,
     ),
     ParamSchema(
         "place.target_density",
@@ -81,21 +92,11 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         0.4,
         "placement",
         "Target placement density",
-        {"dreamplace": "target_density"},
         range=(0.1, 1.0),
         example="0.65",
-    ),
-    ParamSchema(
-        "place.target_overflow",
-        "place",
-        "target_overflow",
-        "float",
-        0.1,
-        "placement",
-        "Target overflow for global placement",
-        {"dreamplace": "stop_overflow"},
-        range=(0.0, 1.0),
-        example="0.08",
+        config_target=ConfigTarget("dreamplace", ("target_density",)),
+        pdk_variants={"sg13g2": PdkVariant(0.65)},
+        fork=True,
     ),
     ParamSchema(
         "place.global_right_padding",
@@ -117,21 +118,11 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         200,
         "placement",
         "Cell padding in x-direction in database units",
-        {"dreamplace": "cell_padding_x"},
         range=(0, 10000),
         example="400",
-    ),
-    ParamSchema(
-        "place.routability_opt",
-        "place",
-        "routability_opt",
-        "int",
-        1,
-        "placement",
-        "Enable routability-driven placement optimization",
-        {"dreamplace": "routability_opt_flag"},
-        choices=("0", "1"),
-        example="1",
+        config_target=ConfigTarget("dreamplace", ("cell_padding_x",)),
+        pdk_variants={"sg13g2": PdkVariant(0)},
+        fork=True,
     ),
     ParamSchema(
         "route.bottom_layer",
@@ -141,9 +132,17 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "MET2",
         "routing",
         "Bottom routing layer",
-        "bottom_layer",
         choices=("MET1", "MET2", "MET3", "MET4", "MET5"),
         example="MET2",
+        config_target=ConfigTarget("route", ("RT", "-bottom_routing_layer")),
+        extra_config_targets=(
+            ConfigTarget("db", ("LayerSettings", "routing_layer_1st")),
+            ConfigTarget("dreamplace", ("gpugr_bottom_routing_layer",)),
+        ),
+        pdk_variants={
+            "sg13g2": PdkVariant("Metal2", ("Metal1", "Metal2", "Metal3", "Metal4", "Metal5"))
+        },
+        fork=True,
     ),
     ParamSchema(
         "route.top_layer",
@@ -153,9 +152,12 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "MET5",
         "routing",
         "Top routing layer",
-        "top_layer",
         choices=("MET2", "MET3", "MET4", "MET5", "MET6"),
         example="MET5",
+        config_target=ConfigTarget("route", ("RT", "-top_routing_layer")),
+        extra_config_targets=(ConfigTarget("dreamplace", ("gpugr_top_routing_layer",)),),
+        pdk_variants={"sg13g2": PdkVariant("Metal5", ("Metal2", "Metal3", "Metal4", "Metal5"))},
+        fork=True,
     ),
     ParamSchema(
         "sta.max_paths",
@@ -404,7 +406,9 @@ def build_backend_overrides(resolved, *, include_defaults: bool = False):
 def build_config_overrides(resolved):
     overrides = {}
     for item in resolved:
-        if not item.is_explicit:
+        # Parameters stored in the workspace payload (maps_to) are derived from
+        # it at refresh; only direct config parameters carry a replay patch.
+        if not item.is_explicit or item.schema.maps_to is not None:
             continue
         for target in item.schema.config_targets:
             current = overrides.setdefault(target.config_key, {})
@@ -422,7 +426,7 @@ def build_pdk_overrides(resolved):
     }
 
 
-def parse_cli_overrides(pairs):
+def parse_cli_overrides(pairs, pdk: str | None = None):
     result, errors = {}, []
     for pair in pairs:
         if "=" not in pair:
@@ -438,7 +442,7 @@ def parse_cli_overrides(pairs):
         except ValueError as exc:
             errors.append(str(exc))
             continue
-        value_errors = validate_value(value, schema)
+        value_errors = validate_value(value, schema, pdk)
         if value_errors:
             errors.extend(value_errors)
             continue
@@ -446,7 +450,7 @@ def parse_cli_overrides(pairs):
     return result, errors
 
 
-def parse_toml_params(params_table):
+def parse_toml_params(params_table, pdk: str | None = None):
     flat, errors = {}, []
 
     def visit(path, value):
@@ -462,7 +466,7 @@ def parse_toml_params(params_table):
             except ValueError as exc:
                 errors.append(str(exc))
                 return
-            value_errors = validate_value(parsed, schema)
+            value_errors = validate_value(parsed, schema, pdk)
             if value_errors:
                 errors.extend(value_errors)
                 return

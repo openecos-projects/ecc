@@ -10,6 +10,7 @@ from chipcompiler.data.parameter import (
 )
 from chipcompiler.data.parameter_keys import normalize_keys
 from chipcompiler.data.workspace_config import (
+    WORKSPACE_CONFIG_SCHEMA_VERSION,
     WorkspaceConfigError,
     WorkspaceFlowTargetError,
     flow_range_for_preset,
@@ -98,7 +99,7 @@ def test_design_section_mirrors_identity_keys(tmp_path):
     assert "clock" not in document["params"]
 
 
-def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
+def test_save_moves_identity_to_sections_and_keeps_dreamplace_subtable(tmp_path):
     payload = {
         "design": "gcd",
         "top_module": "gcd",
@@ -106,23 +107,13 @@ def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
         "frequency_max": 50.0,
         "pdk": "ics55",
         "pdk_root": "/abs/pdk",
-        "target_density": 0.2,
-        "target_overflow": 0.1,
-        "cell_padding_x": 300,
-        "routability_opt_flag": 1,
-        "dreamplace": {
-            "target_density": 0.2,
-            "stop_overflow": 0.1,
-            "cell_padding_x": 300,
-            "routability_opt_flag": 1,
-            "num_threads": 8,
-        },
+        "dreamplace": {"target_density": 0.2, "num_threads": 8},
     }
 
     assert save_workspace_config(tmp_path, payload)
 
     document = tomllib.loads(workspace_config_path(tmp_path).read_text())
-    assert document["schema_version"] == 2
+    assert document["schema_version"] == WORKSPACE_CONFIG_SCHEMA_VERSION
     assert document["design"] == {
         "name": "gcd",
         "top": "gcd",
@@ -130,18 +121,11 @@ def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
         "frequency_mhz": 50.0,
     }
     assert document["pdk"] == {"name": "ics55", "root": "/abs/pdk"}
-    assert set(document["params"]) == {
-        "target_density",
-        "target_overflow",
-        "cell_padding_x",
-        "routability_opt_flag",
-        "dreamplace",
-    }
-    assert document["params"]["dreamplace"] == {"num_threads": 8}
+    assert document["params"] == {"dreamplace": {"target_density": 0.2, "num_threads": 8}}
 
     loaded = load_workspace_config(tmp_path)
     loaded.pop("_flow", None)
-    assert loaded == payload | {"dreamplace": {"num_threads": 8}}
+    assert loaded == payload
 
 
 def test_save_load_preserves_internal_input_mode(tmp_path):
@@ -451,7 +435,7 @@ def test_load_rejects_legacy_long_keys(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "params.toml").write_text(
-        'schema_version = 2\n[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
+        'schema_version = 3\n[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
         '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
         '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
     )
@@ -462,14 +446,14 @@ def test_load_rejects_legacy_long_keys(tmp_path):
 
 def test_load_rejects_non_table_sections(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("schema_version = 2\nparams = [1]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 3\nparams = [1]\n")
     with pytest.raises(WorkspaceConfigError):
         load_workspace_config(tmp_path)
 
 
 def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("schema_version = 2\n[params]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 3\n[params]\n")
     (tmp_path / "home" / "flow.json").write_text('{"schema_version": 2, "steps": 1}')
 
     loaded = load_workspace_config(tmp_path)

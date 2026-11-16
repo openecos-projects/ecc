@@ -379,6 +379,7 @@ def execute_fresh_run(
         resolved, _ = resolve_parameters(
             toml_overrides=cfg.params_overrides,
             cli_overrides=cli_overrides,
+            pdk=cfg.pdk_name or None,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
         config_overrides = build_config_overrides(resolved)

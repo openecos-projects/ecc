@@ -215,11 +215,6 @@ def prepare_workspaces(batch: Path):
             top_module=case["top"],
             clock=case["clock"],
             frequency_max=case["frequency_mhz"],
-            cell_padding_x=profile["cell_padding_x"],
-            target_density=profile["target_density"],
-            target_overflow=profile["stop_overflow"],
-            bottom_layer="MET2",
-            top_layer="MET5",
             config_overrides={"dreamplace": profile},
         )
         project = batch / "projects" / name

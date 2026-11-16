@@ -164,7 +164,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     if isinstance(params_raw, dict):
         from chipcompiler.params import parse_toml_params
 
-        flat, param_errors = parse_toml_params(params_raw)
+        flat, param_errors = parse_toml_params(params_raw, cfg.pdk_name or None)
         cfg.params_overrides = flat
         if param_errors:
             cfg._param_errors = param_errors

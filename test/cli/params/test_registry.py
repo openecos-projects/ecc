@@ -5,6 +5,7 @@ import pytest
 from chipcompiler.cli.project.effective_config import _diverging_lower_keys
 from chipcompiler.params import (
     PARAM_REGISTRY,
+    ConfigTarget,
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
@@ -35,10 +36,10 @@ REQUIRED_KEYS = [
     "floorplan.aspect_ratio",
     "cts.max_fanout",
     "place.target_density",
-    "place.target_overflow",
+    "place.stop_overflow",
     "place.global_right_padding",
     "place.cell_padding_x",
-    "place.routability_opt",
+    "place.routability_opt_flag",
     "route.bottom_layer",
     "route.top_layer",
     "flow.run_analysis",
@@ -84,10 +85,10 @@ class TestSchemaRegistry:
 
     def test_cli_keys_map_to_backend_names(self):
         density = _required_schema("place.target_density")
-        assert density.maps_to == {"dreamplace": "target_density"}
+        assert density.config_target == ConfigTarget("dreamplace", ("target_density",))
 
         fanout = _required_schema("cts.max_fanout")
-        assert fanout.maps_to == "max_fanout"
+        assert fanout.config_target == ConfigTarget("CTS", ("max_fanout",))
 
         util = _required_schema("floorplan.core_util")
         assert util.maps_to == {"core": "utilitization"}
@@ -338,8 +339,8 @@ class TestBackendMapping:
             source="cli",
             schema=schema,
         )
-        result = build_backend_overrides([rp])
-        assert result == {"dreamplace": {"target_density": 0.65}}
+        assert build_backend_overrides([rp]) == {}
+        assert build_config_overrides([rp]) == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = _required_schema("floorplan.core_util")
@@ -374,8 +375,11 @@ class TestBackendMapping:
             source="cli",
             schema=schema,
         )
-        result = build_backend_overrides([rp])
-        assert result == {"top_layer": "MET4"}
+        assert build_backend_overrides([rp]) == {}
+        assert build_config_overrides([rp]) == {
+            "route": {"RT": {"-top_routing_layer": "MET4"}},
+            "dreamplace": {"gpugr_top_routing_layer": "MET4"},
+        }
 
     def test_flow_bool_top_level_mapping(self):
         schema = _required_schema("flow.run_analysis")
@@ -425,7 +429,7 @@ class TestBackendMapping:
         assert isinstance(backend, dict)
         assert isinstance(config, dict)
         assert isinstance(pdk, dict)
-        if schema.config_target is not None:
+        if schema.config_target is not None and schema.maps_to is None:
             assert config
             assert backend == {}
         elif schema.pdk_target is not None:

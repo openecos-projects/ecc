@@ -2,6 +2,7 @@ import json
 import os
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -74,13 +75,18 @@ def test_workspace_configuration_update_is_revision_aware_and_idempotent(
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
 
+def _target_density(workspace: Any) -> float:
+    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+    return config["target_density"]
+
+
 def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_step(
     tmp_path, minimal_ics55_pdk_factory
 ):
     spec, bindings = _workspace_spec_fixture()
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
-    baseline_density = workspace.parameters.data["dreamplace"]["target_density"]
+    baseline_density = _target_density(workspace)
     flow = EngineFlow(workspace)
     for step in flow.workspace.flow.data.get("steps", []):
         step["state"] = "Success"
@@ -110,7 +116,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     )
     assert states[:first] == ["Success"] * first
     assert all(state == "Unstart" for state in states[first:])
-    assert updated.parameters.data["dreamplace"]["target_density"] == 0.65
+    assert _target_density(updated) == 0.65
 
     repeated = apply_workspace_parameters(
         workspace.directory,
@@ -129,7 +135,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
         command_id="batch-2",
     )
     assert read_engineering_snapshot(restored)["workspaceRevision"] == 3
-    assert restored.parameters.data["dreamplace"]["target_density"] == baseline_density
+    assert _target_density(restored) == baseline_density
 
 
 def test_workspace_parameter_batch_rejects_step_mismatch_without_writes(

@@ -22,7 +22,6 @@ from chipcompiler.data.workspace import (
     init_workspace_config,
     prepare_workspace_for_rerun,
     refresh_workspace_config,
-    sync_workspace_config_to_parameters,
     update_step_config,
 )
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
@@ -149,7 +148,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
         origin_def="",
         origin_verilog=rtl_path,
         pdk="ics55",
-        parameters={**default_ics55_parameters, "max_fanout": 37},
+        parameters={**default_ics55_parameters, "config_overrides": {"CTS": {"max_fanout": 37}}},
         pdk_root=pdk_root,
     )
     assert workspace is not None
@@ -186,7 +185,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     workspace_dir = tmp_path / "workspace"
     (workspace_dir / "home").mkdir(parents=True)
-    (workspace_dir / "home" / "params.toml").write_text("schema_version = 2\n")
+    (workspace_dir / "home" / "params.toml").write_text("schema_version = 3\n")
 
     workspace = create_workspace(
         directory=workspace_dir,
@@ -865,10 +864,6 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
         assert public_name not in data_api.__all__
         assert not hasattr(workspace_data, public_name)
 
-    assert not hasattr(data_api, "_flag_to_int")
-    assert "_flag_to_int" not in data_api.__all__
-    assert hasattr(workspace_data, "_flag_to_int")
-
     assert hasattr(workspace_data, "_WORKSPACE_CONFIG_FILENAMES")
     assert hasattr(workspace_data, "_STEP_CONFIG_KEYS")
     assert all(
@@ -1053,17 +1048,24 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
 
     workspace = load_workspace(str(workspace_dir))
     assert workspace is not None
-    parameter_path = workspace_dir / "home" / "params.toml"
-    params = _read_parameters(parameter_path)
-    params["max_fanout"] = 91
-    params["global_right_padding"] = 17
-    params["bottom_layer"] = "MET3"
-    params["top_layer"] = "MET6"
-    params["target_density"] = 0.42
-    params["target_overflow"] = 0.07
-    params["cell_padding_x"] = 444
-    params["routability_opt_flag"] = 0
-    _write_parameters(parameter_path, params)
+    from chipcompiler.data import save_parameter
+    from chipcompiler.params import lookup_schema, update_workspace_param_value
+
+    edits = {
+        "cts.max_fanout": 91,
+        "place.global_right_padding": 17,
+        "route.bottom_layer": "MET3",
+        "route.top_layer": "MET6",
+        "place.target_density": 0.42,
+        "place.stop_overflow": 0.07,
+        "place.cell_padding_x": 444,
+        "place.routability_opt_flag": 0,
+    }
+    for param, value in edits.items():
+        schema = lookup_schema(param)
+        assert schema is not None
+        update_workspace_param_value(workspace, schema, value)
+    assert save_parameter(workspace.parameters)
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
     cts["skew_bound"] = "0.13"
@@ -1182,27 +1184,6 @@ def test_refresh_workspace_config_preserves_external_sdc(
     refresh_workspace_config(workspace)
 
     assert external_sdc.read_text(encoding="utf-8") == external_content
-
-
-def test_refresh_workspace_config_preserves_routability_flag_string_coercion(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    for index, (raw_value, expected) in enumerate(ROUTABILITY_FLAG_STRING_CASES):
-        workspace_dir, workspace = _create_loaded_ics55_workspace(
-            tmp_path,
-            f"workspace_param_flag_{index}",
-            minimal_ics55_pdk_factory,
-            default_ics55_parameters,
-        )
-        parameter_path = workspace_dir / "home" / "params.toml"
-        params = _read_parameters(parameter_path)
-        params["routability_opt_flag"] = raw_value
-        _write_parameters(parameter_path, params)
-
-        refresh_workspace_config(workspace)
-
-        dreamplace = json_read(workspace.config["dreamplace"])
-        assert dreamplace["routability_opt_flag"] == expected
 
 
 def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedence(
@@ -1448,123 +1429,6 @@ def test_update_step_config_preserves_floorplan_mode_override_after_result_backf
 
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     assert floorplan["die_builder"]["mode"] == "die_util"
-
-
-def test_sync_workspace_config_to_parameters_updates_routing_layers_and_refreshes_peers(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-    )
-
-    workspace = load_workspace(str(workspace_dir))
-    assert workspace is not None
-    routing = json_read(workspace.config["route"])
-    routing["RT"]["-bottom_routing_layer"] = "MET4"
-    routing["RT"]["-top_routing_layer"] = "MET7"
-    json_write(workspace.config["route"], routing)
-
-    assert sync_workspace_config_to_parameters(workspace, workspace.config["route"]) is True
-    refresh_workspace_config(workspace)
-
-    params = _read_parameters(workspace_dir / "home" / "params.toml")
-    db = json_read(workspace.config["db"])
-    assert params["bottom_layer"] == "MET4"
-    assert params["top_layer"] == "MET7"
-    assert db["LayerSettings"]["routing_layer_1st"] == "MET4"
-
-
-def test_sync_workspace_config_to_parameters_propagates_cts_max_fanout(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    workspace_dir, workspace = _create_loaded_ics55_workspace(
-        tmp_path,
-        "workspace_cts_max_fanout",
-        minimal_ics55_pdk_factory,
-        default_ics55_parameters,
-    )
-    cts_path = workspace.config[StepEnum.CTS.value]
-    cts = json_read(cts_path)
-    cts["max_fanout"] = 48
-    json_write(cts_path, cts)
-
-    assert sync_workspace_config_to_parameters(workspace, cts_path) is True
-    refresh_workspace_config(workspace)
-
-    from chipcompiler.data.parameter import load_parameter
-
-    parameters = load_parameter(workspace_dir / "home" / "params.toml")
-    cts = json_read(cts_path)
-    assert parameters.data["max_fanout"] == 48
-    assert cts["max_fanout"] == 48
-
-
-def test_sync_workspace_config_to_parameters_preserves_routability_flag_string_coercion(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    for index, (raw_value, expected) in enumerate(ROUTABILITY_FLAG_STRING_CASES):
-        workspace_dir, workspace = _create_loaded_ics55_workspace(
-            tmp_path,
-            f"workspace_config_flag_{index}",
-            minimal_ics55_pdk_factory,
-            default_ics55_parameters,
-        )
-        parameter_path = workspace_dir / "home" / "params.toml"
-        params = _read_parameters(parameter_path)
-        params["routability_opt_flag"] = -1
-        _write_parameters(parameter_path, params)
-
-        dreamplace = json_read(workspace.config["dreamplace"])
-        dreamplace["routability_opt_flag"] = raw_value
-        json_write(workspace.config["dreamplace"], dreamplace)
-
-        assert (
-            sync_workspace_config_to_parameters(workspace, workspace.config["dreamplace"]) is True
-        )
-
-        params = _read_parameters(parameter_path)
-        assert params["routability_opt_flag"] == expected
-
-
-def test_sync_workspace_config_to_parameters_ignores_unmanaged_fields(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-    )
-
-    workspace = load_workspace(str(workspace_dir))
-    assert workspace is not None
-    cts = json_read(workspace.config["CTS"])
-    cts["skew_bound"] = 0.12
-    json_write(workspace.config["CTS"], cts)
-    parameter_path = workspace_dir / "home" / "params.toml"
-    before = _read_parameters(parameter_path)
-
-    assert sync_workspace_config_to_parameters(workspace, workspace.config["CTS"]) is False
-
-    after = _read_parameters(parameter_path)
-    assert after == before
 
 
 def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_state(

@@ -864,7 +864,9 @@ def _run_project(
     if raw_sets:
         from chipcompiler.params import parse_cli_overrides
 
-        cli_overrides, set_errors = parse_cli_overrides(list(raw_sets))
+        cli_overrides, set_errors = parse_cli_overrides(
+            list(raw_sets), (cfg.pdk_name if cfg is not None else "") or None
+        )
         if set_errors:
             return CommandResult.err(
                 [

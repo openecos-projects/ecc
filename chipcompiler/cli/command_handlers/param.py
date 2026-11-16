@@ -265,7 +265,7 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             exit_code=1,
         )
 
-    val_errors = validate_value(value, schema)
+    val_errors = validate_value(value, schema, getattr(ctx.config, "pdk_name", "") or None)
     if val_errors:
         return CommandResult.err(
             [

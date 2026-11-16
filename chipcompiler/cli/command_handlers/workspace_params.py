@@ -27,7 +27,8 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
         value = parse_value(args.value, schema)
     except ValueError as exc:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=str(exc))])
-    errors = validate_value(value, schema)
+    pdk = str(_load_workspace(ctx).parameters.data.get("pdk") or "") or None
+    errors = validate_value(value, schema, pdk)
     if errors:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=errors[0])])
     return _mutate(

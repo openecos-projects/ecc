@@ -18,6 +18,8 @@ class _Flow:
 def _workspace(workspace_dir):
     parameters_path = workspace_dir / "home" / "params.toml"
     parameters_path.parent.mkdir(parents=True)
+    dreamplace_config = workspace_dir / "dreamplace_ecc.json"
+    dreamplace_config.write_text('{"target_density": 0.2}')
     return SimpleNamespace(
         directory=workspace_dir,
         parameters=Parameters(
@@ -27,10 +29,9 @@ def _workspace(workspace_dir):
                 "design": "gcd",
                 "top_module": "gcd",
                 "clock": "clk",
-                "dreamplace": {"target_density": 0.2},
             },
         ),
-        config={},
+        config={"dreamplace": dreamplace_config},
         flow=SimpleNamespace(
             path=parameters_path.parent / "flow.json",
             data={
@@ -187,7 +188,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
     assert record["value"] == "0.65"
     assert record["from_step"] == "place"
     assert record["invalidated_steps"] == "['place', 'route']"
-    assert workspace.parameters.data["dreamplace"]["target_density"] == 0.65
+    assert workspace.parameters.data["config_overrides"] == {"dreamplace": {"target_density": 0.65}}
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",
         "Unstart",
@@ -210,7 +211,8 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
 
     assert rc == 0
     assert plain_records(capsys.readouterr().out)[0]["value"] == "0.2"
-    assert workspace.parameters.data["dreamplace"]["target_density"] == 0.2
+    # Unset re-applies the recorded baseline through the same direct patch.
+    assert workspace.parameters.data["config_overrides"] == {"dreamplace": {"target_density": 0.2}}
 
 
 def test_workspace_param_refresh_failure_rolls_back_params(

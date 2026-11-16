@@ -320,7 +320,7 @@ class TestRunSet:
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
-        assert params.get("dreamplace", {}).get("target_density") == 0.65
+        assert params["config_overrides"] == {"dreamplace": {"target_density": 0.65}}
 
     def test_run_set_direct_config_and_pdk_overrides(
         self, tmp_path, monkeypatch, capsys, create_cli_project
