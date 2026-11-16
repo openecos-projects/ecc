@@ -9,7 +9,7 @@ metrics); this module owns the human-facing configuration file only.
 
 Layout::
 
-    schema_version = 2   (required; every other version is rejected)
+    schema_version = 3   (required; every other version is rejected)
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
@@ -56,13 +56,6 @@ _PDK_SECTION_KEYS = {
     "pdk": "name",
     "pdk_root": "root",
     "pdk_config": "config",
-}
-
-_DREAMPLACE_MIRROR_KEYS = {
-    "target_density": "target_density",
-    "target_overflow": "stop_overflow",
-    "cell_padding_x": "cell_padding_x",
-    "routability_opt_flag": "routability_opt_flag",
 }
 
 
@@ -305,25 +298,6 @@ def _split_payload(data: dict) -> dict[str, Any]:
         value = params.pop(param_key, None)
         if value is not None:
             pdk[section_key] = value
-    dreamplace = params.get("dreamplace")
-    if isinstance(dreamplace, dict):
-        dreamplace = dict(dreamplace)
-        for parameter_key, dreamplace_key in _DREAMPLACE_MIRROR_KEYS.items():
-            if dreamplace_key not in dreamplace or parameter_key not in data:
-                continue
-            if dreamplace[dreamplace_key] != data[parameter_key]:
-                logger.warning(
-                    "[params.dreamplace].%s conflicts with top-level %s; "
-                    "preserving the nested override",
-                    dreamplace_key,
-                    parameter_key,
-                )
-                continue
-            dreamplace.pop(dreamplace_key)
-        if dreamplace:
-            params["dreamplace"] = dreamplace
-        else:
-            params.pop("dreamplace", None)
     return {"design": design, "pdk": pdk, "params": params}
 
 

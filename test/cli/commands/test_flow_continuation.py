@@ -8,7 +8,7 @@ from test.flow_fixture import step_fields
 
 
 def _write_existing_workspace(
-    run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None
+    run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None, cts=None
 ):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
@@ -42,6 +42,11 @@ def _write_existing_workspace(
     if extra:
         parameters.update(extra)
     assert save_workspace_config(run_dir, parameters, {"preset": preset})
+    if cts is not None:
+        config_dir = os.path.join(run_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        with open(os.path.join(config_dir, "cts_ecc.json"), "w") as f:
+            json.dump(cts, f)
 
 
 RTL2GDS_NAMES = [
@@ -293,9 +298,7 @@ class TestFlowContinuation:
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
             f.write("\n[params.cts]\nmax_fanout = 16\n")
         run_dir = os.path.join(project_dir, "default")
-        _write_existing_workspace(
-            run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, extra={"max_fanout": 16}
-        )
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, cts={"max_fanout": 16})
 
         class Flow:
             def __init__(self, workspace):
@@ -463,7 +466,7 @@ class TestFlowMismatchZeroMutation:
         os.makedirs(home)
         # Current config with a ledger that diverges from the project preset.
         Path(home, "params.toml").write_text(
-            """schema_version = 2
+            """schema_version = 3
 [design]
 name = "gcd"
 top = "gcd"

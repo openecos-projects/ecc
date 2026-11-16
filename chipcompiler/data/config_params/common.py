@@ -84,10 +84,19 @@ class ParamSchema:
     extra_config_targets: tuple[ConfigTarget, ...] = ()
     # Per-PDK-family overrides of ``default`` and ``choices`` (keys lower-case).
     pdk_variants: Mapping[str, PdkVariant] = field(default_factory=dict)
+    # Fork the PDK-effective default out to every config target at each refresh,
+    # for parameters whose shipped tool template is empty or ICS55-only.
+    fork: bool = False
 
     @property
     def has_direct_target(self) -> bool:
-        return self.config_target is not None or self.pdk_target is not None
+        """Whether the value lives only in a tool config (or PDK), with no workspace default.
+
+        Stored (``maps_to``) and forked parameters always have an effective
+        workspace value; only explicit direct parameters are worth listing.
+        """
+        direct_config = self.config_target is not None and self.maps_to is None and not self.fork
+        return direct_config or self.pdk_target is not None
 
     @property
     def config_targets(self) -> tuple[ConfigTarget, ...]:

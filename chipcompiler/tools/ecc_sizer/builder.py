@@ -174,8 +174,18 @@ def _tech_text(workspace: Workspace, libs: Sequence[Path] | None = None) -> str:
 
 
 def _append_route_layer_options(command, workspace: Workspace) -> None:
-    bottom = workspace.parameters.data.get("bottom_layer", "")
-    top = workspace.parameters.data.get("top_layer", "")
+    from chipcompiler.params import lookup_schema, workspace_param_value
+
+    layers: list[str] = []
+    for param in ("route.bottom_layer", "route.top_layer"):
+        schema = lookup_schema(param)
+        route_config = workspace.config.get("route")
+        if schema is None or route_config is None or not Path(route_config).is_file():
+            layers.append("")
+            continue
+        value = workspace_param_value(workspace, schema)
+        layers.append(value if isinstance(value, str) else "")
+    bottom, top = layers
 
     if bottom:
         command.option("min_route_layer", bottom)

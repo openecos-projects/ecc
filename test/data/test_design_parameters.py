@@ -49,13 +49,6 @@ def test_get_parameters_returns_independent_copies():
     assert second.data["core"]["margin"][0] == 2
 
 
-def test_ics55_template_has_dreamplace_padding_defaults():
-    parameters = get_parameters("ics55")
-
-    assert parameters.data["cell_padding_x"] == 200
-    assert parameters.data["routability_opt_flag"] == 1
-
-
 # SG13G2 parameter tests
 
 
@@ -80,26 +73,11 @@ def test_get_parameters_sg13g2_returns_independent_copies():
     assert second.data["floorplan"]["tracks"][0]["x_step"] == 420
 
 
-def test_sg13g2_template_has_correct_layer_names():
-    parameters = get_parameters("sg13g2")
-
-    assert parameters.data["bottom_layer"] == "Metal2"
-    assert parameters.data["top_layer"] == "Metal5"
-
-
 def test_sg13g2_template_has_correct_core_defaults():
     parameters = get_parameters("sg13g2")
 
     assert parameters.data["core"]["utilitization"] == 0.65
     assert parameters.data["core"]["margin"] == [17.5, 17.5]
-    assert parameters.data["target_density"] == 0.65
-
-
-def test_sg13g2_template_has_dreamplace_padding_defaults():
-    parameters = get_parameters("sg13g2")
-
-    assert parameters.data["cell_padding_x"] == 0
-    assert parameters.data["routability_opt_flag"] == 1
 
 
 def test_sg13g2_template_pdn_has_two_power_nets():
@@ -125,7 +103,7 @@ def test_load_parameter_reads_workspace_config(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     config_path = home / "params.toml"
-    config_path.write_text('schema_version = 2\n[params]\ndesign = "gcd"\n')
+    config_path.write_text('schema_version = 3\n[params]\ndesign = "gcd"\n')
 
     parameters = load_parameter(config_path)
 
@@ -178,7 +156,7 @@ def test_reload_parameter_keeps_identity_when_file_is_empty(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     path = home / "params.toml"
-    path.write_text("schema_version = 2\n")
+    path.write_text("schema_version = 3\n")
     current = Parameters(
         path=path,
         data={

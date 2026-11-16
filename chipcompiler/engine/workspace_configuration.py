@@ -245,7 +245,7 @@ def _apply_workspace_parameters(
     for parameter, value in sets.items():
         schema = schemas[parameter]
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if parameter == "macro.placements" and isinstance(normalized, list):
             from chipcompiler.data.workspace.macro_location import validate_placements
 
@@ -362,6 +362,11 @@ def _apply_workspace_parameters(
     return _load_committed_workspace(target)
 
 
+def _value_errors(workspace: Any, value: object, schema: Any) -> list[str]:
+    """Range and choice errors of *value* under the Workspace's PDK family."""
+    return validate_value(value, schema, workspace.pdk.name)
+
+
 def _earliest_flow_step(workspace: Any, affected_steps: list[str]) -> str:
     identities = {normalize_flow_step(step).casefold() for step in affected_steps}
     for step in workspace.flow.steps():
@@ -424,7 +429,7 @@ def _update_workspace_configuration(
         if schema is None or schema.pdk_target is not None:
             raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
         if workspace_param_value(workspace, schema) != normalized:
@@ -645,7 +650,7 @@ def _update_workspace_step_configuration(
                 f"Parameter {parameter} is not configurable at {step}",
             )
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
         if workspace_param_value(workspace, schema) != normalized:

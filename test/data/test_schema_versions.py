@@ -76,7 +76,7 @@ def test_legacy_parameters_json_is_not_used(tmp_path):
 def test_workspace_config_rejects_legacy_display_keys(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "params.toml").write_text('schema_version = 2\n[params]\n"Max fanout" = 48\n')
+    (home / "params.toml").write_text('schema_version = 3\n[params]\n"Max fanout" = 48\n')
 
     with pytest.raises(WorkspaceConfigError, match="legacy parameter keys"):
         load_workspace_config(tmp_path)

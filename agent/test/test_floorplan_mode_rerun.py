@@ -63,7 +63,7 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     )
     if split_topology:
         (home / "params.toml").write_text(
-            "schema_version = 2\n[params.core]\nutilitization = 0.5\n"
+            "schema_version = 3\n[params.core]\nutilitization = 0.5\n"
             "aspect_ratio = 1.0\nmargin = [2, 2]\n"
         )
         pdk = tmp_path / "pdk"

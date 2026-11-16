@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -8,7 +7,6 @@ from typing import Any, Final
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
 
-from ..config_params.common import flag_to_int as _flag_to_int
 from ..parameter import (
     Parameters,
     get_parameters,
@@ -270,130 +268,11 @@ def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     return workspace_config_paths(workspace.directory)
 
 
-@dataclass(frozen=True)
-class WorkspaceConfigParameterMapping:
-    parameter_key: str
-    config_key: str
-    json_path: tuple[str, ...]
-    to_config: Callable[[Any], Any] | None = None
-    to_parameter: Callable[[Any], Any] | None = None
-
-
-PARAMETER_CONFIG_FIELD_MAPPINGS = (
-    WorkspaceConfigParameterMapping(
-        "max_fanout",
-        StepEnum.CTS.value,
-        ("max_fanout",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "bottom_layer",
-        "db",
-        ("LayerSettings", "routing_layer_1st"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "bottom_layer",
-        StepEnum.ROUTING.value,
-        ("RT", "-bottom_routing_layer"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "top_layer",
-        StepEnum.ROUTING.value,
-        ("RT", "-top_routing_layer"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "target_density",
-        "dreamplace",
-        ("target_density",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "target_overflow",
-        "dreamplace",
-        ("stop_overflow",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "cell_padding_x",
-        "dreamplace",
-        ("cell_padding_x",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "routability_opt_flag",
-        "dreamplace",
-        ("routability_opt_flag",),
-        to_config=_flag_to_int,
-        to_parameter=_flag_to_int,
-    ),
-)
-
-
-_MISSING = object()
-
-
-def _get_nested_value(data: dict, path: tuple[str, ...]):
-    current = data
-    for key in path:
-        if not isinstance(current, dict) or key not in current:
-            return _MISSING
-        current = current[key]
-    return current
-
-
-def _set_nested_value(data: dict, path: tuple[str, ...], value) -> None:
-    current = data
-    for key in path[:-1]:
-        child = current.get(key)
-        if not isinstance(child, dict):
-            child = {}
-            current[key] = child
-        current = child
-    current[path[-1]] = value
-
-
-def _mapping_config_path(
-    workspace: Workspace,
-    mapping: WorkspaceConfigParameterMapping,
-) -> Path | None:
-    if not workspace.config:
-        workspace.config = build_workspace_config_paths(workspace)
-    return workspace.config.get(mapping.config_key)
-
-
 def _reload_workspace_parameters(workspace: Workspace) -> None:
     parameter_path = workspace.parameters.path
     if parameter_path is None:
         return
     workspace.parameters = reload_parameter(parameter_path, workspace.parameters)
-
-
-def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
-    from chipcompiler.utility import json_read, json_write
-
-    configs: dict[Path, dict] = {}
-    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
-        if mapping.parameter_key not in workspace.parameters.data:
-            continue
-
-        path = _mapping_config_path(workspace, mapping)
-        if not path:
-            continue
-
-        config = configs.setdefault(path, json_read(path))
-        value = workspace.parameters.data[mapping.parameter_key]
-        if mapping.to_config is not None:
-            value = mapping.to_config(value)
-        _set_nested_value(config, mapping.json_path, value)
-
-    for path, config in configs.items():
-        json_write(path, config)
-
-
-def _coerce_dreamplace_routability_flag(workspace: Workspace, dreamplace: dict) -> None:
-    dreamplace_overrides = workspace.parameters.data.get("dreamplace", {})
-    if isinstance(dreamplace_overrides, dict) and "routability_opt_flag" in dreamplace_overrides:
-        return
-    if "routability_opt_flag" in workspace.parameters.data:
-        dreamplace["routability_opt_flag"] = _flag_to_int(
-            workspace.parameters.data["routability_opt_flag"]
-        )
 
 
 def _load_default_floorplan_config() -> dict:
@@ -503,28 +382,16 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
         "site_name", default_die_builder.get("site_name", "")
     )
 
+    # Margin, utilization and aspect ratio values are written from the workspace
+    # parameters by derive_parameter_configs; restore any missing leaf here.
     default_margin = default_die_builder.get("margin", {})
     margin_config = die_builder.setdefault("margin", {})
-    core = workspace.parameters.data.get("core", {})
-    margin = core.get("margin", [])
-    if len(margin) < 2:
-        margin = [
-            margin_config.get("left_micron", default_margin.get("left_micron", 10.0)),
-            margin_config.get("bottom_micron", default_margin.get("bottom_micron", 10.0)),
-        ]
-    margin_config["left_micron"] = margin[0]
-    margin_config["right_micron"] = margin[0]
-    margin_config["top_micron"] = margin[1]
-    margin_config["bottom_micron"] = margin[1]
-
+    for side in ("left", "right", "top", "bottom"):
+        margin_config.setdefault(f"{side}_micron", default_margin.get(f"{side}_micron", 10.0))
     default_die_util = default_die_builder.get("die_util", {})
     die_util = die_builder.setdefault("die_util", {})
-    die_util["aspect_ratio"] = core.get(
-        "aspect_ratio", die_util.get("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
-    )
-    die_util["utilization"] = core.get(
-        "utilitization", die_util.get("utilization", default_die_util.get("utilization", 0.5))
-    )
+    die_util.setdefault("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
+    die_util.setdefault("utilization", default_die_util.get("utilization", 0.5))
 
     default_die_size = default_die_builder.get("die_size", {})
     die_size = die_builder.setdefault("die_size", {})
@@ -546,6 +413,12 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
     json_write(config_path, floorplan)
+
+    from chipcompiler.params.targets import derive_parameter_configs
+
+    derive_parameter_configs(
+        workspace.config, workspace.parameters.data, only=(StepEnum.FLOORPLAN.value,)
+    )
 
 
 def _ensure_writable(path: str | Path):
@@ -613,6 +486,7 @@ def init_workspace_config(workspace: Workspace) -> None:
 
 def refresh_workspace_config(workspace: Workspace) -> None:
     """Reload the workspace configuration and refresh configs derived from parameters/PDK."""
+    from chipcompiler.params.targets import derive_parameter_configs
     from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
 
@@ -634,11 +508,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     db["INPUT"]["lib_path"] = [str(path) for path in workspace.pdk.libs]
     db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
     db["INPUT"]["spef"] = str(workspace.pdk.spef or "")
-    db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("bottom_layer", "")
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
-
-    max_fanout = workspace.parameters.data.get("max_fanout", 32)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
     filler = json_read(filler_path)
@@ -655,7 +526,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
         )
     cts["buffer_type"] = workspace.pdk.buffers
-    cts["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
@@ -664,13 +534,9 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"Routing config missing or corrupt (no 'RT' key): "
             f"{workspace.config[f'{StepEnum.ROUTING.value}']}"
         )
-    router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("bottom_layer", "")
-    router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("top_layer", "")
-    json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     _refresh_floorplan_config(workspace)
-
-    _apply_parameter_mappings_to_workspace_config(workspace)
+    derive_parameter_configs(workspace.config, workspace.parameters.data)
     _refresh_emir_config(workspace)
 
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
@@ -690,7 +556,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     ]
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
-    _coerce_dreamplace_routability_flag(workspace, dreamplace)
     json_write(workspace.config["dreamplace"], dreamplace)
 
     from .config_manifest import record_derived_config
@@ -715,44 +580,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
     record_derived_config(workspace)
-
-
-def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
-    """Sync managed fields from one workspace config file back into the workspace configuration."""
-    from chipcompiler.utility import json_read
-
-    _reload_workspace_parameters(workspace)
-
-    if not workspace.config:
-        workspace.config = build_workspace_config_paths(workspace)
-
-    resolved_config_path = Path(config_path).expanduser().resolve()
-    changed = False
-    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
-        mapped_path = _mapping_config_path(workspace, mapping)
-        if mapped_path is None or mapped_path.expanduser().resolve() != resolved_config_path:
-            continue
-
-        config = json_read(mapped_path)
-        value = _get_nested_value(config, mapping.json_path)
-        if value is _MISSING:
-            continue
-
-        if mapping.to_parameter is not None:
-            value = mapping.to_parameter(value)
-
-        if workspace.parameters.data.get(mapping.parameter_key) != value:
-            workspace.parameters.data[mapping.parameter_key] = value
-            changed = True
-
-    if changed and not save_parameter(workspace.parameters):
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Failed to persist parameter sync changes; changes exist only in memory"
-        )
-
-    return changed
 
 
 def _reset_workspace_checklist(workspace: Workspace) -> None:

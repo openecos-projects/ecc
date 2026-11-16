@@ -268,7 +268,7 @@ def test_merge_against_real_template_preserves_untouched() -> None:
 
     update_parameters(source, target)
 
-    for key in ["pdk", "core", "die", "cell_padding_x"]:
+    for key in ["pdk", "core", "die", "global_right_padding"]:
         assert target[key] == original[key], f"Key '{key}' was modified but should be preserved"
 
 
