@@ -331,6 +331,16 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                 if item.get("status") == "invalid_config"
             ]
             return CommandResult.err(records)
+        if status_value == "invalid_flow_json":
+            return CommandResult.err(
+                [
+                    error_record(
+                        "invalid_flow_json",
+                        reason="home/flow.json is not a valid flow ledger",
+                        inspect=disclosure_cmd("ecc status", project, ctx.run_id),
+                    )
+                ]
+            )
         return CommandResult.err(items)
 
     if not items:

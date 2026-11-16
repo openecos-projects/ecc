@@ -249,6 +249,57 @@ class TestConfigStepResolved:
         rc = cli_main.run(["config", "nonexistent", "--project", project_dir])
         assert rc == 1
 
+    def test_config_step_corrupt_flow_json_plain_has_error_code(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("{not-json")
+
+        rc = cli_main.run(["config", "place", "--plain", "--project", project_dir])
+
+        assert rc == 1
+        records = plain_records(capsys.readouterr().out)
+        assert len(records) == 1
+        assert records[0]["kind"] == "error"
+        assert records[0]["error"] == "invalid_flow_json"
+        assert "status" not in records[0]
+        assert records[0]["inspect"] == f"ecc status --project {project_dir} --workspace default"
+
+    def test_config_step_corrupt_flow_json_json_has_error_code(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("[]")
+
+        rc = cli_main.run(["config", "place", "--json", "--project", project_dir])
+
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)
+        assert [record.get("error") for record in records] == ["invalid_flow_json"]
+        assert "status" not in records[0]
+
+    def test_config_step_corrupt_flow_json_text_shows_the_code(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("{not-json")
+
+        rc = cli_main.run(["config", "place", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "invalid_flow_json" in out
+        assert "status:" not in out
+
     def test_config_step_no_config_files(
         self, tmp_path, capsys, create_cli_project, create_flow_json, create_step_dir
     ):
