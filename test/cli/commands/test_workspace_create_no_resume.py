@@ -64,3 +64,95 @@ def test_repeated_workspace_create_does_not_resume_flow(
     # Verify flow.json is unchanged (no steps were executed)
     flow_data = json.loads(flow_json.read_text())
     assert flow_data["steps"][1]["state"] == "Pending", "Flow should not have resumed"
+
+
+def _existing_workspace(capsys, create_cli_project, manifest_stubs, flow_mocks):
+    """A registered workspace whose ledger has one finished and one pending step."""
+    project_dir = create_cli_project()
+    project_path = Path(project_dir)
+    assert (
+        cli_main.run(["workspace", "create", "test-ws", "--project", project_dir, "--plain"]) == 0
+    )
+    capsys.readouterr()
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "test-ws")])
+    home = project_path / "test-ws" / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    flow_json = home / "flow.json"
+    flow_json.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "Floorplan", "tool": "ecc", "state": "Pending"},
+                ]
+            }
+        )
+    )
+    flow_mocks.flow.instances = []
+    return project_dir, flow_json
+
+
+def test_workspace_create_with_a_range_does_not_run_an_existing_workspace(
+    capsys, create_cli_project, manifest_stubs, plain_records, flow_mocks
+):
+    """Issue #442: --from/--to sent an existing workspace down the run selector path."""
+    project_dir, flow_json = _existing_workspace(
+        capsys, create_cli_project, manifest_stubs, flow_mocks
+    )
+    before = flow_json.read_text()
+
+    rc = cli_main.run(
+        ["workspace", "create", "test-ws", "--from", "Synthesis", "--to", "Synthesis"]
+        + ["--project", project_dir, "--plain"]
+    )
+
+    records = plain_records(capsys.readouterr().out)
+    assert rc == 0, records
+    assert records[-1]["status"] == "refreshed"
+    assert records[-1]["workspace_id"] == "test-ws"
+    assert "executed_steps" not in records[-1]
+    assert len(flow_mocks.flow.instances) == 0
+    assert flow_json.read_text() == before
+
+
+def test_workspace_create_with_half_a_range_is_rejected_on_an_existing_workspace(
+    capsys, create_cli_project, manifest_stubs, plain_records, flow_mocks
+):
+    """`--from` alone is a run selector for `ecc run`; `create` has no such form."""
+    project_dir, flow_json = _existing_workspace(
+        capsys, create_cli_project, manifest_stubs, flow_mocks
+    )
+    before = flow_json.read_text()
+
+    rc = cli_main.run(
+        ["workspace", "create", "test-ws", "--from", "Floorplan", "--project", project_dir]
+        + ["--plain"]
+    )
+
+    records = plain_records(capsys.readouterr().out)
+    assert rc == 1
+    assert records[-1]["error"] == "flow_range_requires_pair"
+    assert len(flow_mocks.flow.instances) == 0
+    assert flow_json.read_text() == before
+
+
+def test_workspace_create_rejects_set_on_an_existing_workspace(
+    capsys, create_cli_project, manifest_stubs, plain_records, flow_mocks
+):
+    """Issue #442: --set was accepted and dropped; `ecc run --set` rejects it."""
+    project_dir, flow_json = _existing_workspace(
+        capsys, create_cli_project, manifest_stubs, flow_mocks
+    )
+    before = flow_json.read_text()
+
+    rc = cli_main.run(
+        ["workspace", "create", "test-ws", "--set", "place.target_density=0.5"]
+        + ["--project", project_dir, "--plain"]
+    )
+
+    records = plain_records(capsys.readouterr().out)
+    assert rc == 1
+    assert records[-1]["error"] == "set_requires_fresh_run"
+    assert records[-1]["workspace_id"] == "test-ws"
+    assert len(flow_mocks.flow.instances) == 0
+    assert flow_json.read_text() == before

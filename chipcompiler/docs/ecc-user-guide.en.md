@@ -982,7 +982,10 @@ With no pending deletions, the command succeeds without changes.
 
 `create` is what `ecc run` does before executing, split out for GUI/automation flows that
 register the ID first; `--from/--to` declare a bounded range and `--set` records parameter
-overrides at creation (the same fresh-run semantics as `ecc run --set`). `derive` copies the
+overrides at creation (the same fresh-run semantics as `ecc run --set`). On a workspace that
+already exists, `create` never runs a step: it reports the workspace (`status=refreshed`)
+and leaves its saved flow as it is, also when `--from/--to` are given, and it rejects
+`--set` with `set_requires_fresh_run`. `derive` copies the
 source workspace into `<project>/<TARGET>` and registers the branch relationship in
 `project.json`. `--from STEP` resets that step and all later steps, retaining earlier
 completed states and outputs. To continue from a selected output, pass the **next runnable

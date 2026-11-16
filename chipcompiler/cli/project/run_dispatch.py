@@ -260,6 +260,24 @@ def dispatch_project_run(
         # When execute_flow is False (e.g., workspace create on existing target),
         # return success without resuming the flow (#393).
         if not execute_flow:
+            if cli_overrides:
+                from chipcompiler.cli.core.records import error_record
+
+                # Same rule as `ecc run --set`: an override is recorded when
+                # the workspace is created, never dropped without a message.
+                return CommandResult.err(
+                    [
+                        error_record(
+                            "set_requires_fresh_run",
+                            workspace_id=run_name,
+                            workspace=run_dir,
+                            reason=(
+                                "--set applies only when the workspace is created; "
+                                "use ecc param set --workspace or a new workspace id"
+                            ),
+                        )
+                    ]
+                )
             return CommandResult.ok(
                 warning_records
                 + [

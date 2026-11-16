@@ -995,7 +995,9 @@ ecc workspace reconcile-deletes     # 崩溃后收尾未完成的 workspace 删�
 
 `create` 是 `ecc run` 在执行前所做创建动作的独立形式，供 GUI/自动化流程先登记 ID；
 `--from/--to` 声明有界范围，`--set` 在创建时记录参数覆盖（与 `ecc run --set` 的
-fresh-run 语义相同）。`derive` 把源 workspace 复制到 `<project>/<TARGET>`，
+fresh-run 语义相同）。对已存在的 workspace，`create` 不会运行任何步骤：它只报告该
+workspace（`status=refreshed`），已保存的流程保持不变，带 `--from/--to` 时也是如此；
+带 `--set` 时以 `set_requires_fresh_run` 拒绝。`derive` 把源 workspace 复制到 `<project>/<TARGET>`，
 并在 `project.json` 中登记分叉关系。`--from STEP` 会重置该步骤及后续步骤，保留此前
 步骤的完成状态和输出。从选定输出继续时，应传入**下一个可运行步骤**；例如
 `ecc workspace derive source trial --from preFloorplan` 会保留 Synthesis 的输出。

@@ -963,7 +963,13 @@ def _run_project(
 
     flow_json = os.path.join(run_dir, "home", "flow.json")
     fresh_target = not os.path.exists(flow_json) or command_input.overwrite
-    if fresh_target and command_input.from_step is not None and command_input.to_step is None:
+    # `workspace create` (execute_flow=False) never runs a step, so its --from
+    # is only ever one half of a creation range, also on an existing target.
+    if (
+        (fresh_target or not execute_flow)
+        and command_input.from_step is not None
+        and command_input.to_step is None
+    ):
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
@@ -1056,8 +1062,11 @@ def _run_project(
         if preflight is not None:
             return preflight
 
+    # The selector path executes steps. `workspace create` on an existing
+    # target must not reach it: it reports the workspace instead (#393, #442).
     if (
-        not fresh_target
+        execute_flow
+        and not fresh_target
         and not ctx.workspace_path_explicit
         and (
             command_input.resume
