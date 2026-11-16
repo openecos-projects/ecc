@@ -25,17 +25,35 @@ _APPLIES_TO_STEP = {
     "sta": "sta",
     "emir": "emir",
     "timing_opt": "Timing optimization",
+    "diff_opt": "diff_opt",
+    "diff_sizing": "diff_sizing",
 }
 _MISSING = object()
 
 
-def workspace_param_step(schema) -> str | None:
+def workspace_param_step(schema, workspace=None) -> str | None:
+    """The earliest flow step a parameter change invalidates.
+
+    ``applies`` may name several steps (``"placement,diff_opt"``) or ``"all"``;
+    both resolve against the Workspace's flow when one is given.
+    """
     if schema.output_only:
         return None
-    step = _APPLIES_TO_STEP.get(schema.applies)
-    if step is None:
+    # Only multi-step and "all" parameters need the flow to pick their step.
+    flow_names: list[str] = []
+    if workspace is not None and ("," in schema.applies or schema.applies == "all"):
+        flow_names = [str(step.get("name", "")) for step in workspace.flow.steps()]
+    candidates: list[str] = []
+    for applies in (part.strip() for part in schema.applies.split(",")):
+        if applies == "all":
+            # Without a Workspace the caller only asks whether the parameter is settable.
+            candidates.extend(flow_names[:1] or ["all"])
+        elif (step := _APPLIES_TO_STEP.get(applies)) is not None:
+            candidates.append(step)
+    if not candidates:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
-    return step
+    wanted = {step.casefold() for step in candidates}
+    return next((name for name in flow_names if name.casefold() in wanted), candidates[0])
 
 
 def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
@@ -87,7 +105,7 @@ def _config_target_value(workspace, schema, default: object, *, strict: bool) ->
 
 def set_workspace_param(workspace, schema, value: object) -> tuple[object, str | None]:
     baseline = update_workspace_param_value(workspace, schema, value)
-    return baseline, workspace_param_step(schema)
+    return baseline, workspace_param_step(schema, workspace)
 
 
 def update_workspace_param_value(workspace, schema, value: object) -> object:
@@ -113,7 +131,7 @@ def unset_workspace_param(workspace, schema) -> tuple[object, str | None] | None
     records.remove(record)
     _set_override_records(workspace.parameters.data, records)
     _apply_workspace_value(workspace, schema, record["baseline"])
-    return record["baseline"], workspace_param_step(schema)
+    return record["baseline"], workspace_param_step(schema, workspace)
 
 
 def workspace_param_diff(workspace) -> list[dict]:

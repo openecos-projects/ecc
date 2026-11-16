@@ -304,7 +304,7 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
         if existing is None:
             return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
         value = existing["baseline"]
-    step = workspace_param_step(schema)
+    step = workspace_param_step(schema, workspace)
     try:
         revision = read_engineering_snapshot(workspace)["workspaceRevision"]
         if step is None:

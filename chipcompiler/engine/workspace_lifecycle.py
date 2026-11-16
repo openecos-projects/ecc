@@ -5,23 +5,17 @@ import json
 import os
 import shutil
 import tempfile
-from collections.abc import Collection
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
-from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.engine.snapshot import create_engineering_snapshot
 from chipcompiler.engine.workspace_backup import retain_replaced_tree
 from chipcompiler.engine.workspace_spec import validate_workspace_spec
-from chipcompiler.params import (
-    build_backend_overrides,
-    build_config_overrides,
-    list_schemas,
-    resolve_parameters,
-)
+from chipcompiler.params import carried_parameters, invalid_carried_parameters
 from chipcompiler.rtl2gds import get_flow_builders
 
 
@@ -114,21 +108,13 @@ def create_workspace_from_spec(
     spec: object,
     bindings: object,
     command_id: str = "",
-    *,
-    preserved_parameters: Collection[str] = (),
 ):
     """Create a Workspace Spec target while serializing sibling creators."""
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     target = Path(target_directory).expanduser().resolve()
     with workspace_lock(target):
-        return _create_workspace_from_spec(
-            target,
-            spec,
-            bindings,
-            command_id,
-            preserved_parameters=preserved_parameters,
-        )
+        return _create_workspace_from_spec(target, spec, bindings, command_id)
 
 
 def _create_workspace_from_spec(
@@ -137,20 +123,21 @@ def _create_workspace_from_spec(
     bindings: object,
     command_id: str = "",
     *,
-    preserved_parameters: Collection[str] = (),
-    config_override_parameters: Collection[str] | None = None,
+    carried_parameters: Mapping[str, object] | None = None,
 ):
+    """Create a Workspace from a Spec.
+
+    The Spec carries no parameters: a new Workspace starts from the PDK template
+    and schema defaults. A rebuild passes the previous Workspace's
+    *carried_parameters* (see ``chipcompiler.params.carried_parameters``).
+    """
     target = Path(target_directory).expanduser().resolve()
     fingerprint = workspace_command_fingerprint("create", spec, bindings)
     if target.exists():
         if command_id and command_retry_matches(target, command_id, fingerprint):
             return _load_committed_workspace(target)
         raise WorkspaceLifecycleError("workspace_exists", f"Workspace already exists: {target}")
-    validation = validate_workspace_spec(
-        spec,
-        bindings,
-        preserved_parameters=preserved_parameters,
-    )
+    validation = validate_workspace_spec(spec, bindings)
     issues = validation["issues"]
     if issues:
         raise WorkspaceLifecycleError(
@@ -167,24 +154,14 @@ def _create_workspace_from_spec(
     rtl_paths = [
         str(input_bindings[item["inputId"]]) for item in resolved["inputs"] if item["role"] == "rtl"
     ]
-    parameters, errors = resolve_parameters(toml_overrides=resolved["parameters"])
-    if errors:
+    backend_parameters: dict[str, object] = deepcopy(dict(carried_parameters or {}))
+    carried_errors = invalid_carried_parameters(backend_parameters, resolved["pdk"]["familyId"])
+    if carried_errors:
         raise WorkspaceLifecycleError(
             "workspace_spec_invalid",
-            "Workspace parameters are invalid",
-            {"issues": errors},
+            "Carried Workspace parameters are invalid for the new PDK",
+            {"issues": carried_errors},
         )
-    backend_parameters = build_backend_overrides(parameters, include_defaults=True)
-    if config_override_parameters is None:
-        requested_spec = _string_keyed_dict(spec)
-        requested_parameters = _string_keyed_dict(requested_spec.get("parameters"))
-        config_override_parameters = requested_parameters.keys()
-    explicit_config_parameters = set(config_override_parameters)
-    config_overrides = build_config_overrides(
-        item for item in parameters if item.param in explicit_config_parameters
-    )
-    if config_overrides:
-        backend_parameters[CONFIG_OVERRIDES_KEY] = config_overrides
     backend_parameters.update(
         {
             "design": resolved["design"]["name"],
@@ -376,19 +353,17 @@ def _update_workspace_from_spec(
             },
         )
 
-    update_spec, preserved_parameters, config_override_parameters = (
-        _merge_workspace_update_parameters(current, spec, committed_snapshot=snapshot)
-    )
+    _require_readable_configuration(current)
+    carried = carried_parameters(current.parameters.data)
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
     backup_directory: Path | None = None
     try:
         staged = _create_workspace_from_spec(
             staging,
-            update_spec,
+            spec,
             bindings,
-            preserved_parameters=preserved_parameters,
-            config_override_parameters=config_override_parameters,
+            carried_parameters=carried,
         )
         _preserve_workspace_config_extensions(target, staging)
         create_engineering_snapshot(
@@ -436,113 +411,19 @@ def _update_workspace_from_spec(
             _remove_refresh_staging(staging)
 
 
-def _merge_workspace_update_parameters(
-    current: Any,
-    spec: object,
-    *,
-    committed_snapshot: dict[str, Any] | None = None,
-) -> tuple[object, frozenset[str], frozenset[str]]:
-    """Overlay an update request on the committed Workspace parameters.
-
-    The public Workspace Spec remains replace-oriented for creation and
-    validation. Only structural updates use the committed Workspace as a
-    parameter baseline, so omitted config values do not silently reset.
-    """
-    if not isinstance(spec, dict):
-        return spec, frozenset(), frozenset()
-
-    requested = spec.get("parameters", {})
-    if not isinstance(requested, dict):
-        return spec, frozenset(), frozenset()
-
+def _require_readable_configuration(current: Any) -> None:
+    """Refuse to rebuild a Workspace whose managed configuration is unreadable."""
     from chipcompiler.utility import JsonReadError
 
     from .workspace_configuration import read_workspace_configuration
 
     try:
-        current_configuration = read_workspace_configuration(current, strict=True)
+        read_workspace_configuration(current, strict=True)
     except (OSError, ValueError, JsonReadError) as exc:
         raise WorkspaceLifecycleError(
             "workspace_invalid",
             "Current Workspace configuration is unavailable",
         ) from exc
-
-    snapshot_spec = (
-        committed_snapshot.get("workspaceSpec") if isinstance(committed_snapshot, dict) else None
-    )
-    snapshot_parameters = (
-        snapshot_spec.get("parameters") if isinstance(snapshot_spec, dict) else None
-    )
-    current_spec = current_configuration.get("workspaceSpec")
-    current_parameters = (
-        snapshot_parameters
-        if isinstance(snapshot_parameters, dict)
-        else (current_spec.get("parameters") if isinstance(current_spec, dict) else None)
-    )
-    if not isinstance(current_parameters, dict):
-        raise WorkspaceLifecycleError(
-            "workspace_invalid",
-            "Current Workspace parameters are unavailable",
-        )
-    current_parameters = _declared_pdk_relative_parameters(current, current_parameters)
-
-    merged = deepcopy(spec)
-    merged["parameters"] = {
-        **{str(key): deepcopy(value) for key, value in current_parameters.items()},
-        **{str(key): deepcopy(value) for key, value in requested.items()},
-    }
-    preserved = frozenset(str(key) for key in current_parameters.keys() - requested.keys())
-    explicit_config_parameters = frozenset(
-        {str(key) for key in requested} | _config_override_parameter_ids(current.parameters.data)
-    )
-    return merged, preserved, explicit_config_parameters
-
-
-def _config_override_parameter_ids(parameters: object) -> set[str]:
-    if not isinstance(parameters, dict):
-        return set()
-    overrides = parameters.get(CONFIG_OVERRIDES_KEY)
-    if not isinstance(overrides, dict):
-        return set()
-
-    result: set[str] = set()
-    for schema in list_schemas():
-        target = schema.config_target
-        if target is None:
-            continue
-        value: object = overrides.get(target.config_key)
-        for key in target.json_path:
-            if not isinstance(value, dict) or key not in value:
-                break
-            value = value[key]
-        else:
-            result.add(schema.param)
-    return result
-
-
-def _declared_pdk_relative_parameters(workspace: Any, parameters: dict) -> dict:
-    """Return sta.liberty paths in their declared PDK-relative form.
-
-    The materialized STA config expands paths against the PDK root, so the
-    configuration view carries absolute paths. An update baseline must carry
-    the declared relative form for a PDK migration to re-resolve them
-    against the new root instead of pinning the old one.
-    """
-    liberty = parameters.get("sta.liberty")
-    if not isinstance(liberty, list):
-        return parameters
-    pdk_root = str(workspace.pdk.root or "").rstrip(os.sep)
-    if not pdk_root:
-        return parameters
-    declared = deepcopy(parameters)
-    for entry in declared["sta.liberty"]:
-        if not isinstance(entry, dict) or not isinstance(entry.get("path"), list):
-            continue
-        entry["path"] = [
-            path[len(pdk_root) + 1 :] if path.startswith(f"{pdk_root}{os.sep}") else path
-            for path in entry["path"]
-        ]
-    return declared
 
 
 def _preserve_workspace_config_extensions(source: Path, destination: Path) -> None:

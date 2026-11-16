@@ -145,7 +145,7 @@ def workspace_rows(
         if schema.pdk_target is not None:
             continue
         try:
-            step = workspace_param_step(schema)
+            step = workspace_param_step(schema, workspace)
             value = workspace_param_value(workspace, schema)
         except ValueError:
             continue
