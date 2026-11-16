@@ -466,3 +466,18 @@ def test_project_apply_checks_layer_choices_against_the_declared_pdk() -> None:
     assert apply("sg13g2")[1] == ["route.bottom_layer"]
     with pytest.raises(ProjectApplicationError):
         apply("ics55")
+
+
+def test_project_apply_validates_against_the_batch_final_pdk_in_any_order() -> None:
+    from chipcompiler.cli.project.project_application import _apply_text
+
+    def apply(sets):
+        return _apply_text(
+            '[pdk]\nname = "ics55"\n', parsed_sets=sets, unsets=(), add_rtl=(), remove_rtl=()
+        )
+
+    layer, pdk = ("route.bottom_layer", "Metal3"), ("pdk.name", "sg13g2")
+
+    forward, reverse = apply((layer, pdk)), apply((pdk, layer))
+    assert set(forward[1]) == set(reverse[1]) == {"route.bottom_layer", "pdk.name"}
+    assert tomllib.loads(forward[0]) == tomllib.loads(reverse[0])

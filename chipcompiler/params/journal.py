@@ -61,15 +61,28 @@ def carried_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
 
 
 def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -> list[str]:
-    """Range and choice errors of journaled values under the new PDK family."""
-    records = carried.get(WORKSPACE_PARAM_OVERRIDES_KEY)
-    if not isinstance(records, list):
-        return []
+    """Range and choice errors of carried values under the new PDK family.
+
+    Covers the journaled workspace edits and the direct config patch, which also
+    holds the values given at creation through ``ecc.toml`` or ``--set``.
+    """
     errors: list[str] = []
-    for record in records:
+    records = carried.get(WORKSPACE_PARAM_OVERRIDES_KEY)
+    for record in records if isinstance(records, list) else []:
         if not isinstance(record, dict) or "value" not in record:
             continue
         schema = lookup_schema(str(record.get("key", "")))
         if schema is not None and schema.pdk_target is None:
             errors.extend(validate_value(record["value"], schema, pdk))
+    patch = carried.get(CONFIG_OVERRIDES_KEY)
+    if isinstance(patch, Mapping):
+        for schema in list_schemas():
+            target = schema.config_target
+            if target is None or schema.maps_to is not None or target.element is not None:
+                continue
+            node: object = patch.get(target.config_key)
+            for key in target.json_path:
+                node = node.get(key, MISSING) if isinstance(node, Mapping) else MISSING
+            if node is not MISSING:
+                errors.extend(validate_value(target.parse(node), schema, pdk))
     return errors

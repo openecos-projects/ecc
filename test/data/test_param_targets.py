@@ -181,3 +181,15 @@ def test_registry_validation_rejects_malformed_multi_target_schemas(
     assert [error for error in validate_config_registry() if "missing target" not in error] == (
         expected
     )
+
+
+def test_carried_creation_time_config_overrides_are_validated_against_the_new_pdk() -> None:
+    from chipcompiler.params import invalid_carried_parameters
+
+    carried = {"config_overrides": {"route": {"RT": {"-bottom_routing_layer": "MET2"}}}}
+
+    assert invalid_carried_parameters(carried, "ics55") == []
+    assert invalid_carried_parameters(carried, "sg13g2") == [
+        "value 'MET2' not in allowed choices "
+        "('Metal1', 'Metal2', 'Metal3', 'Metal4', 'Metal5') for route.bottom_layer"
+    ]

@@ -21,6 +21,11 @@ from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.file import write_text_atomic
 
 
+def _project_pdk(ctx: CommandContext) -> str | None:
+    """The configured PDK family, which selects PDK-specific defaults and choices."""
+    return getattr(ctx.config, "pdk_name", "") or None
+
+
 def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
     """ecc param operates on ecc.toml; manifest projects have none (yet)."""
     if ctx.config is None and ctx.project_state == "manifest":
@@ -81,7 +86,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
+    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
     project = ctx.project
 
     selected_step = normalize_flow_step(getattr(args, "step", None) or "").casefold()
@@ -195,7 +200,7 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
+    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
     rp = next(r for r in resolved if r.param == key)
 
     record = {
@@ -265,7 +270,7 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             exit_code=1,
         )
 
-    val_errors = validate_value(value, schema, getattr(ctx.config, "pdk_name", "") or None)
+    val_errors = validate_value(value, schema, _project_pdk(ctx))
     if val_errors:
         return CommandResult.err(
             [
@@ -410,7 +415,7 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides)
+    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
 
     records = []
     for rp in resolved:
@@ -587,7 +592,7 @@ def _parse_parameter_values(
             value = parse_value(raw, schema)
         except ValueError as exc:
             raise ValueError(f"{key}: {exc}") from exc
-        errors = validate_value(value, schema, getattr(ctx.config, "pdk_name", "") or None)
+        errors = validate_value(value, schema, _project_pdk(ctx))
         if errors:
             raise ValueError(f"{key}: {errors[0]}")
         result[key] = value
