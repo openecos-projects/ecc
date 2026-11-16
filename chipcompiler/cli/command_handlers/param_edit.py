@@ -142,6 +142,7 @@ def workspace_rows(
     if steps is not None:
         kept = in_flow & {normalize_flow_step(step).casefold() for step in steps}
     overrides = {record["key"]: record for record in workspace_param_diff(workspace)}
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
     rows = []
     for schema in list_schemas():
         if schema.pdk_target is not None:
@@ -155,7 +156,7 @@ def workspace_rows(
             continue
         override = overrides.get(schema.param)
         base = override["baseline"] if override is not None else value
-        rows.append(_row(schema, value, base, overridden=override is not None))
+        rows.append(_row(schema, value, base, overridden=override is not None, pdk=pdk))
     return rows
 
 
@@ -164,7 +165,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     from chipcompiler.cli.command_handlers.param import (
         _load_toml_overrides,
         _manifest_mode_error,
-        _parameter_flow_step,
+        _parameter_flow_steps,
         _project_pdk,
     )
     from chipcompiler.params import resolve_parameters
@@ -184,13 +185,14 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         if builder is not None
         else set()
     )
-    resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+    pdk = _project_pdk(ctx)
+    resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
     return [
-        _row(item.schema, item.value, item.default, overridden=item.is_explicit)
+        _row(item.schema, item.value, item.default, overridden=item.is_explicit, pdk=pdk)
         for item in resolved
         if not in_flow
         or item.schema.applies == "all"
-        or _parameter_flow_step(item.schema.applies).casefold() in in_flow
+        or _parameter_flow_steps(item.schema.applies) & in_flow
     ]
 
 
@@ -209,12 +211,20 @@ def workspace_context(ctx: CommandContext, workspace_id: str, directory: str) ->
     )
 
 
-def _row(schema: "ParamSchema", value: object, base: object, *, overridden: bool) -> "ParamRow":
+def _row(
+    schema: "ParamSchema",
+    value: object,
+    base: object,
+    *,
+    overridden: bool,
+    pdk: str | None = None,
+) -> "ParamRow":
     from chipcompiler.cli.interactive.param_edit import ParamRow
 
     hints = []
-    if schema.choices is not None:
-        hints.append("{" + ", ".join(str(choice) for choice in schema.choices) + "}")
+    choices = schema.choices_for(pdk)
+    if choices is not None:
+        hints.append("{" + ", ".join(str(choice) for choice in choices) + "}")
     if schema.range is not None:
         hints.append(f"[{schema.range[0]}, {schema.range[1]}]")
     if schema.unit is not None:
@@ -237,7 +247,10 @@ def _row_steps(row: "ParamRow") -> set[str]:
 
     schema = lookup_schema(row.param)
     applies = schema.applies if schema is not None else row.group
-    return {normalize_flow_step(row.group).casefold(), normalize_flow_step(applies).casefold()}
+    return {
+        normalize_flow_step(row.group).casefold(),
+        *(normalize_flow_step(part.strip()).casefold() for part in applies.split(",")),
+    }
 
 
 def value_text(value: object) -> str:

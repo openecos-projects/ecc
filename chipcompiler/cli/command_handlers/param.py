@@ -51,14 +51,22 @@ def _parameter_flow_step(value: str) -> str:
     return applies
 
 
+def _parameter_flow_steps(applies: str) -> set[str]:
+    """Casefolded canonical flow steps named by a (possibly comma-separated) ``applies``."""
+    return {
+        _parameter_flow_step(part.strip()).casefold()
+        for part in applies.split(",")
+        if part.strip() != "all"
+    }
+
+
 def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
     preset = getattr(ctx.config, "flow_preset", "")
     builder = get_flow_builders().get(preset)
     if builder is None or schema.applies == "all" or schema.pdk_target is not None:
         return None
     flow_steps = {normalize_flow_step(step).casefold() for step, _tool, _state in builder()}
-    applies = _parameter_flow_step(schema.applies)
-    if applies.casefold() in flow_steps:
+    if _parameter_flow_steps(schema.applies) & flow_steps:
         return None
     return CommandResult.err(
         [error_record("parameter_not_in_flow", param=schema.param, preset=preset)],
@@ -105,13 +113,10 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     records = []
     for rp in resolved:
         s = rp.schema
-        applies = _parameter_flow_step(s.applies).casefold()
-        if flow_steps and s.applies != "all" and applies not in flow_steps:
+        applies = _parameter_flow_steps(s.applies)
+        if flow_steps and s.applies != "all" and not applies & flow_steps:
             continue
-        schema_steps = {
-            _parameter_flow_step(s.group).casefold(),
-            applies,
-        }
+        schema_steps = {_parameter_flow_step(s.group).casefold(), *applies}
         global_at_first_step = s.applies == "all" and selected_step == first_flow_step
         if selected_step and selected_step not in schema_steps and not global_at_first_step:
             continue
@@ -122,7 +127,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             "group": s.group,
             "name": s.name,
             "value": rp.value,
-            "default": s.default,
+            "default": rp.default,
             "source": rp.source,
             "type": s.type,
             "applies": s.applies,
@@ -136,8 +141,9 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             record["pdk_target"] = _pdk_target_str(s.pdk_target)
         if s.range is not None:
             record["range"] = f"[{s.range[0]}, {s.range[1]}]"
-        if s.choices is not None:
-            record["choices"] = ", ".join(s.choices)
+        choices = s.choices_for(_project_pdk(ctx))
+        if choices is not None:
+            record["choices"] = ", ".join(choices)
         if s.unit is not None:
             record["unit"] = s.unit
         records.append(record)
@@ -222,8 +228,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         record["pdk_target"] = _pdk_target_str(schema.pdk_target)
     if schema.range is not None:
         record["range"] = f"[{schema.range[0]}, {schema.range[1]}]"
-    if schema.choices is not None:
-        record["choices"] = ", ".join(schema.choices)
+    choices = schema.choices_for(_project_pdk(ctx))
+    if choices is not None:
+        record["choices"] = ", ".join(choices)
     if schema.unit is not None:
         record["unit"] = schema.unit
 
@@ -386,7 +393,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
                 {
                     "param": key,
                     "status": "unset",
-                    "value": schema.default,
+                    "value": schema.default_for(_project_pdk(ctx)),
                     "source": "default",
                 }
             ]
