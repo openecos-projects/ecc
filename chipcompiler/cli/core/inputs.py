@@ -136,6 +136,7 @@ class RunInput:
     run_id: str = ""
     runtime_id: str = ""
     log_file: str = ""
+    step_subprocess: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -408,6 +409,7 @@ class WorkspaceRefreshInput:
     expected_revision: int | None = None
     command_id: str = ""
     no_wait: bool = False
+    step_subprocess: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -429,6 +431,7 @@ class WorkspaceForkInput:
     to_step: str | None = None
     command_id: str = ""
     no_wait: bool = False
+    step_subprocess: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -478,6 +481,18 @@ class WorkspaceCreateInput:
     from_step: str | None = None
     to_step: str | None = None
     param_set: tuple[str, ...] = ()
+    command_id: str = ""
+    no_wait: bool = False
+    step_subprocess: bool | None = None
+
+
+@dataclass(frozen=True)
+class WorkspaceExecutionInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str
+    step_subprocess: bool | None = None
+    expected_revision: int | None = None
     command_id: str = ""
     no_wait: bool = False
 

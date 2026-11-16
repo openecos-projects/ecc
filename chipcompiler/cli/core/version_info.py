@@ -45,6 +45,7 @@ def version_payload() -> dict[str, int | str | None]:
         "dreamplace": distribution_version("ecc-dreamplace"),
         "ecc_tools": distribution_version("ecc-tools-bin"),
         "cli_contract": CLI_CONTRACT,
+        "workspace_execution_config": 1,
         "build_commit": build_commit,
         "build_date": build_date,
     }

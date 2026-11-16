@@ -72,3 +72,65 @@ def test_fresh_run_requests_one_persisted_projection(create_cli_project, flow_mo
     assert cli_main.run(["run", "--project", create_cli_project()]) == 0
 
     assert flow_mocks.capture["options_projections"] == [{"persist": True}]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_workspace_cli_execution_persists_only_in_ledger(
+    fresh_project, enabled, monkeypatch, capsys
+):
+    monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
+    config = fresh_project / "ecc.toml"
+    before_config = config.read_bytes()
+    flag = "--step-subprocess" if enabled else "--no-step-subprocess"
+    assert (
+        cli_main.run(["workspace", "create", "fresh", "--project", str(fresh_project), flag]) == 0
+    )
+    workspace = fresh_project / "fresh"
+    flow_path = workspace / "home" / "flow.json"
+    assert json.loads(flow_path.read_bytes())["options"]["execution"] == {
+        "step_subprocess": enabled
+    }
+    params = workspace / "home" / "params.toml"
+    before_params = params.read_bytes()
+    assert b"step_subprocess" not in before_params
+    capsys.readouterr()
+    command = ["workspace", "execution", "fresh", "--project", str(fresh_project), "--plain"]
+    assert cli_main.run(command) == 0
+    output = capsys.readouterr().out
+    assert f"step_subprocess={enabled}" in output
+    assert "source=home/flow.json" in output
+    opposite = "--no-step-subprocess" if enabled else "--step-subprocess"
+    assert (
+        cli_main.run(
+            [*command, opposite, "--expected-revision", "1", "--command-id", "execution-1"]
+        )
+        == 0
+    )
+    before_retry = flow_path.read_bytes()
+    assert (
+        cli_main.run(
+            [*command, opposite, "--expected-revision", "1", "--command-id", "execution-1"]
+        )
+        == 0
+    )
+    assert flow_path.read_bytes() == before_retry
+    assert json.loads(before_retry)["options"]["execution"] == {"step_subprocess": not enabled}
+    assert config.read_bytes() == before_config
+    assert params.read_bytes() == before_params
+
+
+def test_workspace_cli_execution_refuses_undeclared_target(fresh_project):
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "execution",
+                "missing",
+                "--project",
+                str(fresh_project),
+                "--no-step-subprocess",
+            ]
+        )
+        != 0
+    )
+    assert not (fresh_project / "missing").exists()

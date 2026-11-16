@@ -188,6 +188,11 @@ def create_command_spec(command_input, run_name: str) -> dict:
         "from": command_input.from_step,
         "to": command_input.to_step,
         "parameters": list(command_input.param_set),
+        **(
+            {"stepSubprocess": command_input.step_subprocess}
+            if command_input.step_subprocess is not None
+            else {}
+        ),
     }
 
 
@@ -532,6 +537,10 @@ def execute_fresh_run(
             )
 
             sync_flow_options_projection(workspace, persist=True)
+            if command_input.step_subprocess is not None:
+                from chipcompiler.data.workspace.execution import save_step_subprocess
+
+                save_step_subprocess(workspace.flow, value=command_input.step_subprocess)
 
             # The replacement is fully constructed and verified: commit it.
             # The previous workspace's backup is obsolete (or retained as an

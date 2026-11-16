@@ -107,6 +107,34 @@ Distilled from real `ecc config <step>` output. Each tool package declares the w
 | emir | ✓ | `emir_ecc.json` | iEMIR technology file; advisory step, see §13.5 |
 | harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not declared in `STEP_CONFIG_READS`; `ecc config harden` explicitly reports that the step has no configuration |
 
+### 0.4 Workspace execution mode
+
+Execution mode belongs to one workspace and is stored in
+`home/flow.json` under `options.execution.step_subprocess`. It is not a project
+parameter and is not written to `ecc.toml` or `home/params.toml`.
+
+```bash
+# Inspect the saved choice, effective choice, and override source.
+ecc workspace execution baseline --project /path/to/project
+# Execute step runners in the ECC process, with sequential flow steps.
+ecc workspace execution baseline --project /path/to/project --no-step-subprocess
+# Restore isolated workers and allow independent checkers to run concurrently.
+ecc workspace execution baseline --project /path/to/project --step-subprocess
+# Choose the mode at creation; derive and refresh accept these flags too.
+ecc workspace create experiment --project /path/to/project --no-step-subprocess
+```
+
+The execution command preserves completed steps and artifacts. Mutations use
+the workspace lock; `--no-wait` reports a busy workspace instead of waiting.
+`--expected-revision` and `--command-id` support revision checks and safe retries.
+Derived and refreshed workspaces preserve the choice when no mode flag is given.
+An absent setting defaults to isolated workers. Parallel checks still obey their
+dependencies and memory budget; a tool may use its own threads in either mode.
+
+An explicit `ECC_STEP_SUBPROCESS` temporarily overrides the saved workspace
+choice (`0` disables workers, other values enable them). The override is not
+saved, and step logs identify the effective mode and source.
+
 ## 1. The Parameter Chain (user-tunable parameters)
 
 ### 1.1 Legacy-semantic parameters (12)

@@ -14,3 +14,10 @@ WorkspaceOption = Annotated[
         "--workspace", help="Managed workspace name or absolute path (default: current workspace)"
     ),
 ]
+StepSubprocessOption = Annotated[
+    bool | None,
+    typer.Option(
+        "--step-subprocess/--no-step-subprocess",
+        help="Use isolated workers and allow parallel checks; saved in this workspace",
+    ),
+]
