@@ -56,8 +56,9 @@ def sweep_pareto(project: Path, name: str, objective_arguments: list[str]) -> di
                 raise ValueError("Candidate workspace differs from sweep binding")
             before = (workspace / "home/engineering-snapshot.json").read_bytes()
             facts = read_engineering_snapshot_from_directory(workspace)
+            pdk = str(facts["workspaceSpec"].get("pdk", {}).get("familyId") or "") or None
             parameters, errors = parse_cli_overrides(
-                [f"{key}={value}" for key, value in candidate["parameters"].items()]
+                [f"{key}={value}" for key, value in candidate["parameters"].items()], pdk
             )
             if errors or any(
                 facts["workspaceSpec"]["parameters"].get(key) != value

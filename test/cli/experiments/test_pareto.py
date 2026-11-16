@@ -176,3 +176,26 @@ def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
         tmp_path, facts, Objective("postFloorplan/core_area", "um^2", "minimize")
     )
     assert result["value"] == 100
+
+
+def test_candidate_layer_choices_follow_the_snapshot_pdk(sweep, monkeypatch):
+    project, root = sweep
+    plan = json.loads((root / "sweep.json").read_text())
+    for candidate in plan["candidates"]:
+        candidate["parameters"] = {"route.bottom_layer": "Metal3"}
+    (root / "sweep.json").write_text(json.dumps(plan))
+    base_snapshot = pareto.read_engineering_snapshot_from_directory
+
+    def sg13g2_snapshot(workspace):
+        facts = base_snapshot(workspace)
+        facts["workspaceSpec"] = {
+            "pdk": {"familyId": "sg13g2"},
+            "parameters": {"route.bottom_layer": "Metal3"},
+        }
+        return facts
+
+    monkeypatch.setattr(pareto, "read_engineering_snapshot_from_directory", sg13g2_snapshot)
+
+    report = pareto.sweep_pareto(project, "example", ["qor_score:score:maximize"])
+
+    assert [row["id"] for row in report["front"]] == ["candidate_0001"]
