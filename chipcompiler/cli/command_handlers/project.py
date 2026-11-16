@@ -862,7 +862,7 @@ def _run_project(
     cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set
     if raw_sets:
-        from chipcompiler.cli.project.params import parse_cli_overrides
+        from chipcompiler.params import parse_cli_overrides
 
         cli_overrides, set_errors = parse_cli_overrides(list(raw_sets))
         if set_errors:

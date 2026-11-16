@@ -6,15 +6,16 @@ from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
-from chipcompiler.cli.project.params import (
+from chipcompiler.cli.project.params import validate_pdk_target
+from chipcompiler.params import (
+    display_key_for,
+    knob_id_for,
+    list_schemas,
     lookup_schema,
     parse_value,
     resolve_parameters,
-    validate_pdk_target,
     validate_value,
 )
-from chipcompiler.data.param_keys import display_key_for, knob_id_for
-from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.file import write_text_atomic

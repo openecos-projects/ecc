@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data.parameter_schema import lookup_schema
+from chipcompiler.params import lookup_schema
 
 
 class TestParamList:

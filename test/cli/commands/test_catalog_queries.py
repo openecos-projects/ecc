@@ -2,8 +2,8 @@ import json
 import shlex
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.engine.workspace_spec import describe_workspace_spec
+from chipcompiler.params import list_schemas
 
 
 def _records(output: str) -> list[dict[str, str]]:

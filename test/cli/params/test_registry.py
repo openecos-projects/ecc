@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli.project.effective_config import _diverging_lower_keys
-from chipcompiler.cli.project.params import (
+from chipcompiler.params import (
     PARAM_REGISTRY,
     ParamSchema,
     ResolvedParam,

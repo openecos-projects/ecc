@@ -4,12 +4,12 @@ import pytest
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
 from chipcompiler.data.parameter import save_parameter
-from chipcompiler.data.parameter_schema import (
+from chipcompiler.data.workspace import init_workspace_config
+from chipcompiler.params import (
     build_config_overrides,
     parse_cli_overrides,
     resolve_parameters,
 )
-from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
 from chipcompiler.utility import json_read
 

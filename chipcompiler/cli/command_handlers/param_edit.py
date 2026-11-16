@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from chipcompiler.cli.interactive.param_edit import ParamRow
     from chipcompiler.cli.interactive.terminal import KeyReader
-    from chipcompiler.data.parameter_schema import ParamSchema
+    from chipcompiler.params import ParamSchema
 
 
 def param_edit(args: ParamEditInput, ctx: CommandContext) -> CommandResult:
@@ -113,8 +113,8 @@ def workspace_rows(
     workspace's override.
     """
     from chipcompiler.data import load_workspace
-    from chipcompiler.data.parameter_schema import list_schemas
-    from chipcompiler.data.workspace_parameters import (
+    from chipcompiler.params import (
+        list_schemas,
         workspace_param_diff,
         workspace_param_step,
         workspace_param_value,
@@ -164,7 +164,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         _manifest_mode_error,
         _parameter_flow_step,
     )
-    from chipcompiler.data.parameter_schema import resolve_parameters
+    from chipcompiler.params import resolve_parameters
     from chipcompiler.rtl2gds import get_flow_builders
 
     manifest_error = _manifest_mode_error(ctx)
@@ -230,7 +230,7 @@ def _row(schema: "ParamSchema", value: object, base: object, *, overridden: bool
 
 def _row_steps(row: "ParamRow") -> set[str]:
     """The step spellings ``--step`` matches for *row*: its group and the step it applies to."""
-    from chipcompiler.data.parameter_schema import lookup_schema
+    from chipcompiler.params import lookup_schema
 
     schema = lookup_schema(row.param)
     applies = schema.applies if schema is not None else row.group
@@ -245,7 +245,7 @@ def value_text(value: object) -> str:
 
 
 def _check(param: str, text: str) -> str | None:
-    from chipcompiler.data.parameter_schema import lookup_schema, parse_value, validate_value
+    from chipcompiler.params import lookup_schema, parse_value, validate_value
 
     schema = lookup_schema(param)
     if schema is None:

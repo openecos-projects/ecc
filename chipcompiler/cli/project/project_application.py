@@ -15,8 +15,8 @@ from chipcompiler.cli.project.config import (
 )
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
-from chipcompiler.cli.project.params import lookup_schema, parse_value, validate_value
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.params import lookup_schema, parse_value, validate_value
 from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
 from chipcompiler.project.manifest_write import (
     base_design_from_config,

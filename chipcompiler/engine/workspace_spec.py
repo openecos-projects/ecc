@@ -4,9 +4,14 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS, StepBaseEnum
-from chipcompiler.data.param_keys import display_key_for, knob_id_for
-from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
+from chipcompiler.params import (
+    display_key_for,
+    knob_id_for,
+    list_schemas,
+    lookup_schema,
+    resolve_parameters,
+)
 from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
 from chipcompiler.utility.filelist import validate_filelist
 

@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.cli.project.params import (
+from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.workspace import init_workspace_config
+from chipcompiler.params import (
     build_config_overrides,
     parse_cli_overrides,
     parse_toml_params,
     resolve_parameters,
 )
-from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.tools.ecc_dreamplace import builder
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.utility import json_read

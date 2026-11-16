@@ -12,16 +12,16 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
-from chipcompiler.data.parameter_schema import (
+from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
+from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.workspace_backup import retain_replaced_tree
+from chipcompiler.engine.workspace_spec import validate_workspace_spec
+from chipcompiler.params import (
     build_backend_overrides,
     build_config_overrides,
     list_schemas,
     resolve_parameters,
 )
-from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
-from chipcompiler.engine.snapshot import create_engineering_snapshot
-from chipcompiler.engine.workspace_backup import retain_replaced_tree
-from chipcompiler.engine.workspace_spec import validate_workspace_spec
 from chipcompiler.rtl2gds import get_flow_builders
 
 

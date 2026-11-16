@@ -439,7 +439,7 @@ def resolved_base_parameters(cfg) -> dict:
         "frequency_max": cfg.design_frequency_mhz,
     }
     if cfg.params_overrides:
-        from chipcompiler.data.parameter_schema import (
+        from chipcompiler.params import (
             build_backend_overrides,
             resolve_parameters,
         )

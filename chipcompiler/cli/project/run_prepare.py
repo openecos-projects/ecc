@@ -326,8 +326,8 @@ def execute_fresh_run(
         # can leak either. Keys an ecc.toml/--set override actually
         # replaces are skipped: their higher-layer value wins anyway.
         from chipcompiler.cli.project.effective_config import effective_override_keys
-        from chipcompiler.cli.project.params import coerce_manifest_parameters
         from chipcompiler.data.parameter_keys import geometry_to_parameters
+        from chipcompiler.params import coerce_manifest_parameters
 
         base, coerce_errors = coerce_manifest_parameters(
             geometry_to_parameters(cfg.manifest_parameters),
@@ -394,7 +394,7 @@ def execute_fresh_run(
         parameters = base
 
     if cfg.params_overrides or cli_overrides:
-        from chipcompiler.cli.project.params import (
+        from chipcompiler.params import (
             build_backend_overrides,
             build_config_overrides,
             build_pdk_overrides,

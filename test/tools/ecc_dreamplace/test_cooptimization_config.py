@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 import tomli_w
 
-from chipcompiler.cli.project.params import (
+from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+from chipcompiler.params import (
     build_backend_overrides,
     build_config_overrides,
     parse_cli_overrides,
     parse_toml_params,
     resolve_parameters,
 )
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.workspace.config_overrides import apply_config_overrides
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_direct_config_overrides
 

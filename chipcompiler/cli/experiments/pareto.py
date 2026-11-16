@@ -11,9 +11,9 @@ from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from chipcompiler.cli.experiments.candidate_evidence import candidate_evidence
 from chipcompiler.cli.experiments.operations import _json_command, load_json
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
-from chipcompiler.data.parameter_schema import parse_cli_overrides
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
 from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
+from chipcompiler.params import parse_cli_overrides
 
 
 def sweep_pareto(project: Path, name: str, objective_arguments: list[str]) -> dict:

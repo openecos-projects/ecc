@@ -15,14 +15,14 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config import find_config_path
-from chipcompiler.cli.project.params import lookup_schema
-from chipcompiler.cli.project.workspace_params import (
-    set_workspace_param,
-    workspace_param_value,
-)
 from chipcompiler.data.workspace.macro_location import (
     MACRO_ORIENTATIONS,
     parse_macro_location_tcl,
+)
+from chipcompiler.params import (
+    lookup_schema,
+    set_workspace_param,
+    workspace_param_value,
 )
 
 MACRO_PARAM = "macro.placements"
