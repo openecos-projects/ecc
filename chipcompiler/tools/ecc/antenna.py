@@ -35,6 +35,9 @@ def run_antenna_check(
     sub_flow.update_step(EccSubFlowEnum.check_antenna.value, StateEnum.Ongoing)
     completed = False
     try:
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         if not ecc_module.init_mj(output_dir=data_dir):
             workspace.logger.error("Failed to initialize iMJ for antenna checking")
             return False

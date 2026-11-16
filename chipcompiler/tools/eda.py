@@ -123,10 +123,12 @@ def _build_deferred_step(
     )
 
 
-def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool:
+def run_step(
+    workspace: Workspace, step: WorkspaceStep, ecc_module=None, *, replay_attempt: str | None = None
+) -> bool:
     from .replay import capture_step
 
-    with capture_step(workspace, step) as outcome:
+    with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
         outcome["ok"] = _run_step(workspace, step, ecc_module)
         return outcome["ok"]
 

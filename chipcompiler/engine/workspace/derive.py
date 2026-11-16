@@ -2,6 +2,7 @@
 """Derive a fresh-identity Workspace copy from an existing Workspace."""
 
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -213,7 +214,7 @@ def _prune_derived_checklist(workspace, reset_steps) -> None:
 def _rewrite_staged_paths(staging: Path, replacements: tuple[tuple[str, str], ...]) -> None:
     from chipcompiler.utility import json_write
 
-    for path in staging.rglob("*.json"):
+    for path in _mutable_json_paths(staging):
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -223,3 +224,16 @@ def _rewrite_staged_paths(staging: Path, replacements: tuple[tuple[str, str], ..
             rewritten = _replace_string_prefix(rewritten, source, target)
         if rewritten != value and not json_write(path, rewritten):
             raise OSError(f"Failed to rewrite staged Workspace path: {path}")
+
+
+def _mutable_json_paths(staging: Path):
+    for directory, children, files in os.walk(staging):
+        root = Path(directory)
+        if root.parts[-2:] == ("output", "geometry") and "replay" in children:
+            # Replay is a sealed, hash-indexed recording with relative asset
+            # references. Absolute strings inside it describe original sources;
+            # rewriting those corrupts the copied package and its provenance.
+            children.remove("replay")
+        for name in files:
+            if name.endswith(".json"):
+                yield root / name

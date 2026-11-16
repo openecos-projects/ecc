@@ -174,6 +174,13 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
             "--config",
             str(require_path(step.data.config, "kepler-formal config")),
         ]
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
+        if os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
+            kepler_env.update(
+                {key: value for key, value in os.environ.items() if key.startswith("ECC_REPLAY_")}
+            )
         with open(log_path, "w", encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,

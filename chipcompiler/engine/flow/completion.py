@@ -119,18 +119,20 @@ def finalize_interrupted_subflow(workspace_step, runtime, peak_memory_mb) -> lis
         return []
 
 
-def refresh_signoff_checklist(workspace, workspace_step) -> None:
+def refresh_signoff_checklist(workspace, workspace_step) -> bool:
     """Replace step/home checklists after the step's terminal flow state is saved."""
     try:
         from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 
         refresh_step_checklist(workspace, workspace_step)
+        return True
     except (Exception, SystemExit):
         logger.exception(
             "Failed to refresh signoff checklist after %s/%s",
             workspace_step.name,
             workspace_step.tool,
         )
+        return False
 
 
 def refresh_qor_report(workspace, step_tag: str) -> None:

@@ -3,7 +3,12 @@
 import shutil
 from pathlib import Path
 
-from chipcompiler.data import Workspace, inserted_step_kind, save_parameter
+from chipcompiler.data import (
+    Workspace,
+    inserted_step_kind,
+    refresh_workspace_config,
+    save_parameter,
+)
 from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS, flow_section_from_flow_config
 from chipcompiler.data.workspace.inputs import persist_origin_inputs
 from chipcompiler.engine.flow.runner import EngineFlow
@@ -59,6 +64,7 @@ def bound_derived_flow(
     workspace.parameters.data["_flow"] = flow_section_from_flow_config(config)
     if not save_parameter(workspace.parameters) or not flow.save():
         raise OSError("Failed to persist derived flow range")
+    refresh_workspace_config(workspace)
     flow.create_step_workspaces(executable_steps=set())
 
 

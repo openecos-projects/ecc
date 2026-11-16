@@ -75,6 +75,9 @@ def _run_sizer_pass(
     label: str,
 ) -> bool:
     """Run one Sizer pass and require it to produce fresh staging outputs."""
+    from chipcompiler.tools.replay import anchor_native_capture
+
+    anchor_native_capture()
     result = subprocess.run(
         get_sizer_command() + ["-env", str(env_path), "-f", str(cmd_path)],
         cwd=str(output_dir),
@@ -131,7 +134,14 @@ def _delete_published_outputs(step: EccStep) -> None:
     errors: list[OSError] = []
     for path in _published_paths(step):
         try:
-            _delete_path(path)
+            if path == Path(step.output.geometry or "") and path.is_dir() and not path.is_symlink():
+                # The current capture is created before tool execution. Output
+                # cleanup must not delete its pointer, token or staging files.
+                for child in path.iterdir():
+                    if child.name != "replay":
+                        _delete_path(child)
+            else:
+                _delete_path(path)
         except OSError as exc:
             logger.warning("Failed to delete Timing Opt artifact %s", path, exc_info=True)
             errors.append(exc)
@@ -204,10 +214,9 @@ def run_step(
     sub_flow.update_step(step_name=run_sizer_step, state=StateEnum.Ongoing)
 
     prepare_timing_context(workspace, step)
-    if is_preplace:
-        from chipcompiler.tools.replay import capture_step_database
+    from chipcompiler.tools.replay import capture_step_database
 
-        capture_step_database(workspace, step)
+    capture_step_database(workspace, step)
     if not _run_sizer_pass(
         env_path,
         cmd_path,

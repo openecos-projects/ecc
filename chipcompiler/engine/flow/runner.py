@@ -864,6 +864,15 @@ class EngineFlow:
             previous_step = deepcopy(flow_step) if flow_step is not None else None
         notify_flow_observer(observer, "on_step_started", workspace_step)
 
+        from chipcompiler.tools.replay_completion import finalize as finalize_replay
+        from chipcompiler.tools.replay_completion import prepare as prepare_replay
+
+        replay_attempt = None
+        try:
+            replay_attempt = prepare_replay(self.workspace, workspace_step)
+        except Exception:
+            logger.warning("Cannot prepare Replay for %s", step_tag, exc_info=True)
+
         try:
             execution = execute_tool_step(
                 self.workspace,
@@ -873,6 +882,7 @@ class EngineFlow:
                 started_at=start_time,
                 worker_module=self.step_worker_module,
                 layout_image=self._should_save_layout_image(),
+                replay_attempt=replay_attempt,
             )
             step_error = execution.error
             elapsed = execution.elapsed_seconds
@@ -965,11 +975,21 @@ class EngineFlow:
                         ) from exc
                     terminal_persisted = True
                 finally:
+                    checklist_current = False
                     if terminal_persisted:
-                        _refresh_signoff_checklist(self.workspace, workspace_step)
+                        checklist_current = _refresh_signoff_checklist(
+                            self.workspace, workspace_step
+                        )
                         _sync_step_checklist(self, workspace_step)
                         completed = True
             finally:
+                finalize_replay(
+                    self.workspace,
+                    workspace_step,
+                    replay_attempt,
+                    state.value,
+                    checklist_current=checklist_current if terminal_persisted else False,
+                )
                 try:
                     self.clear_db_engine_after_step(workspace_step, state)
                 except (Exception, SystemExit):

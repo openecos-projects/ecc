@@ -209,7 +209,7 @@ PARAM_REGISTRY = (
     + CONFIG_PARAM_SCHEMAS
     + MACRO_SCHEMAS
     + SDC_SCHEMAS
-    + (_REPLAY_SCHEMA,)
+    + (_REPLAY_SCHEMA, _REPLAY_SAMPLING_SCHEMA)
 )
 _REGISTRY_INDEX = {schema.param: schema for schema in PARAM_REGISTRY}
 _REQUIRED_FIELDS = ("param", "group", "name", "type", "default", "applies", "description")

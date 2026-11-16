@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,33 @@ import pytest
 from chipcompiler.engine import create_workspace_from_spec
 from chipcompiler.engine.workspace.derive import derive_workspace
 from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+
+
+def test_derive_rewrites_workspace_paths_without_corrupting_frozen_replay(tmp_path):
+    from chipcompiler.engine.workspace_derive import _rewrite_staged_paths
+
+    source, target = str(tmp_path / "source"), str(tmp_path / "target")
+    staging = tmp_path / "staging"
+    home = staging / "home"
+    home.mkdir(parents=True)
+    config = home / "flow.json"
+    config.write_text(json.dumps({"input": source + "/origin/top.v"}))
+    recording = staging / "place_dreamplace/output/geometry/replay/attempts/a"
+    recording.mkdir(parents=True)
+    evidence = recording / "logical.json"
+    original = json.dumps({"source": source + "/origin/top.v", "modules": {}}).encode()
+    evidence.write_bytes(original)
+    digest = sha256(original).hexdigest()
+    manifest = recording / "manifest.json"
+    manifest.write_text(json.dumps({"files": {"logical.json": {"sha256": digest}}}))
+    manifest_bytes = manifest.read_bytes()
+
+    _rewrite_staged_paths(staging, ((source, target),))
+
+    assert json.loads(config.read_text()) == {"input": target + "/origin/top.v"}
+    assert evidence.read_bytes() == original
+    assert sha256(evidence.read_bytes()).hexdigest() == digest
+    assert manifest.read_bytes() == manifest_bytes
 
 
 def test_derive_rejects_existing_target(tmp_path):

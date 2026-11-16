@@ -618,6 +618,9 @@ def run_cts(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             lib_paths=[*workspace.pdk.libs],
             sdc_path=step_tcl_path(workspace, step) or "",
         )
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         if not ecc_module.run_cts(
             config=workspace.config.get(f"{StepEnum.CTS.value}", ""),
             output=(step.data.steps or {}).get(StepEnum.CTS.value, ""),
@@ -692,6 +695,9 @@ def run_routing(
         # Timing-driven routing is self-contained in iRT: RTInterface builds its
         # own timing engine from the shared db config (lib paths, SDC), so no
         # Python-side STA lifecycle is needed before run_routing.
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.run_routing(config=workspace.config.get(f"{StepEnum.ROUTING.value}", ""))
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_routing.value, state=StateEnum.Success)
@@ -718,6 +724,9 @@ def run_drc(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.init_drc(output_dir=(step.data.steps or {}).get(StepEnum.DRC.value, ""))
         ecc_module.run_drc()
         ecc_module.destroy_drc()
@@ -764,6 +773,9 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.init_lvs(output_dir=(step.data.steps or {}).get(StepEnum.LVS.value, ""))
         ecc_module.run_lvs()
         ecc_module.destroy_lvs()
@@ -804,6 +816,9 @@ def run_filler(
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
         ecc_module.init_mj(output_dir=(step.data.steps or {}).get(StepEnum.FILLER.value, ""))
+        from chipcompiler.tools.replay import anchor_native_capture
+
+        anchor_native_capture()
         ecc_module.run_filler(config=workspace.config.get(f"{StepEnum.FILLER.value}", ""))
         ecc_module.destroy_mj()
 
@@ -958,24 +973,29 @@ def run_harden(
             workspace.logger.error("workspace STA config path is not configured")
             return False
 
-        ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
-        ecc_module.write_timing_model(
-            output_lib_path=step.output.lib or "",
-            config=sta_config,
-            output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
-            lib_paths=signoff_item["liberty_files"],
-            sdc_path=step_tcl_path(workspace, step) or "",
-            spef_path=signoff_item["spef_file"],
-            design_name=workspace.design.name,
-        )
+        from chipcompiler.tools.replay_events import export_phase
+
+        with export_phase("lef", step.output.lef or ""):
+            ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
+        with export_phase("lib", step.output.lib or ""):
+            ecc_module.write_timing_model(
+                output_lib_path=step.output.lib or "",
+                config=sta_config,
+                output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
+                lib_paths=signoff_item["liberty_files"],
+                sdc_path=step_tcl_path(workspace, step) or "",
+                spef_path=signoff_item["spef_file"],
+                design_name=workspace.design.name,
+            )
         layer_map_path = getattr(workspace.pdk, "mapping_file", None)
         if not layer_map_path:
             workspace.logger.error("Cannot harden without a PDK GDS layer map")
             return False
-        ecc_module.gds_save(
-            output_path=step.output.gds or "",
-            layer_map_path=layer_map_path,
-        )
+        with export_phase("gds", step.output.gds or ""):
+            ecc_module.gds_save(
+                output_path=step.output.gds or "",
+                layer_map_path=layer_map_path,
+            )
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 
@@ -1014,6 +1034,9 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
                     step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete
                 )
                 return False
+            from chipcompiler.tools.replay import anchor_native_capture
+
+            anchor_native_capture()
             if not ecc_module.run_rcx():
                 workspace.logger.error("RCX extraction failed")
                 sub_flow.update_step(
@@ -1152,13 +1175,19 @@ def run_power_analysis(
         return False
 
     try:
+        from chipcompiler.tools.replay_events import analysis_event
+
+        analysis_event("power_analysis_started", "run power analysis")
         if not ecc_module.run_pw():
+            analysis_event("power_analysis_failed", "run power analysis")
             workspace.logger.error("Power analysis failed")
             sub_flow.update_step(
                 step_name=EccSubFlowEnum.run_power_analysis.value,
                 state=StateEnum.Imcomplete,
             )
             return False
+
+        analysis_event("power_analysis_completed", "run power analysis")
     finally:
         ecc_module.destroy_pw()
 
@@ -1301,6 +1330,14 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         )
         assert sdc_path is not None  # The source constraint was validated above.
 
+        from chipcompiler.tools.replay_events import analysis_event
+
+        replay_context = {
+            "corner": corner,
+            "rc_corner": rcx_corner_name,
+            "temperature_c": temperature,
+        }
+        analysis_event("corner_started", "run sta", replay_context)
         ecc_module.run_timing(
             config=sta_config,
             work_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
@@ -1313,6 +1350,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             max_paths=workspace.parameters.data.get("sta_max_paths", 1000),
             corner=corner,
         )
+        analysis_event("corner_completed", "run sta", replay_context)
 
         workspace.logger.info(
             "STA artifacts for %s/%s at %sC saved to report=%s feature=%s",
