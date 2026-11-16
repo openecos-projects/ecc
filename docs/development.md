@@ -510,13 +510,17 @@ are mandatory, the last 2 as needed):
 
 #### Adding a tunable parameter (the param system)
 
-Legacy semantic parameters remain in
-`chipcompiler/data/parameter_schema.py::_LEGACY_PARAM_REGISTRY`;
-`cli/project/params.py` is now a thin compatibility facade over that
-catalog. Direct tool configuration belongs in one reviewed module per owner under
+Import parameter functionality from `chipcompiler.params`; its submodules are
+an internal split. Semantic parameters live in
+`chipcompiler/data/parameter_schema.py::_SEMANTIC_PARAM_REGISTRY`, and direct
+tool configuration belongs in one reviewed module per owner under
 `data/config_params/` (`cts.py`, `floorplan.py`, `dreamplace.py`, and so on).
-`ParamSchema` has one target: legacy `maps_to`, a JSON `config_target`, or a
-whitelisted PDK `pdk_target`.
+A `ParamSchema` is stored in the workspace payload (`maps_to`), written to
+tool configs through one or more `config_target`s (a target can fan out, apply a
+value transform or carry one element of a list), or is a whitelisted PDK
+`pdk_target`. `pdk_variants` give per-PDK defaults and choices, and `fork=True`
+forks the PDK-effective default out to every target at each refresh. The single
+derivation step is `chipcompiler/params/targets.py::derive_parameter_configs`.
 
 Use `config_param()` for a reviewed static template field (`description` is a
 required keyword argument, written per parameter by a human reviewer and

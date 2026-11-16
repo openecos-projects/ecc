@@ -405,7 +405,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 
 #### 新增可调参数（param 体系）
 
-旧的语义参数仍在 `chipcompiler/data/parameter_schema.py::_LEGACY_PARAM_REGISTRY`；`cli/project/params.py` 现在只是该目录的兼容 facade。工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
+参数功能统一从 `chipcompiler.params` 导入，其子模块只是内部划分。语义参数位于 `chipcompiler/data/parameter_schema.py::_SEMANTIC_PARAM_REGISTRY`；工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 要么存放在 workspace payload（`maps_to`），要么通过一个或多个 `config_target` 写入工具 config（目标可以扇出、做值转换或承载列表的一个元素），要么是白名单 PDK `pdk_target`。`pdk_variants` 提供按 PDK 区分的默认值与可选值，`fork=True` 表示每次 refresh 把 PDK 有效默认值分发到所有目标。唯一的派生步骤是 `chipcompiler/params/targets.py::derive_parameter_configs`。
 
 已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/data/test_descriptions.py` 会校验）：
 

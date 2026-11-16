@@ -94,3 +94,14 @@ def test_evidence_failure_never_raises(tmp_path) -> None:
     step = type("Step", (), {"name": "CTS", "tool": "ecc"})()
 
     assert write_step_parameter_evidence(object(), step, tmp_path) is False
+
+
+def test_record_lists_only_configs_the_step_consumes(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters)
+
+    record = build_step_parameter_record(workspace, "route", "ecc")
+
+    assert set(record["config"]) == {"route", "db"}
+    assert record["config"]["route"]["RT.-bottom_routing_layer"] == "MET2"
