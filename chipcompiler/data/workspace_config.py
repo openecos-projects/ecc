@@ -24,6 +24,7 @@ import logging
 import os
 import tempfile
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -311,7 +312,11 @@ def flow_steps_in_range(start: str, end: str) -> list[str]:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 
 
-def flow_section_from_flow_config(flow_config: dict | None) -> dict:
+def flow_section_from_flow_config(
+    flow_config: dict | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> dict:
     """Derive the [flow] section (start/end canonical form) from a flow_config.
 
     Uses the same selection resolution as the flow.json seeding, so both
@@ -325,7 +330,9 @@ def flow_section_from_flow_config(flow_config: dict | None) -> dict:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    no_clock = flow_no_clock(flow_config)
+    from chipcompiler.rtl2gds import resolve_no_clock
+
+    no_clock = resolve_no_clock(flow_config, materials=materials).enabled
 
     # A preset-shaped flow_config selects the preset's canonical range.
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
