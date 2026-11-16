@@ -62,6 +62,25 @@ surfaces declare different policies, `ecc run`/`ecc check` emit a
   a CLI session converge on the same `config/*.json` for the same
   `home/params.toml`.
 
+## Where a step's parameters are recorded
+
+A Workspace Spec carries structure only (design, inputs, PDK, flow); it holds
+no parameters. A new workspace starts from the PDK template and schema
+defaults, and parameters are set afterwards with `ecc param set --workspace`
+or `apply_workspace_parameters`. Rebuilding a workspace through
+`update_workspace_from_spec` carries the stored parameters, the direct config
+patch and the baseline journal over; journaled values are revalidated against
+the new PDK family.
+
+Each step directory also gets a `params.json` beside `req.json`/`rsp.json`,
+written by the step worker after the tool has finalized its config. It lists
+every parameter applicable to the step with its `value`, `default` and
+`source` (`default`, `ecc.toml`, `cli`, `project.json` or `workspace`) and the
+tool-config values those parameters currently hold, keyed by config file and
+JSON path. It is evidence for developers and agents to trace a step's inputs;
+nothing reads it back. The creation-time layer of each explicit parameter is
+persisted in `home/params.toml` under `[params._param_sources]`.
+
 ## CLI vs GUI
 
 | Concern | CLI (`ecc`) | GUI (ECOS Studio) |
@@ -83,7 +102,7 @@ recreate the workspace with this ECC.
 
 | File | Field | Required version |
 | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 2 |
+| `home/params.toml` | `schema_version` | 3 |
 | `home/flow.json` | `schema_version` | 2 |
 | `home/engineering-snapshot.json` | `schemaVersion` | 6 |
 

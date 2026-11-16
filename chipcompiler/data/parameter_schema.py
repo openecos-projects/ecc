@@ -99,18 +99,6 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         fork=True,
     ),
     ParamSchema(
-        "place.global_right_padding",
-        "place",
-        "global_right_padding",
-        "int",
-        0,
-        "placement",
-        "Global right padding for placement sites",
-        "global_right_padding",
-        range=(0, 100),
-        example="8",
-    ),
-    ParamSchema(
         "place.cell_padding_x",
         "place",
         "cell_padding_x",

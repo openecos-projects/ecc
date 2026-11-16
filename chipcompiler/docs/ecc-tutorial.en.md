@@ -799,7 +799,7 @@ Common parameters mapped to PPA dimensions (defaults in parentheses; the complet
 | Timing (P) | `design.frequency_mhz` (100.0) target frequency; clock tree `cts.max_fanout` (32), `cts.skew_bound` (0.08 ns), `cts.max_buf_tran` (0.5 ns), `cts.routing_layer` ([4,5]); `route.top_layer` (MET5 — higher metals have lower RC); `route.RT.-enable_timing` ("0", timing-driven routing switch) | Higher frequency → more synthesis and timing pressure, usually worse area/power; tighter clock-tree constraints → more buffers, higher insertion delay and power |
 | Area (A) | `floorplan.core_util` (0.4) core utilization; `floorplan.aspect_ratio` (1.0) and `floorplan.core_margin` ([2,2] µm); `place.target_density` (0.4) placement density | Higher utilization/density → smaller die but more congestion and timing/DRC risk |
 | Power (W) | No dedicated knob; driven indirectly by target frequency and clock structure: `design.frequency_mhz`, the `cts.*` buffer policy | To have QoR score power, declare a budget first: add `qor_power_budget_w = 0.5` (watts) to the `[params]` table of `<workspace>/home/params.toml` (see [QoR Reference §8](ecc-qor-ref.en.md)) |
-| Routability | `place.cell_padding_x` (200, db units), `place.routability_opt` (1), `route.top_layer` (more layers available higher up) | More padding → easier routing, larger area |
+| Routability | `place.cell_padding_x` (200, db units), `place.routability_opt_flag` (1), `route.top_layer` (more layers available higher up) | More padding → easier routing, larger area |
 
 Out-of-range values are rejected with `invalid_value` and nothing is written — so experiment freely.
 

@@ -383,8 +383,8 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `floorplan.core_margin` | JSON 二元整数列表，µm | 边缘/IO/PDN空间 | floorplan |
 | `floorplan.die_builder.mode`、die_size 的 width/height_micron | 模式与固定尺寸 | 固定 die 外形实验 | floorplan |
 | `place.target_density` | float，当前范围 0.1–0.95 | 布局紧凑程度与拥塞 | place |
-| `place.target_overflow` | float，0–1 | 布局收敛阈值 | place |
-| `place.routability_opt` | int，0/1 | 拥塞驱动布局 | place |
+| `place.stop_overflow` | float，0–1 | 布局收敛阈值 | place |
+| `place.routability_opt_flag` | int，0/1 | 拥塞驱动布局 | place |
 | `place.cell_padding_x` | int，数据库单位 dbu | pin access/拥塞折中 | place |
 | `place.random_seed`、`place.deterministic_flag` | 需按 schema 查看类型与条件 | 复现控制，必要时 seed 复验 | place |
 | `cts.skew_bound` | 当前 schema 为 str，物理量 ns | CTS skew/面积/功耗折中 | CTS |
@@ -400,7 +400,6 @@ die_size 模式下改变 core_util 可能不是控制尺寸的有效途径，应
 
 暂不作为 PPA 搜索变量：
 
-- `place.global_right_padding` 目前未接入实际工具字段，不以其数值变化作为有效实验。
 - `place.num_threads`、`sta.max_parallel_corners` 等主要用于资源管理。
 - PDK 工艺规则、PDN、验收 corners 不作为可随意削弱的“优化旋钮”。
 - `cts.target_skew`、任意猜测的 sizing/DRC 参数不能替代 schema 中的真实 key。
@@ -632,7 +631,7 @@ PPA_ITER=ppa-iter-001
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-before.snapshot.json" --json
 ecc param apply --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
-  --set place.target_density=0.25 --set place.target_overflow=0.08 --plain
+  --set place.target_density=0.25 --set place.stop_overflow=0.08 --plain
 ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_ITER" --resume --plain
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
@@ -856,7 +855,7 @@ Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorpl
 | --- | --- | --- | --- |
 | preFloorplan / postFloorplan | `floorplan.core_util`、`floorplan.aspect_ratio`；必要时 core_margin / 已支持 die_size | die 外形、面积、有效 core utilization、可用放置空间；宏/通道/PDN 证据 | 可复用固定综合；floorplan 及之后重跑 |
 | macroPlacement | 已公开的 `macro.placements` / macro 命令；合法方向与坐标 | 宏合法性、通道、pin 可达性及后续可布性 | 只能复用宏摆放之前未变更的前缀 |
-| place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 postFloorplan；place 及之后重跑 |
+| place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 postFloorplan；place 及之后重跑 |
 | CTS / legalization | `cts.skew_bound`；有明确证据再加入 max_fanout、buffer_type、routing_layer | skew、clock wirelength、buffer count/area、时钟树深度、合法化结果 | 可复用有效 placement，但以 param 实际失效范围为准 |
 | Timing optimization | `timing_opt.hold_margin` | 当前 hold pass 的真实输出、插入代价；后续 setup/hold 风险 | 复用未失效的前缀；完整 RCX/STA 最后验证 |
 
@@ -868,7 +867,7 @@ Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorpl
 两者不能当作同一个量或假定数值必须相等。变化前需核对工具对可放置面积、宏/blockage、padding
 的实际定义；schema 合法不代表物理容量可行。固定 die_size 时也不能期待 core_util 自动缩小 die。
 
-`place.target_overflow` 是 placement 的停止目标；EGR overflow 是另一种拥塞观测。
+`place.stop_overflow` 是 placement 的停止目标；EGR overflow 是另一种拥塞观测。
 降低停止阈值不是已经消除了布线违例，更不能通过放宽停止条件来记录“质量改善”。
 随机 seed、线程和设备第一轮固定；随机鲁棒性可在短名单阶段单独重复测量，不能混入主变量搜索。
 

@@ -794,7 +794,7 @@ ecc report snapshot --workspace default -o comparisons/before.json   # 冻结对
 | 时序（P） | `design.frequency_mhz`（100.0）目标频率；时钟树 `cts.max_fanout`（32）、`cts.skew_bound`（0.08 ns）、`cts.max_buf_tran`（0.5 ns）、`cts.routing_layer`（[4,5]）；`route.top_layer`（MET5，更高层金属 RC 更低）；`route.RT.-enable_timing`（"0"，时序驱动布线开关） | 提频 → 综合与时序压力增大，面积功耗通常变差；时钟树约束更紧 → buffer 更多、插入延迟与功耗上升 |
 | 面积（A） | `floorplan.core_util`（0.4）核利用率；`floorplan.aspect_ratio`（1.0）与 `floorplan.core_margin`（[2,2] µm）；`place.target_density`（0.4）布局密度 | 利用率/密度更高 → die 更小，但布线拥挤、时序与 DRC 风险上升 |
 | 功耗（W） | 无独立旋钮，主要由目标频率与时钟结构间接决定：`design.frequency_mhz`、`cts.*` buffer 策略 | 想让 QoR 给功耗打分，需先申报预算：在 `<workspace>/home/params.toml` 的 `[params]` 表写 `qor_power_budget_w = 0.5`（单位瓦，见 [QoR 参考手册 §8](ecc-qor-ref.cn.md)） |
-| 可布线性 | `place.cell_padding_x`（200，db 单位）、`place.routability_opt`（1）、`route.top_layer`（可用层越高资源越多） | padding 越大 → 布线越容易、面积越大 |
+| 可布线性 | `place.cell_padding_x`（200，db 单位）、`place.routability_opt_flag`（1）、`route.top_layer`（可用层越高资源越多） | padding 越大 → 布线越容易、面积越大 |
 
 参数值超出允许范围会直接被 `invalid_value` 拒绝且什么都不写，所以可以放心尝试。
 

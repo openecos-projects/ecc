@@ -421,3 +421,22 @@ def test_worker_publishes_a_failed_response_when_its_tool_raises(monkeypatch, tm
     assert (exit_code, "SDC contains invalid constraints" in result["error"]) == (1, True)
     assert response is not None
     assert (response.attempt_id, response.status) == ("test-attempt", ResponseStatus.FAILED)
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_worker_writes_parameter_evidence_for_every_attempt(monkeypatch, tmp_path, fails):
+    step = _workspace_step(tmp_path)
+    written = []
+    monkeypatch.setattr(
+        "chipcompiler.engine.step_subprocess.write_step_parameter_evidence",
+        lambda _workspace, built_step, directory: written.append((built_step.name, directory)),
+    )
+
+    def tool(*_args, **_kwargs):
+        if fails:
+            raise RuntimeError("tool failed")
+        return True
+
+    _run_main(monkeypatch, tmp_path, step, _FakeFlow(_workspace(tmp_path)), tool)
+
+    assert written == [(step.name, step.directory)]
