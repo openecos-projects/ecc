@@ -38,17 +38,19 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         range=(0.01, 1.0),
         example="0.45",
         config_target=ConfigTarget("Floorplan", ("die_builder", "die_util", "utilization")),
+        pdk_variants={"sg13g2": PdkVariant(0.65)},
     ),
     ParamSchema(
         "floorplan.core_margin",
         "floorplan",
         "core_margin",
-        "list[int]",
+        "list[float]",
         [2, 2],
         "floorplan",
         "Core margin in micrometers [horizontal, vertical]",
         {"core": "margin"},
         example="[2, 2]",
+        pdk_variants={"sg13g2": PdkVariant([17.5, 17.5])},
         config_target=ConfigTarget(
             "Floorplan", ("die_builder", "margin", "left_micron"), element=0
         ),

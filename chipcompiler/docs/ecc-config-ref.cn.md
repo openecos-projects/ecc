@@ -111,7 +111,7 @@ graph LR
 |---|---|---|---|---|
 | `design.frequency_mhz` | float [1e-6, 10000] MHz | 100.0 | 综合脚本 `clk_freq_mhz` + 自动 SDC 时钟周期 | 目标时钟频率 |
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | 核心利用率（面积按单元面积/利用率反推） |
-| `floorplan.core_margin` | int×2（µm） | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
+| `floorplan.core_margin` | float×2（µm） | [2, 2]（sg13g2：[17.5, 17.5]） | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | 核心到 die 边的留白 [水平, 垂直] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | 核心宽高比 |
 | `cts.max_fanout` | int [1, 200] | 32 | 自动生成 SDC 的 `set_max_fanout` + cts `max_fanout` | 设计与时钟树最大扇出约束 |
 | `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | 全局布局目标密度 |

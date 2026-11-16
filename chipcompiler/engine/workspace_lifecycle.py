@@ -354,7 +354,7 @@ def _update_workspace_from_spec(
         )
 
     _require_readable_configuration(current)
-    carried = carried_parameters(current.parameters.data)
+    carried = carried_parameters(current.parameters.data, str(current.pdk.root or ""))
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
     staging.rmdir()
     backup_directory: Path | None = None

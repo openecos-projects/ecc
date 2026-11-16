@@ -729,7 +729,7 @@ class TestListDefaultDiffFiltering:
         assert len(records) >= 1
         margin = next((r for r in records if r.get("param") == "floorplan.core_margin"), None)
         assert margin is not None
-        assert margin["value"] == "[4, 4]"
+        assert margin["value"] == "[4.0, 4.0]"
 
 
 class TestDesignFrequencySeeded:
@@ -866,3 +866,18 @@ class TestProjectParameterPdkAndSteps:
             "Metal2",
             "Metal1, Metal2, Metal3, Metal4, Metal5",
         )
+
+    def test_param_show_reports_sg13g2_core_defaults(
+        self, create_cli_project, capsys, plain_records
+    ):
+        project_dir = create_cli_project()
+        config = Path(project_dir) / "ecc.toml"
+        config.write_text(config.read_text().replace('name = "ics55"', 'name = "sg13g2"'))
+        defaults = {}
+
+        for param in ("floorplan.core_util", "floorplan.core_margin"):
+            assert cli_main.run(["param", "show", param, "--project", project_dir, "--plain"]) == 0
+            (record,) = plain_records(capsys.readouterr().out)
+            defaults[param] = record["default"]
+
+        assert defaults == {"floorplan.core_util": "0.65", "floorplan.core_margin": "[17.5, 17.5]"}

@@ -304,10 +304,12 @@ class TestSourceAwareResolution:
         util = next(r for r in resolved if r.param == "floorplan.core_util")
         assert util.value == 1.0
 
-    def test_float_in_list_int_rejected(self):
+    def test_fractional_margin_is_accepted_as_floats(self):
         toml = {"floorplan.core_margin": [2.5, 3]}
         resolved, errors = resolve_parameters(toml_overrides=toml)
-        assert len(errors) > 0
+        assert errors == []
+        margin = next(item for item in resolved if item.param == "floorplan.core_margin")
+        assert margin.value == [2.5, 3.0]
 
     def test_str_rejected_for_int_schema(self):
         toml = {"cts.max_fanout": "abc"}
