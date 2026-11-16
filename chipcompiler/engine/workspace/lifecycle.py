@@ -240,6 +240,10 @@ def _create_workspace_from_spec(
         if not save_parameter(workspace.parameters):
             raise OSError(f"Failed to persist input mode: {workspace.parameters.path}")
         _create_workspace_step_workspaces(workspace)
+        if "stepSubprocess" in resolved["flow"]:
+            from chipcompiler.data.workspace.execution import save_step_subprocess
+
+            save_step_subprocess(workspace.flow, value=resolved["flow"]["stepSubprocess"])
         snapshot = create_engineering_snapshot(workspace)
         write_workspace_command(
             target,
@@ -382,6 +386,15 @@ def _update_workspace_from_spec(
             bindings,
             carried_parameters=carried,
         )
+        from chipcompiler.data.workspace.execution import (
+            declared_step_subprocess,
+            save_step_subprocess,
+        )
+
+        if declared_step_subprocess(staged.flow.data) is None:
+            inherited_execution = declared_step_subprocess(current.flow.data)
+            if inherited_execution is not None:
+                save_step_subprocess(staged.flow, value=inherited_execution)
         _preserve_workspace_config_extensions(target, staging)
         create_engineering_snapshot(
             staged,

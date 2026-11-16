@@ -66,6 +66,34 @@ def test_workspace_refresh_recreates_without_running(
     assert document["workspaces"][0]["status"] == "success"
 
 
+def test_workspace_refresh_forwards_execution_choice(
+    create_cli_project, create_flow_json, manifest_stubs, refresh_engine_mocks, monkeypatch
+):
+    project_dir = create_cli_project()
+    project = Path(project_dir)
+    manifest_stubs.write(project, [manifest_stubs.entry(project, "baseline")])
+    create_flow_json(str(project / "baseline"))
+    monkeypatch.setattr(
+        "chipcompiler.cli.project.workspace_spec.workspace_update_spec",
+        lambda *_: ({"schemaVersion": 1, "flow": {"flowId": "rtl2gds"}}, {}),
+    )
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "refresh",
+                "baseline",
+                "--project",
+                project_dir,
+                "--no-step-subprocess",
+                "--plain",
+            ]
+        )
+        == 0
+    )
+    assert refresh_engine_mocks[0][2]["flow"] == {"flowId": "rtl2gds", "stepSubprocess": False}
+
+
 def test_refresh_failure_restores_the_previous_workspace(
     capsys,
     create_cli_project,

@@ -173,6 +173,31 @@ def test_cli_fork_rejects_unknown_continuation_without_registering(completed_sou
     assert load_project_manifest(project) == before
 
 
+def test_cli_derive_accepts_workspace_execution_override(completed_source):
+    project, source, _steps = completed_source
+    before = (source / "home" / "flow.json").read_bytes()
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "derive",
+                "source",
+                "serial",
+                "--project",
+                str(project),
+                "--no-step-subprocess",
+                "--command-id",
+                "derive-serial",
+            ]
+        )
+        == 0
+    )
+    snapshot = read_engineering_snapshot_from_directory(project / "serial")
+    assert snapshot["flow"]["options"]["execution"] == {"step_subprocess": False}
+    assert snapshot["workspaceSpec"]["flow"]["stepSubprocess"] is False
+    assert (source / "home" / "flow.json").read_bytes() == before
+
+
 @pytest.mark.parametrize(
     ("start", "end", "expected"),
     [

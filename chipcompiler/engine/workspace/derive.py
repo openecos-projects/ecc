@@ -38,6 +38,7 @@ def derive_workspace(
     project_id: str = "",
     source_workspace_id: str = "",
     target_workspace_id: str = "",
+    step_subprocess: bool | None = None,
 ) -> Any:
     """Copy ``source_directory`` to ``target_directory`` under a new identity.
 
@@ -58,11 +59,14 @@ def derive_workspace(
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
+    if step_subprocess is not None and not isinstance(step_subprocess, bool):
+        raise WorkspaceLifecycleError("invalid_value", "step_subprocess must be a boolean")
     command_spec = {
         "directory": str(source),
         "targetDirectory": str(target),
         "resetFromStep": reset_from_step,
         **({"throughStep": through_step} if through_step else {}),
+        **({"stepSubprocess": step_subprocess} if step_subprocess is not None else {}),
     }
     fingerprint = workspace_command_fingerprint("derive", command_spec, None)
     if path_is_within(target, source):
@@ -127,6 +131,10 @@ def derive_workspace(
                     workspace, engine_flow, preserve_user_inputs=True
                 )
 
+            if step_subprocess is not None:
+                from chipcompiler.data.workspace.execution import save_step_subprocess
+
+                save_step_subprocess(workspace.flow, value=step_subprocess)
             snapshot = create_engineering_snapshot(
                 workspace, workspace_id=target_workspace_id or None, cause=cause
             )
