@@ -786,7 +786,7 @@ def run_sweep(project: Path, name: str, max_candidates: int | None) -> dict[str,
             if isinstance(manifest, dict):
                 manifest["root_path"] = str(candidate_project)
                 manifest["workspaces"] = []
-                manifest["runtime_processes"] = []
+                manifest["runtime_processes"] = {}
                 dump_json(manifest_path, manifest)
         workspace = candidate_project / candidate["id"]
         existing = previous_results.get(candidate["id"])
