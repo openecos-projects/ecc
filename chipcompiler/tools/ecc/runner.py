@@ -33,6 +33,7 @@ from chipcompiler.tools.ecc.power_artifacts import (
     power_step_path,
     publish_power_report,
     publish_power_summary,
+    save_power_geometry,
 )
 from chipcompiler.tools.ecc.rcx_artifacts import (
     copy_rcx_spef_outputs,
@@ -457,6 +458,8 @@ def save_data(
     from chipcompiler.tools.replay import capture_native
 
     capture_native(ecc_module, final=True)
+    if step.name == StepEnum.POWER_ANALYSIS.value and os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
+        save_power_geometry(ecc_module, step, workspace.logger)
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -1159,13 +1162,20 @@ def run_power_analysis(
         )
         return False
 
-    discard_power_artifacts(power_data_dir, power_feature_dir, power_report_path)
+    discard_power_artifacts(
+        power_data_dir, power_feature_dir, power_report_path, step.output.geometry
+    )
 
     if not ecc_module.init_pw(
         output_dir=power_data_dir,
         lib_paths=liberty_files,
         sdc_path=step_tcl_path(workspace, step) or "",
         spef_path=spef_file,
+        replay_geometry_dir=(
+            str(Path(step.output.geometry) / "power")
+            if step.output.geometry and os.environ.get("ECC_REPLAY_CAPTURE_DIR")
+            else ""
+        ),
     ):
         workspace.logger.error("Failed to initialize power analysis")
         sub_flow.update_step(
