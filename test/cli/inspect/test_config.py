@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 
 from chipcompiler.cli import main as cli_main
 
@@ -299,6 +300,31 @@ class TestConfigStepResolved:
         out = capsys.readouterr().out
         assert "invalid_flow_json" in out
         assert "status:" not in out
+
+    def test_config_step_corrupt_flow_json_hint_keeps_an_absolute_selector(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        outside = tmp_path / "outside"
+        (outside / "home").mkdir(parents=True)
+        (outside / "home" / "flow.json").write_text("{not-json")
+
+        rc = cli_main.run(
+            ["config", "place", "--plain", "--project", project_dir, "--workspace", str(outside)]
+        )
+
+        assert rc == 1
+        (record,) = plain_records(capsys.readouterr().out)
+        assert record["error"] == "invalid_flow_json"
+        assert record["inspect"] == f"ecc status --project {project_dir} --workspace {outside}"
+
+        # Following the hint looks at the external workspace, not <project>/outside.
+        rc = cli_main.run([*shlex.split(record["inspect"])[1:], "--plain"])
+
+        assert rc == 1
+        (status,) = plain_records(capsys.readouterr().out)
+        assert status["status"] == "corrupt"
+        assert status["workspace"] == str(outside)
 
     def test_config_step_no_config_files(
         self, tmp_path, capsys, create_cli_project, create_flow_json, create_step_dir

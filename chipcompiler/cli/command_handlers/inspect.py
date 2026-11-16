@@ -332,12 +332,15 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
             ]
             return CommandResult.err(records)
         if status_value == "invalid_flow_json":
+            # An absolute selector stays absolute in the hint: its basename
+            # would name a directory inside the project instead.
+            selector = run_dir if ctx.workspace_path_explicit else ctx.run_id
             return CommandResult.err(
                 [
                     error_record(
                         "invalid_flow_json",
                         reason="home/flow.json is not a valid flow ledger",
-                        inspect=disclosure_cmd("ecc status", project, ctx.run_id),
+                        inspect=disclosure_cmd("ecc status", project, selector),
                     )
                 ]
             )
