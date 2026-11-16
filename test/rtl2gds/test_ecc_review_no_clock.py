@@ -182,13 +182,13 @@ def test_cts_gate_is_strict_without_no_clock():
         resolve_skip_steps({"skip_steps": ["CTS"]}, materials={"clock_port": "clk"})
 
 
-def test_attach_no_clock_carries_inferred_effective_flag():
+def test_attach_no_clock_keeps_inferred_flag_unattached():
     flow_config = _attach_no_clock(
         {"skip_steps": ["lec"]},
         no_clock_decision=rtl2gds_builder.NoClockDecision(enabled=True, source="inferred"),
     )
 
-    assert flow_config == {"skip_steps": ["lec"], "no_clock": True}
+    assert flow_config == {"skip_steps": ["lec"]}
     assert (
         _attach_no_clock(
             None,

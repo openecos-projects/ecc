@@ -100,16 +100,16 @@ def build_project_config_items(
     else:
         entries.append(("flow.skip_steps", declared, declared, source))
 
-    # Effective no-clock: derive from the same decision object used by
-    # validation/effective-config, so inferred policy reports ``true`` with
-    # source ``inferred`` even when the flow config does not carry the flag.
-    from chipcompiler.cli.project.effective_config import _project_no_clock_decision
+    # Effective no-clock: boolean and provenance come from the same resolver,
+    # so an inferred empty-clock policy cannot report ``false``/``inferred``.
+    from chipcompiler.rtl2gds import resolve_no_clock
 
-    no_clock_decision = _project_no_clock_decision(cfg)
+    no_clock_decision = resolve_no_clock(
+        flow_config if isinstance(flow_config, dict) else None,
+        materials={"clock_port": getattr(cfg, "design_clock_port", "")},
+    )
     no_clock_enabled = no_clock_decision.enabled
-    no_clock_source = getattr(cfg, "_no_clock_source", None)
-    if no_clock_source is None:
-        no_clock_source = no_clock_decision.source
+    no_clock_source = no_clock_decision.source
     no_clock_key_source = (
         source_of("flow.no_clock")
         if "flow.no_clock" in explicit

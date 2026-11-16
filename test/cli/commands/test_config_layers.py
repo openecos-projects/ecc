@@ -202,6 +202,17 @@ class TestExplicitEmptyStaysExplicit:
     def test_run_empty_clock_infers_no_clock(
         self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
     ):
+        from chipcompiler import rtl2gds as rtl2gds_api
+
+        resolved_calls = []
+        real_resolve_skip_steps = rtl2gds_api.resolve_skip_steps
+
+        def spy_resolve_skip_steps(flow_config, *, materials=None):
+            resolved_calls.append((flow_config, materials))
+            return real_resolve_skip_steps(flow_config, materials=materials)
+
+        monkeypatch.setattr(rtl2gds_api, "resolve_skip_steps", spy_resolve_skip_steps)
+
         project_dir = self._hybrid(
             manifest_stubs,
             tmp_path,
@@ -213,9 +224,7 @@ class TestExplicitEmptyStaysExplicit:
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"] is not None
-        flow_config = flow_mocks.capture["create_kwargs"]["flow_config"]
-        assert isinstance(flow_config, dict)
-        assert flow_config.get("no_clock") is True
+        assert any(materials == {"clock_port": ""} for _, materials in resolved_calls)
 
     def test_check_explicit_empty_pdk_root_matches_env_base_quietly(
         self, manifest_stubs, tmp_path, capsys, monkeypatch

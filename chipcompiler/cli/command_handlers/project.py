@@ -183,7 +183,10 @@ def _preflight_environment(
 
     if preset is None:
         return None
-    skip = resolve_skip_steps(flow_config)
+    skip = resolve_skip_steps(
+        flow_config,
+        materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
+    )
     lec_engine = resolve_lec_engine(flow_config)
     probes = env_probe.probe_environment(
         env_probe.probe_components_for_preset(preset, skip=skip, lec_engine=lec_engine)
@@ -216,7 +219,10 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
         steps = build_flow_range(
             flow_config["start_step"],
             flow_config["end_step"],
-            skip=resolve_skip_steps(flow_config),
+            skip=resolve_skip_steps(
+                flow_config,
+                materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
+            ),
             lec_engine=resolve_lec_engine(flow_config),
         )
     except ValueError:
@@ -918,7 +924,10 @@ def _run_project(
                 skip_probe["skip_steps"] = skip_policy
             if no_clock:
                 skip_probe["no_clock"] = True
-            skip = resolve_skip_steps(skip_probe or None)
+            skip = resolve_skip_steps(
+                skip_probe or None,
+                materials={"clock_port": cfg.design_clock_port},
+            )
             build_flow_range(command_input.from_step, command_input.to_step, skip=skip)
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))

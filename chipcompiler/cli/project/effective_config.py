@@ -67,17 +67,19 @@ def skip_steps_shadow_warning(entry, cfg) -> dict | None:
         return None
     from chipcompiler.rtl2gds.builder import resolve_skip_steps
 
-    no_clock = _project_no_clock_decision(cfg)
     materials = {"clock_port": getattr(cfg, "design_clock_port", "") or ""}
 
-    def _effective(skip_steps) -> tuple[str, ...]:
-        probe: dict = {"skip_steps": list(skip_steps)}
-        if no_clock.enabled:
-            probe["no_clock"] = True
-        return resolve_skip_steps(probe, materials=materials)
+    toml_probe: dict = {"skip_steps": list(cfg.flow_skip_steps or [])}
+    if "flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()):
+        toml_probe["no_clock"] = bool(getattr(cfg, "flow_no_clock", False))
 
-    toml_effective = _effective(cfg.flow_skip_steps or [])
-    manifest_effective = _effective(manifest_value)
+    entry_no_clock = getattr(entry, "no_clock", None)
+    manifest_probe: dict = {"skip_steps": list(manifest_value)}
+    if entry_no_clock is not None:
+        manifest_probe["no_clock"] = entry_no_clock
+
+    toml_effective = resolve_skip_steps(toml_probe, materials=materials)
+    manifest_effective = resolve_skip_steps(manifest_probe, materials=materials)
     if toml_effective == manifest_effective:
         return None
     return warning_record(
@@ -102,13 +104,13 @@ def _attach_lec_engine(flow_config: dict | None, lec_engine: str | None) -> dict
 
 
 def _attach_no_clock(flow_config: dict | None, *, no_clock_decision) -> dict | None:
-    """Carry the effective ``no_clock`` policy on the flow config.
+    """Carry an explicit ``no_clock`` on the flow config.
 
-    Provenance is kept separately on ``cfg._no_clock_source``; the flow config
-    only needs the effective boolean so preset seeding and persisted flow
-    projections resolve the same policy as workspace creation.
+    Inference is intentionally left to :func:`resolve_no_clock`: attaching an
+    inferred flag here would make it look like the author declared it and
+    would break explicit-false override semantics.
     """
-    if not no_clock_decision.enabled:
+    if not no_clock_decision.enabled or no_clock_decision.source != "explicit":
         return flow_config
     flow_config = dict(flow_config or {})
     flow_config["no_clock"] = True
