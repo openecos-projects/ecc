@@ -9,10 +9,17 @@ explicit-false override / CTS gate branches.
 """
 
 import inspect
+from types import SimpleNamespace
 
 import pytest
 
 from chipcompiler import rtl2gds as rtl2gds_api
+from chipcompiler.cli.inspection.config_view import build_project_config_items
+from chipcompiler.cli.project.config import ProjectConfig
+from chipcompiler.cli.project.effective_config import (
+    _attach_no_clock,
+    skip_steps_shadow_warning,
+)
 from chipcompiler.data import create_workspace
 from chipcompiler.data.types import SkippableStepEnum
 from chipcompiler.data.workspace_config import (
@@ -173,3 +180,62 @@ def test_cts_gate_is_strict_without_no_clock():
 
     with pytest.raises(ValueError, match="CTS"):
         resolve_skip_steps({"skip_steps": ["CTS"]}, materials={"clock_port": "clk"})
+
+
+def test_attach_no_clock_carries_inferred_effective_flag():
+    flow_config = _attach_no_clock(
+        {"skip_steps": ["lec"]},
+        no_clock_decision=rtl2gds_builder.NoClockDecision(enabled=True, source="inferred"),
+    )
+
+    assert flow_config == {"skip_steps": ["lec"], "no_clock": True}
+    assert (
+        _attach_no_clock(
+            None,
+            no_clock_decision=rtl2gds_builder.NoClockDecision(enabled=False, source="off"),
+        )
+        is None
+    )
+
+
+def test_skip_steps_shadow_warning_uses_no_clock_context():
+    cfg = SimpleNamespace(
+        _explicit_keys=frozenset({"flow.skip_steps", "flow.no_clock"}),
+        flow_skip_steps=["CTS"],
+        flow_no_clock=True,
+        design_clock_port="clk",
+        design_frequency_mhz=100.0,
+        flow_lec_engine=None,
+    )
+    entry = SimpleNamespace(skip_steps=["lec"])
+
+    warning = skip_steps_shadow_warning(entry, cfg)
+
+    assert warning is not None
+    assert warning["warning"] == "skip_steps_shadowed"
+
+
+def test_config_view_reports_inferred_no_clock(tmp_path):
+    cfg = ProjectConfig(
+        design_name="gcd",
+        design_top="gcd",
+        design_clock_port="",
+        pdk_name="ics55",
+        flow_preset="rtl2gds",
+        project_dir=str(tmp_path),
+    )
+    cfg._no_clock_source = "inferred"
+
+    items, status = build_project_config_items(
+        str(tmp_path),
+        str(tmp_path / "run"),
+        resolved=(cfg, None),
+    )
+
+    assert status == 0
+    values = {
+        item["key"]: item["value"]
+        for item in items
+        if item["key"] in {"flow.no_clock", "flow.no_clock_source"}
+    }
+    assert values == {"flow.no_clock": True, "flow.no_clock_source": "inferred"}

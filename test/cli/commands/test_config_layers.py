@@ -213,6 +213,9 @@ class TestExplicitEmptyStaysExplicit:
 
         assert rc == 0
         assert flow_mocks.capture["create_kwargs"] is not None
+        flow_config = flow_mocks.capture["create_kwargs"]["flow_config"]
+        assert isinstance(flow_config, dict)
+        assert flow_config.get("no_clock") is True
 
     def test_check_explicit_empty_pdk_root_matches_env_base_quietly(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
