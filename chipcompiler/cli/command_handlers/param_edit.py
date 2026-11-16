@@ -82,7 +82,9 @@ def edit_and_apply(
     changes = edit_parameters(
         rows,
         title=f"Parameters of the {scope}",
-        check=_check,
+        check=lambda param, text: _check(
+            param, text, _edit_pdk(ctx, workspace_scope=bool(args.workspace))
+        ),
         console=console,
         read_key=read_key,
     )
@@ -163,6 +165,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         _load_toml_overrides,
         _manifest_mode_error,
         _parameter_flow_step,
+        _project_pdk,
     )
     from chipcompiler.params import resolve_parameters
     from chipcompiler.rtl2gds import get_flow_builders
@@ -181,7 +184,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         if builder is not None
         else set()
     )
-    resolved, _errors = resolve_parameters(toml_overrides=toml_overrides)
+    resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
     return [
         _row(item.schema, item.value, item.default, overridden=item.is_explicit)
         for item in resolved
@@ -244,7 +247,16 @@ def value_text(value: object) -> str:
     return value if isinstance(value, str) else json.dumps(value)
 
 
-def _check(param: str, text: str) -> str | None:
+def _edit_pdk(ctx: CommandContext, *, workspace_scope: bool) -> str | None:
+    """The PDK family an interactive edit validates against."""
+    if not workspace_scope:
+        return getattr(ctx.config, "pdk_name", "") or None
+    from chipcompiler.cli.command_handlers.workspace_params import _load_workspace
+
+    return str(_load_workspace(ctx).parameters.data.get("pdk") or "") or None
+
+
+def _check(param: str, text: str, pdk: str | None = None) -> str | None:
     from chipcompiler.params import lookup_schema, parse_value, validate_value
 
     schema = lookup_schema(param)
@@ -254,7 +266,7 @@ def _check(param: str, text: str) -> str | None:
         value = parse_value(text, schema)
     except ValueError as exc:
         return str(exc)
-    errors = validate_value(value, schema)
+    errors = validate_value(value, schema, pdk)
     return errors[0] if errors else None
 
 

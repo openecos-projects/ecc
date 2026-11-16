@@ -209,7 +209,8 @@ def build_project_config_items(
     # Parameter records with source information
     from chipcompiler.params import resolve_parameters
 
-    cli_provenance, prov_error = _load_cli_provenance(run_dir)
+    pdk = cfg.pdk_name or None
+    cli_provenance, prov_error = _load_cli_provenance(run_dir, pdk)
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
     toml_overrides = dict(cfg.params_overrides)
@@ -225,6 +226,7 @@ def build_project_config_items(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
+        pdk=pdk,
     )
     from chipcompiler.cli.command_handlers.param import _maps_to_str
 
@@ -258,7 +260,7 @@ def build_project_config_items(
     return items, 0
 
 
-def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
+def _load_cli_provenance(run_dir: str, pdk: str | None) -> tuple[dict[str, object], str | None]:
     import json
 
     provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
@@ -274,7 +276,7 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     from chipcompiler.params import parse_cli_overrides
 
     items = [f"{k}={v}" for k, v in data.items()]
-    validated, errors = parse_cli_overrides(items)
+    validated, errors = parse_cli_overrides(items, pdk)
     if errors:
         return {}, f"invalid CLI parameter provenance: {errors[0]}"
     return validated, None

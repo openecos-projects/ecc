@@ -537,9 +537,11 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
 
     lower: dict = {}
     if params_overrides:
-        resolved_toml, _ = resolve_parameters(toml_overrides=params_overrides)
+        resolved_toml, _ = resolve_parameters(
+            toml_overrides=params_overrides, pdk=cfg.pdk_name or None
+        )
         lower.update(_flatten(build_backend_overrides(resolved_toml)))
-    resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides)
+    resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides, pdk=cfg.pdk_name or None)
     for key, value in _flatten(build_backend_overrides(resolved_cli)):
         if key not in compared and key in lower and lower[key] != value:
             diverging.append(key)

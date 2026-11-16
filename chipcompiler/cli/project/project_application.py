@@ -621,6 +621,12 @@ def _pdk_name(text: str) -> str | None:
     return name if isinstance(name, str) and name else None
 
 
+def _batch_pdk(text: str, parsed_sets: tuple[tuple[str, str], ...]) -> str | None:
+    """The PDK family the batch ends with: its last ``pdk.name`` set, else the text's."""
+    declared = [raw for key, raw in parsed_sets if key == "pdk.name" and raw]
+    return declared[-1] if declared else _pdk_name(text)
+
+
 def _apply_text(
     text: str,
     *,
@@ -631,6 +637,8 @@ def _apply_text(
 ) -> tuple[str, list[str]]:
     changed: list[str] = []
     updated = text
+    # A batch may set pdk.name together with PDK-specific choices, in any order.
+    pdk = _batch_pdk(text, parsed_sets)
     for key, raw in parsed_sets:
         field = lookup_project_field(key)
         schema = lookup_schema(key)
@@ -642,7 +650,7 @@ def _apply_text(
                 value = parse_value(raw, schema)
             except ValueError as exc:
                 raise ProjectApplicationError("invalid_value", str(exc), key=key) from exc
-            errors = validate_value(value, schema, _pdk_name(updated))
+            errors = validate_value(value, schema, pdk)
             if errors:
                 raise ProjectApplicationError("invalid_value", errors[0], key=key)
             updated = set_parameter(updated, schema, value)
