@@ -311,6 +311,15 @@ def dispatch_project_run(
     project_dir = ctx.project_dir
     flow_json = os.path.join(run_dir, "home", "flow.json")
 
+    if execute_flow:
+        # A fresh run registers its process only after the workspace exists,
+        # so the run identity is checked before anything is created (#431).
+        from chipcompiler.cli.project.run_process import run_identity_error
+
+        rejected = run_identity_error(command_input, workspace_id=run_name, workspace=run_dir)
+        if rejected is not None:
+            return rejected
+
     if project_state == "legacy":
         # Legacy runs create inside runs/ — the very paths a migration
         # moves — so state revalidation, the existing/fresh decision,
