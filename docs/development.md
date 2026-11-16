@@ -1130,8 +1130,9 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 
 ### PDK
 
-New projects select a root containing `ecc-pdk.json` and freeze its descriptor
-and resource hashes. See [PDK descriptions and project bindings](multi-pdk.md)
+New projects select a resource root with a vendor or ECC-managed description and
+freeze its resource hashes and ECC adaptation. PDK descriptions carry process
+facts; tool policy is stored in ECC management outside the PDK root. See [PDK descriptions and project bindings](multi-pdk.md)
 for authoring commands, shared inventory, defaults, relocation and backend limits.
 There is no implicit checkout or process-family configuration fallback.
 

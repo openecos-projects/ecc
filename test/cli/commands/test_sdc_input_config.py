@@ -4,6 +4,7 @@ import json
 import tomllib
 
 import pytest
+import tomli_w
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data import load_workspace, refresh_workspace_config
@@ -111,14 +112,15 @@ def test_clock_list_is_the_source_of_primary_flow_metadata(
     (project / "rtl/gcd.v").write_text("module gcd(input bus_clk, input aux); endmodule\n")
     config = project / "ecc.toml"
     text = config.read_text().replace('root = ""', f'root = "{tmp_path}"')
-    defaults = tomllib.loads(text)["params"]["sdc"]
+    document = tomllib.loads(text)
     clocks = "bus_clk MAX:50 WCL:80 MIN:200 ML:125 TYP:83.25\naux MAX:25 WCL:25 MIN:25 ML:25 TYP:25"
-    text = text.replace(
-        f"clock_list = '''\n{defaults['clock_list']}'''", f"clock_list = '''\n{clocks}\n'''"
-    )
+    document["params"]["sdc"]["clock_list"] = clocks + "\n"
     if legacy_metadata:
-        text = text.replace("[design]", '[design]\nclock_port = "unused_clk"\nfrequency_mhz = 42.0')
-    config.write_text(text)
+        document["design"].update(clock_port="unused_clk", frequency_mhz=42.0)
+    else:
+        document["design"].pop("clock_port", None)
+        document["design"].pop("frequency_mhz", None)
+    config.write_text(tomli_w.dumps(document))
 
     assert cli_main.run(["run", "--project", str(project)]) == 0
     parameters = flow_mocks.capture["create_kwargs"]["parameters"]
@@ -178,15 +180,19 @@ def test_clock_list_replaced_with_set_supplies_the_primary_clock(
         )
 
 
-def test_new_project_requires_an_active_clock_list(tmp_path, flow_mocks, capsys):
+def test_project_without_legacy_clock_metadata_requires_an_active_clock_list(
+    tmp_path, flow_mocks, capsys
+):
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     (project / "rtl/gcd.v").write_text("module gcd(input clk); endmodule\n")
     config = project / "ecc.toml"
     text = config.read_text().replace('root = ""', f'root = "{tmp_path}"')
-    clock_list = tomllib.loads(text)["params"]["sdc"]["clock_list"]
-    text = text.replace(f"clock_list = '''\n{clock_list}'''", "clock_list = '''\n# no clocks\n'''")
-    config.write_text(text)
+    document = tomllib.loads(text)
+    document["params"]["sdc"]["clock_list"] = "# no clocks\n"
+    document["design"].pop("clock_port", None)
+    document["design"].pop("frequency_mhz", None)
+    config.write_text(tomli_w.dumps(document))
     capsys.readouterr()
 
     assert cli_main.run(["run", "--project", str(project)]) == 1

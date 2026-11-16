@@ -345,13 +345,10 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     lock_path = Path(cfg.project_dir) / "pdk.lock.json"
     if lock_path.is_file() and pdk_root:
         from chipcompiler.pdk.locking import read_lock, verify_lock
-        from chipcompiler.pdk.manifest import load_descriptor
 
         try:
             lock = read_lock(lock_path)
             verify_lock(Path(pdk_root), lock)
-            if lock.descriptor != load_descriptor(Path(pdk_root)):
-                errors.append("project_pdk_immutable: PDK description differs from project lock")
             if lock.descriptor.family_id != cfg.pdk_name:
                 errors.append("project_pdk_immutable: project PDK family differs from lock")
             if cfg.pdk_overrides:

@@ -14,11 +14,21 @@ class PdkLock(StrictModel):
     digest: str
     descriptor: Descriptor
     resources: dict[str, str]
+    pdk_digest: str | None = None
+    adaptation_digest: str | None = None
 
 
 def build_lock(root: Path, descriptor: Descriptor) -> PdkLock:
     digest, resources = content_identity(root, descriptor)
-    return PdkLock(digest=digest, descriptor=descriptor, resources=resources)
+    from .documents import document_digest, process_identity, split_descriptor
+
+    return PdkLock(
+        digest=digest,
+        descriptor=descriptor,
+        resources=resources,
+        pdk_digest=process_identity(descriptor, resources),
+        adaptation_digest=document_digest(split_descriptor(descriptor).adaptation),
+    )
 
 
 def read_lock(path: Path) -> PdkLock:
@@ -30,7 +40,15 @@ def read_lock(path: Path) -> PdkLock:
 
 def verify_lock(root: Path, lock: PdkLock) -> None:
     actual = build_lock(root, lock.descriptor)
-    if actual != lock:
+    if (
+        actual.digest != lock.digest
+        or actual.resources != lock.resources
+        or (lock.pdk_digest is not None and actual.pdk_digest != lock.pdk_digest)
+        or (
+            lock.adaptation_digest is not None
+            and actual.adaptation_digest != lock.adaptation_digest
+        )
+    ):
         raise DescriptorError("content_mismatch", "PDK resources differ from the project lock")
 
 
@@ -41,11 +59,13 @@ def bind_project(project: Path, root: Path, descriptor: Descriptor) -> PdkLock:
         if path.is_symlink():
             raise DescriptorError("unsafe_path", "PDK lock must not be a symlink")
         if path.exists():
-            if read_lock(path) != lock:
+            previous = read_lock(path)
+            if previous.digest != lock.digest or previous.descriptor != descriptor:
                 raise DescriptorError(
                     "project_pdk_immutable",
                     "copy the project to select another PDK or configuration revision",
                 )
+            return previous
         else:
             write_text_atomic(str(path), json.dumps(lock.model_dump(), indent=2) + "\n")
     return lock
@@ -55,7 +75,16 @@ def lock_workspace_inputs(project: Path, root: Path, family: str) -> Path:
     """Pin the selected description before creating any workspace outputs."""
     from .manifest import load_descriptor
 
-    descriptor = load_descriptor(root)
+    lock_path = project / "pdk.lock.json"
+    if lock_path.exists():
+        locked = read_lock(lock_path)
+        verify_lock(root, locked)
+        descriptor = locked.descriptor
+    else:
+        from .managed import adopt_configuration
+
+        adopt_configuration(root)
+        descriptor = load_descriptor(root)
     if descriptor.family_id.casefold() != family.casefold():
         raise DescriptorError("family_mismatch", "project and PDK description families differ")
     bind_project(project, root, descriptor)

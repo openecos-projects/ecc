@@ -1,11 +1,48 @@
 # PDK descriptions and project bindings
 
-New projects use an explicit, versioned `ecc-pdk.json` at the selected PDK root.
-Every family follows the same path, including an ICS55 release without a profile:
-configure the package before using it. A family name never supplies technology
-files, cells, corners, RC values or EM models.
+PDK providers may publish `ecc-pdk.json` containing **process facts only**:
+`schema_version: 2`, `family_id`, `release`, `resources`, `cell_catalog`, and
+`views`. ICS55 v1, v2 and other processes use exactly this format. Technology
+files, cell candidates and timing views are facts; tool configuration and the
+selection of cells/views for execution are ECC policy.
 
-## Author and inspect a package
+ECC owns a separate adaptation schema (`schema_version: 1`): an exact
+`description_digest` binding, `profile_revision`, `cells` (selected roles),
+`synthesis_libraries`, `tools`, and `parameters`. Native tool configuration
+contracts remain owned by their tools; changes are handled in ECC and do not
+require a new PDK release. No process name automatically supplies settings.
+
+Imported descriptions and adaptations are stored together as separate objects in
+an atomic ECC-managed `configuration.json`, under
+`<inventory-directory>/pdk-configurations/<canonical-root-hash>/`. This avoids
+partially updating a description without its matching adaptation. Their schemas
+and hashes remain independent. Nothing is written into the PDK root.
+
+When a vendor description is missing, including ICS55, CLI/Studio creates a local
+description in that same management directory. When the description is present
+but no adaptation has been configured, configure the ECC policy before requesting
+stages that need it. Version metadata alone does not qualify a physical flow.
+
+## Import or export the two documents
+
+```sh
+# Import portable facts and a matching ECC-owned adaptation:
+ecc pdk configure import --root /data/pdk \
+  --description /data/pdk/ecc-pdk.json --adaptation /configs/ecc-adaptation.json
+# Copy the vendor description into ECC management (idempotent):
+ecc pdk configure adopt --root /data/pdk
+# Separate publication outputs; only the first belongs in a PDK repository:
+ecc pdk configure export-description --root /data/pdk > /tmp/ecc-pdk.json
+ecc pdk configure export-adaptation --root /data/pdk > /tmp/ecc-adaptation.json
+```
+
+The old combined schema-version-1 descriptor remains an import/migration input.
+Import/adopt splits it without changing values or rewriting the original file.
+CLI project creation and Studio import adopt it into ECC management. Existing
+project/workspace snapshots retain their version-one resolved representation;
+that internal execution format is not the format for new PDK publications.
+
+## Author and inspect ECC-managed configuration
 
 ```sh
 ecc pdk configure init --root /data/pdk --family vendor_node
@@ -20,6 +57,13 @@ ecc pdk configure validate --root /data/pdk
 ecc pdk configure resolve --root /data/pdk
 ```
 
+`show` returns both documents, their digests, source path, an editor projection
+(`descriptor`) and a revision for compare-and-swap edits. `set` edits this
+projection and writes the separated documents atomically. `schema` includes
+`x-pdk-description-schema` and `x-ecc-adaptation-schema`, and labels each editor
+field by owner. `--output` selects an explicit ECC configuration path outside the
+PDK; import that configuration before using it through an inventory default.
+
 The JSON schema is the executable format contract. `resources` uses paths relative
 to the package root, optional SHA-256 checksums and explicit roles. Paths escaping
 the package, including symlinks, are rejected. `views` and `synthesis_libraries`
@@ -27,7 +71,7 @@ reference Liberty resource IDs. `cells` supplies site and standard-cell roles.
 `cell_catalog` declares candidate family/VT/drive relationships; native STA still
 checks pin, function and arc compatibility before grouping cells.
 
-`tools.configs` contains each tool's own configuration (`db`, `Floorplan`, `CTS`,
+`tools.configs` in the **ECC adaptation** contains each tool's own configuration (`db`, `Floorplan`, `CTS`,
 `route`, `sta`, `sizer`, `RCX`, `dreamplace`, etc.). Electrical/physical settings
 belong here rather than in process-name branches in Python/C++. Further typed
 namespaces include `timing.default_view` (backend Liberty selection),
@@ -70,11 +114,16 @@ compatibility inputs for older configurations, not process default generators.
 
 ## Immutable projects and relocation
 
-Each project writes `pdk.lock.json`, containing the normalized descriptor and all
-declared file hashes. Workspaces preserve a descriptor and resolved context in
+Each project writes `pdk.lock.json` at creation, containing the resolved snapshot,
+all declared file hashes, and separate `pdk_digest` and `adaptation_digest` values.
+The PDK digest excludes ECC policy. An adaptation edit changes its own digest and
+the combined execution digest, but does not change the PDK's identity.
+Existing projects use their locked adaptation for every workspace, even after
+local defaults are edited. Old locks without separate digests remain readable. Workspaces preserve a descriptor and resolved context in
 `home/`. Changes to resources or technology overrides fail instead of silently
 changing the process. Workspace optimization parameters remain editable.
-`ecc pdk library locate` permits moving a package only when content is identical;
+`ecc pdk library locate` permits moving a package only when content is identical
+and carries its ECC-managed description/adaptation to the new root binding;
 `ecc pdk set-root` verifies an existing project lock before changing its path.
 
 ```sh

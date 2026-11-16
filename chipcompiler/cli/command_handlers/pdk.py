@@ -30,14 +30,11 @@ def _write_root_or_error(config_path: str, value: str, project: str | None) -> C
         lock_path = Path(config_path).parent / "pdk.lock.json"
         if lock_path.exists():
             from chipcompiler.pdk.locking import read_lock, verify_lock
-            from chipcompiler.pdk.manifest import load_descriptor
 
             if not value:
                 raise ValueError("cannot unset the PDK of a locked project")
             lock = read_lock(lock_path)
             verify_lock(Path(value), lock)
-            if load_descriptor(Path(value)) != lock.descriptor:
-                raise ValueError("project PDK is immutable; copy the project to change it")
         _write_pdk_root(config_path, value)
     except (OSError, ValueError) as exc:
         return CommandResult.err(

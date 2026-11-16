@@ -7,11 +7,11 @@ from pathlib import Path
 
 from chipcompiler.utility.workspace_lock import workspace_lock
 
-from .manifest import Descriptor, DescriptorError, file_digest
+from .manifest import Descriptor, DescriptorError, StrictModel, file_digest
 
 
 def write_descriptor(
-    path: Path, descriptor: Descriptor, *, expected_digest: str | None = None, create: bool = False
+    path: Path, descriptor: StrictModel, *, expected_digest: str | None = None, create: bool = False
 ) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     with workspace_lock(path.parent):

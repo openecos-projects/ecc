@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from .documents import document_digest, process_identity, split_descriptor
+from .managed import legacy_identity
 from .manifest import Descriptor, content_identity, resource_path
 
 
@@ -55,6 +57,9 @@ def resolved_context(root: Path, descriptor: Descriptor) -> dict:
     return {
         "schema_version": 1,
         "content_digest": digest,
+        "legacy_content_digest": legacy_identity(root, descriptor, hashes),
+        "pdk_digest": process_identity(descriptor, hashes),
+        "adaptation_digest": document_digest(split_descriptor(descriptor).adaptation),
         "resource_root": str(root.resolve()),
         "resources": {
             name: {"path": resource.path, "sha256": hashes[name]}

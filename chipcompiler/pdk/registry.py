@@ -12,6 +12,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from .documents import document_digest, process_identity, split_descriptor
+from .managed import adopt_configuration, configuration_path, legacy_identity, save_configuration
 from .manifest import DescriptorError, content_identity, load_descriptor
 
 
@@ -77,17 +79,29 @@ def inventory_transaction(path: Path | None = None):
 
 def register(root: Path) -> dict:
     root = root.expanduser().resolve(strict=True)
+    path = adopt_configuration(root)
     descriptor = load_descriptor(root)
-    digest, _ = content_identity(root, descriptor)
+    digest, hashes = content_identity(root, descriptor)
+    identities = {
+        "contentDigest": digest,
+        "pdkDigest": process_identity(descriptor, hashes),
+        "adaptationDigest": document_digest(split_descriptor(descriptor).adaptation),
+        "configurationPath": str(path),
+    }
     with inventory_transaction() as inventory:
         existing = next((r for r in inventory["installations"] if r["root"] == str(root)), None)
         if existing:
-            previous = existing.get("contentDigest")
-            if previous and previous != digest:
+            previous = existing.get("pdkDigest") or existing.get("contentDigest")
+            current = identities["pdkDigest"] if existing.get("pdkDigest") else digest
+            legacy_matches = not existing.get("pdkDigest") and previous == legacy_identity(
+                root, descriptor, hashes
+            )
+            if previous and previous != current and not legacy_matches:
                 raise DescriptorError(
                     "content_mismatch",
                     "registered PDK changed; import a separate immutable release",
                 )
+            existing.update(identities)
             return existing
         identity = hashlib.sha256(str(root).encode()).hexdigest()[:16]
         record = {
@@ -98,7 +112,7 @@ def register(root: Path) -> dict:
             "root": str(root),
             "ownership": "imported",
             "registrySha256": None,
-            "contentDigest": digest,
+            **identities,
         }
         inventory["installations"].append(record)
         return record
@@ -123,17 +137,49 @@ def default_installation(client: str = "ecc") -> dict | None:
 
 def relocate(installation_id: str, root: Path) -> dict:
     root = root.expanduser().resolve(strict=True)
-    descriptor = load_descriptor(root)
-    digest, _ = content_identity(root, descriptor)
     with inventory_transaction() as inventory:
         record = next((r for r in inventory["installations"] if r["id"] == installation_id), None)
         if record is None:
             raise DescriptorError("installation_missing", "unknown PDK installation")
-        expected = record.get("contentDigest")
-        if not expected:
-            old_root = Path(record["root"])
-            expected, _ = content_identity(old_root, load_descriptor(old_root))
-        if expected != digest:
+        if any(
+            r["id"] != installation_id and r["root"] == str(root)
+            for r in inventory["installations"]
+        ):
+            raise DescriptorError(
+                "already_exists", "destination is already registered in the PDK library"
+            )
+        source = Path(record.get("configurationPath") or configuration_path(Path(record["root"])))
+        old_root = Path(record["root"])
+        descriptor = load_descriptor(
+            old_root if old_root.is_dir() else root,
+            source if source.exists() else None,
+        )
+        old_digest, _ = (
+            content_identity(Path(record["root"]), descriptor)
+            if not record.get("contentDigest")
+            else (record["contentDigest"], {})
+        )
+        digest, hashes = content_identity(root, descriptor)
+        if record.get("pdkDigest"):
+            identical = process_identity(descriptor, hashes) == record["pdkDigest"]
+        else:
+            identical = (
+                digest == old_digest or legacy_identity(root, descriptor, hashes) == old_digest
+            )
+        if not identical:
             raise DescriptorError("content_mismatch", "relocation requires identical PDK content")
-        record.update(root=str(root), contentDigest=digest)
+        destination = configuration_path(root)
+        if destination.exists() and load_descriptor(root) != descriptor:
+            raise DescriptorError(
+                "configuration_conflict", "destination already has another ECC adaptation"
+            )
+        if not destination.exists():
+            save_configuration(root, split_descriptor(descriptor), import_new=True)
+        record.update(
+            root=str(root),
+            contentDigest=digest,
+            pdkDigest=process_identity(descriptor, hashes),
+            adaptationDigest=document_digest(split_descriptor(descriptor).adaptation),
+            configurationPath=str(destination),
+        )
         return record

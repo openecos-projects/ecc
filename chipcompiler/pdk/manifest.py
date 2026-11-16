@@ -123,16 +123,9 @@ class Descriptor(StrictModel):
 
 
 def load_descriptor(root: Path, path: Path | None = None) -> Descriptor:
-    descriptor = path if path is not None else root / DESCRIPTOR_FILENAME
-    if not descriptor.is_file():
-        raise DescriptorError(
-            "pdk_descriptor_missing",
-            f"PDK description is missing: {descriptor}; use ecc pdk configure init --root {root}",
-        )
-    try:
-        return Descriptor.model_validate_json(descriptor.read_bytes())
-    except (ValueError, OSError) as exc:
-        raise DescriptorError("pdk_descriptor_invalid", f"{descriptor}: {exc}") from exc
+    from .managed import read_configuration, source_path
+
+    return read_configuration(source_path(root, path)).resolved()
 
 
 def resource_path(root: Path, resource: Resource) -> Path:
@@ -160,8 +153,11 @@ def content_identity(root: Path, descriptor: Descriptor) -> tuple[str, dict[str,
         if resource.sha256 is not None and actual != resource.sha256:
             raise DescriptorError("content_mismatch", f"resource checksum differs: {name}")
         hashes[name] = actual
+    return execution_identity(descriptor, hashes), hashes
+
+
+def execution_identity(descriptor: Descriptor, hashes: dict[str, str]) -> str:
     payload = {"descriptor": descriptor.model_dump(), "resources": hashes}
-    digest = hashlib.sha256(
+    return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return digest, hashes
