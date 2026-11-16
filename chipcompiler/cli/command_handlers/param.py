@@ -587,7 +587,7 @@ def _parse_parameter_values(
             value = parse_value(raw, schema)
         except ValueError as exc:
             raise ValueError(f"{key}: {exc}") from exc
-        errors = validate_value(value, schema)
+        errors = validate_value(value, schema, getattr(ctx.config, "pdk_name", "") or None)
         if errors:
             raise ValueError(f"{key}: {errors[0]}")
         result[key] = value

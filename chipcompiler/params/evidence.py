@@ -6,12 +6,13 @@ is evidence only: nothing reads it back, so the worker's inputs stay
 """
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
 from chipcompiler.data.config_params.common import ParamSchema
 from chipcompiler.data.parameter_schema import list_schemas
+from chipcompiler.data.workspace import step_config_keys
 from chipcompiler.data.workspace.config_overrides import config_path_for_key
 from chipcompiler.data.workspace_parameters import (
     PARAM_SOURCES_KEY,
@@ -61,11 +62,21 @@ def _source(parameters: Mapping[str, object], schema: ParamSchema) -> str:
     return "default"
 
 
-def _config_values(workspace: Any, schemas: list[ParamSchema]) -> dict[str, dict[str, object]]:
-    """The tool-config values those parameters currently hold, by config key and JSON path."""
+def _config_values(
+    workspace: Any, schemas: list[ParamSchema], consumed: Collection[str]
+) -> dict[str, dict[str, object]]:
+    """The values those parameters hold in the configs the step consumes.
+
+    Keyed by config key and JSON path; targets in configs this step and tool do
+    not read (for example a fanned-out DreamPlace layer at the route step) are
+    left out so the record shows what actually reaches the tool.
+    """
     values: dict[str, dict[str, object]] = {}
+    consumed_keys = {key.casefold() for key in consumed}
     for schema in schemas:
         for target in schema.config_targets:
+            if target.config_key.casefold() not in consumed_keys:
+                continue
             path = config_path_for_key(dict(workspace.config), target.config_key)
             if path is None or not Path(path).is_file():
                 continue
@@ -108,7 +119,7 @@ def build_step_parameter_record(workspace: Any, step_name: str, tool: str) -> di
         "step": step_name,
         "tool": tool,
         "parameters": records,
-        "config": _config_values(workspace, readable),
+        "config": _config_values(workspace, readable, step_config_keys(step_name, tool)),
     }
 
 

@@ -609,6 +609,18 @@ def _validate_conflicts(
         )
 
 
+def _pdk_name(text: str) -> str | None:
+    """The ``[pdk] name`` declared in *text*, for PDK-specific parameter choices."""
+    import tomllib
+
+    try:
+        table = tomllib.loads(text).get("pdk")
+    except tomllib.TOMLDecodeError:
+        return None
+    name = table.get("name") if isinstance(table, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
 def _apply_text(
     text: str,
     *,
@@ -630,7 +642,7 @@ def _apply_text(
                 value = parse_value(raw, schema)
             except ValueError as exc:
                 raise ProjectApplicationError("invalid_value", str(exc), key=key) from exc
-            errors = validate_value(value, schema)
+            errors = validate_value(value, schema, _pdk_name(updated))
             if errors:
                 raise ProjectApplicationError("invalid_value", errors[0], key=key)
             updated = set_parameter(updated, schema, value)
