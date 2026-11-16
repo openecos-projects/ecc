@@ -212,7 +212,7 @@ class TestMultilineTomlValues:
             after = f.read()
         assert "2," not in after
         assert after.count("core_margin") == 1
-        assert "[4, 4]" in after
+        assert "[4.0, 4.0]" in after
 
     def test_unset_removes_multiline_array(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -247,7 +247,7 @@ class TestMultilineTomlValues:
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert records[0]["value"] == "[4, 4]"
+        assert records[0]["value"] == "[4.0, 4.0]"
 
     def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

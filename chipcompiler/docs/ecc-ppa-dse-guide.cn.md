@@ -380,7 +380,7 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | --- | --- | --- | --- |
 | `floorplan.core_util` | float；die_util 模式下的规划利用率 | 面积与可布性折中 | preFloorplan |
 | `floorplan.aspect_ratio` | float；宽高比 | 长线、通道、外形 | preFloorplan |
-| `floorplan.core_margin` | JSON 二元整数列表，µm | 边缘/IO/PDN空间 | floorplan |
+| `floorplan.core_margin` | JSON 二元数值列表，µm | 边缘/IO/PDN空间 | floorplan |
 | `floorplan.die_builder.mode`、die_size 的 width/height_micron | 模式与固定尺寸 | 固定 die 外形实验 | floorplan |
 | `place.target_density` | float，当前范围 0.1–0.95 | 布局紧凑程度与拥塞 | place |
 | `place.stop_overflow` | float，0–1 | 布局收敛阈值 | place |

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -192,4 +193,29 @@ def test_carried_creation_time_config_overrides_are_validated_against_the_new_pd
     assert invalid_carried_parameters(carried, "sg13g2") == [
         "value 'MET2' not in allowed choices "
         "('Metal1', 'Metal2', 'Metal3', 'Metal4', 'Metal5') for route.bottom_layer"
+    ]
+
+
+def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative() -> None:
+    from chipcompiler.params import carried_parameters
+
+    def liberty(*paths: str) -> list[dict[str, Any]]:
+        return [{"corner": "MAX", "temperature": 25, "path": list(paths)}]
+
+    parameters = {
+        "config_overrides": {"sta": {"liberty": liberty("/old/pdk/lib/a.lib", "/ext/b.lib")}},
+        "workspace_param_overrides": [
+            {
+                "key": "sta.liberty",
+                "baseline": liberty("/old/pdk/lib/a.lib"),
+                "value": liberty("/old/pdk/lib/c.lib"),
+            }
+        ],
+    }
+
+    carried = carried_parameters(parameters, "/old/pdk")
+
+    assert carried["config_overrides"] == {"sta": {"liberty": liberty("lib/a.lib", "/ext/b.lib")}}
+    assert carried["workspace_param_overrides"] == [
+        {"key": "sta.liberty", "baseline": liberty("lib/a.lib"), "value": liberty("lib/c.lib")}
     ]

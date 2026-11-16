@@ -444,7 +444,7 @@ and the persisted flow determine execution.
 | --- | --- | --- | --- |
 | `floorplan.core_util` | float; planned utilization in die_util mode | Area/routability tradeoff | preFloorplan |
 | `floorplan.aspect_ratio` | float; width/height | Wirelength, channels, outline | preFloorplan |
-| `floorplan.core_margin` | JSON pair of integers, µm | Edge/IO/PDN space | floorplan |
+| `floorplan.core_margin` | JSON pair of numbers, µm | Edge/IO/PDN space | floorplan |
 | `floorplan.die_builder.mode`, die_size width/height_micron | Mode and fixed dimensions | Fixed-die experiments | floorplan |
 | `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | place |
 | `place.stop_overflow` | float; 0–1 | Placement stopping threshold | place |

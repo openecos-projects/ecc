@@ -1384,7 +1384,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|---|---|---|
 | `design.frequency_mhz` | float | 100.0 | [1e-6, 10000] MHz | synthesis |
 | `floorplan.core_util` | float | 0.4 | [0.01, 1.0] | floorplan |
-| `floorplan.core_margin` | list[int] | [2, 2] | — | floorplan |
+| `floorplan.core_margin` | list[float] | [2, 2] (sg13g2: [17.5, 17.5]) | — | floorplan |
 | `floorplan.aspect_ratio` | float | 1.0 | [0.1, 10.0] | floorplan |
 | `cts.max_fanout` | int | 32 | [1, 200] | cts |
 | `place.target_density` | float | 0.4 | [0.1, 1.0] | placement |

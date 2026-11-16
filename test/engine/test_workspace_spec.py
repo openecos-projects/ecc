@@ -813,3 +813,37 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
 
     sta = json.loads(load_workspace(target).config["sta"].read_text(encoding="utf-8"))
     assert sta["liberty"][0]["path"] == [str(new_pdk / "liberty/cell.lib")]
+
+
+def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine import (
+        apply_workspace_parameters,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "old-pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
+    declared = [{"corner": "MAX", "temperature": 25, "path": ["liberty/cell.lib"]}]
+    _apply(target, {"sta.liberty": declared})
+    # Unsetting re-applies the recorded baseline, which is the old PDK's absolute path.
+    revision = read_engineering_snapshot_from_directory(target)["workspaceRevision"]
+    apply_workspace_parameters(target, revision, {}, ("sta.liberty",))
+
+    new_pdk = minimal_ics55_pdk_factory(tmp_path / "new-pdk")
+    update_workspace_from_spec(
+        target,
+        read_engineering_snapshot_from_directory(target)["workspaceRevision"],
+        deepcopy(payload["workspaceSpec"]),
+        {**bindings, "pdk": {**bindings["pdk"], "root": str(new_pdk)}},
+        "rebind-sta-1",
+    )
+
+    sta = json.loads(load_workspace(target).config["sta"].read_text(encoding="utf-8"))
+    assert all(str(new_pdk) in path for entry in sta["liberty"] for path in entry["path"])

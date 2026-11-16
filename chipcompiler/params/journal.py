@@ -1,5 +1,6 @@
 """Workspace-local parameter edits, their baseline journal and rebuild carry-over."""
 
+import os
 from collections.abc import Mapping
 from copy import deepcopy
 
@@ -32,8 +33,29 @@ __all__ = [
 ]
 
 
-def carried_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
+def _pdk_relative_liberty(entries: object, pdk_root: str) -> object:
+    """``sta.liberty`` entries with paths under *pdk_root* in their PDK-relative form."""
+    root = pdk_root.rstrip(os.sep)
+    if not root or not isinstance(entries, list):
+        return entries
+    rebound = deepcopy(entries)
+    for entry in rebound:
+        if isinstance(entry, dict) and isinstance(entry.get("path"), list):
+            entry["path"] = [
+                path[len(root) + 1 :]
+                if isinstance(path, str) and path.startswith(f"{root}{os.sep}")
+                else path
+                for path in entry["path"]
+            ]
+    return rebound
+
+
+def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> dict[str, object]:
     """The user-adjustable parameters a rebuilt Workspace inherits.
+
+    Liberty paths that point inside *pdk_root* are carried PDK-relative, so a
+    PDK migration re-resolves them against the new root instead of pinning the
+    old one; paths outside the PDK (external macro libraries) are kept as given.
 
     Structural keys (design, PDK, flow, inputs) come from the new Workspace
     Spec; runtime results (die/core geometry) are regenerated. What survives is
@@ -57,7 +79,21 @@ def carried_parameters(parameters: Mapping[str, object]) -> dict[str, object]:
     for key in (CONFIG_OVERRIDES_KEY, WORKSPACE_PARAM_OVERRIDES_KEY, PARAM_SOURCES_KEY):
         if key in parameters:
             carried[key] = deepcopy(parameters[key])
+    _rebind_liberty(carried, pdk_root)
     return carried
+
+
+def _rebind_liberty(carried: dict[str, object], pdk_root: str) -> None:
+    patch = carried.get(CONFIG_OVERRIDES_KEY)
+    sta = patch.get("sta") if isinstance(patch, dict) else None
+    if isinstance(sta, dict) and "liberty" in sta:
+        sta["liberty"] = _pdk_relative_liberty(sta["liberty"], pdk_root)
+    records = carried.get(WORKSPACE_PARAM_OVERRIDES_KEY)
+    for record in records if isinstance(records, list) else []:
+        if isinstance(record, dict) and record.get("key") == "sta.liberty":
+            for field in ("value", "baseline"):
+                if field in record:
+                    record[field] = _pdk_relative_liberty(record[field], pdk_root)
 
 
 def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -> list[str]:

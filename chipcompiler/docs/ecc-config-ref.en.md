@@ -112,7 +112,7 @@ Source: `_LEGACY_PARAM_REGISTRY` in [chipcompiler/data/parameter_schema.py](http
 |---|---|---|---|---|
 | `design.frequency_mhz` | float [1e-6, 10000] MHz | 100.0 | synthesis script `clk_freq_mhz` + auto-generated SDC clock period | Target clock frequency |
 | `floorplan.core_util` | float [0.01, 1.0] | 0.4 | floorplan `die_builder.die_util.utilization` | Core utilization (area back-calculated as cell area / utilization) |
-| `floorplan.core_margin` | int×2 (µm) | [2, 2] | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
+| `floorplan.core_margin` | float×2 (µm) | [2, 2] (sg13g2: [17.5, 17.5]) | floorplan `die_builder.margin.{left,right,top,bottom}_micron` | Margin from core to die edge [horizontal, vertical] |
 | `floorplan.aspect_ratio` | float [0.1, 10] | 1.0 | floorplan `die_builder.die_util.aspect_ratio` | Core width/height ratio |
 | `cts.max_fanout` | int [1, 200] | 32 | auto-generated SDC `set_max_fanout` + cts `max_fanout` | Design and clock-tree maximum fanout constraint |
 | `place.target_density` | float [0.1, 1.0] | 0.4 | dreamplace `target_density` | Global placement target density |
