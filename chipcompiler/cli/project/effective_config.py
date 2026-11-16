@@ -3,7 +3,7 @@
 """Effective configuration for manifest-backed projects.
 
 The single owner of manifest preparation: load the manifest once, resolve
-the selected workspace entry, assemble ``base_design + parameter_patch``,
+the selected workspace entry, assemble the manifest's design identity and sources,
 map ``origin_verilog`` as the RTL fallback, overlay only explicitly
 supplied ecc.toml values, validate the effective config, and compute
 divergence warnings on one canonical projection. Both ``ecc check`` and
@@ -14,6 +14,7 @@ cheap (no chipcompiler.data imports here).
 """
 
 import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 from chipcompiler.cli.core.records import error_record, warning_record
@@ -131,7 +132,7 @@ def resolve_effective_config(
     """Build the effective config for a manifest-backed project.
 
     Returns (cfg, flow_config, warnings) or a CommandResult error. The
-    workspace entry's parameter_patch layers beneath ecc.toml; its
+    manifest's design identity layers beneath ecc.toml; the workspace entry's
     start/end range seeds creation only when the project ecc.toml has no
     flow target. Divergence warnings compare the complete lower layer on
     one canonical projection.
@@ -156,10 +157,8 @@ def resolve_effective_config(
         cfg, flow_config = _manifest_only_config(ctx, assembled, entry)
     else:
         _fill_missing_from_base(cfg, assembled, ctx.project_dir)
-        if entry is not None:
-            cfg.manifest_parameters = assembled["parameters"]
-            if "flow.preset" not in cfg._explicit_keys:
-                flow_config = entry_flow_config(entry)
+        if entry is not None and "flow.preset" not in cfg._explicit_keys:
+            flow_config = entry_flow_config(entry)
 
     # skip_steps follows the common precedence: an explicit ecc.toml
     # declaration outranks the manifest entry (the base layer).
@@ -194,7 +193,6 @@ def _manifest_only_config(ctx, assembled, entry):
     """Build a ProjectConfig from the manifest alone (no ecc.toml)."""
     from chipcompiler.cli.project.config import ProjectConfig
 
-    parameters = assembled["parameters"]
     cfg = ProjectConfig(
         design_name=assembled["design_name"],
         design_top=assembled["top_module"],
@@ -205,14 +203,13 @@ def _manifest_only_config(ctx, assembled, entry):
         design_sdc=_source_path(assembled, "sdc", ctx.project_dir),
         design_spef=_source_path(assembled, "spef", ctx.project_dir),
         design_clock_port=assembled["clock"],
-        design_frequency_mhz=_assembled_frequency(parameters),
+        design_frequency_mhz=_assembled_frequency(assembled),
         pdk_name=assembled["pdk"],
         pdk_root=assembled["pdk_root"],
         flow_preset="rtl2gds",  # inert: the entry range drives the created range
         project_dir=ctx.project_dir,
     )
     cfg.params_overrides = {}
-    cfg.manifest_parameters = parameters
     cfg.manifest_driven = True
     cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
 
@@ -245,11 +242,14 @@ def _source_path(assembled: dict, key: str, project_dir: str) -> str:
     return os.path.normpath(os.path.join(project_dir, value))
 
 
-def _assembled_frequency(parameters: dict) -> float:
-    """The manifest layer's frequency_max as a float (0.0 when absent/invalid)."""
+def _assembled_frequency(assembled: Mapping[str, object]) -> float:
+    """The manifest layer's frequency_mhz as a float (0.0 when absent/invalid)."""
+    declared = assembled.get("frequency_mhz")
+    if not isinstance(declared, int | float | str):
+        return 0.0
     try:
-        return float(parameters.get("frequency_max") or 0)
-    except (TypeError, ValueError, OverflowError):
+        return float(declared or 0)
+    except (ValueError, OverflowError):
         # OverflowError: a huge JSON integer (10**400) cannot become a float;
         # it is invalid input, not a crash.
         return 0.0
@@ -284,36 +284,14 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
         cfg.pdk_name = assembled["pdk"]
     if "pdk.root" not in explicit:
         cfg.pdk_root = assembled["pdk_root"]
-    if not cfg.manifest_parameters:
-        cfg.manifest_parameters = dict(assembled["parameters"] or {})
     if "design.frequency_mhz" not in explicit:
-        cfg.design_frequency_mhz = _assembled_frequency(assembled["parameters"])
+        cfg.design_frequency_mhz = _assembled_frequency(assembled)
     # origin_def exists only in the manifest layer (no ecc.toml key), so it
     # always comes from the base — resolved against the project root.
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
     from chipcompiler.cli.project.config import resolve_clock_list_metadata
 
     resolve_clock_list_metadata(cfg)
-
-
-def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
-    """The registry keys an ecc.toml/--set override actually replaces.
-
-    ``_explicit_keys`` records raw [design]/[pdk]/[flow] section keys, which
-    include keys that never become overrides (e.g. a parameter misplaced
-    under [flow]); only [params] overrides, CLI overrides, and the one
-    registry parameter fed from a non-params section ([design]
-    frequency_mhz, merged through to_parameters) count as overriding.
-    """
-    keys = set(cfg.params_overrides or {})
-    keys.update(cli_overrides or {})
-    if "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset()) or (
-        "sdc.clock_list" in cfg.params_overrides
-        and not cfg.design_sdc
-        and not cfg._timing_input_error
-    ):
-        keys.add("design.frequency_mhz")
-    return frozenset(keys)
 
 
 def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
@@ -323,11 +301,7 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     derived (workspace config for existing runs, entry range for declared
     creation); a multi-entry rtl list is allowed (materialized at
     creation) with every source validated. A fresh run without any
-    derivable flow target is an error — before any mutation. Manifest-layer
-    parameter values face the same registry type/range rules as ecc.toml
-    and --set values whenever they are EFFECTIVE: a value overridden by an
-    explicit ecc.toml/--set key is inert and surfaces as a divergence
-    warning instead of an error.
+    derivable flow target is an error — before any mutation.
     """
     from chipcompiler.cli.project import flow_selection
     from chipcompiler.cli.project.config import validate_project_config
@@ -366,30 +340,36 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
                 "no flow target: set flow.preset in ecc.toml or declare the workspace's "
                 "start/end range in project.json"
             )
-        manifest_parameters = getattr(cfg, "manifest_parameters", None)
-        if manifest_parameters:
-            from chipcompiler.data.parameter_keys import geometry_to_parameters
-            from chipcompiler.params import (
-                PARAM_REGISTRY,
-                validate_schema_type,
-                validate_value,
-            )
-
-            # Generated manifests hoist geometry values to GUI-flat aliases
-            # (utilitization, margin, ...); validate the canonical form so
-            # the registry's nested maps_to targets actually resolve.
-            canonical = geometry_to_parameters(manifest_parameters)
-            errors.extend(
-                f"project.json: {err}"
-                for err in _invalid_manifest_parameters(
-                    canonical,
-                    PARAM_REGISTRY,
-                    validate_value,
-                    effective_override_keys(cfg, cli_overrides),
-                    validate_type=validate_schema_type,
-                )
-            )
+        errors.extend(_manifest_frequency_errors(cfg, cli_overrides))
     return errors
+
+
+def _manifest_frequency_errors(
+    cfg: "ProjectConfig", cli_overrides: Mapping[str, object] | None
+) -> list[str]:
+    """Registry range errors for a clock frequency that came from the manifest.
+
+    The frequency is the one registry-validated value the manifest still
+    supplies; an ecc.toml ``[design]``/``[params]`` value, a ``--set`` value
+    or an ``sdc.clock_list`` clock takes over the key and is validated there.
+    """
+    from chipcompiler.params import lookup_schema, validate_value
+
+    key = "design.frequency_mhz"
+    overridden = (
+        key in cfg._explicit_keys
+        or key in (cfg.params_overrides or {})
+        or key in (cli_overrides or {})
+        or (
+            "sdc.clock_list" in (cfg.params_overrides or {})
+            and not cfg.design_sdc
+            and not cfg._timing_input_error
+        )
+    )
+    schema = lookup_schema(key)
+    if overridden or schema is None or not cfg.design_frequency_mhz:
+        return []
+    return [f"project.json: {error}" for error in validate_value(cfg.design_frequency_mhz, schema)]
 
 
 def _validate_rtl_source(project_dir: str, entry: str) -> list[str]:
@@ -420,10 +400,8 @@ def _validate_rtl_source(project_dir: str, entry: str) -> list[str]:
 def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     """Keys where the ecc.toml layer overrides a different manifest value.
 
-    One canonical projection: manifest GUI-flat parameters are converted
-    with geometry_to_parameters before comparison, paths are normalized
-    against the project root, and the entry patch is already applied to
-    *assembled* by the caller. Presence-keyed like the fill: only keys
+    Paths are normalized against the project root before comparison.
+    Presence-keyed like the fill: only keys
     present in ecc.toml are compared — an explicit empty value diverges
     from a non-empty base; an absent key never diverges. *entry* (the
     selected manifest workspace, possibly None) supplies the lower-layer
@@ -458,25 +436,21 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     if "design.rtl" in explicit and base_sources != toml_sources:
         keys.append("rtl")
 
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
     from chipcompiler.params import lookup_schema, validate_schema_type
 
-    canonical_params = geometry_to_parameters(assembled.get("parameters") or {})
     # A [params.design] key supersedes the [design] frequency — the
     # standalone value is inert and must not warn on its own.
+    manifest_frequency = assembled.get("frequency_mhz")
     if (
         "design.frequency_mhz" in explicit
         and "design.frequency_mhz" not in cfg.params_overrides
-        and "frequency_max" in canonical_params
+        and manifest_frequency is not None
     ):
         schema = lookup_schema("design.frequency_mhz")
         if schema is None:
             keys.append("frequency_max")
         else:
-            coerced, type_err = validate_schema_type(
-                canonical_params["frequency_max"],
-                schema,
-            )
+            coerced, type_err = validate_schema_type(manifest_frequency, schema)
             if type_err or coerced != cfg.design_frequency_mhz:
                 keys.append("frequency_max")
 
@@ -488,27 +462,6 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
         if preset_range is not None and preset_range != (entry.start_step, entry.end_step):
             keys.append("flow")
 
-    if cfg.params_overrides and canonical_params:
-        from chipcompiler.params import (
-            build_backend_overrides,
-            manifest_value_for,
-            resolve_parameters,
-        )
-
-        diverging, compared = _diverging_lower_keys(
-            cfg.params_overrides,
-            lambda schema: manifest_value_for(canonical_params, schema.maps_to),
-        )
-        keys.extend(diverging)
-
-        # Non-registry keys keep the generic flatten comparison; keys the
-        # per-schema pass covered are skipped to avoid double-reporting.
-        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        backend = build_backend_overrides(resolved)
-        flat_base = dict(_flatten(canonical_params))
-        for key, value in _flatten(backend):
-            if key not in compared and key in flat_base and flat_base[key] != value:
-                keys.append(key)
     return keys
 
 
@@ -558,25 +511,17 @@ def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], se
 def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     """The config_layer_diverged warning for --set values overriding a
     DIFFERENT lower-layer value (ecc.toml [params], then an explicit
-    [design] frequency, then the manifest base).
+    [design] frequency).
 
     Registry-backed keys compare per schema with type normalization: a
-    type-invalid manifest value counts as divergent only when no higher
-    layer supersedes it, and a same-valued differently-typed one ("false"
-    vs false) does not warn. Non-registry keys keep the generic flatten
-    comparison, skipping keys the per-schema pass covered.
+    same-valued differently-typed one ("false" vs false) does not warn.
+    Non-registry keys keep the generic flatten comparison, skipping keys
+    the per-schema pass covered.
     """
     if not cli_overrides:
         return None
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
-    from chipcompiler.params import (
-        build_backend_overrides,
-        manifest_value_for,
-        resolve_parameters,
-    )
+    from chipcompiler.params import build_backend_overrides, resolve_parameters
 
-    manifest_parameters = getattr(cfg, "manifest_parameters", None)
-    canonical_params = geometry_to_parameters(manifest_parameters or {})
     explicit = getattr(cfg, "_explicit_keys", frozenset())
     params_overrides = cfg.params_overrides or {}
 
@@ -586,13 +531,11 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
             return params_overrides[key], True
         if key == "design.frequency_mhz" and "design.frequency_mhz" in explicit:
             return cfg.design_frequency_mhz, True
-        return manifest_value_for(canonical_params, schema.maps_to)
+        return None, False
 
     diverging, compared = _diverging_lower_keys(cli_overrides, resolve_lower)
 
     lower: dict = {}
-    if manifest_parameters:
-        lower.update(_flatten(canonical_params))
     if params_overrides:
         resolved_toml, _ = resolve_parameters(toml_overrides=params_overrides)
         lower.update(_flatten(build_backend_overrides(resolved_toml)))
@@ -629,44 +572,6 @@ def _normalized_sources(project_dir: str, sources: list[str]) -> tuple[str, ...]
     return tuple(
         normalized for source in sources if (normalized := _normalize_path(project_dir, source))
     )
-
-
-def _invalid_manifest_parameters(
-    manifest_parameters: dict,
-    registry,
-    validate_value,
-    overridden_keys: frozenset | set = frozenset(),
-    validate_type=None,
-) -> list[str]:
-    """Validate manifest-layer parameter values against the registry.
-
-    Maps each known registry target (maps_to) back to the manifest's flat
-    keys and applies the schema's rules. When *validate_type* is supplied it
-    runs first as a whole-value type check/coercion whose coerced value is
-    discarded — the per-element range/choice checks below stay computed on
-    the original manifest values so their diagnostics are unchanged. Values
-    whose dotted key has an explicit ecc.toml/--set override are skipped
-    (they are inert and surface as divergence warnings instead). Unknown
-    keys pass through untouched (forward-compatible additions).
-    """
-    errors: list[str] = []
-    from chipcompiler.params import manifest_value_for
-
-    for schema in registry:
-        if schema.param in overridden_keys:
-            continue
-        value, present = manifest_value_for(manifest_parameters, schema.maps_to)
-        if not present:
-            continue
-        if validate_type is not None:
-            _, type_err = validate_type(value, schema)
-            if type_err:
-                errors.append(type_err)
-        # A list value (e.g. core.margin's [x, y]) validates per element.
-        values = value if isinstance(value, list) else [value]
-        for item in values:
-            errors.extend(validate_value(item, schema))
-    return errors
 
 
 def _flatten(data, prefix=()):

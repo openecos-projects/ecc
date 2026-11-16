@@ -177,12 +177,7 @@ def _populate(
         "clock": "clk",
         "rtl_list": [f"rtl/{design_name}.v"],
         "origin_verilog": f"rtl/{design_name}.v",
-        "parameters": {
-            "design": design_name,
-            "top_module": design_name,
-            "clock": "clk",
-            "frequency_max": 100.0,
-        },
+        "frequency_mhz": 100.0,
     }
     document = build_project_document(
         str(target.resolve()),

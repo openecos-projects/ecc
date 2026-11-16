@@ -18,7 +18,6 @@ class WorkspaceRegistrationError(ValueError):
 class ExistingWorkspaceMetadata:
     flow_config: dict[str, str]
     status: str
-    parameter_patch: dict
 
 
 def is_ecc_workspace_directory(path: str) -> bool:
@@ -42,7 +41,6 @@ def inspect_existing_workspace(
     *,
     expected_design: str = "",
     expected_pdk: str = "",
-    base_parameters: dict | None = None,
 ) -> ExistingWorkspaceMetadata:
     """Inspect an existing workspace without opening or modifying it.
 
@@ -57,7 +55,7 @@ def inspect_existing_workspace(
 
     from chipcompiler.cli.inspection.discovery import read_flow_json
     from chipcompiler.data.workspace_config import flow_range_of, load_workspace_config
-    from chipcompiler.project.manifest_refresh import manifest_status_of, parameter_patch_of
+    from chipcompiler.project.manifest_refresh import manifest_status_of
 
     try:
         parameters = load_workspace_config(path)
@@ -90,11 +88,9 @@ def inspect_existing_workspace(
         )
 
     status = manifest_status_of(flow_data)
-    parameter_patch = parameter_patch_of(parameters, base_parameters)
     return ExistingWorkspaceMetadata(
         flow_config={"start_step": flow_range[0], "end_step": flow_range[1]},
         status=status,
-        parameter_patch=parameter_patch,
     )
 
 
@@ -108,16 +104,13 @@ def register_existing_workspace(
     blocking: bool = True,
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Inspect and atomically register an existing workspace."""
-    from chipcompiler.project.manifest import base_design_from_config
     from chipcompiler.project.manifest_write import pre_register_workspace
 
-    base_parameters = base_design_from_config(cfg, pdk_root).get("parameters", {})
     return _inspect_and_register(
         project_dir,
         workspace_path,
         expected_design=cfg.design_name,
         expected_pdk=str(cfg.pdk_name or ""),
-        base_parameters=base_parameters,
         blocking=blocking,
         register=lambda metadata: pre_register_workspace(
             project_dir,
@@ -127,7 +120,6 @@ def register_existing_workspace(
             workspace_path=workspace_path,
             flow_config=metadata.flow_config,
             status=metadata.status,
-            parameter_patch=metadata.parameter_patch,
         ),
     )
 
@@ -139,7 +131,6 @@ def import_managed_workspace(
     workspace_id: str,
     workspace_path: str,
     expected_pdk: str = "",
-    base_parameters: dict | None = None,
     blocking: bool = True,
 ) -> tuple[str, ExistingWorkspaceMetadata]:
     """Import an existing workspace into an existing Project manifest.
@@ -171,7 +162,6 @@ def import_managed_workspace(
             start_step=start_step,
             end_step=end_step,
             status=metadata.status,
-            parameter_patch=metadata.parameter_patch,
         )
 
     return _inspect_and_register(
@@ -179,7 +169,6 @@ def import_managed_workspace(
         workspace_path,
         expected_design=design_name,
         expected_pdk=expected_pdk,
-        base_parameters=base_parameters,
         blocking=blocking,
         register=register,
     )
@@ -191,7 +180,6 @@ def _inspect_and_register(
     *,
     expected_design: str,
     expected_pdk: str,
-    base_parameters: dict | None,
     blocking: bool,
     register: Callable[[ExistingWorkspaceMetadata], str],
 ) -> tuple[str, ExistingWorkspaceMetadata]:
@@ -206,14 +194,12 @@ def _inspect_and_register(
         workspace_path,
         expected_design=expected_design,
         expected_pdk=expected_pdk,
-        base_parameters=base_parameters,
     )
     with workspace_lock(Path(workspace_path), blocking=blocking):
         metadata = inspect_existing_workspace(
             workspace_path,
             expected_design=expected_design,
             expected_pdk=expected_pdk,
-            base_parameters=base_parameters,
         )
         outcome = register(metadata)
     return outcome, metadata

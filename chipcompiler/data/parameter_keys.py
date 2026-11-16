@@ -4,10 +4,9 @@
 
 The canonical parameter vocabulary is flat snake_case (``frequency_max``,
 ``top_module``, ``die``/``core`` subtrees, ...). Older workspaces persisted
-display-oriented keys (``"Frequency max [MHz]"``, ``"Top module"``, ...) and
-the GUI sends flat keys plus a handful of positional geometry aliases at the
-project/adapter boundary. This module is the only place that knows the legacy
-vocabulary; everything else consumes the canonical form.
+display-oriented keys (``"Frequency max [MHz]"``, ``"Top module"``, ...).
+This module is the only place that knows the legacy vocabulary; everything
+else consumes the canonical form.
 """
 
 import logging
@@ -31,15 +30,6 @@ _RESERVED_PAYLOAD_KEYS = frozenset(
 # Internal workspace controls are canonical identifiers too. They are kept
 # out of the user-facing schema, but must survive params.toml round-trips.
 _INTERNAL_PARAMETER_KEYS = frozenset({"_input_mode", "_flow"})
-
-# Positional GUI geometry aliases and where they live in the canonical tree.
-# (alias, subtree, key, list index or None)
-_GEOMETRY_TO_PARAMETERS = {
-    "die_width": ("die", "size", 0),
-    "die_height": ("die", "size", 1),
-    "utilitization": ("core", "utilitization", None),
-    "margin": ("core", "margin", 0),
-}
 
 
 def normalize_key(key: object) -> str:
@@ -92,105 +82,3 @@ def _normalize_dict(data: dict, path: str) -> dict:
             f"{path}{canonical}",
         )
     return result
-
-
-def _registered_top_level_keys() -> set:
-    """Top-level key each registered parameter is stored under.
-
-    ``maps_to`` is either a top-level key or a one-entry ``{subtree: key}``
-    mapping, so subtrees the PDK templates do not spell out (``sdc``,
-    ``dreamplace``, ...) are part of the vocabulary as well.
-    """
-    from .parameter_schema import list_schemas
-
-    keys: set = set()
-    for schema in list_schemas():
-        target = schema.maps_to
-        if isinstance(target, dict):
-            keys.update(target)
-        elif isinstance(target, str):
-            keys.add(target)
-    return keys
-
-
-def _known_top_level_keys() -> frozenset:
-    """Top-level keys of the canonical vocabulary.
-
-    Both PDK templates plus the key every registered parameter is stored
-    under: a parameter ECC itself registers is never an unknown key.
-    """
-    from .parameter import ICS55_PARAMETERS_TEMPLATE, SG13G2_PARAMETERS_TEMPLATE
-
-    return frozenset(
-        set(ICS55_PARAMETERS_TEMPLATE)
-        | set(SG13G2_PARAMETERS_TEMPLATE)
-        | _registered_top_level_keys()
-        | set(_GEOMETRY_TO_PARAMETERS)
-        | set(_RESERVED_PAYLOAD_KEYS)
-        | {"pdk_root", "pdk_config", "file_list", "die_area_mode"}
-    )
-
-
-def geometry_to_parameters(flat: dict) -> dict:
-    """Convert a GUI flat payload (geometry aliases included) to canonical form.
-
-    Returns a new dict: mechanical normalization first, then the positional
-    aliases folded into the ``die``/``core`` subtrees, and the GUI-only
-    ``die_area_mode`` dropped. Keys outside the canonical vocabulary are
-    logged (never silently shadowing a canonical one) and kept for
-    forward compatibility.
-    """
-    normalized = normalize_parameter_dict(flat)
-    normalized.pop("die_area_mode", None)
-    known = _known_top_level_keys()
-    for key in normalized:
-        if key not in known:
-            logger.warning("unknown GUI parameter key kept: %s", key)
-    for alias, (subtree, key, index) in _GEOMETRY_TO_PARAMETERS.items():
-        if alias not in normalized:
-            continue
-        value = normalized.pop(alias)
-        subtree_data = normalized.setdefault(subtree, {})
-        if not isinstance(subtree_data, dict):
-            logger.warning("geometry alias %s dropped: %s is not a mapping", alias, subtree)
-            continue
-        if index is None:
-            subtree_data[key] = value
-            continue
-        entries = subtree_data.get(key)
-        if not isinstance(entries, list):
-            entries = []
-        if alias == "margin" and not entries:
-            # The GUI margin alias is a single scalar applied to both axes.
-            entries = [value, value]
-        while len(entries) <= index:
-            entries.append(0)
-        entries[index] = value
-        subtree_data[key] = entries
-    return normalized
-
-
-def parameters_to_geometry(parameters: dict) -> dict:
-    """Project canonical parameters back to the GUI flat vocabulary.
-
-    The inverse of :func:`geometry_to_parameters`: subtree values surface as
-    the positional aliases, and ``die_area_mode`` is derived
-    (``width_height`` when a die size is present, else
-    ``utilitization_margin``).
-    """
-    flat = deepcopy(parameters)
-    for alias, (subtree, key, index) in _GEOMETRY_TO_PARAMETERS.items():
-        subtree_data = flat.get(subtree)
-        if not isinstance(subtree_data, dict):
-            continue
-        if index is None:
-            if key in subtree_data:
-                flat[alias] = subtree_data[key]
-            continue
-        entries = subtree_data.get(key)
-        if isinstance(entries, list) and len(entries) > index:
-            flat[alias] = entries[index]
-    die = flat.get("die")
-    die_size = die.get("size") if isinstance(die, dict) else None
-    flat["die_area_mode"] = "width_height" if die_size else "utilitization_margin"
-    return flat

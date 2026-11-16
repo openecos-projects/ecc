@@ -374,7 +374,7 @@ def _write_manifest_with_workspace(project_dir, run_dir, pdk_root):
                     "top_module": "gcd",
                     "clock": "clk",
                     "rtl_list": ["rtl/gcd.v"],
-                    "parameters": {"design": "gcd", "frequency_max": 100},
+                    "frequency_mhz": 100,
                 },
                 "workspaces": [
                     {

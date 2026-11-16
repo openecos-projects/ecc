@@ -116,8 +116,7 @@ def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
 
     base = _manifest(project_dir)["base_design"]
     assert base["top_module"] == "gcd_top"
-    assert base["parameters"]["top_module"] == "gcd_top"
-    assert base["parameters"]["frequency_max"] == 250.0
+    assert base["frequency_mhz"] == 250.0
     assert base["pdk_root"] == str(pdk)
 
 

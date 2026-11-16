@@ -418,7 +418,6 @@ def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
     )
     entry = registered["workspaces"][0]
     assert entry["status"] == "not_started"
-    assert entry["parameter_patch"] == {}
 
     # Re-registration with stale derived fields: silently corrected from the
     # directory, only updated_at records it, lineage is never rewritten.
@@ -435,7 +434,6 @@ def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
     assert entry["start_step"] == "Synth"
     assert entry["end_step"] == "Synth"
     assert entry["status"] == "success"
-    assert entry["parameter_patch"] == {"frequency_max": {"from": None, "to": 125}}
     assert entry["updated_at"] == "2026-03-01T00:00:00Z"
     assert entry["source_workspace_id"] == "ws_0002"
     assert entry["branch_from"] == branch_from
@@ -469,7 +467,6 @@ def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
     assert entry["start_step"] == "CTS"
     assert entry["end_step"] == "Route"
     assert entry["status"] == "not_started"
-    assert entry["parameter_patch"] == {}
     assert entry["updated_at"] == "2026-04-01T00:00:00Z"
     assert entry["source_workspace_id"] == "ws_0002"
     assert entry["branch_from"] == branch_from
@@ -560,7 +557,6 @@ def test_refresh_workspace_derived_fields_realigns_entry_with_directory(tmp_path
     assert entry["end_step"] == "Route"
     # A new-generation workspace has never run: not_started.
     assert entry["status"] == "not_started"
-    assert entry["parameter_patch"] == {}
     assert entry["updated_at"] != "2026-02-01T00:00:00Z"
     assert entry["source_workspace_id"] == "ws_0000"
 

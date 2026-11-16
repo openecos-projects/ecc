@@ -7,9 +7,9 @@ import pytest
 from chipcompiler.project.manifest import (
     ManifestError,
     assemble_config,
+    base_design_from_config,
     classify_project,
     load_manifest,
-    resolved_base_parameters,
 )
 
 
@@ -41,7 +41,6 @@ def test_load_manifest_tolerant_defaults(tmp_path):
     assert manifest.objectives["primary"] == "timing"
     # The GUI parser keeps only maximize/minimize entries from the source.
     assert manifest.objectives["directions"] == {}
-    assert manifest.base_design["parameters"] == {}
     assert manifest.qor_baseline is None
     assert manifest.workspaces == ()
 
@@ -223,7 +222,7 @@ def test_find_workspace_matches_only_declared_id(tmp_path):
     assert manifest.find_workspace("nope") is None
 
 
-def test_assemble_config_layers_base_design_and_parameter_patch(tmp_path):
+def test_assemble_config_reads_identity_sources_and_frequency(tmp_path):
     _write_manifest(
         tmp_path,
         _minimal_document(
@@ -233,21 +232,14 @@ def test_assemble_config_layers_base_design_and_parameter_patch(tmp_path):
                 "pdk_root": "/pdk",
                 "top_module": "gcd",
                 "clock": "clk",
+                "frequency_mhz": 200,
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"frequency_max": 100, "max_fanout": 20},
             },
-            workspaces=[
-                {
-                    "workspace_id": "ws_0001",
-                    "workspace_path": str(tmp_path / "ws_0001"),
-                    "parameter_patch": {"frequency_max": {"from": 100, "to": 200}},
-                }
-            ],
         ),
     )
     manifest = load_manifest(str(tmp_path))
 
-    assembled = assemble_config(manifest, manifest.workspaces[0])
+    assembled = assemble_config(manifest, None)
 
     assert assembled["pdk"] == "ics55"
     assert assembled["pdk_root"] == "/pdk"
@@ -255,8 +247,23 @@ def test_assemble_config_layers_base_design_and_parameter_patch(tmp_path):
     assert assembled["top_module"] == "gcd"
     assert assembled["clock"] == "clk"
     assert assembled["rtl_list"] == ["rtl/gcd.v"]
-    assert assembled["parameters"]["frequency_max"] == 200
-    assert assembled["parameters"]["max_fanout"] == 20
+    assert assembled["frequency_mhz"] == 200
+    assert "parameters" not in assembled
+
+
+def test_assemble_config_falls_back_to_legacy_parameters_frequency(tmp_path):
+    _write_manifest(
+        tmp_path,
+        _minimal_document(
+            tmp_path,
+            base_design={"parameters": {"frequency_max": 150, "max_fanout": 20}},
+        ),
+    )
+
+    assembled = assemble_config(load_manifest(str(tmp_path)), None)
+
+    assert assembled["frequency_mhz"] == 150
+    assert "parameters" not in assembled
 
 
 def test_classify_project(tmp_path):
@@ -280,7 +287,7 @@ def test_load_manifest_accepts_null_mpc(tmp_path):
     assert load_manifest(str(tmp_path)).design_name == "gcd"
 
 
-def test_resolved_base_parameters_gui_flat_vocabulary():
+def test_base_design_from_config_carries_frequency_and_no_parameters():
     from chipcompiler.cli.project.config import ProjectConfig
 
     cfg = ProjectConfig(
@@ -288,42 +295,24 @@ def test_resolved_base_parameters_gui_flat_vocabulary():
         design_top="gcd",
         design_clock_port="clk",
         design_frequency_mhz=200.0,
-        params_overrides={"floorplan.core_util": 0.45, "cts.max_fanout": 16},
+        pdk_name="ics55",
+        design_rtl=["rtl/gcd.v"],
+        params_overrides={"floorplan.core_util": 0.45},
     )
 
-    parameters = resolved_base_parameters(cfg)
-
-    assert parameters["design"] == "gcd"
-    assert parameters["top_module"] == "gcd"
-    assert parameters["clock"] == "clk"
-    assert parameters["frequency_max"] == 200.0
-    # Positional overrides surface as GUI aliases, not nested subtrees.
-    assert parameters["utilitization"] == 0.45
-    assert parameters["max_fanout"] == 16
-    # Exclusive GUI-flat shape: no canonical geometry subtrees survive.
-    assert "die" not in parameters
-    assert "core" not in parameters
-
-
-def test_resolved_base_parameters_whole_object():
-    from chipcompiler.cli.project.config import ProjectConfig
-
-    cfg = ProjectConfig(
-        design_name="gcd",
-        design_top="gcd",
-        design_clock_port="clk",
-        design_frequency_mhz=200.0,
-        params_overrides={"floorplan.core_util": 0.45, "floorplan.core_margin": [3, 3]},
-    )
-
-    assert resolved_base_parameters(cfg) == {
-        "design": "gcd",
+    assert base_design_from_config(cfg, "/pdk") == {
+        "pdk": "ics55",
+        "pdk_root": "/pdk",
         "top_module": "gcd",
         "clock": "clk",
-        "frequency_max": 200.0,
-        "utilitization": 0.45,
-        "margin": 3,
-        "die_area_mode": "utilitization_margin",
+        "rtl_list": ["rtl/gcd.v"],
+        "origin_verilog": "rtl/gcd.v",
+        "origin_def": "",
+        "netlist": "",
+        "golden_netlist": "",
+        "sdc": "",
+        "spef": "",
+        "frequency_mhz": 200.0,
     }
 
 

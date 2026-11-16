@@ -82,8 +82,6 @@ def test_import_external_workspace_registers_metadata_without_changing_workspace
     assert entry["workspace_path"] == str(workspace.resolve())
     assert entry["start_step"] == "Synth"
     assert entry["end_step"] == "Synth"
-    assert entry["parameter_patch"]["frequency_max"] == {"from": 100.0, "to": 125}
-    assert entry["parameter_patch"]["max_fanout"] == {"from": None, "to": 16}
     after = {
         path.relative_to(workspace): path.read_bytes()
         for path in workspace.rglob("*")

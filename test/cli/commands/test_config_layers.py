@@ -1,3 +1,6 @@
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from chipcompiler.cli import main as cli_main
@@ -15,9 +18,7 @@ def _divergences(records):
 
 
 class TestDivergenceProjectionFields:
-    def _hybrid(
-        self, manifest_stubs, tmp_path, monkeypatch, toml_text, base_overrides=None, patch=None
-    ):
+    def _hybrid(self, manifest_stubs, tmp_path, monkeypatch, toml_text, base_overrides=None):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         base = {
@@ -26,13 +27,11 @@ class TestDivergenceProjectionFields:
             "top_module": "gcd",
             "clock": "clk",
             "rtl_list": ["rtl/gcd.v"],
-            "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
+            "frequency_mhz": 100,
         }
         if base_overrides:
             base.update(base_overrides)
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        if patch:
-            entry["parameter_patch"] = patch
         manifest_stubs.write(project_dir, [entry], base_design=base)
         (project_dir / "ecc.toml").write_text(toml_text.replace("{ROOT}", str(project_dir / "pdk")))
         monkeypatch.setattr(
@@ -41,7 +40,7 @@ class TestDivergenceProjectionFields:
         )
         return project_dir
 
-    def test_check_warns_on_name_rtl_frequency_and_patched_parameter(
+    def test_check_warns_on_name_rtl_and_frequency(
         self, tmp_path, capsys, monkeypatch, manifest_stubs
     ):
         project_dir = self._hybrid(
@@ -51,8 +50,7 @@ class TestDivergenceProjectionFields:
             '[design]\nname = "other"\ntop = "gcd"\n'
             'rtl = ["rtl/other.v"]\nclock_port = "clk"\nfrequency_mhz = 250.0\n'
             '\n[pdk]\nname = "ics55"\nroot = "{ROOT}"\n'
-            '\n[flow]\npreset = "rtl2gds"\n\n[params.cts]\nmax_fanout = 32\n',
-            patch={"max_fanout": {"from": 20, "to": 24}},
+            '\n[flow]\npreset = "rtl2gds"\n',
         )
         (project_dir / "rtl" / "other.v").write_text("module other; endmodule\n")
 
@@ -65,7 +63,6 @@ class TestDivergenceProjectionFields:
         assert "design_name" in keys
         assert "rtl" in keys
         assert "frequency_max" in keys
-        assert "max_fanout" in keys
 
     def test_run_warns_on_same_projection(
         self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
@@ -239,7 +236,15 @@ class TestLowerLayerDivergence:
     falsy lower-layer frequency and the entry's declared flow range both
     participate; equivalent layers never warn."""
 
-    def _hybrid(self, manifest_stubs, tmp_path, monkeypatch, *, base_parameters, entry_range):
+    def _hybrid(
+        self,
+        manifest_stubs: Any,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        base_frequency: float,
+        entry_range: tuple[str, str],
+    ) -> Path:
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         entry = manifest_stubs.entry(project_dir, "ws_0001")
@@ -253,7 +258,7 @@ class TestLowerLayerDivergence:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": base_parameters,
+                "frequency_mhz": base_frequency,
             },
         )
         (project_dir / "ecc.toml").write_text(
@@ -272,7 +277,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 0},
+            base_frequency=0,
             entry_range=("Synth", "Harden"),
         )
 
@@ -290,7 +295,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 0},
+            base_frequency=0,
             entry_range=("Synth", "Harden"),
         )
 
@@ -308,7 +313,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 100},
+            base_frequency=100,
             entry_range=("Place", "Route"),
         )
 
@@ -326,7 +331,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 100},
+            base_frequency=100,
             entry_range=("Place", "Route"),
         )
 
@@ -345,7 +350,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 100},
+            base_frequency=100,
             entry_range=("Synth", "Harden"),
         )
 
@@ -361,7 +366,7 @@ class TestLowerLayerDivergence:
             manifest_stubs,
             tmp_path,
             monkeypatch,
-            base_parameters={"design": "gcd", "frequency_max": 100},
+            base_frequency=100,
             entry_range=("Synth", "Harden"),
         )
 
@@ -389,7 +394,7 @@ class TestOrderedRtlDivergence:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v", "rtl/b.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
         )
         (project_dir / "rtl" / "b.v").write_text("module b; endmodule\n")
@@ -513,7 +518,7 @@ def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stub
             "top_module": "gcd",
             "clock": "clk",
             "rtl_list": ["rtl/gcd.v"],
-            "parameters": {"design": "gcd", "frequency_max": 10**400},
+            "frequency_mhz": 10**400,
         },
     )
 
@@ -525,9 +530,11 @@ def test_check_tolerates_huge_manifest_frequency(tmp_path, capsys, manifest_stub
 
 
 class TestSetDivergence:
-    def test_run_warns_when_set_overrides_a_different_lower_value(
-        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
-    ):
+    @staticmethod
+    def _project(
+        manifest_stubs: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, max_fanout: int
+    ) -> Path:
+        """A hybrid project whose ecc.toml [params] declares ``cts.max_fanout``."""
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         manifest_stubs.write(
@@ -539,13 +546,23 @@ class TestSetDivergence:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
+                "frequency_mhz": 100,
             },
+        )
+        toml_text = _HYBRID_TOML.replace("{ROOT}", str(project_dir / "pdk"))
+        (project_dir / "ecc.toml").write_text(
+            f"{toml_text}\n[params.cts]\nmax_fanout = {max_fanout}\n"
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
+        return project_dir
+
+    def test_run_warns_when_set_overrides_a_different_lower_value(
+        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
+    ):
+        project_dir = self._project(manifest_stubs, monkeypatch, tmp_path, max_fanout=20)
 
         rc = cli_main.run(
             ["run", "--project", str(project_dir), "--set", "cts.max_fanout=32", "--plain"]
@@ -560,24 +577,7 @@ class TestSetDivergence:
     def test_run_quiet_when_set_restates_the_lower_value(
         self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
     ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": 20},
-            },
-        )
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
+        project_dir = self._project(manifest_stubs, monkeypatch, tmp_path, max_fanout=20)
 
         rc = cli_main.run(
             ["run", "--project", str(project_dir), "--set", "cts.max_fanout=20", "--plain"]

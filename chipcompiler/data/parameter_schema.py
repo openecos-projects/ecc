@@ -4,7 +4,6 @@ The catalog is shared by the headless Engine, CLI, and Studio adapter. CLI
 specific PDK path validation remains in ``chipcompiler.cli.project.params``.
 """
 
-import copy
 import json
 from dataclasses import dataclass
 
@@ -382,39 +381,6 @@ def resolve_parameters(toml_overrides=None, cli_overrides=None, manifest_overrid
             break
         resolved.append(ResolvedParam(schema.param, value, schema.default, source, schema))
     return resolved, errors
-
-
-def manifest_value_for(canonical: dict, maps_to) -> tuple[object, bool]:
-    if isinstance(maps_to, str):
-        return (canonical[maps_to], True) if maps_to in canonical else (None, False)
-    if isinstance(maps_to, dict):
-        for parent, child in maps_to.items():
-            node = canonical.get(parent)
-            if isinstance(node, dict) and child in node:
-                return node[child], True
-    return None, False
-
-
-def coerce_manifest_parameters(canonical: dict, registry=PARAM_REGISTRY, skip_params=frozenset()):
-    coerced, errors = copy.deepcopy(canonical), []
-    for schema in registry:
-        if schema.param in skip_params:
-            continue
-        value, present = manifest_value_for(coerced, schema.maps_to)
-        if not present:
-            continue
-        value, error = validate_schema_type(value, schema)
-        if error:
-            errors.append(error)
-            continue
-        if isinstance(schema.maps_to, str):
-            coerced[schema.maps_to] = value
-        else:
-            for parent, child in schema.maps_to.items():
-                if isinstance(coerced.get(parent), dict) and child in coerced[parent]:
-                    coerced[parent][child] = value
-                    break
-    return coerced, errors
 
 
 def build_backend_overrides(resolved, *, include_defaults: bool = False):

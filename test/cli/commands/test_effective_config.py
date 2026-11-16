@@ -78,7 +78,7 @@ class TestHybridManifestFallbacks:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v", "rtl/b.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
         )
         (project_dir / "ecc.toml").write_text(
@@ -169,7 +169,7 @@ class TestCheckHybridEffectiveValidation:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v", "rtl/b.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
         )
         (project_dir / "ecc.toml").write_text("[design]\nfrequency_mhz = 100.0\n")
@@ -196,7 +196,7 @@ class TestEffectiveConfigValidation:
             "top_module": "gcd",
             "clock": "clk",
             "rtl_list": ["rtl/gcd.v"],
-            "parameters": {"design": "gcd", "frequency_max": 100},
+            "frequency_mhz": 100,
         }
         base.update(overrides)
         return base
@@ -298,42 +298,6 @@ class TestEffectiveConfigValidation:
         assert not (project_dir / "sweep1").exists()
         assert flow_mocks.capture["create_kwargs"] is None
 
-    def test_check_warns_on_gui_geometry_divergence(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        # GUI-flat alias in the manifest, canonical [params] override in
-        # ecc.toml: one canonical projection must still match them.
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design=self._manifest_base(
-                project_dir,
-                parameters={"design": "gcd", "frequency_max": 100, "utilitization": 0.6},
-            ),
-        )
-        (project_dir / "ecc.toml").write_text(
-            '[design]\nname = "gcd"\ntop = "gcd"\n'
-            'rtl = ["rtl/gcd.v"]\nclock_port = "clk"\nfrequency_mhz = 100.0\n'
-            '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
-            '\n[flow]\npreset = "rtl2gds"\n'
-            "\n[params.floorplan]\ncore_util = 0.55\n"
-        )
-        monkeypatch.setattr(
-            "chipcompiler.cli.project.config._validate_pdk_contents",
-            lambda name, root, overrides=None: None,
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        warnings = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert len(warnings) == 1
-        assert "core.utilitization" in warnings[0]["keys"]
-
     def test_equivalent_path_spellings_produce_no_divergence(
         self, tmp_path, capsys, monkeypatch, manifest_stubs
     ):
@@ -382,7 +346,7 @@ class TestHybridFrequencyProvenance:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": frequency_max},
+                "frequency_mhz": frequency_max,
             },
         )
         (project_dir / "ecc.toml").write_text(
@@ -512,7 +476,7 @@ class TestHybridFrequencyProvenance:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/a.v", "rtl/nested.f"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
         )
         (project_dir / "ecc.toml").write_text(
@@ -547,13 +511,10 @@ def _write_manifest_project(
     monkeypatch,
     frequency_max,
     ecc_toml=None,
-    extra_parameters=None,
     entry_extra=None,
 ):
     project_dir = tmp_path / "proj"
     project_dir.mkdir()
-    parameters = {"design": "gcd", "frequency_max": frequency_max}
-    parameters.update(extra_parameters or {})
     entry = manifest_stubs.entry(project_dir, "ws_0001")
     if entry_extra:
         entry.update(entry_extra)
@@ -566,7 +527,7 @@ def _write_manifest_project(
             "top_module": "gcd",
             "clock": "clk",
             "rtl_list": ["rtl/gcd.v"],
-            "parameters": parameters,
+            "frequency_mhz": frequency_max,
         },
     )
     if ecc_toml is not None:
@@ -604,7 +565,7 @@ class TestManifestParameterValidation:
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "project.json: value 99999 out of range" in reasons
+        assert "project.json: value 99999.0 out of range" in reasons
         assert "design.frequency_mhz" in reasons
 
     def test_check_explicit_frequency_overrides_invalid_manifest_value(
@@ -749,428 +710,9 @@ class TestManifestParameterValidation:
         assert manifest_stubs.records()[0]["status"] == "checked"
 
 
-class TestManifestBoolTypeSafety:
-    """project.json run_analysis is the first bool registry parameter: its
-    manifest value must face schema type validation like every other layer,
-    while values an ecc.toml/--set override makes inert surface as divergence
-    warnings instead of errors. Run-path execution behavior lives in
-    test_manifest_run.py."""
-
-    def _hybrid_toml(self, project_dir, *, params="", design_freq=None, preset=None, flow_extra=""):
-        design = '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
-        if design_freq is not None:
-            design += f"frequency_mhz = {design_freq}\n"
-        text = design + '\n[pdk]\nname = "ics55"\nroot = "' + str(project_dir / "pdk") + '"\n'
-        if preset or flow_extra:
-            text += "\n[flow]\n"
-            if preset:
-                text += f'preset = "{preset}"\n'
-            text += flow_extra
-        if params:
-            text += f"\n[params.flow]\n{params}\n"
-        return text
-
-    def _run_toml(self, project_dir, *, params="", design_freq=None):
-        # A run needs a derivable preset; the entry range is pinned to the
-        # preset's manifest range so the flow-range divergence stays out of
-        # the way of the parameter divergences under test.
-        return self._hybrid_toml(
-            project_dir, params=params, design_freq=design_freq, preset="rtl2gds"
-        )
-
-    _PRESET_RANGE = {"start_step": "Synth", "end_step": "PostRouteLEC"}
-
-    def test_check_rejects_bad_manifest_bool(self, tmp_path, capsys, monkeypatch, manifest_stubs):
-        project_dir = _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            extra_parameters={"run_analysis": "maybe"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc != 0
-        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "project.json: expected bool for flow.run_analysis, got str" in reasons
-
-    def test_check_accepts_bool_like_manifest_string(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            extra_parameters={"run_analysis": "false"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert manifest_stubs.records()[0]["status"] == "checked"
-
-    def test_check_params_override_supersedes_invalid_manifest_bool(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": "maybe"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert manifest_stubs.records()[0]["status"] == "checked"
-
-    def test_check_misplaced_flow_section_key_is_not_an_override(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._hybrid_toml(project_dir, flow_extra="run_analysis = false\n")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": "maybe"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc != 0
-        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "expected bool for flow.run_analysis" in reasons
-
-    def test_check_no_divergence_when_coerced_values_match(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": "false"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert not diverged
-
-    def test_check_divergence_for_type_invalid_manifest_bool(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": 0},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert diverged and "run_analysis" in diverged[0]["keys"]
-
-    def test_check_divergence_for_dict_manifest_bool(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._hybrid_toml(project_dir, params="run_analysis = false")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": {"bad": True}},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert diverged and "run_analysis" in diverged[0]["keys"]
-
-    def test_run_reports_only_toml_divergence_for_three_layer_bool(
-        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._run_toml(project_dir, params="run_analysis = false")
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            extra_parameters={"run_analysis": "maybe"},
-            entry_extra=self._PRESET_RANGE,
-        )
-
-        rc = cli_main.run(
-            [
-                "run",
-                "--project",
-                str(project_dir),
-                "--set",
-                "flow.run_analysis=false",
-                "--plain",
-            ]
-        )
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert len(diverged) == 1
-        assert "ecc.toml" in diverged[0]["reason"]
-        assert "run_analysis" in diverged[0]["keys"]
-
-    def test_run_matching_design_frequency_has_no_cli_divergence(
-        self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = self._run_toml(project_dir, design_freq=200)
-        _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            ecc_toml=toml_text,
-            entry_extra=self._PRESET_RANGE,
-        )
-
-        rc = cli_main.run(
-            [
-                "run",
-                "--project",
-                str(project_dir),
-                "--set",
-                "design.frequency_mhz=200",
-                "--plain",
-            ]
-        )
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert len(diverged) == 1
-        assert "--set" not in diverged[0]["reason"]
-        assert "frequency_max" in diverged[0]["keys"]
-
-    def test_check_no_divergence_when_params_supersedes_design_frequency(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        toml_text = (
-            self._hybrid_toml(project_dir, design_freq=200)
-            + "\n[params.design]\nfrequency_mhz = 100\n"
-        )
-        _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 100, ecc_toml=toml_text)
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        diverged = [
-            r for r in manifest_stubs.records() if r.get("warning") == "config_layer_diverged"
-        ]
-        assert not diverged
-
-
-class TestManifestFlatGeometryValidation:
-    """Generated manifests hoist geometry to GUI-flat aliases (utilitization,
-    margin, ...); validation must resolve the canonical projection, and raw
-    values must satisfy the registry's type rules — not just its ranges."""
-
-    def test_check_rejects_out_of_range_gui_flat_geometry(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            extra_parameters={"utilitization": 5.0},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc != 0
-        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "project.json: value 5.0 out of range [0.01, 1.0] for floorplan.core_util" in reasons
-
-    def test_check_rejects_non_numeric_manifest_parameter(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            extra_parameters={"max_fanout": "abc"},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc != 0
-        reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "project.json: value 'abc' is not numeric for cts.max_fanout" in reasons
-
-    def test_check_accepts_valid_gui_flat_geometry(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = _write_manifest_project(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            100,
-            extra_parameters={"utilitization": 0.6, "aspect_ratio": 1.0, "margin": 2},
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert manifest_stubs.records()[0]["status"] == "checked"
-
-
 class TestManifestResolvedConfigView:
     """`ecc config` presents manifest-layer parameters through the
     same canonical projection the run uses (GUI-flat aliases included)."""
-
-    def test_config_resolved_shows_gui_flat_manifest_geometry(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "utilitization": 0.6},
-            },
-        )
-
-        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
-
-        assert rc == 0
-        data = plain_records(capsys.readouterr().out)
-        params = {r["key"]: r for r in data if r.get("kind") == "param"}
-        assert params["floorplan.core_util"]["value"] == "0.6"
-        assert params["floorplan.core_util"]["source"] == "project.json"
-
-    def test_config_resolved_surfaces_null_manifest_bool(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": None},
-            },
-        )
-
-        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
-
-        assert rc == 1
-        data = plain_records(capsys.readouterr().out)
-        # The view's records never leak raw; errors use the standard record
-        # contract, not the view's internal status field. The NoneType reason
-        # proves the explicit null was seen — not silently read as the
-        # default True while the runtime value is falsy.
-        records = data
-        assert all(r.get("kind") == "error" for r in records)
-        assert all(r.get("error") == "invalid_config" for r in records)
-        assert any("expected bool for flow.run_analysis" in r["reason"] for r in records)
-
-    def test_config_resolved_text_output_shows_error_reason(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": None},
-            },
-        )
-
-        rc = cli_main.run(["config", "--project", str(project_dir)])
-
-        assert rc == 1
-        assert "expected bool for flow.run_analysis" in capsys.readouterr().out
-
-    def test_config_resolved_reports_manifest_frequency_type_error(
-        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
-    ):
-        project_dir = tmp_path / "proj"
-        project_dir.mkdir()
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": "200"},
-            },
-        )
-
-        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
-
-        assert rc == 1
-        data = plain_records(capsys.readouterr().out)
-        # The manifest-supplied string must not be masked by a phantom
-        # ecc.toml-layer frequency injection.
-        errors = [r for r in data if r.get("kind") == "error"]
-        assert all(r.get("error") == "invalid_config" for r in errors)
-        assert any(
-            "expected float for design.frequency_mhz, got str" in r["reason"] for r in errors
-        )
 
     def test_config_resolved_surfaces_param_errors_for_hybrid_project(
         self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
@@ -1223,3 +765,18 @@ class TestManifestResolvedConfigView:
         out = capsys.readouterr().out
         assert "expected bool for flow.run_analysis" in out
         assert "expected int for cts.max_fanout" in out
+
+
+class TestManifestResolvedConfigViewFrequency:
+    def test_config_resolved_shows_manifest_frequency_as_project_json_layer(
+        self, tmp_path, capsys, monkeypatch, manifest_stubs, plain_records
+    ):
+        project_dir = _write_manifest_project(manifest_stubs, tmp_path, monkeypatch, 150)
+
+        rc = cli_main.run(["config", "--plain", "--project", str(project_dir)])
+
+        assert rc == 0
+        records = plain_records(capsys.readouterr().out)
+        params = {r["key"]: r for r in records if r.get("kind") == "param"}
+        assert params["design.frequency_mhz"]["value"] == "150.0"
+        assert params["design.frequency_mhz"]["source"] == "project.json"

@@ -15,11 +15,14 @@
 | --- | --- | --- |
 | 1 | `ecc run --set key=value`（可重复） | 仅新建 run |
 | 2 | `ecc.toml` `[params.*]` | 仅新建 run |
-| 3 | `project.json` `base_design.parameters` 与选中 workspace 条目的 `parameter_patch` 合并（manifest 基础层） | manifest 工程 |
+| 3 | `project.json` `base_design.frequency_mhz`（仅设计时钟频率；manifest 不再携带其它参数） | manifest 工程 |
 | 4 | schema 默认值（`chipcompiler/data/config_params/`、legacy 注册表模板） | 始终 |
 
 manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值叠加在
-它之上，因此已声明的 base 值只输给更高层、只赢过 schema 默认。
+它之上，因此已声明的 base 值只输给更高层、只赢过 schema 默认。早于
+`frequency_mhz` 的旧 manifest 仍通过其 `base_design.parameters.frequency_max`
+读取频率；可调参数不再从 `project.json` 读取，只在 `ecc.toml` 或各 workspace
+的 `params.toml` 中设置。
 
 **已有（existing）** workspace 复用其持久化的 `home/params.toml`，
 不再重新解析上述矩阵：

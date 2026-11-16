@@ -43,7 +43,7 @@ def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatc
     assert tomllib.loads(config)["params"]["sdc"]["clock_list"] == clock_list
     assert "target_density = 0.7" in config
     assert manifest["base_design"]["pdk_root"] == str(pdk)
-    assert manifest["base_design"]["parameters"]["frequency_max"] == 250.0
+    assert manifest["base_design"]["frequency_mhz"] == 250.0
 
 
 def test_project_apply_invalid_batch_changes_nothing(tmp_path, monkeypatch):

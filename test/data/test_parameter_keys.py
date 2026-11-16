@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 
 from chipcompiler.data.parameter_keys import (
-    geometry_to_parameters,
     normalize_key,
     normalize_keys,
     normalize_parameter_dict,
-    parameters_to_geometry,
 )
 
 
@@ -103,97 +101,3 @@ def test_normalize_parameter_dict_preserves_reserved_payloads():
     ]
     # Ordinary keys still normalize.
     assert result["dreamplace"] == {"target_density": 0.5}
-
-
-def test_geometry_to_parameters_folds_aliases_into_subtrees():
-    flat = {
-        "frequency_max": 200,
-        "top_module": "gcd",
-        "die_width": 150,
-        "die_height": 160,
-        "utilitization": 0.5,
-        "margin": 3,
-        "die_area_mode": "width_height",
-    }
-    assert geometry_to_parameters(flat) == {
-        "frequency_max": 200,
-        "top_module": "gcd",
-        "die": {"size": [150, 160]},
-        "core": {"utilitization": 0.5, "margin": [3, 3]},
-    }
-
-
-def test_geometry_to_parameters_extends_existing_subtrees():
-    flat = {"die": {"area": 0}, "core": {"aspect_ratio": 1}, "die_width": 150, "margin": 3}
-    assert geometry_to_parameters(flat) == {
-        "die": {"area": 0, "size": [150]},
-        "core": {"aspect_ratio": 1, "margin": [3, 3]},
-    }
-
-
-def test_geometry_to_parameters_logs_and_keeps_unknown_flat_keys(caplog):
-    flat = {"some_future_key": 1}
-    with caplog.at_level("WARNING"):
-        result = geometry_to_parameters(flat)
-    assert result == {"some_future_key": 1}
-    assert any("some_future_key" in record.message for record in caplog.records)
-
-
-def test_geometry_to_parameters_keeps_registered_subtrees_without_warning(caplog):
-    # `ecc init` writes [params.sdc]; the project then carries it in its
-    # base parameters. A subtree of registered parameters is not unknown.
-    flat = {
-        "sdc": {"clock_list": "clk MAX:100 TYP:100\n"},
-        "dreamplace": {"target_density": 0.5},
-        "macro": {"placements": []},
-        "geometry": {"clock_tree": True},
-    }
-    with caplog.at_level("WARNING"):
-        result = geometry_to_parameters(flat)
-    assert result == flat
-    assert not [r.message for r in caplog.records if "unknown GUI parameter key" in r.message]
-
-
-def test_every_registered_parameter_is_stored_under_a_known_top_level_key():
-    from chipcompiler.data.parameter_keys import _known_top_level_keys
-    from chipcompiler.data.parameter_schema import list_schemas
-
-    known = _known_top_level_keys()
-    unknown = {
-        schema.param: schema.maps_to
-        for schema in list_schemas()
-        if schema.maps_to is not None
-        and not (set(schema.maps_to) if isinstance(schema.maps_to, dict) else {schema.maps_to})
-        <= known
-    }
-    assert unknown == {}
-
-
-def test_parameters_to_geometry_surfaces_aliases():
-    parameters = {
-        "die": {"size": [150, 160], "area": 0},
-        "core": {"utilitization": 0.5, "margin": [3, 3]},
-        "top_module": "gcd",
-    }
-    flat = parameters_to_geometry(parameters)
-    assert flat["die_width"] == 150
-    assert flat["die_height"] == 160
-    assert flat["utilitization"] == 0.5
-    assert flat["margin"] == 3
-    assert flat["top_module"] == "gcd"
-
-
-def test_parameters_to_geometry_derives_die_area_mode():
-    with_size = parameters_to_geometry({"die": {"size": [1, 2]}})
-    assert with_size["die_area_mode"] == "width_height"
-    without_size = parameters_to_geometry({"die": {"size": []}})
-    assert without_size["die_area_mode"] == "utilitization_margin"
-    no_die = parameters_to_geometry({})
-    assert no_die["die_area_mode"] == "utilitization_margin"
-
-
-def test_geometry_round_trip_preserves_alias_values():
-    flat = {"die_width": 150, "die_height": 160, "utilitization": 0.5, "margin": 3}
-    round_tripped = parameters_to_geometry(geometry_to_parameters(flat))
-    for alias, value in flat.items():
-        assert round_tripped[alias] == value
