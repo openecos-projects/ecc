@@ -807,7 +807,7 @@ def test_config_resolved_pdk_overrides_absent(
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": [
                 {

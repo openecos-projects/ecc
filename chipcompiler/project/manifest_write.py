@@ -29,7 +29,6 @@ from chipcompiler.project.manifest import (
     MANIFEST_FILENAME,
     PRESET_MANIFEST_RANGE,
     ManifestError,
-    _record,
     _slugify,
     base_design_from_config,
 )
@@ -63,15 +62,13 @@ def manifest_workspace_entry(
     status: str,
     now: str,
     skip_steps: list[str] | None = None,
-    parameter_patch: dict | None = None,
 ) -> dict:
     """One complete schema-v1 workspaces[] entry, every field materialized.
 
     The single builder for generated manifests and registered workspaces,
     so every writer emits the same object shape.
     ``skip_steps`` is materialized only when the workspace carries a
-    declared policy (an explicit empty list stays []). ``parameter_patch``
-    is always materialized as an object for imported workspace metadata.
+    declared policy (an explicit empty list stays []).
     """
     entry = {
         "workspace_id": workspace_id,
@@ -84,7 +81,6 @@ def manifest_workspace_entry(
         "status": status,
         "created_at": now,
         "updated_at": now,
-        "parameter_patch": dict(parameter_patch or {}),
         "metrics_summary": {},
         "step_metrics": {},
     }
@@ -155,7 +151,6 @@ def build_project_document(
         "updated_at": timestamp,
         "base_design": {
             **{key: value for key, value in base_design.items() if key != "parameters" and value},
-            "parameters": _record(base_design.get("parameters")),
             "rtl_list": [
                 item for item in base_design.get("rtl_list") or [] if isinstance(item, str)
             ],
@@ -391,7 +386,6 @@ def append_workspace_entry(
     status: str,
     now: str | None = None,
     skip_steps: list[str] | None = None,
-    parameter_patch: dict | None = None,
 ) -> str:
     """Atomically append one workspace entry to an existing manifest.
 
@@ -422,12 +416,9 @@ def append_workspace_entry(
                 from chipcompiler.project.manifest_refresh import (
                     apply_derived_fields,
                     derive_workspace_fields,
-                    manifest_base_parameters,
                 )
 
-                derived = derive_workspace_fields(
-                    workspace_path, manifest_base_parameters(document)
-                )
+                derived = derive_workspace_fields(workspace_path)
                 if apply_derived_fields(entry, derived):
                     entry["updated_at"] = timestamp
                     document["updated_at"] = timestamp
@@ -446,7 +437,6 @@ def append_workspace_entry(
                 status=status,
                 now=timestamp,
                 skip_steps=skip_steps,
-                parameter_patch=parameter_patch,
             )
         )
         document["updated_at"] = timestamp
@@ -465,7 +455,6 @@ def pre_register_workspace(
     workspace_path: str,
     flow_config: dict | None,
     status: str = "not_started",
-    parameter_patch: dict | None = None,
 ) -> str:
     """Atomically register a fresh managed workspace before filesystem creation.
 
@@ -499,7 +488,6 @@ def pre_register_workspace(
             status=status,
             skip_steps=list(declared_skip) if declared_skip is not None else None,
         )
-        document["workspaces"][0]["parameter_patch"] = dict(parameter_patch or {})
         if write_manifest_if_absent(project_dir, document):
             return "registered"
         # A concurrent creator won the link race: fall through and apply the
@@ -516,5 +504,4 @@ def pre_register_workspace(
         status=status,
         now=now,
         skip_steps=list(declared_skip) if declared_skip is not None else None,
-        parameter_patch=parameter_patch,
     )

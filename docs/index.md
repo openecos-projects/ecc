@@ -16,7 +16,7 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
 - **[CLI Config Reference](../chipcompiler/docs/ecc-config-ref.en.md)** / **[中文配置参考](../chipcompiler/docs/ecc-config-ref.cn.md)** - `ecc.toml`, workspace files, and the parameter system
 - **[Staged Floorplan Flow](../chipcompiler/docs/floorplan-flow.en.md)** / **[分阶段 Floorplan 流程](../chipcompiler/docs/floorplan-flow.cn.md)** - Pre-floorplan, macro placement, post-floorplan, and the macro-location Tcl handoff
 - **[ECC Parameter Lifecycle](../chipcompiler/docs/ecc-parameter-lifecycle.en.md)** / **[ECC 参数生命周期](../chipcompiler/docs/ecc-parameter-lifecycle.cn.md)** - Maintainer/integration contract for parameter precedence, effective timing, CLI/GUI differences, and schema versioning
-  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` base + workspace `parameter_patch` > schema defaults)
+  - Priority matrix (`--set` > `ecc.toml [params]` > `project.json` `base_design.frequency_mhz` > schema defaults)
   - Fresh vs existing runs, `skip_steps` convergence
   - Drift and overwrite guards (`workspace_spec_drift`, `derived_configs_modified`)
   - `schema_version` registry for `home/` files

@@ -315,37 +315,6 @@ def execute_fresh_run(
                 problems.append(f"previous workspace left at {backup_path}: {exc}")
         return problems
 
-    base = None
-    if cfg.manifest_parameters:
-        # Manifest base layer: ecc.toml/--set values overlay it, not the
-        # other way around. Values were validated up front by
-        # effective_config.validate_effective (shared with `ecc check`);
-        # this coercion is defense-in-depth for that contract, so a failure
-        # here must not strand a freshly created run target — and it runs
-        # before filelist materialization so no ecc-rtl-* temp artifacts
-        # can leak either. Keys an ecc.toml/--set override actually
-        # replaces are skipped: their higher-layer value wins anyway.
-        from chipcompiler.cli.project.effective_config import effective_override_keys
-        from chipcompiler.data.parameter_keys import geometry_to_parameters
-        from chipcompiler.params import coerce_manifest_parameters
-
-        base, coerce_errors = coerce_manifest_parameters(
-            geometry_to_parameters(cfg.manifest_parameters),
-            skip_params=effective_override_keys(cfg, cli_overrides),
-        )
-        if coerce_errors:
-            cleanup_failed_target()
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "config_error",
-                        "reason": f"project.json: {err}",
-                    }
-                    for err in coerce_errors
-                ]
-            )
-
     def failed_workspace(reason: str | None) -> CommandResult:
         rollback_problems = cleanup_failed_target()
         if rollback_problems:
@@ -388,10 +357,6 @@ def execute_fresh_run(
         # Preserve the creator's input role for Studio/CLI reopen symmetry.
         parameters["_input_mode"] = "postSynthesis"
     pdk_root = resolve_pdk_root(cfg)
-
-    if base is not None:
-        update_parameters(parameters, base)
-        parameters = base
 
     if cfg.params_overrides or cli_overrides:
         from chipcompiler.params import (

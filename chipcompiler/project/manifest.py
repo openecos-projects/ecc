@@ -108,7 +108,6 @@ class ManifestWorkspace:
     start_step: str
     end_step: str
     status: str
-    parameter_patch: dict = field(default_factory=dict)
     # Declared workspaces[].skip_steps spelling (aliases/duplicates kept);
     # None when the key is absent, () for an explicit empty list. The base
     # layer: an explicit ecc.toml [flow] skip_steps overrides it, like every
@@ -220,7 +219,6 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         start_step=start_step,
         end_step=end_step,
         status=status,
-        parameter_patch=_record(source.get("parameter_patch")),
         skip_steps=declared_skip,
         raw=dict(source),
     )
@@ -303,7 +301,6 @@ def load_manifest(project_dir: str) -> ProjectManifest:
 
     name = _optional_str(source.get("name")) or os.path.basename(project_dir) or "project"
     base_design = _record(source.get("base_design"))
-    base_design = {**base_design, "parameters": _record(base_design.get("parameters"))}
     # Mirror the GUI parser: primary defaults to "timing", directions keep
     # only maximize/minimize entries from the source (no default fill).
     objectives_raw = _record(source.get("objectives"))
@@ -391,19 +388,12 @@ def classify_project(project_dir: str) -> str:
 
 
 def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | None) -> dict:
-    """Flatten the manifest into a parameter payload (lowest precedence layer).
+    """Flatten the manifest's design identity and sources (lowest precedence layer).
 
-    ``base_design.parameters`` plus the workspace's ``parameter_patch`` form
-    the base layer beneath project ecc.toml and --set overrides.
+    The manifest carries no tunable parameters: those live in ecc.toml and in
+    each workspace's params.toml. ``workspace`` is accepted for call-site
+    symmetry with the flow-range lookup and does not affect the result.
     """
-    parameters = dict(manifest.base_design.get("parameters") or {})
-    if workspace is not None:
-        for key, change in workspace.parameter_patch.items():
-            parameters[key] = (
-                change["to"] if isinstance(change, dict) and "to" in change else change
-            )
-    if manifest.design_name and not _optional_str(parameters.get("design")):
-        parameters["design"] = manifest.design_name
     rtl_list = manifest.base_design.get("rtl_list")
     if not isinstance(rtl_list, list):
         rtl_list = []
@@ -420,49 +410,22 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
         "golden_netlist": _optional_str(manifest.base_design.get("golden_netlist")),
         "sdc": _optional_str(manifest.base_design.get("sdc")),
         "spef": _optional_str(manifest.base_design.get("spef")),
-        "parameters": parameters,
+        "frequency_mhz": _manifest_frequency(manifest.base_design),
     }
 
 
-def resolved_base_parameters(cfg) -> dict:
-    """The ecc.toml-resolved base_design.parameters for a generated manifest.
+def _manifest_frequency(base_design: dict[str, Any]) -> object:
+    """The declared clock frequency, raw (validated by the config layer).
 
-    GUI-flat vocabulary: identity fields plus the [params] overrides,
-    projected through the geometry converter so positional values surface
-    as the wizard's aliases (die_width, utilitization, margin, ...).
-    --set values are run-scoped and never included.
+    ``base_design.frequency_mhz`` is canonical. Manifests written before it
+    existed carried the value only as ``base_design.parameters.frequency_max``;
+    that spelling is read as a fallback and never written.
     """
-    canonical: dict = {
-        "design": cfg.design_name,
-        "top_module": cfg.design_top,
-        "clock": cfg.design_clock_port,
-        "frequency_max": cfg.design_frequency_mhz,
-    }
-    if cfg.params_overrides:
-        from chipcompiler.params import (
-            build_backend_overrides,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        canonical.update(build_backend_overrides(resolved))
-
-    from chipcompiler.data.parameter_keys import parameters_to_geometry
-
-    flat = parameters_to_geometry(canonical)
-    # Exclusive GUI-flat shape: geometry lives only in the aliases —
-    # the canonical die/core subtrees are consumed, not duplicated.
-    # Non-positional members (e.g. aspect_ratio) hoist to flat top-level
-    # keys; positional members are covered by the aliases.
-    for subtree_name in ("die", "core"):
-        subtree = flat.pop(subtree_name, None)
-        if not isinstance(subtree, dict):
-            continue
-        for member, value in subtree.items():
-            if member in ("size", "utilitization", "margin"):
-                continue
-            flat.setdefault(member, value)
-    return flat
+    declared = base_design.get("frequency_mhz")
+    if declared is not None:
+        return declared
+    legacy: object = base_design.get("parameters")
+    return legacy.get("frequency_max") if isinstance(legacy, dict) else None
 
 
 def base_design_from_config(cfg, pdk_root: str) -> dict:
@@ -471,9 +434,8 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
     Identity and sources come from the ecc.toml-resolved config with the
     DECLARED project source spellings preserved: ``rtl_list`` verbatim,
     and ``origin_verilog`` when the single source is plain RTL (empty for
-    a filelist source; the document builder drops empty keys). Parameters
-    are the GUI-flat projection. Shared by every manifest writer so their
-    generated documents cannot drift.
+    a filelist source; the document builder drops empty keys). Shared by
+    every manifest writer so their generated documents cannot drift.
     """
     from chipcompiler.utility.filelist import FILELIST_SUFFIXES
 
@@ -492,7 +454,7 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
         "golden_netlist": cfg.design_golden_netlist,
         "sdc": cfg.design_sdc,
         "spef": cfg.design_spef,
-        "parameters": resolved_base_parameters(cfg),
+        "frequency_mhz": cfg.design_frequency_mhz,
     }
 
 

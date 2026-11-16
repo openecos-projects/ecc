@@ -1,6 +1,10 @@
 import os
+from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.output import disclosure_cmd
+
+if TYPE_CHECKING:
+    from chipcompiler.cli.project.config import ProjectConfig
 
 
 def build_project_config_items(
@@ -354,25 +358,17 @@ def build_step_config_items(
     return items, 0
 
 
-def _manifest_parameter_overrides(cfg) -> dict:
-    """The manifest layer's parameter values in dotted registry-key form.
+def _manifest_parameter_overrides(cfg: "ProjectConfig") -> dict[str, float]:
+    """The manifest layer's one registry value: the declared clock frequency.
 
-    Execution layers ``base_design.parameters`` / ``parameter_patch`` beneath
-    ecc.toml and CLI overrides; the resolved view must present them instead
-    of reporting registry defaults. Generated manifests hoist geometry values
-    to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
-    the canonical projection whose nested keys match the registry's maps_to.
+    The manifest carries design identity only, but its ``frequency_mhz``
+    fills the config when ecc.toml declares none; the resolved view must
+    present it as the ``project.json`` layer instead of a registry default.
     """
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
-    from chipcompiler.params import PARAM_REGISTRY, manifest_value_for
-
-    manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
-    if not isinstance(manifest_parameters, dict):
+    if (
+        "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset())
+        or "design.frequency_mhz" in cfg.params_overrides
+        or not cfg.design_frequency_mhz
+    ):
         return {}
-    canonical = geometry_to_parameters(manifest_parameters)
-    overrides = {}
-    for schema in PARAM_REGISTRY:
-        value, present = manifest_value_for(canonical, schema.maps_to)
-        if present:
-            overrides[schema.param] = value
-    return overrides
+    return {"design.frequency_mhz": cfg.design_frequency_mhz}

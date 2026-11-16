@@ -10,7 +10,6 @@ from chipcompiler.params import (
     build_backend_overrides,
     build_config_overrides,
     build_pdk_overrides,
-    coerce_manifest_parameters,
     is_known_key,
     list_groups,
     lookup_schema,
@@ -501,62 +500,6 @@ class TestTomlParams:
         table = {"place": "not_a_table"}
         flat, errors = parse_toml_params(table)
         assert len(errors) > 0
-
-
-class TestManifestCoercion:
-    def test_bool_string_coerced(self):
-        canonical = {"run_analysis": "false", "frequency_max": 100}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced["run_analysis"] is False
-
-    def test_bad_bool_value_preserved_with_error(self):
-        canonical = {"run_analysis": "maybe"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["run_analysis"] == "maybe"
-        assert len(errors) == 1
-        assert "expected bool for flow.run_analysis" in errors[0]
-
-    def test_explicit_none_reported_as_type_error(self):
-        canonical = {"run_analysis": None}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["run_analysis"] is None
-        assert len(errors) == 1
-        assert "NoneType" in errors[0]
-
-    def test_skip_params_bypassed(self):
-        canonical = {"run_analysis": "maybe"}
-        coerced, errors = coerce_manifest_parameters(
-            canonical, skip_params=frozenset({"flow.run_analysis"})
-        )
-        assert errors == []
-        assert coerced["run_analysis"] == "maybe"
-
-    def test_unknown_keys_pass_through(self):
-        canonical = {"custom_key": "false"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced == {"custom_key": "false"}
-
-    def test_nested_coercion_does_not_mutate_input(self):
-        canonical = {"core": {"utilitization": 1}, "frequency_max": 100}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert isinstance(coerced["core"]["utilitization"], float)
-        assert isinstance(canonical["core"]["utilitization"], int)
-
-    def test_huge_int_degrades_to_error(self):
-        canonical = {"frequency_max": 10**400}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["frequency_max"] == 10**400
-        assert len(errors) == 1
-        assert "too large to represent" in errors[0]
-
-    def test_absent_keys_untouched(self):
-        canonical = {"design": "gcd"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced == {"design": "gcd"}
 
 
 def test_every_param_registry_entry_has_an_explicit_description():

@@ -53,9 +53,7 @@ class ProjectConfig:
 
     params_overrides: dict[str, object] = field(default_factory=dict)
 
-    # Manifest-backed layers (project.json projects): the base parameter
-    # payload beneath ecc.toml/--set, and the manifest's origin DEF.
-    manifest_parameters: dict[str, object] = field(default_factory=dict)
+    # Manifest-backed layer (project.json projects): the manifest's origin DEF.
     manifest_origin_def: str = ""
     # True when this config was assembled from the manifest alone (no
     # ecc.toml): the workspace's own [flow] is then the run target source.

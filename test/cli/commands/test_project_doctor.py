@@ -264,7 +264,6 @@ class TestProjectDoctorFix:
         assert entry["start_step"] == "Synth"
         assert entry["end_step"] == "Harden"
         assert entry["status"] == "success"
-        assert entry["parameter_patch"] == {}
 
         capsys.readouterr()
         assert _run_doctor(project_dir) == 0

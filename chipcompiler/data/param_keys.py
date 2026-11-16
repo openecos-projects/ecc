@@ -11,11 +11,7 @@ Display keys use the corrected spelling ``utilization``. Older GUI builds
 emit the misspelling ``utilitization`` or the alias ``core_utilization`` for
 the same field; both denote ``DISPLAY_KEY_MAP["utilization"]``.
 
-The legacy-tree geometry aliases consumed by
-:mod:`chipcompiler.data.parameter_keys` (``die_width``/``die_height``/
-``utilitization``/``margin`` folded into the ``die``/``core`` subtrees of
-``workspace.parameters.data``) are a different vocabulary and stay there;
-this module maps display keys onto the flat ``PARAM_REGISTRY`` spec keys.
+This module maps display keys onto the flat ``PARAM_REGISTRY`` spec keys.
 
 Value-shape notes mirrored from the GUI seed data:
 

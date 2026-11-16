@@ -99,7 +99,7 @@ def manifest_stubs(capsys, plain_records):
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": workspaces,
         }

@@ -16,12 +16,15 @@ one value per key wins through this precedence (highest first):
 | --- | --- | --- |
 | 1 | `ecc run --set key=value` (repeatable) | fresh runs only |
 | 2 | `ecc.toml` `[params.*]` | fresh runs only |
-| 3 | `project.json` `base_design.parameters` merged with the selected workspace entry's `parameter_patch` (manifest base layer) | manifest projects |
+| 3 | `project.json` `base_design.frequency_mhz` (the design clock frequency only; the manifest carries no other parameters) | manifest projects |
 | 4 | schema defaults (`chipcompiler/data/config_params/`, legacy registry templates) | always |
 
 The manifest base layer is a floor, not an override: `ecc.toml` and `--set`
 values are merged over it, so a declared base value loses to any higher
-layer and wins only over the schema default.
+layer and wins only over the schema default. Manifests written before
+`frequency_mhz` existed are still read through their legacy
+`base_design.parameters.frequency_max`; tunable parameters are never read from
+`project.json` and are set in `ecc.toml` or in each workspace's `params.toml`.
 
 An **existing** workspace reuses its persisted `home/params.toml` and never
 re-resolves the matrix:
