@@ -111,8 +111,19 @@ def publish(
             current = {
                 k: v
                 for k, v in objects.items()
-                if v["kind"] not in {"wire", "via", "guide", "route_patch", "access_point"}
-                or (v["kind"] == "via" and v.get("net_kind", "signal") != "signal")
+                if v["kind"]
+                not in {
+                    "wire",
+                    "via",
+                    "guide",
+                    "route_patch",
+                    "access_point",
+                    "access_candidate",
+                    "route_congestion",
+                    "route_violation",
+                    "route_region",
+                }
+                or v.get("net_kind", "signal") != "signal"
             }
         for key in sample.get("remove", []):
             current.pop(identities.reference(key), None)
