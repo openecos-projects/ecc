@@ -40,15 +40,17 @@ def test_skippable_step_enum_members_are_marked_skippable():
     }
 
 
-def test_core_enum_no_longer_carries_the_skippable_members():
+def test_core_enum_keeps_public_compat_aliases_for_former_members():
+    for name in ("PREPLACE", "DIFF_SIZING", "CTS"):
+        assert StepEnum[name].value == SkippableStepEnum[name].value
+
+
+def test_core_enum_does_not_gain_new_skippable_members():
     for name in (
         "LEC",
         "DIFF_OPT",
-        "PREPLACE",
-        "DIFF_SIZING",
         "POST_ROUTE_LEC",
         "TIMING_OPT",
-        "CTS",
     ):
         assert not hasattr(StepEnum, name)
         with pytest.raises(ValueError):
@@ -62,7 +64,14 @@ def test_both_enums_share_the_memberless_base():
 
 @pytest.mark.parametrize(
     "value,expected",
-    [(member.value, member) for member in (*StepEnum, *SkippableStepEnum)],
+    [
+        *[
+            (member.value, member)
+            for member in StepEnum
+            if member.name not in {"PREPLACE", "DIFF_SIZING", "CTS"}
+        ],
+        *[(member.value, member) for member in SkippableStepEnum],
+    ],
 )
 def test_step_from_value_resolves_both_enums(value, expected):
     assert step_from_value(value) is expected

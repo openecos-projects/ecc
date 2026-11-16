@@ -39,8 +39,13 @@ class StepEnum(StepBaseEnum):
     PRE_FLOORPLAN = "preFloorplan"
     MACRO_PLACEMENT = "macroPlacement"
     POST_FLOORPLAN = "postFloorplan"
+    # Compatibility aliases retained for the public StepEnum contract. New
+    # skip-policy code should use SkippableStepEnum so is_skippable() is True.
+    PREPLACE = "preplace"
     PLACEMENT = "place"
     DIFF_BUFFERING = "diff_buffering"
+    DIFF_SIZING = "diff_sizing"
+    CTS = "CTS"
     LEGALIZATION = "legalization"
     ROUTING = "route"
     FILLER = "filler"
@@ -270,7 +275,7 @@ LEC_STEP_TOOLS: Final = frozenset(member.value for member in LECEngineEnum)
 DEFAULT_LEC_ENGINE: Final = LECEngineEnum.KEPLER_FORMAL
 
 
-_STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (StepEnum, SkippableStepEnum)
+_STEP_ENUMS: tuple[type[StepBaseEnum], ...] = (SkippableStepEnum, StepEnum)
 
 
 def is_sta_step(step: object) -> bool:

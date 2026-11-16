@@ -9,7 +9,6 @@ explicit-false override / CTS gate branches.
 """
 
 import inspect
-from pathlib import Path
 
 import pytest
 
@@ -24,8 +23,8 @@ from chipcompiler.data.workspace_config import (
 )
 from chipcompiler.engine import EngineFlow
 from chipcompiler.engine.workspace_derive_range import bound_derived_flow
-from chipcompiler.rtl2gds import resolve_no_clock, resolve_skip_steps
 from chipcompiler.rtl2gds import builder as rtl2gds_builder
+from chipcompiler.rtl2gds import resolve_no_clock, resolve_skip_steps
 
 
 def _make_workspace(tmp_path, minimal_ics55_pdk_factory, flow_config, *, clock="clk"):
