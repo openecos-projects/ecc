@@ -3,7 +3,7 @@
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data.parameter_schema import list_schemas
+from chipcompiler.params import list_schemas
 
 
 @pytest.fixture

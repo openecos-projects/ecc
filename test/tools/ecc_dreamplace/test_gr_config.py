@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from chipcompiler.cli.project.params import (
+from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+from chipcompiler.params import (
     build_config_overrides,
     parse_toml_params,
     resolve_parameters,
 )
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.workspace.config_overrides import apply_config_overrides
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 
 from .test_module import FakeParams

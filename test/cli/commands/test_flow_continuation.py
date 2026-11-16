@@ -58,7 +58,7 @@ def test_diverging_parameter_fix_quotes_json_values_and_workspace_names(monkeypa
     from chipcompiler.cli.project.run_existing import _diverging_workspace_param_fixes
 
     monkeypatch.setattr(
-        "chipcompiler.data.workspace_parameters.workspace_param_value",
+        "chipcompiler.params.workspace_param_value",
         lambda _workspace, _schema: [1, 2],
     )
     fixes = _diverging_workspace_param_fixes(

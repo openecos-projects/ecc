@@ -6,10 +6,13 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
-from chipcompiler.cli.project.params import list_schemas, lookup_schema, parse_value, validate_value
-from chipcompiler.cli.project.workspace_params import (
+from chipcompiler.params import (
+    list_schemas,
+    lookup_schema,
+    parse_value,
     set_workspace_param,
     unset_workspace_param,
+    validate_value,
     workspace_param_diff,
     workspace_param_step,
     workspace_param_value,
@@ -280,11 +283,11 @@ def _mutate(
 
 
 def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object, status: str):
-    from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
     from chipcompiler.engine import update_workspace_step_configuration
     from chipcompiler.engine.snapshot import read_engineering_snapshot
     from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.params import workspace_param_diff, workspace_param_step
 
     overrides = workspace_param_diff(workspace)
     existing = next((item for item in overrides if item["key"] == schema.param), None)

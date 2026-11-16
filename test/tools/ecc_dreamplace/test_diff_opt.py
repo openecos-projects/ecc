@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from chipcompiler.cli.project.params import parse_cli_overrides, resolve_parameters
 from chipcompiler.data import EccData, EccStep, OriginDesign, SkippableStepEnum, StepEnum, Workspace
+from chipcompiler.params import parse_cli_overrides, resolve_parameters
 from chipcompiler.rtl2gds.builder import build_flow_range
 from chipcompiler.tools.ecc_dreamplace.diff_opt import apply_diff_opt_defaults
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode

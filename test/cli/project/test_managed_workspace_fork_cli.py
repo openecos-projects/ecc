@@ -498,8 +498,7 @@ def test_a_fork_can_open_its_parameters_right_away(completed_source, scripted_te
 def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_source):
     from chipcompiler.cli.command_handlers.param_edit import workspace_rows
     from chipcompiler.cli.core.types import CommandContext, OutputMode
-    from chipcompiler.data.parameter_schema import lookup_schema
-    from chipcompiler.data.workspace_parameters import workspace_param_step
+    from chipcompiler.params import lookup_schema, workspace_param_step
 
     project, _source, _steps = completed_source
     fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]
@@ -524,7 +523,7 @@ def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_sour
 def test_workspace_parameters_edited_in_the_terminal_change_only_that_workspace(
     completed_source, scripted_terminal
 ):
-    from chipcompiler.data.workspace_parameters import workspace_param_diff
+    from chipcompiler.params import workspace_param_diff
 
     project, source, _steps = completed_source
     fork = ["workspace", "fork", "source", "branch", "--project", str(project), "--from", "place"]

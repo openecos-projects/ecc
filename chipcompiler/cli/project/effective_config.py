@@ -368,12 +368,12 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
             )
         manifest_parameters = getattr(cfg, "manifest_parameters", None)
         if manifest_parameters:
-            from chipcompiler.cli.project.params import (
+            from chipcompiler.data.parameter_keys import geometry_to_parameters
+            from chipcompiler.params import (
                 PARAM_REGISTRY,
-                _validate_schema_type,
+                validate_schema_type,
                 validate_value,
             )
-            from chipcompiler.data.parameter_keys import geometry_to_parameters
 
             # Generated manifests hoist geometry values to GUI-flat aliases
             # (utilitization, margin, ...); validate the canonical form so
@@ -386,7 +386,7 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
                     PARAM_REGISTRY,
                     validate_value,
                     effective_override_keys(cfg, cli_overrides),
-                    validate_type=_validate_schema_type,
+                    validate_type=validate_schema_type,
                 )
             )
     return errors
@@ -458,8 +458,8 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
     if "design.rtl" in explicit and base_sources != toml_sources:
         keys.append("rtl")
 
-    from chipcompiler.cli.project.params import _validate_schema_type, lookup_schema
     from chipcompiler.data.parameter_keys import geometry_to_parameters
+    from chipcompiler.params import lookup_schema, validate_schema_type
 
     canonical_params = geometry_to_parameters(assembled.get("parameters") or {})
     # A [params.design] key supersedes the [design] frequency — the
@@ -473,7 +473,7 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
         if schema is None:
             keys.append("frequency_max")
         else:
-            coerced, type_err = _validate_schema_type(
+            coerced, type_err = validate_schema_type(
                 canonical_params["frequency_max"],
                 schema,
             )
@@ -489,7 +489,7 @@ def layer_divergences(cfg, assembled: dict, entry) -> list[str]:
             keys.append("flow")
 
     if cfg.params_overrides and canonical_params:
-        from chipcompiler.cli.project.params import (
+        from chipcompiler.params import (
             build_backend_overrides,
             manifest_value_for,
             resolve_parameters,
@@ -533,7 +533,7 @@ def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], se
     a coerced-equal one does not ("false" vs false). Returns (diverging
     backend leaf keys, leaf keys the per-schema pass covered).
     """
-    from chipcompiler.cli.project.params import _validate_schema_type, lookup_schema
+    from chipcompiler.params import lookup_schema, validate_schema_type
 
     diverging: list[str] = []
     compared: set[str] = set()
@@ -546,7 +546,7 @@ def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], se
         lower_value, present = resolve_lower(schema)
         if not present:
             continue
-        coerced, type_err = _validate_schema_type(lower_value, schema)
+        coerced, type_err = validate_schema_type(lower_value, schema)
         if type_err or coerced != override_value:
             # Direct config/PDK parameters have no backend leaf key. Keep the
             # warning useful by identifying the canonical parameter instead
@@ -568,12 +568,12 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     """
     if not cli_overrides:
         return None
-    from chipcompiler.cli.project.params import (
+    from chipcompiler.data.parameter_keys import geometry_to_parameters
+    from chipcompiler.params import (
         build_backend_overrides,
         manifest_value_for,
         resolve_parameters,
     )
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
 
     manifest_parameters = getattr(cfg, "manifest_parameters", None)
     canonical_params = geometry_to_parameters(manifest_parameters or {})
@@ -650,7 +650,7 @@ def _invalid_manifest_parameters(
     keys pass through untouched (forward-compatible additions).
     """
     errors: list[str] = []
-    from chipcompiler.cli.project.params import manifest_value_for
+    from chipcompiler.params import manifest_value_for
 
     for schema in registry:
         if schema.param in overridden_keys:

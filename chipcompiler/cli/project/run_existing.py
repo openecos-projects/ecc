@@ -55,8 +55,7 @@ def _diverging_workspace_param_fixes(
     """
     import json as _json
 
-    from chipcompiler.cli.project.params import lookup_schema
-    from chipcompiler.data.workspace_parameters import workspace_param_value
+    from chipcompiler.params import lookup_schema, workspace_param_value
 
     fixes = []
     for key, value in sorted(overrides.items()):

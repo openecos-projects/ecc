@@ -203,7 +203,7 @@ def build_project_config_items(
     )
 
     # Parameter records with source information
-    from chipcompiler.cli.project.params import resolve_parameters
+    from chipcompiler.params import resolve_parameters
 
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
@@ -267,7 +267,7 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
         return {}, f"invalid CLI parameter provenance: {exc}"
     if not isinstance(data, dict):
         return {}, "invalid CLI parameter provenance: expected object"
-    from chipcompiler.cli.project.params import parse_cli_overrides
+    from chipcompiler.params import parse_cli_overrides
 
     items = [f"{k}={v}" for k, v in data.items()]
     validated, errors = parse_cli_overrides(items)
@@ -363,8 +363,8 @@ def _manifest_parameter_overrides(cfg) -> dict:
     to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
     the canonical projection whose nested keys match the registry's maps_to.
     """
-    from chipcompiler.cli.project.params import PARAM_REGISTRY, manifest_value_for
     from chipcompiler.data.parameter_keys import geometry_to_parameters
+    from chipcompiler.params import PARAM_REGISTRY, manifest_value_for
 
     manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
     if not isinstance(manifest_parameters, dict):

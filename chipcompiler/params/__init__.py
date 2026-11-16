@@ -1,0 +1,71 @@
+"""Single import surface for ECC parameter resolution and workspace edits.
+
+Callers outside ``chipcompiler.data`` import parameter functionality from
+here; the submodules are an internal split.
+"""
+
+from .journal import (
+    WORKSPACE_PARAM_OVERRIDES_KEY,
+    set_workspace_param,
+    unset_workspace_param,
+    update_workspace_param_value,
+    workspace_param_diff,
+    workspace_param_step,
+    workspace_param_value,
+)
+from .registry import (
+    PARAM_REGISTRY,
+    ConfigTarget,
+    ParamSchema,
+    ResolvedParam,
+    build_backend_overrides,
+    build_config_overrides,
+    build_pdk_overrides,
+    coerce_manifest_parameters,
+    display_key_for,
+    is_known_key,
+    knob_id_for,
+    list_groups,
+    list_schemas,
+    lookup_schema,
+    manifest_value_for,
+    parse_cli_overrides,
+    parse_toml_params,
+    parse_value,
+    resolve_parameters,
+    validate_schema_record,
+    validate_schema_type,
+    validate_value,
+)
+
+__all__ = [
+    "PARAM_REGISTRY",
+    "WORKSPACE_PARAM_OVERRIDES_KEY",
+    "ConfigTarget",
+    "ParamSchema",
+    "ResolvedParam",
+    "build_backend_overrides",
+    "build_config_overrides",
+    "build_pdk_overrides",
+    "coerce_manifest_parameters",
+    "display_key_for",
+    "is_known_key",
+    "knob_id_for",
+    "list_groups",
+    "list_schemas",
+    "lookup_schema",
+    "manifest_value_for",
+    "parse_cli_overrides",
+    "parse_toml_params",
+    "parse_value",
+    "resolve_parameters",
+    "set_workspace_param",
+    "unset_workspace_param",
+    "update_workspace_param_value",
+    "validate_schema_record",
+    "validate_schema_type",
+    "validate_value",
+    "workspace_param_diff",
+    "workspace_param_step",
+    "workspace_param_value",
+]
