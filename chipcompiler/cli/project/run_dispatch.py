@@ -20,7 +20,7 @@ from pathlib import Path
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.run_existing import run_existing_workspace
-from chipcompiler.cli.project.run_prepare import execute_fresh_run
+from chipcompiler.cli.project.run_prepare import create_command_spec, execute_fresh_run
 from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 
@@ -232,6 +232,29 @@ def _stale_project_state(project_dir: str, expected: str) -> CommandResult | Non
     )
 
 
+def _repeats_recorded_create(command_input, run_dir: str, run_name: str) -> bool:
+    """True when this exact `workspace create` request already built the workspace."""
+    if not command_input.command_id:
+        return False
+    from chipcompiler.engine.workspace_lifecycle import (
+        WorkspaceLifecycleError,
+        command_retry_matches,
+        workspace_command_fingerprint,
+    )
+
+    fingerprint = workspace_command_fingerprint(
+        "create",
+        create_command_spec(command_input, run_name),
+        None,
+        command_input.expected_revision,
+    )
+    try:
+        return command_retry_matches(Path(run_dir), command_input.command_id, fingerprint)
+    except (WorkspaceLifecycleError, OSError, ValueError):
+        # A reused id with another request, or an unreadable ledger: not a retry.
+        return False
+
+
 def dispatch_project_run(
     command_input,
     ctx,
@@ -260,11 +283,12 @@ def dispatch_project_run(
         # When execute_flow is False (e.g., workspace create on existing target),
         # return success without resuming the flow (#393).
         if not execute_flow:
-            if cli_overrides:
+            if cli_overrides and not _repeats_recorded_create(command_input, run_dir, run_name):
                 from chipcompiler.cli.core.records import error_record
 
                 # Same rule as `ecc run --set`: an override is recorded when
                 # the workspace is created, never dropped without a message.
+                # A retry of the command that created it is not a new request.
                 return CommandResult.err(
                     [
                         error_record(

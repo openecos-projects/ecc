@@ -202,6 +202,16 @@ def _quote_filelist_path(path: str) -> str:
     return f'"{path}"' if any(ch.isspace() for ch in path) else path
 
 
+def create_command_spec(command_input, run_name: str) -> dict:
+    """The request `workspace create` records under its command id."""
+    return {
+        "workspace": run_name,
+        "from": command_input.from_step,
+        "to": command_input.to_step,
+        "parameters": list(command_input.param_set),
+    }
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -572,12 +582,7 @@ def execute_fresh_run(
                     )
                     from chipcompiler.project.manifest import load_manifest
 
-                    command_spec = {
-                        "workspace": run_name,
-                        "from": command_input.from_step,
-                        "to": command_input.to_step,
-                        "parameters": list(command_input.param_set),
-                    }
+                    command_spec = create_command_spec(command_input, run_name)
                     write_workspace_command(
                         Path(run_dir),
                         command_input.command_id,
