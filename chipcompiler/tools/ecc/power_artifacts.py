@@ -2,9 +2,8 @@
 
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from chipcompiler.data import EccStep, StepEnum
+from chipcompiler.data import StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_POWER_REPORT_FILENAME,
@@ -13,26 +12,6 @@ from chipcompiler.tools.ecc.sta_qor import (
     sta_power_summary_payload,
 )
 from chipcompiler.utility import json_write
-
-if TYPE_CHECKING:
-    from chipcompiler.tools.ecc.module import ECCToolsModule
-    from chipcompiler.utility.log import Logger
-
-
-def save_power_geometry(module: "ECCToolsModule", step: EccStep, logger: "Logger") -> None:
-    """Publish the optional layout snapshot without failing a completed power analysis."""
-    if not step.output.geometry:
-        logger.warning("Replay power geometry directory is not configured")
-        return
-    try:
-        if not module.geometry_snapshot_save(
-            output_dir=step.output.geometry, thumbnail_path=step.output.image
-        ):
-            raise ValueError("Native geometry export failed")
-        if not step.output.geometry_manifest or not step.output.geometry_manifest.is_file():
-            raise ValueError("Geometry snapshot manifest is missing")
-    except Exception as error:
-        logger.warning("Replay power layout unavailable: %s", error)
 
 
 def power_report_path(data_dir: str | Path) -> Path:

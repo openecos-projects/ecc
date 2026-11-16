@@ -411,15 +411,3 @@ def test_power_rerun_invalidates_geometry_without_touching_live_replay(tmp_path)
         (geometry / name / "data").write_text("previous")
     discard_power_artifacts(tmp_path / "data", tmp_path / "feature", geometry_dir=geometry)
     assert sorted(p.name for p in geometry.iterdir()) == ["replay"]
-
-
-def test_optional_power_snapshot_failure_does_not_fail_analysis(tmp_path):
-    from chipcompiler.data import EccOutput
-    from chipcompiler.tools.ecc.power_artifacts import save_power_geometry
-
-    step = EccStep(name="powerAnalysis", output=EccOutput(geometry=tmp_path / "geometry"))
-    native = Mock()
-    native.geometry_snapshot_save.side_effect = OSError("disk full")
-    logger = Mock()
-    save_power_geometry(native, step, logger)
-    logger.warning.assert_called_once()

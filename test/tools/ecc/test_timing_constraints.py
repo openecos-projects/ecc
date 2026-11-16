@@ -299,7 +299,10 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
     monkeypatch.setattr(runner, "get_eda_instance", lambda **_: native_module)
     monkeypatch.setattr(runner, "run_analysis", lambda **_: None)
 
+    save_data = Mock(return_value=True)
+    monkeypatch.setattr(runner, "save_data", save_data)
     assert runner.run_harden(workspace, step) is True
+    save_data.assert_called_once_with(workspace, step, native_module, feature_step=False)
 
     typical = next(item for item in config["liberty"] if item["corner"] == "TYP")
     timing_model = native_module.write_timing_model.call_args.kwargs

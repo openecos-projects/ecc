@@ -33,7 +33,6 @@ from chipcompiler.tools.ecc.power_artifacts import (
     power_step_path,
     publish_power_report,
     publish_power_summary,
-    save_power_geometry,
 )
 from chipcompiler.tools.ecc.rcx_artifacts import (
     copy_rcx_spef_outputs,
@@ -71,6 +70,10 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.FILLER.value,
         StepEnum.RCX.value,
         StepEnum.STA.value,
+        StepEnum.ANTENNA_CHECK.value,
+        StepEnum.POWER_ANALYSIS.value,
+        StepEnum.EMIR.value,
+        StepEnum.HARDEN.value,
     }
 )
 
@@ -458,8 +461,6 @@ def save_data(
     from chipcompiler.tools.replay import capture_native
 
     capture_native(ecc_module, final=True)
-    if step.name == StepEnum.POWER_ANALYSIS.value and os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
-        save_power_geometry(ecc_module, step, workspace.logger)
     if step.name in _GEOMETRY_SNAPSHOT_STEPS:
         geometry_dir = step.output.geometry or ""
         geometry_manifest = step.output.geometry_manifest
@@ -1002,6 +1003,10 @@ def run_harden(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 
+        if not save_data(workspace, step, ecc_module, feature_step=False):
+            sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Imcomplete)
+            return False
+        sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Success)
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
         reslut = True
 

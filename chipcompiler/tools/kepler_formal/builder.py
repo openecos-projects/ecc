@@ -95,6 +95,7 @@ def build_step(
         version="0.1",
         directory=directory,
         input=KeplerFormalInput(
+            def_=optional_path(input_def),
             gate_verilog=gate_verilog,
             golden_verilog=golden_verilog,
             db=optional_path(input_db),
