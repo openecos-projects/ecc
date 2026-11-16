@@ -1314,7 +1314,16 @@ def test_rcx_checklist_uses_top_module_for_spef_design_token(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "step_name", (StepEnum.ROUTING.value, StepEnum.LVS.value, StepEnum.DRC.value)
+    "step_name",
+    (
+        StepEnum.ROUTING.value,
+        StepEnum.LVS.value,
+        StepEnum.DRC.value,
+        StepEnum.ANTENNA_CHECK.value,
+        StepEnum.POWER_ANALYSIS.value,
+        StepEnum.EMIR.value,
+        StepEnum.HARDEN.value,
+    ),
 )
 def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_name):
     workspace = Workspace(

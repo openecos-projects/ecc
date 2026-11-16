@@ -130,6 +130,10 @@ def run_step(
 
     with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
         outcome["ok"] = _run_step(workspace, step, ecc_module)
+        if outcome["ok"] and step.name == "postRouteLec":
+            from .lec_layout import save_checked_layout
+
+            save_checked_layout(workspace, step, ecc_module)
         return outcome["ok"]
 
 
