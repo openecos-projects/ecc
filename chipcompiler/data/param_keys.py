@@ -16,8 +16,6 @@ This module maps display keys onto the flat ``PARAM_REGISTRY`` spec keys.
 Value-shape notes mirrored from the GUI seed data:
 
 - ``margin`` is a single scalar the GUI expands to ``[margin, margin]``.
-- ``die_area_mode`` selects the die-builder strategy; see
-  :data:`DIE_AREA_MODE_TO_DIE_BUILDER_MODE`.
 """
 
 from collections.abc import Callable
@@ -50,18 +48,12 @@ DISPLAY_KEY_MAP: dict[str, str] = {
     "margin": "floorplan.core_margin",
     "die_width": "floorplan.die_builder.die_size.width_micron",
     "die_height": "floorplan.die_builder.die_size.height_micron",
-    "die_area_mode": "floorplan.die_builder.mode",
     "max_fanout": "cts.max_fanout",
     "sta_max_parallel_corners": "sta.max_parallel_corners",
     "target_density": "place.target_density",
     "target_overflow": "place.target_overflow",
     "clock_tree": "geometry.clock_tree",
     "manual_macro_placement": "macro.manual_placement",
-}
-
-DIE_AREA_MODE_TO_DIE_BUILDER_MODE: dict[str, str] = {
-    "width_height": "die_size",
-    "utilitization_margin": "die_util",
 }
 
 AGENT_KNOB_MAP: dict[str, AgentKnob] = {
