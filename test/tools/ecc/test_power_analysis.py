@@ -58,7 +58,7 @@ class FakePowerModule:
         json_path.write_text(json.dumps({"Instances": {"iopads": {"num": 0}}}))
         return True
 
-    def init_pw(self, output_dir, lib_paths, sdc_path, spef_path):
+    def init_pw(self, output_dir, lib_paths, sdc_path, spef_path, replay_geometry_dir=""):
         self.calls.append(
             (
                 "init_pw",
@@ -386,3 +386,40 @@ def test_power_analysis_subflow_and_directory_contract(tmp_path):
         EccSubFlowEnum.save_data.value,
         EccSubFlowEnum.analysis.value,
     ]
+
+
+def test_power_replay_native_config_is_opt_in_and_uses_string_path(tmp_path):
+    native = Mock()
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = native
+    geometry = tmp_path / "geometry/power"
+    module.init_pw(tmp_path, replay_geometry_dir=geometry)
+    native.init_pw.assert_called_once_with(
+        config_dict={
+            "-temp_directory_path": str(tmp_path),
+            "-replay_geometry_directory": str(geometry),
+        }
+    )
+
+
+def test_power_rerun_invalidates_geometry_without_touching_live_replay(tmp_path):
+    from chipcompiler.tools.ecc.power_artifacts import discard_power_artifacts
+
+    geometry = tmp_path / "geometry"
+    for name in ("power", "power.tmp", "replay"):
+        (geometry / name).mkdir(parents=True)
+        (geometry / name / "data").write_text("previous")
+    discard_power_artifacts(tmp_path / "data", tmp_path / "feature", geometry_dir=geometry)
+    assert sorted(p.name for p in geometry.iterdir()) == ["replay"]
+
+
+def test_optional_power_snapshot_failure_does_not_fail_analysis(tmp_path):
+    from chipcompiler.data import EccOutput
+    from chipcompiler.tools.ecc.power_artifacts import save_power_geometry
+
+    step = EccStep(name="powerAnalysis", output=EccOutput(geometry=tmp_path / "geometry"))
+    native = Mock()
+    native.geometry_snapshot_save.side_effect = OSError("disk full")
+    logger = Mock()
+    save_power_geometry(native, step, logger)
+    logger.warning.assert_called_once()

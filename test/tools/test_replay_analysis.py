@@ -112,3 +112,35 @@ def test_formal_witness_stays_logical_and_is_frozen_before_staging_cleanup(tmp_p
         {"label": key.replace("_", " "), "details": value} for key, value in witness.items()
     ]
     assert not any("instances" in item or "bboxes" in item for item in view["items"])
+
+
+def test_power_geometry_is_preferred_frozen_and_stale_or_invalid_geometry_falls_back(tmp_path):
+    step = SimpleNamespace(name="powerAnalysis", directory=tmp_path / "powerAnalysis_ecc")
+    raw = step.directory / "data/pw/power_reporter/instance_power.tsv"
+    spatial = step.directory / "output/geometry/power/instance_power_geometry.tsv"
+    raw.parent.mkdir(parents=True)
+    spatial.parent.mkdir(parents=True)
+    raw.write_text("instance_name\ttotal_power_w\na\t0.31\n")
+    spatial.write_text("instance_name\tlx\tly\thx\thy\ttotal_power_w\na\t1\t2\t3\t4\t0.31\n")
+    metadata = {
+        "schema": "ecos.power.geometry.v1",
+        "matched_instances": 1,
+        "unresolved_instances": 2,
+    }
+    spatial.with_name("metadata.json").write_text(json.dumps(metadata))
+    attempt = tmp_path / "a"
+    result = collect_analysis(step, attempt, 2)
+    (view,) = json.loads((attempt / result["analysis"]).read_text())["views"]
+    assert view["items"][0]["bboxes"] == [[1, 2, 3, 4]]
+    assert view["summary"]["spatial_coverage"] == metadata
+    source = attempt / view["source"]["path"]
+    frozen = source.read_text()
+    os.utime(spatial, ns=(1, 1))
+    result = collect_analysis(step, tmp_path / "b", 2)
+    (fallback,) = json.loads((tmp_path / "b" / result["analysis"]).read_text())["views"]
+    assert fallback["items"][0]["bboxes"] == []
+    spatial.write_text("instance_name\tlx\tly\thx\thy\ttotal_power_w\na\t3\t2\t1\t4\t0.31\n")
+    result = collect_analysis(step, tmp_path / "c", 2)
+    (fallback,) = json.loads((tmp_path / "c" / result["analysis"]).read_text())["views"]
+    assert fallback["items"][0]["bboxes"] == []
+    assert source.read_text() == frozen

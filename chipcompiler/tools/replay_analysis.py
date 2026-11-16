@@ -104,20 +104,39 @@ def power(path):
         )
         columns = reader.fieldnames or []
         rows = list(reader)
+    metadata_path = path.with_name("metadata.json")
+    metadata = (
+        json.loads(metadata_path.read_text()) if "lx" in columns and metadata_path.is_file() else {}
+    )
     views = []
     for component in ("total", "internal", "switching", "leakage"):
         column = f"{component}_power_w"
         if column not in columns:
             continue
+
+        def bbox(row):
+            if "lx" not in columns:
+                return []
+            return [_box([int(row[key]) for key in ("lx", "ly", "hx", "hy")])]
+
         items = [
             {
                 "label": row["instance_name"],
                 "instances": [row["instance_name"]],
                 "value": _number(row[column]),
+                "bboxes": bbox(row),
                 "details": row,
             }
             for row in rows
         ]
+        # Reveal the heatmap in a stable floorplan sweep.
+        items.sort(
+            key=lambda item: (
+                item["bboxes"][0][1] if item["bboxes"] else 0,
+                item["bboxes"][0][0] if item["bboxes"] else 0,
+                item["label"],
+            )
+        )
         views.append(
             _view(
                 f"Instance {component} power",
@@ -129,6 +148,7 @@ def power(path):
                     "reported_sum_w": sum(item["value"] for item in items),
                     "quantity": "Power per instance; not power per area",
                     "component": component,
+                    "spatial_coverage": metadata,
                 },
             )
         )
@@ -147,7 +167,10 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
         "lvs": [("data/lvs/lvs_reporter/ilvs.json", lambda p: violations(p, "lvs"))],
         "antennaCheck": [("feature/*.step.json", lambda p: violations(p, "antenna"))],
         "sta": [("feature/**/timing_paths.json", timing)],
-        "powerAnalysis": [("data/pw/power_reporter/instance_power.tsv", power)],
+        "powerAnalysis": [
+            ("output/geometry/power/instance_power_geometry.tsv", power),
+            ("data/pw/power_reporter/instance_power.tsv", power),
+        ],
         "RCX": [("output/*.spef", lambda p: rcx(p) + network_views(p, Path(step.input.def_)))],
         "lec": [("output/*_result.json", formal)],
         "postRouteLec": [("output/*_result.json", formal)],
@@ -166,6 +189,12 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
     if step.name == "Harden":
         views.append(deliverables(step, started_unix_ns))
     for pattern, parse in patterns[step.name]:
+        if (
+            step.name == "powerAnalysis"
+            and pattern == "data/pw/power_reporter/instance_power.tsv"
+            and views
+        ):
+            continue
         paths = sorted(root.glob(pattern))
         fresh = [p for p in paths if p.is_file() and p.stat().st_mtime_ns >= started_unix_ns]
         if not fresh:

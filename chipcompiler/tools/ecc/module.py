@@ -815,6 +815,7 @@ class ECCToolsModule:
         lib_paths: list[Path] | list[str] | None = None,
         sdc_path: PathArg = "",
         spef_path: PathArg = "",
+        replay_geometry_dir: PathArg = "",
     ):
         if lib_paths is None:
             lib_paths = []
@@ -822,7 +823,10 @@ class ECCToolsModule:
             return False
         self.ecc.sdc_init(sdc_path)
         self.ecc.spef_init(spef_path)
-        return self.ecc.init_pw(config_dict={"-temp_directory_path": os.fspath(output_dir)})
+        config = {"-temp_directory_path": os.fspath(output_dir)}
+        if replay_geometry_dir:
+            config["-replay_geometry_directory"] = os.fspath(replay_geometry_dir)
+        return self.ecc.init_pw(config_dict=config)
 
     def run_pw(self):
         return self.ecc.run_pw()
