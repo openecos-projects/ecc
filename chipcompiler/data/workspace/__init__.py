@@ -8,6 +8,7 @@ from typing import Any, Final
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
 
+from ..config_params.common import flag_to_int as _flag_to_int
 from ..parameter import (
     Parameters,
     get_parameters,
@@ -276,20 +277,6 @@ class WorkspaceConfigParameterMapping:
     json_path: tuple[str, ...]
     to_config: Callable[[Any], Any] | None = None
     to_parameter: Callable[[Any], Any] | None = None
-
-
-def _flag_to_int(value: Any) -> int:
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "yes", "on"}:
-            return 1
-        if normalized in {"false", "no", "off", ""}:
-            return 0
-        try:
-            return int(float(normalized))
-        except ValueError:
-            return 1
-    return int(bool(value))
 
 
 PARAMETER_CONFIG_FIELD_MAPPINGS = (

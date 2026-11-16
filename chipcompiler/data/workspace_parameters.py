@@ -2,6 +2,7 @@
 
 from copy import deepcopy
 
+from chipcompiler.data.config_params.common import ConfigTarget
 from chipcompiler.data.parameter import update_parameters
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
@@ -40,23 +41,48 @@ def workspace_param_step(schema) -> str | None:
 def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
     if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
+    default = schema.default_for(pdk)
     if schema.maps_to is not None:
-        return _parameter_target_value(workspace.parameters.data, schema.maps_to, schema.default)
+        return _parameter_target_value(workspace.parameters.data, schema.maps_to, default)
     if schema.config_target is not None:
-        config_path = workspace.config.get(schema.config_target.config_key)
-        if config_path is None:
-            raise ValueError(f"workspace config missing target: {schema.config_target.config_key}")
-        if strict:
-            from chipcompiler.utility import json_read_strict
-
-            config = json_read_strict(config_path)
-            if not isinstance(config, dict):
-                raise ValueError(f"workspace config must be an object: {config_path}")
-        else:
-            config = json_read(config_path)
-        value = _nested_value(config, schema.config_target.json_path)
-        return schema.default if value is _MISSING else value
+        return _config_target_value(workspace, schema, default, strict=strict)
     raise ValueError(f"{schema.param} has no workspace configuration target")
+
+
+def _read_target(workspace, target: ConfigTarget, *, strict: bool) -> object:
+    """The parameter-side value stored at *target*, or ``_MISSING``."""
+    config_path = workspace.config.get(target.config_key)
+    if config_path is None:
+        raise ValueError(f"workspace config missing target: {target.config_key}")
+    if strict:
+        from chipcompiler.utility import json_read_strict
+
+        config = json_read_strict(config_path)
+        if not isinstance(config, dict):
+            raise ValueError(f"workspace config must be an object: {config_path}")
+    else:
+        config = json_read(config_path)
+    value = _nested_value(config, target.json_path)
+    return value if value is _MISSING else target.parse(value)
+
+
+def _config_target_value(workspace, schema, default: object, *, strict: bool) -> object:
+    targets = schema.config_targets
+    if all(target.element is None for target in targets):
+        value = _read_target(workspace, targets[0], strict=strict)
+        return default if value is _MISSING else value
+    # A list parameter fanned out per element: read each element from its
+    # first target; any missing element falls back to the default list.
+    size = 1 + max(target.element for target in targets if target.element is not None)
+    elements: list[object] = []
+    for index in range(size):
+        target = next((item for item in targets if item.element == index), None)
+        value = _MISSING if target is None else _read_target(workspace, target, strict=strict)
+        if value is _MISSING:
+            return default
+        elements.append(value)
+    return elements
 
 
 def set_workspace_param(workspace, schema, value: object) -> tuple[object, str | None]:
