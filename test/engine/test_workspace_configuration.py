@@ -859,3 +859,39 @@ def test_macro_placements_apply_prunes_stale_tcl_when_emptied(tmp_path, minimal_
     assert text == f"{MACRO_LOCATION_MARKER}\n\n"
     updated = load_workspace(workspace.directory)
     assert macro_placements(updated) == []
+
+
+def test_step_configuration_includes_parameters_spanning_several_steps(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import read_step_configuration
+
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+
+    params = {item["param"] for item in read_step_configuration(workspace, "place")["parameters"]}
+
+    assert "place.timing_sizing_action" in params
+
+
+def test_parameter_records_report_the_workspace_pdk_default_and_choices(tmp_path):
+    from test.data.conftest import create_minimal_sg13g2_pdk
+
+    spec, bindings = _workspace_spec_fixture()
+    spec["pdk"]["familyId"] = "sg13g2"
+    bindings["pdk"]["root"] = str(create_minimal_sg13g2_pdk(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+
+    def record(step: str, param: str) -> dict[str, Any]:
+        records = read_step_configuration(workspace, step)["parameters"]
+        return next(item for item in records if item["param"] == param)
+
+    assert record("place", "place.target_density")["default"] == 0.65
+    assert record("route", "route.bottom_layer")["choices"] == [
+        "Metal1",
+        "Metal2",
+        "Metal3",
+        "Metal4",
+        "Metal5",
+    ]

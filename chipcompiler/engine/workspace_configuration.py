@@ -645,7 +645,10 @@ def _step_catalog(workspace: Any, step_id: str):
         for schema in list_schemas()
         if schema.pdk_target is None
         and (
-            normalize_flow_step(schema.applies).casefold() == identity
+            any(
+                normalize_flow_step(part.strip()).casefold() == identity
+                for part in schema.applies.split(",")
+            )
             or (schema.applies == "all" and identity == first)
         )
     )
@@ -653,11 +656,12 @@ def _step_catalog(workspace: Any, step_id: str):
 
 
 def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
+    pdk = workspace.pdk.name
     record = {
         "param": schema.param,
         "type": schema.type,
         "value": workspace_param_value(workspace, schema),
-        "default": deepcopy(schema.default),
+        "default": deepcopy(schema.default_for(pdk)),
         "applies": schema.applies,
         **({"output_only": True} if schema.output_only else {}),
         "description": schema.description,
@@ -665,7 +669,7 @@ def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
         "knob_id": knob_id_for(schema.param),
     }
     for field in ("range", "choices", "unit"):
-        value = getattr(schema, field)
+        value = schema.choices_for(pdk) if field == "choices" else getattr(schema, field)
         if value is not None:
             record[field] = list(value) if isinstance(value, tuple) else value
     return record

@@ -84,13 +84,14 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     if selected_step and selected_step not in flow_step_names:
         return CommandResult.err([error_record("unknown_step", step=args.step)], exit_code=1)
     first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
     records = []
     for schema in list_schemas():
         if schema.pdk_target is not None or (not args.all and schema.param not in overrides):
             continue
         schema_steps = {
             normalize_flow_step(schema.group).casefold(),
-            normalize_flow_step(schema.applies).casefold(),
+            *(normalize_flow_step(part.strip()).casefold() for part in schema.applies.split(",")),
         }
         global_at_first_step = schema.applies == "all" and selected_step == first_step
         if selected_step and selected_step not in schema_steps and not global_at_first_step:
@@ -101,7 +102,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             continue
         status = "workspace" if schema.param in overrides else "base"
         if ctx.output_mode == OutputMode.PLAIN:
-            record = _line_record(ctx, schema, value, status)
+            record = _line_record(ctx, schema, value, status, pdk)
             if canonical_step:
                 record["step_id"] = canonical_step
             records.append(record)
@@ -412,14 +413,16 @@ def _record(ctx: CommandContext, key: str, value: object, status: str) -> dict:
     }
 
 
-def _line_record(ctx: CommandContext, schema, value: object, status: str) -> dict:
+def _line_record(
+    ctx: CommandContext, schema, value: object, status: str, pdk: str | None = None
+) -> dict:
     """Return the stable machine record used by GUI workspace parameter reads."""
     record: dict[str, object] = {
         "record": "parameter",
         "id": schema.param,
         "type": schema.type,
         "value_literal": json_literal(value),
-        "default_literal": json_literal(schema.default),
+        "default_literal": json_literal(schema.default_for(pdk)),
         "applies_to": schema.applies,
         "status": status,
         "source": status,
@@ -427,8 +430,9 @@ def _line_record(ctx: CommandContext, schema, value: object, status: str) -> dic
     }
     if schema.range is not None:
         record["range_literal"] = json_literal(list(schema.range))
-    if schema.choices is not None:
-        record["choices_literal"] = json_literal(list(schema.choices))
+    choices = schema.choices_for(pdk)
+    if choices is not None:
+        record["choices_literal"] = json_literal(list(choices))
     if schema.unit is not None:
         record["unit"] = schema.unit
     if schema.description:
