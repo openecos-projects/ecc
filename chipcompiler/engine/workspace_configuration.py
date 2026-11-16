@@ -236,7 +236,7 @@ def _apply_workspace_parameters(
                 f"Parameter {parameter} is not configurable at {step_id}",
             )
         try:
-            affected_step = workspace_param_step(schema)
+            affected_step = workspace_param_step(schema, workspace)
         except ValueError as exc:
             raise WorkspaceLifecycleError("parameter_requires_refresh", str(exc)) from exc
         if affected_step is not None:

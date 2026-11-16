@@ -19,23 +19,23 @@ from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.data.workspace.config_overrides import config_path_for_key
 from chipcompiler.utility import json_read_strict, json_write
 
-_MISSING: object = object()
+MISSING: object = object()
 
 
-def _stored_value(parameters: Mapping[str, object], maps_to: str | dict[str, str]) -> object:
+def stored_value(parameters: Mapping[str, object], maps_to: str | dict[str, str]) -> object:
     if isinstance(maps_to, str):
-        return parameters.get(maps_to, _MISSING)
+        return parameters.get(maps_to, MISSING)
     parent, child = next(iter(maps_to.items()))
     node = parameters.get(parent)
-    return node.get(child, _MISSING) if isinstance(node, Mapping) else _MISSING
+    return node.get(child, MISSING) if isinstance(node, Mapping) else MISSING
 
 
 def _effective_value(schema: ParamSchema, parameters: Mapping[str, object]) -> object:
     if schema.maps_to is not None:
-        return _stored_value(parameters, schema.maps_to)
+        return stored_value(parameters, schema.maps_to)
     if schema.fork:
         return schema.default_for(str(parameters.get("pdk") or "") or None)
-    return _MISSING
+    return MISSING
 
 
 def _carries(target: ConfigTarget, value: object) -> bool:
@@ -76,7 +76,7 @@ def derive_parameter_configs(
         if not schema.config_targets:
             continue
         value = _effective_value(schema, parameters)
-        if value is _MISSING:
+        if value is MISSING:
             continue
         for target in schema.config_targets:
             if not _carries(target, value):

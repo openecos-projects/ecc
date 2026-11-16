@@ -6,6 +6,8 @@ here; the submodules are an internal split.
 
 from .journal import (
     WORKSPACE_PARAM_OVERRIDES_KEY,
+    carried_parameters,
+    invalid_carried_parameters,
     set_workspace_param,
     unset_workspace_param,
     update_workspace_param_value,
@@ -45,7 +47,9 @@ __all__ = [
     "build_backend_overrides",
     "build_config_overrides",
     "build_pdk_overrides",
+    "carried_parameters",
     "display_key_for",
+    "invalid_carried_parameters",
     "is_known_key",
     "knob_id_for",
     "list_groups",

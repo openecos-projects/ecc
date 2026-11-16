@@ -23,11 +23,10 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         bindings = deepcopy(projection["workspaceBindings"])
     if not isinstance(spec, dict) or not isinstance(bindings, dict):
         raise ValueError(f"workspace has no workspace spec: {workspace_path}")
-    # A Project refresh owns structural settings only. Existing Workspace
-    # parameters are merged and marked as preserved by update_workspace_from_spec;
-    # carrying the Snapshot's resolved defaults here would incorrectly turn
-    # every one of them into an explicit request for the new flow.
-    spec["parameters"] = {}
+    # A Project refresh owns structural settings only. The Snapshot's derived
+    # parameter view is not part of the request; update_workspace_from_spec
+    # carries the existing Workspace parameters over itself.
+    spec.pop("parameters", None)
     spec["design"] = {
         "name": cfg.design_name,
         "topModule": cfg.design_top,
