@@ -41,8 +41,14 @@ def test_diffs_preserve_input_pdn_and_checkpoint_touched_state(tmp_path):
         json.loads((tmp_path / "attempts/a" / f["path"]).read_text()) for f in manifest["frames"]
     ]
     assert frames[0]["touched"] == []
-    assert frames[1]["upsert"] == {"inst:a": instance(20), "inst:b": instance(40)}
-    assert frames[-1]["upsert"] == baseline
+    assert frames[1]["upsert"] == {"inst:b": instance(40)}
+    assert frames[1]["translate"] == {"inst:a": [20, 0]}
+    assert manifest["schema"] == "ecos.replay.v2"
+    assert frames[-1]["base_checkpoint"] == 0
+    assert frames[-1]["upsert"] == {}
+    assert frames[-1]["remove"] == []
+    assert manifest["frames"][-1]["encoding"] == "json+base"
+    assert frames[0]["upsert"] == baseline
     assert frames[-1]["touched"] == ["inst:a", "inst:b"]
     assert not capture.exists()
 
@@ -121,10 +127,29 @@ def test_all_standard_flow_steps_are_supported_for_replay():
     from chipcompiler.tools.replay import SUPPORTED
 
     assert {
-        "Synthesis", "lec", "preFloorplan", "macroPlacement", "postFloorplan", "preplace",
-        "place", "diff_opt", "diff_sizing", "CTS", "legalization", "Timing optimization",
-        "route", "filler", "lvs", "drc", "antennaCheck", "postRouteLec", "RCX", "sta",
-        "powerAnalysis", "emir", "Harden",
+        "Synthesis",
+        "lec",
+        "preFloorplan",
+        "macroPlacement",
+        "postFloorplan",
+        "preplace",
+        "place",
+        "diff_opt",
+        "diff_sizing",
+        "CTS",
+        "legalization",
+        "Timing optimization",
+        "route",
+        "filler",
+        "lvs",
+        "drc",
+        "antennaCheck",
+        "postRouteLec",
+        "RCX",
+        "sta",
+        "powerAnalysis",
+        "emir",
+        "Harden",
     } <= SUPPORTED
 
 
@@ -140,7 +165,8 @@ def test_report_only_steps_publish_real_subflow_timeline(tmp_path):
     assert manifest["geometry_detail"] == "report_only"
     assert [frame["subflow"] for frame in manifest["frames"]] == ["run yosys", "analysis"]
     assert [frame["state_domain"] for frame in manifest["frames"]] == [
-        "analysis_state", "analysis_complete"
+        "analysis_state",
+        "analysis_complete",
     ]
 
 
@@ -269,3 +295,44 @@ def test_subflow_ongoing_and_success_form_one_timed_node(tmp_path):
     assert manifest["subflow_timing"] == [
         {"name": "run placement", "state": "Success", "start_ns": 20, "end_ns": 80}
     ]
+
+
+def test_deleted_name_reuse_gets_a_new_lifetime_and_retains_deletion_marker(tmp_path):
+    root = tmp_path / "replay"
+    capture = root / "attempts/a/capture"
+    capture.mkdir(parents=True)
+    for i, objects in enumerate([{"inst:a": instance(0)}, {}, {"inst:a": instance(10)}]):
+        sample(capture, i, objects, final=i == 2)
+    publish(root, "a", "place", "ecc", 10**12)
+    manifest = json.loads((root / "attempts/a/manifest.json").read_text())
+    final = json.loads((root / "attempts/a" / manifest["frames"][-1]["path"]).read_text())
+    assert set(final["upsert"]) == {"inst:a#birth:1"}
+    assert set(final["deleted"]) == {"inst:a"}
+    assert final["restored"] == []
+
+
+def test_route_replacement_preserves_power_and_pin_vias(tmp_path):
+    capture = tmp_path / "attempts/a/capture"
+    baseline = {
+        "power": {"kind": "via", "net_kind": "power", "bbox": [0, 0, 2, 2]},
+        "pin": {"kind": "via", "net_kind": "pin", "bbox": [4, 4, 6, 6]},
+        "old": {"kind": "via", "net_kind": "signal", "bbox": [8, 8, 10, 10]},
+    }
+    routed = {"new": {"kind": "wire", "bbox": [10, 10, 20, 20]}}
+    sample(capture, 0, baseline)
+    sample(capture, 1, routed, scope="routing", final=True)
+    publish(tmp_path, "a", "route", "ecc", 100)
+    final = json.loads((tmp_path / "attempts/a/subflows/000/frames/000001.json").read_text())
+    assert final["upsert"] == {"power": baseline["power"], "pin": baseline["pin"], **routed}
+
+
+def test_v2_compressed_frame_declares_encoding_and_round_trips(tmp_path):
+    import gzip
+
+    from chipcompiler.tools.replay_delta import write_frame
+
+    payload = {"large": "captured" * 160000}
+    path, encoding = write_frame(tmp_path, "frames/0.json", payload)
+    assert encoding == "gzip+json"
+    assert json.loads(gzip.decompress((tmp_path / path).read_bytes())) == payload
+    assert (tmp_path / path).stat().st_size < 20000

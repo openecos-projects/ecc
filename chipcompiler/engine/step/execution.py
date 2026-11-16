@@ -42,6 +42,7 @@ def _execute_in_worker(
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
     layout_image: bool = True,
+    replay_attempt: str | None = None,
 ) -> StepExecutionResult:
     from chipcompiler.engine.step import process as step_subprocess
 
@@ -52,6 +53,7 @@ def _execute_in_worker(
         started_at=started_at,
         worker_module=worker_module,
         layout_image=layout_image,
+        replay_attempt=replay_attempt,
     )
 
 
@@ -64,6 +66,7 @@ def execute_tool_step(
     started_at: float | None = None,
     worker_module: str = STEP_WORKER_MODULE,
     layout_image: bool = True,
+    replay_attempt: str | None = None,
 ) -> StepExecutionResult:
     return _execute_in_worker(
         workspace,
@@ -73,6 +76,7 @@ def execute_tool_step(
         started_at=started_at,
         worker_module=worker_module,
         layout_image=layout_image,
+        replay_attempt=replay_attempt,
     )
 
 

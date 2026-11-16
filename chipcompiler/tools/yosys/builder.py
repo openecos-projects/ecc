@@ -407,7 +407,7 @@ def build_step_config(workspace: Workspace, step: YosysStep):
         Path(step.script.dir) if step.script.dir else require_path(step.directory, "step directory")
     )
 
-    for file in ["yosys_synthesis.tcl", "init_tech.tcl"]:
+    for file in ["yosys_synthesis.tcl", "init_tech.tcl", "replay.tcl"]:
         src = scripts_dir / file
         if src.exists():
             _copy_writable(src, script_dir / file)

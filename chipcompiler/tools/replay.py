@@ -4,10 +4,12 @@ import json
 import logging
 import os
 import time
-import uuid
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+
+from chipcompiler.tools.replay_publish import publish
+from chipcompiler.tools.replay_storage import atomic_json, read_pointer, replay_root, update_pointer
 
 SUPPORTED = {
     "Synthesis",
@@ -35,15 +37,12 @@ SUPPORTED = {
     "emir",
     "Harden",
 }
-REPORT_ONLY = {"Synthesis", "lec", "postRouteLec"}
-UNCHANGED_LAYOUT = {
-    "Harden", "powerAnalysis", "emir", "RCX", "sta", "antennaCheck", "lvs", "drc"
-}
 ENV_KEYS = (
     "ECC_REPLAY_CAPTURE_DIR",
     "ECC_REPLAY_START_NS",
     "ECC_REPLAY_STEP",
     "ECC_REPLAY_OFFSET_NS",
+    "ECC_REPLAY_SAMPLE_ITERATIONS",
 )
 logger = logging.getLogger(__name__)
 
@@ -166,13 +165,6 @@ def anchor_native_capture() -> None:
         )
 
 
-def atomic_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8")
-    temporary.replace(path)
-
-
 def read_settings(workspace) -> bool:
     """Read the canonical ECC CLI parameter; missing means disabled."""
     data = workspace.parameters.data.get("replay", {})
@@ -181,254 +173,59 @@ def read_settings(workspace) -> bool:
     return data.get("enabled", False)
 
 
-def publish(
-    root: Path,
-    attempt: str,
-    step: str,
-    tool: str,
-    duration_ns: int,
-    *,
-    results: dict | None = None,
-    started_unix_ns: int = 0,
-) -> None:
-    """Convert real tool samples to reversible semantic diffs and seek checkpoints."""
-    directory = root / "attempts" / attempt
-    if (directory / "capture" / "error.json").exists():
-        raise ValueError("native Replay capture failed; see tool log")
-    samples = []
-    for path in (directory / "capture").glob("*.json"):
-        sample = json.loads(path.read_text())
-        samples.append((sample["elapsed_ns"], sample["sequence"], path, sample["state_domain"]))
-    samples.sort(key=lambda entry: (entry[0], entry[1]))
-    capture_dir = directory / "capture"
-    if not samples and step in REPORT_ONLY:
-        timing_path = capture_dir / "subflows.jsonl"
-        events = (
-            [json.loads(line) for line in timing_path.read_text().splitlines()]
-            if timing_path.exists()
-            else []
-        )
-        if not events:
-            events = [{"name": "analysis", "state": "Success", "elapsed_ns": duration_ns}]
-        for sequence, event in enumerate(events):
-            final = sequence == len(events) - 1
-            path = capture_dir / f"report-{sequence:06d}.json"
-            state_domain = "analysis_complete" if final else "analysis_state"
-            atomic_json(
-                path,
-                {
-                    "sequence": sequence,
-                    "elapsed_ns": event["elapsed_ns"],
-                    "phase": "analysis_complete" if final else "analysis_progress",
-                    "subflow": event["name"],
-                    "state_domain": state_domain,
-                    "objects": {},
-                },
-            )
-            samples.append((event["elapsed_ns"], sequence, path, state_domain))
-    if samples and samples[-1][3] == "native_input" and step in UNCHANGED_LAYOUT:
-        elapsed_ns, sequence, source, _ = samples[-1]
-        sample = json.loads(source.read_text())
-        sample.update(
-            sequence=sequence + 1,
-            elapsed_ns=max(elapsed_ns, duration_ns),
-            phase="analysis_complete",
-            subflow="analysis",
-            state_domain="native_committed",
-        )
-        path = capture_dir / "native-analysis-final.json"
-        atomic_json(path, sample)
-        samples.append((sample["elapsed_ns"], sequence + 1, path, "native_committed"))
-    if not samples or samples[-1][3] not in {"native_committed", "analysis_complete"}:
-        raise ValueError("tool did not provide a committed final Replay sample")
-    objects, touched, frames, subflows = {}, set(), [], []
-    for sequence, (_, _, path, _) in enumerate(samples):
-        sample = json.loads(path.read_text())
-        incoming = sample["objects"]
-        if not isinstance(incoming, dict):
-            raise ValueError("Replay sample objects must be an object")
-        # Placement only replaces instances. Preserve floorplan objects captured by iFP.
-        scope = sample.get("scope")
-        replaced = {"instance", "macro"} if scope == "instances" else {"macro"}
-        current = (
-            {k: v for k, v in objects.items() if v["kind"] not in replaced}
-            if scope in {"instances", "macros"}
-            else {}
-        )
-        current.update(
-            {k: v for k, v in incoming.items() if not (scope and k == "die" and k in current)}
-        )
-        if scope in {"instances", "macros"}:
-            for key in incoming:
-                if key in objects and key in current:
-                    current[key] = {**objects[key], **current[key]}
-        for obj in current.values():
-            bbox = obj["bbox"]
-            if len(bbox) != 4 or any(type(v) is not int for v in bbox):
-                raise ValueError("Replay bounds must be four integer DBU coordinates")
-            if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
-                raise ValueError("Replay bounds are inverted")
-        upsert = {k: v for k, v in current.items() if objects.get(k) != v}
-        removed = [k for k in objects if k not in current]
-        if sequence:
-            # Metadata differences between tool domains do not imply movement.
-            touched.update(
-                k
-                for k, v in upsert.items()
-                if v["kind"] in {"instance", "macro"}
-                and (
-                    k not in objects
-                    or v["bbox"] != objects[k]["bbox"]
-                    or (
-                        "master" in v
-                        and "master" in objects[k]
-                        and v["master"] != objects[k]["master"]
-                    )
-                    or (
-                        "orient" in v
-                        and "orient" in objects[k]
-                        and v["orient"] != objects[k]["orient"]
-                    )
-                )
-            )
-            touched.update(k for k in removed if objects[k]["kind"] in {"instance", "macro"})
-        subflow = sample["subflow"]
-        if subflow not in subflows:
-            subflows.append(subflow)
-        folder = f"subflows/{subflows.index(subflow):03d}/frames"
-        checkpoint = sequence % 16 == 0 or sequence == len(samples) - 1
-        relative = f"{folder}/{sequence:06d}.json"
-        atomic_json(
-            directory / relative,
-            {
-                "sequence": sequence,
-                "base_revision": sequence - 1,
-                "checkpoint": checkpoint,
-                "upsert": current if checkpoint else upsert,
-                "remove": [] if checkpoint else removed,
-                "touched": sorted(touched),
-            },
-        )
-        frames.append(
-            {
-                "sequence": sequence,
-                "elapsed_ns": sample["elapsed_ns"],
-                "phase": sample["phase"],
-                "subflow": subflow,
-                "state_domain": sample["state_domain"],
-                "path": relative,
-                "checkpoint": checkpoint,
-                "iteration": sample.get("iteration"),
-                "metrics": sample.get("metrics", {}),
-            }
-        )
-        objects = current
-    timing_path = directory / "capture/subflows.jsonl"
-    timings = []
-    previous_end = 0
-    if timing_path.exists():
-        events = [json.loads(line) for line in timing_path.read_text().splitlines()]
-        stage_starts = {}
-        for event in events:
-            if event["state"] == "Ongoing":
-                stage_starts.setdefault(event["name"], event["elapsed_ns"])
-                continue
-            end = event["elapsed_ns"]
-            # run_fp returns once for four native stages; the Python ledger
-            # acknowledges them together. Use each native stage's last sample.
-            if step == "postFloorplan" and event["name"] in {
-                "create tracks",
-                "place io pins",
-                "tap cell",
-                "PDN",
-            }:
-                end = max(
-                    (f["elapsed_ns"] for f in frames if f["subflow"] == event["name"]),
-                    default=end,
-                )
-            start = stage_starts.pop(event["name"], previous_end)
-            timings.append(
-                {
-                    "name": event["name"],
-                    "state": event["state"],
-                    "start_ns": start,
-                    "end_ns": end,
-                }
-            )
-            previous_end = end
-    manifest = {
-        "schema": "ecos.replay.v1",
-        "attempt_id": attempt,
-        "step": step,
-        "tool": tool,
-        "source": "captured",
-        "history_completeness": "sampled",
-        "status": "complete",
-        "duration_ns": max(
-            duration_ns,
-            frames[-1]["elapsed_ns"],
-            *(timing["end_ns"] for timing in timings),
-        ),
-        "frames": frames,
-        "subflows": subflows,
-        "subflow_timing": timings,
-        "geometry_detail": "report_only" if step in REPORT_ONLY else "physical_bounds",
-        "started_at_unix_ns": started_unix_ns,
-        **(results or {}),
-    }
-    atomic_json(directory / "manifest.json", manifest)
-    atomic_json(
-        root / "manifest.json",
-        {
-            "schema": "ecos.replay.v1",
-            "status": "complete",
-            "attempt_id": attempt,
-            "manifest": f"attempts/{attempt}/manifest.json",
-        },
-    )
-    # Raw samples are staging data; published checkpoints/diffs own the history.
-    for path in (directory / "capture").glob("*.json"):
-        path.unlink()
-    timing_path.unlink(missing_ok=True)
-    (directory / "capture").rmdir()
-
-
 @contextmanager
-def capture_step(workspace, step):
+def capture_step(workspace, step, *, attempt_id: str | None = None):
     """Freeze opt-in per execution and clear inherited capture state for every tool."""
     previous = {key: os.environ.pop(key, None) for key in ENV_KEYS}
-    geometry = getattr(step.output, "geometry", None)
-    output_dir = getattr(step.output, "dir", None)
-    if geometry:
-        root = Path(geometry) / "replay"
-    elif output_dir:
-        root = Path(output_dir) / "geometry" / "replay"
-    elif getattr(step, "directory", None):
-        root = Path(step.directory) / "output" / "geometry" / "replay"
-    else:
-        root = None
+    root = replay_root(step)
     outcome = {"ok": False}
     started = time.monotonic_ns()
     started_unix_ns = time.time_ns()
-    attempt = uuid.uuid4().hex
+    attempt = attempt_id
     enabled = False
     try:
-        # Invalidate even a disabled or unsupported rerun, before invoking the tool.
-        if root and (root / "manifest.json").exists():
-            atomic_json(root / "manifest.json", {"schema": "ecos.replay.v1", "status": "stale"})
-        enabled = step.name in SUPPORTED and root is not None and read_settings(workspace)
-        if enabled and root is not None:
-            capture = root / "attempts" / attempt / "capture"
-            capture.mkdir(parents=True)
-            atomic_json(
-                root / "manifest.json",
-                {"schema": "ecos.replay.v1", "status": "recording", "attempt_id": attempt},
-            )
-            os.environ.update(
-                ECC_REPLAY_CAPTURE_DIR=str(capture),
-                ECC_REPLAY_START_NS=str(started),
-                ECC_REPLAY_STEP=step.name,
-            )
+        try:
+            from chipcompiler.tools.replay_completion import prepare
+
+            if attempt is None:
+                attempt = prepare(workspace, step)
+            enabled = attempt is not None and root is not None
+            if enabled:
+                if read_pointer(root).get("attempt_id") != attempt:
+                    raise ValueError("Replay attempt was superseded before capture")
+                capture = root / "attempts" / attempt / "capture"
+                capture.mkdir(parents=True)
+                from chipcompiler.tools.replay_metrics import capture_baseline
+
+                atomic_json(capture.parent / "baseline.json", capture_baseline(step))
+                # Reports and this marker share the filesystem clock. NFS mtime
+                # can lag the client's wall clock even for a newly written file.
+                capture_started_fs_ns = (capture.parent / "baseline.json").stat().st_mtime_ns
+                interval = workspace.parameters.data.get("replay", {}).get(
+                    "sample_every_iterations", 30
+                )
+                if type(interval) is not int or interval <= 0:
+                    raise ValueError("replay.sample_every_iterations must be a positive integer")
+                os.environ.update(
+                    ECC_REPLAY_CAPTURE_DIR=str(capture),
+                    ECC_REPLAY_START_NS=str(started),
+                    ECC_REPLAY_STEP=step.name,
+                    ECC_REPLAY_SAMPLE_ITERATIONS=str(interval),
+                )
+        except Exception as error:
+            logger.warning("Replay setup failed for %s: %s", step.name, error)
+            for key in ENV_KEYS:
+                os.environ.pop(key, None)
+            enabled = False
+            if root is not None and attempt is not None:
+                try:
+                    update_pointer(
+                        root,
+                        {"status": "unavailable", "attempt_id": attempt, "reason": str(error)},
+                        expected=attempt,
+                    )
+                except OSError:
+                    logger.warning("Cannot record Replay setup failure", exc_info=True)
         yield outcome
     finally:
         for key in ENV_KEYS:
@@ -438,16 +235,19 @@ def capture_step(workspace, step):
                 os.environ[key] = previous_value
         if enabled and root is not None:
             try:
-                if not outcome["ok"]:
-                    raise ValueError("EDA step failed or was interrupted")
                 from chipcompiler.tools.replay_results import collect_results
 
                 results = collect_results(
                     step,
                     root / "attempts" / attempt,
-                    started_unix_ns,
+                    capture_started_fs_ns,
                     workspace.directory,
                 )
+                results["capture_started_fs_ns"] = capture_started_fs_ns
+                if not outcome["ok"]:
+                    from chipcompiler.tools.replay_diagnostics import require_evidence
+
+                    require_evidence(step.name, root / "attempts" / attempt, results)
                 publish(
                     root,
                     attempt,
@@ -456,18 +256,24 @@ def capture_step(workspace, step):
                     time.monotonic_ns() - started,
                     results=results,
                     started_unix_ns=started_unix_ns,
+                    defer_completion=True,
                 )
+                if attempt_id is None:
+                    from chipcompiler.tools.replay_completion import finalize
+
+                    finalize(workspace, step, attempt, "Success" if outcome["ok"] else "Incomplete")
             except Exception as error:
                 logger.warning("Replay unavailable for %s: %s", step.name, error)
                 try:
-                    atomic_json(
-                        root / "manifest.json",
+                    update_pointer(
+                        root,
                         {
                             "schema": "ecos.replay.v1",
                             "status": "unavailable",
                             "attempt_id": attempt,
                             "reason": str(error),
                         },
+                        expected=attempt,
                     )
                 except OSError:
                     logger.warning(

@@ -32,6 +32,9 @@ def _build_workspace_and_step(tmp_path: Path) -> tuple[Any, Any, Path, Path, Pat
 def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     workspace, step, output_file, golden_file, _ = _build_workspace_and_step(tmp_path)
     runtime_env = {"PATH": "/opt/yosys/bin", "CUSTOM_ENV": "1"}
+    monkeypatch.setenv("ECC_REPLAY_CAPTURE_DIR", str(tmp_path / "capture"))
+    monkeypatch.setenv("ECC_REPLAY_START_NS", "0")
+    monkeypatch.setenv("ECC_REPLAY_OFFSET_NS", "0")
     updates = []
     run_calls = []
     check_calls = []
@@ -98,6 +101,7 @@ def test_run_step_uses_local_env_and_runs_synthesis(tmp_path, monkeypatch):
     assert run_calls[0]["cmd"] == ["yosys", "yosys_synthesis.tcl"]
     assert run_calls[0]["cwd"] == str(step.script.dir)
     assert run_calls[0]["env"] == runtime_env
+    assert int(run_calls[0]["env"]["ECC_REPLAY_OFFSET_NS"]) > 0
     assert sta_calls == [{"workspace": workspace, "step": step, "ecc_module": None}]
     assert ("run yosys", StateEnum.Success) in updates
     assert ("analysis", StateEnum.Success) in updates

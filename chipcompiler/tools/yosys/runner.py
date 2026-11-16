@@ -88,6 +88,11 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
                 sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
                 return False
 
+            from chipcompiler.tools.replay import anchor_native_capture
+
+            anchor_native_capture()
+            if os.environ.get("ECC_REPLAY_CAPTURE_DIR"):
+                yosys_env["ECC_REPLAY_OFFSET_NS"] = os.environ["ECC_REPLAY_OFFSET_NS"]
             result = subprocess.run(
                 cmd,
                 cwd=cwd_dir,

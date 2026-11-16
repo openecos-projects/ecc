@@ -210,6 +210,14 @@ def test_cli_fork_bounds_flow_and_freezes_entry_inputs(completed_source, start, 
     assert workspace.design.origin_verilog.parent == target / "origin"
     assert workspace.design.origin_verilog.read_bytes() == source_entry.input.verilog.read_bytes()
     assert workspace.design.origin_def.read_bytes() == source_entry.input.def_.read_bytes()
+    from chipcompiler.data.workspace.sdc import is_generated_sdc
+
+    assert workspace.pdk.sdc is not None and workspace.pdk.sdc.is_file()
+    assert is_generated_sdc(workspace.pdk.sdc)
+    assert "create_clock" in workspace.pdk.sdc.read_text()
+    post_sdc = target / "origin/post_CTS" / workspace.pdk.sdc.name
+    assert post_sdc.is_file()
+    assert "set_propagated_clock" in post_sdc.read_text()
     assert workspace.parameters.data["_flow"]["start"] == expected[0]
     assert workspace.parameters.data["_flow"]["end"] == expected[-1]
     assert workspace.parameters.data["_input_mode"] == "postSynthesis"

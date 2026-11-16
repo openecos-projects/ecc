@@ -35,6 +35,8 @@ set exclude_cells [concat {*}[lmap cell $dont_use_cells {concat "-dont_use" $cel
 
 yosys -import
 
+source [file join $script_dir replay.tcl]
+
 #===========================================================
 # Strategy selection
 #===========================================================
@@ -411,6 +413,7 @@ attrmvcp -copy -attr keep
 # Keep hierarchy through Yosys' coarse/fine passes so FSM extraction and
 # memory mapping see the same structure as the original synthesis flow.
 synth -top $top_design -run :fine
+replay_logical generic_synthesis
 
 # Preserve the existing keep_hierarchy policy, but defer flattening until
 # after FSM extraction and memory mapping have completed.
@@ -588,6 +591,8 @@ abc -D "$abc_delay_target" \
   -script "$strategy_script" \
   -showtmp
 
+replay_logical technology_mapping
+
 # Logical-only profiles may retain constants as wires. Physical profiles declare
 # both tie roles explicitly; never synthesize an empty module or infer masters.
 setundef -zero
@@ -649,3 +654,5 @@ tee -q -o "${synth_check_rpt}" check -mapped
 
 # write synthesized design
 write_verilog -attr2comment -noexpr -nohex -nodec ${final_netlist_file}
+
+replay_logical final_netlist

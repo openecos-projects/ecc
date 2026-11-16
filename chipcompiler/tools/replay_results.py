@@ -4,22 +4,56 @@ import json
 import shutil
 from pathlib import Path
 
+from chipcompiler.tools.replay_analysis import collect_analysis
+from chipcompiler.tools.replay_artifacts import freeze_geometry
+from chipcompiler.tools.replay_storage import within
+
+
+def current_metrics(step, started_unix_ns: int) -> list:
+    path = getattr(getattr(step, "analysis", None), "qor_metrics", None)
+    if not path or not Path(path).is_file() or Path(path).stat().st_mtime_ns < started_unix_ns:
+        return []
+    # Runtime entries may still belong to the previous attempt at tool completion.
+    return [
+        metric
+        for metric in json.loads(Path(path).read_text()).get("metrics", [])
+        if metric.get("category") != "runtime"
+    ]
+
+
+def completion_checklist(
+    workspace, step, started_unix_ns: int, *, freshly_written: bool = False
+) -> dict:
+    path = getattr(getattr(step, "checklist", None), "path", None)
+    if (
+        not path
+        or not Path(path).is_file()
+        or (not freshly_written and Path(path).stat().st_mtime_ns < started_unix_ns)
+    ):
+        return {
+            "status": "unavailable",
+            "checklist": [],
+            "reason": "No checklist produced for this attempt",
+        }
+    document = json.loads(within(Path(workspace.directory), Path(path)).read_text())
+    document["checklist"] = [
+        item
+        for item in document.get("checklist", [])
+        if not item.get("step") or item["step"] == step.name
+    ]
+    return document
+
 
 def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=None) -> dict:
-    result: dict[str, object] = {"result_metrics": []}
-    metrics = getattr(getattr(step, "analysis", None), "qor_metrics", None)
-    if metrics and metrics.is_file() and metrics.stat().st_mtime_ns >= started_unix_ns:
-        # Execution resource facts are finalized outside the tool invocation.
-        # A freshly rewritten QoR file can still contain last run's resource
-        # entries. Replay duration comes from its own monotonic capture clock.
-        result["result_metrics"] = [
-            metric
-            for metric in json.loads(metrics.read_text()).get("metrics", [])
-            if metric.get("category") != "runtime"
-        ]
+    result: dict[str, object] = {"result_metrics": current_metrics(step, started_unix_ns)}
+    result.update(collect_analysis(step, directory, started_unix_ns))
     if step.name in {"lec", "postRouteLec"}:
         output_json = getattr(getattr(step, "output", None), "json", None)
-        if output_json and Path(output_json).is_file():
+        if (
+            output_json
+            and Path(output_json).is_file()
+            and Path(output_json).stat().st_mtime_ns >= started_unix_ns
+        ):
             try:
                 verdict = json.loads(Path(output_json).read_text()).get("status", "unknown")
             except (OSError, ValueError):
@@ -28,7 +62,7 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
                 {"id": "equivalence", "display_name": "Equivalence", "value": verdict}
             )
     feature = getattr(getattr(step, "feature", None), "dir", None)
-    if step.name == "CTS" and workspace_dir:
+    if workspace_dir:
         geometry_manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
         if geometry_manifest:
             manifest_path = Path(geometry_manifest)
@@ -36,9 +70,10 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
             try:
                 resolved = manifest_path.resolve()
                 if resolved.is_file() and resolved.stat().st_mtime_ns >= started_unix_ns:
-                    result["clock_tree_manifest"] = resolved.relative_to(workspace_path).as_posix()
-            except (OSError, ValueError):
-                pass
+                    within(workspace_path, resolved)
+                    result.update(freeze_geometry(resolved, directory))
+            except (OSError, ValueError) as error:
+                result["geometry_unavailable"] = str(error)
     if step.name != "place" or not feature:
         return result
     # Existing map CSVs carry a layout.csv with explicit DBU rectangles. Never
