@@ -72,10 +72,14 @@ def reconcile_process(
         if run_id is None:
             # Orphan mode: a registry entry appeared after the Workspace lock
             # was acquired — a live run owns the Workspace, so back off busy
-            # instead of recovering its flow as interrupted (§14.3).
-            raise RuntimeProcessError(
-                "workspace_busy", "A runtime process registered during orphan reconcile"
-            )
+            # instead of recovering its flow as interrupted (§14.3). The entry
+            # of a run that was killed on this host is the stale entry this
+            # command exists to clear: recover it like its --run-id form.
+            if not _entry_is_stale_here(entry):
+                raise RuntimeProcessError(
+                    "workspace_busy", "A runtime process registered during orphan reconcile"
+                )
+            run_id = entry["run_id"]
         if entry["run_id"] != run_id:
             raise RuntimeProcessError("process_not_found", "Registered run ID does not match")
         if _entry_is_local(entry) and identity_is_live(entry):
@@ -102,6 +106,18 @@ def _workspace_path(project: Path, workspace_id: str) -> Path:
     if workspace is None:
         raise RuntimeProcessError("workspace_not_declared", "Workspace is not registered")
     return Path(workspace.workspace_path).resolve()
+
+
+def _entry_is_stale_here(entry: dict) -> bool:
+    """True when the registered process provably no longer exists.
+
+    That can only be told for a run started on this host: its process is gone,
+    or it predates the current boot. An entry from another host is never
+    assumed dead.
+    """
+    from chipcompiler.project.runtime_processes import host_id
+
+    return entry["host_id"] == host_id() and not identity_is_live(entry)
 
 
 def _entry_is_local(entry: dict) -> bool:
