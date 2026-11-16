@@ -1183,7 +1183,10 @@ def create_workspace(
         sync_flow_options_projection(workspace)
         from ..workspace_config import flow_section_from_flow_config
 
-        flow_section = flow_section_from_flow_config(flow_config, materials=materials)
+        flow_section = flow_section_from_flow_config(
+            flow_config, materials=workspace.parameters.data
+        )
+
         if flow_section:
             workspace.parameters.data["_flow"] = flow_section
 

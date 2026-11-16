@@ -145,10 +145,8 @@ def flow_no_clock(flow: object) -> bool:
 
 def _with_no_clock(section: dict, *, no_clock: bool) -> dict:
     result = dict(section)
-    if no_clock:
-        result["no_clock"] = True
-    else:
-        result.pop("no_clock", None)
+    if "no_clock" in section:
+        result["no_clock"] = flow_no_clock(section)
     return result
 
 
@@ -329,6 +327,16 @@ def flow_section_from_flow_config(
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
+
+    # Persist the effective decision with the target. An inferred no-clock
+    # (empty clock materials) only exists here, not in the raw config, so
+    # without this the reloaded section would resolve the clocked default.
+    from chipcompiler.rtl2gds import resolve_no_clock
+
+    if "no_clock" not in flow_config:
+        decision = resolve_no_clock(flow_config, materials=materials)
+        if decision.enabled:
+            flow_config = {**flow_config, "no_clock": True}
 
     from chipcompiler.rtl2gds import resolve_no_clock
 

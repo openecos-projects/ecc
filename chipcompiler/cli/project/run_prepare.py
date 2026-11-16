@@ -499,19 +499,24 @@ def execute_fresh_run(
                 # along, normalized (validate_flow_config is the normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    no_clock_materials = {"clock_port": cfg.design_clock_port}
-                    no_clock_decision = rtl2gds_api.resolve_no_clock(
-                        flow_config, materials=no_clock_materials
+                    from chipcompiler.data.workspace_config import (
+                            flow_section_from_flow_config,
                     )
-                    flow_section: dict = {"preset": cfg.flow_preset}
+
+                    preset_config: dict = { "preset": cfg.flow_preset }
                     policies: dict = {}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
                         policies["skip_steps"] = flow_config["skip_steps"]
                     if isinstance(flow_config, dict) and "lec_engine" in flow_config:
                         policies["lec_engine"] = flow_config["lec_engine"]
-                    if no_clock_decision.enabled:
-                        policies["no_clock"] = True
-                        workspace_parameters.data["no_clock"] = True
+                    if isinstance(flow_config, dict) and "no_clock" in flow_config:
+                        policies["no_clock"] = flow_config["no_clock"]
+                    projected = flow_section_from_flow_config(
+                        {**preset_config, **policies},
+                        materials={"clock_port": cfg.design_clock_port},
+                    )
+                    if projected:
+                        workspace_parameters.data["_flow"] = projected
                     if policies:
                         from chipcompiler.data.workspace_config import validate_flow_config
 

@@ -46,7 +46,9 @@ def bound_derived_flow(
             if key in {"skip_steps", "lec_engine", "no_clock"}
         },
     }
-    workspace.parameters.data["_flow"] = flow_section_from_flow_config(config)
+    workspace.parameters.data["_flow"] = flow_section_from_flow_config(
+        config, materials=workspace.parameters.data
+    )
     if not save_parameter(workspace.parameters) or not flow.save():
         raise OSError("Failed to persist derived flow range")
     flow.create_step_workspaces(executable_steps=set())
