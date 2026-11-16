@@ -9,6 +9,7 @@ from chipcompiler.cli.inspection.discovery import resolve_loaded_workspace
 from chipcompiler.data import StepEnum
 from chipcompiler.tools.ecc import build_step
 from chipcompiler.tools.ecc.defview import run_defview
+from chipcompiler.utility.log import capture_stdio_to_file
 
 
 def _defview_failure(reason: str, **fields) -> CommandError:
@@ -40,13 +41,20 @@ def defview(command_input, ctx: CommandContext) -> CommandResult:
     Path(step.output.dir or step_directory / "output").mkdir(parents=True, exist_ok=True)
     Path(step.data.dir or step_directory / "data").mkdir(parents=True, exist_ok=True)
 
+    # The native reader logs straight to file descriptor 1. Collect that in the
+    # step log, as a flow step does, so stdout carries only the command result.
+    log_file = Path(step.log.file or step_directory / "log" / "defview.log")
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        generated = run_defview(workspace=workspace, step=step)
+        with capture_stdio_to_file(log_file):
+            generated = run_defview(workspace=workspace, step=step)
     except Exception as exc:
         raise _defview_failure(
             f"ECC could not read the selected DEF: {exc}",
             def_path=str(def_path),
             output=str(step.output.geometry or ""),
+            log=str(log_file),
         ) from exc
 
     if not generated:
@@ -54,6 +62,7 @@ def defview(command_input, ctx: CommandContext) -> CommandResult:
             "ECC could not generate a geometry snapshot from the selected DEF",
             def_path=str(def_path),
             output=str(step.output.geometry or ""),
+            log=str(log_file),
         )
 
     manifest = step.output.geometry_manifest
@@ -75,6 +84,7 @@ def defview(command_input, ctx: CommandContext) -> CommandResult:
                 "geometry": str(step.output.geometry or ""),
                 "geometry_manifest": str(manifest),
                 "image": str(step.output.image or ""),
+                "log": str(log_file),
             }
         ]
     )
