@@ -1,55 +1,38 @@
-from chipcompiler.tools.replay_rcx import network_views
+import json
+from types import SimpleNamespace
+
+from chipcompiler.tools.replay_analysis import collect_analysis
+from chipcompiler.tools.replay_reports import rcx
 
 
-def test_rc_graph_preserves_units_branching_ground_and_cross_net_coupling(tmp_path):
-    design = tmp_path / "input.def"
-    design.write_text("UNITS DISTANCE MICRONS 2000 ;")
-    spef = tmp_path / "typ.spef"
-    spef.write_text("""*DELIMITER :
-*C_UNIT 1 PF
-*R_UNIT 1 KOHM
-*NAME_MAP
-*1 net_a
-*2 net_b
-*10 inst
-*D_NET *1 0.006
-*CONN
-*I *10:Q O *C 1.25 2.5
-*N *1:1 *C 3 4
-*N *1:2 *C 5 4
-*CAP
-1 *1:1 0.001
-2 *1:1 *2:1 0.005
-*RES
-1 *10:Q *1:1 0.02
-2 *1:1 *1:2 0.03
-3 *1:2 missing 0.04
-*END
-*D_NET *2 0.005
-*CONN
-*N *2:1 *C 6 4
-*CAP
-1 *2:1 *1:1 0.005
-*END
-""")
-    view = network_views(spef, design)[0]
-    assert view["items"][0]["positions"] == [[2500, 5000], [6000, 8000], [10000, 8000]]
-    assert view["items"][0]["segments"] == [
-        [[2500, 5000], [6000, 8000]],
-        [[6000, 8000], [10000, 8000]],
+def test_rcx_keeps_reported_net_membership_and_capacitance_units(tmp_path):
+    path = tmp_path / "slow.spef"
+    path.write_text(
+        "*C_UNIT 1 PF\n*NAME_MAP\n*1 core.net\n*2 clk\n"
+        "*D_NET *1 0.006\n*CONN\n*N *1:1 *C 3 4\n"
+        "*CAP\n1 *1:1 0.006\n*RES\n1 *1:1 *1:2 30\n*END\n"
+        "*D_NET *2 0.001\n*END\n"
+    )
+    view = rcx(path)[0]
+    assert view["items"] == [{"label": "core.net", "value": 6.0}, {"label": "clk", "value": 1.0}]
+    assert view["unit"] == "fF"
+
+
+def test_rcx_corners_share_net_names_and_do_not_store_electrical_graphs(tmp_path):
+    step = SimpleNamespace(name="RCX", directory=tmp_path / "RCX_ecc")
+    output = step.directory / "output"
+    output.mkdir(parents=True)
+    for corner, nets in [("a", [("clk", 1), ("data", 2)]), ("b", [("clk", 3)])]:
+        (output / f"{corner}.spef").write_text(
+            "*C_UNIT 1 FF\n" + "".join(f"*D_NET {net} {value}\n*END\n" for net, value in nets)
+        )
+    attempt = tmp_path / "attempt"
+    result = collect_analysis(step, attempt, 0)
+    payload = json.loads((attempt / result["analysis"]).read_text())
+    assert payload["nets"] == ["clk", "data"]
+    assert [v["items"] for v in payload["views"]] == [
+        [{"net_ref": 0, "value": 1.0}, {"net_ref": 1, "value": 2.0}],
+        [{"net_ref": 0, "value": 3.0}],
     ]
-    details = view["items"][0]["details"]
-    assert details["resistors_ohm"] == [
-        {"nodes": ["*10:Q", "*1:1"], "value": 20.0},
-        {"nodes": ["*1:1", "*1:2"], "value": 30.0},
-        {"nodes": ["*1:2", "missing"], "value": 40.0},
-    ]
-    assert details["capacitors_ff"] == [
-        {"nodes": ["*1:1"], "value": 1.0},
-        {"nodes": ["*1:1", "*2:1"], "value": 5.0},
-    ]
-    assert details["ground_capacitance_ff"] == 1.0
-    assert view["summary"]["unlocated_resistors"] == 1
-    assert view["items"][1]["details"]["capacitors_ff"] == [
-        {"nodes": ["*2:1", "*1:1"], "value": 5.0}
-    ]
+    assert result["analysis_view_count"] == 2
+    assert [p.name for p in attempt.rglob("*") if p.is_file()] == ["index.json"]

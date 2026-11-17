@@ -13,6 +13,7 @@ def fingerprint(path: Path):
 def inventory(directory: Path):
     return {
         path.relative_to(directory).as_posix(): fingerprint(path)
-        for path in sorted((directory / "subflows").rglob("*"))
+        for folder in ("subflows", "logs")
+        for path in sorted((directory / folder).rglob("*"))
         if path.is_file()
     }
