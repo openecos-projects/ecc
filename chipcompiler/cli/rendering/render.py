@@ -2,7 +2,6 @@ import json
 import os
 import sys
 
-from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.types import CommandResult, OutputMode
 
 
@@ -38,8 +37,14 @@ def _plain_value(value) -> str:
         # Plain output spells booleans the way flow list and --json do (#398).
         return "true" if value else "false"
     # Containers are JSON so a consumer never has to evaluate Python
-    # literals; the quoting below keeps the record on one line.
-    s = json_literal(value) if isinstance(value, (list, tuple, dict)) else str(value)
+    # literals; the quoting below keeps the record on one line. The encoding
+    # stays local so generic --plain rendering does not depend on the
+    # line-record protocol module.
+    s = (
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        if isinstance(value, (list, tuple, dict))
+        else str(value)
+    )
     if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
         # Plain output is one record per line: line breaks and tabs are
         # written as escapes, matching serialize_line_records (#407).
