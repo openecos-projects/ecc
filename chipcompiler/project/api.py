@@ -283,12 +283,18 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
     for key in (
         "source_workspace_id",
         "branch_from",
-        "parameter_patch",
         "metrics_summary",
         "step_metrics",
     ):
         if key in mutation:
             entry[key] = deepcopy(mutation[key])
+    # A registration that carries no patch takes its projection from the
+    # workspace directory, like re-registration and creation do.
+    if "parameter_patch" in mutation:
+        entry["parameter_patch"] = deepcopy(mutation["parameter_patch"])
+    else:
+        derived = derive_workspace_fields(workspace_path, manifest_base_parameters(document))
+        entry["parameter_patch"] = derived.get("parameter_patch", {})
     document.setdefault("workspaces", []).append(entry)
     document["updated_at"] = timestamp
 

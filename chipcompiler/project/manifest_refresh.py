@@ -149,7 +149,10 @@ def apply_derived_fields(entry: dict, derived: dict) -> bool:
 
 
 def refresh_workspace_derived_fields(
-    project_dir: str, workspace_id: str, *, include_status: bool = True
+    project_dir: str,
+    workspace_id: str,
+    *,
+    fields: tuple[str, ...] = DERIVED_FIELDS,
 ) -> bool:
     """Re-derive one entry's derived fields from its workspace directory.
 
@@ -157,9 +160,9 @@ def refresh_workspace_derived_fields(
     Returns False only when the manifest write itself fails (see
     ``update_manifest``); a missing entry degrades to a no-op.
 
-    ``include_status=False`` is for the run terminal-writeback path: run
-    status is written explicitly (the ledger cannot encode a cancellation
-    vs. a deliberate partial run), so only range/patch converge here.
+    ``fields`` narrows the convergence to the caller's ownership: a parameter
+    write owns ``parameter_patch``, while the run write-back and the in-place
+    refresh own the range and status.
     """
 
     def mutate(document: dict) -> None:
@@ -173,8 +176,7 @@ def refresh_workspace_derived_fields(
             if not workspace_dir.is_absolute():
                 workspace_dir = Path(project_dir) / workspace_dir
             derived = derive_workspace_fields(workspace_dir, manifest_base_parameters(document))
-            if not include_status:
-                derived.pop("status", None)
+            derived = {key: value for key, value in derived.items() if key in fields}
             if apply_derived_fields(entry, derived):
                 timestamp = now_iso()
                 entry["updated_at"] = timestamp

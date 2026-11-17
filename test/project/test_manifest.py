@@ -412,7 +412,9 @@ def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
     )
     entry = registered["workspaces"][0]
     assert entry["status"] == "not_started"
-    assert entry["parameter_patch"] == {}
+    # A registration that carries no patch takes its projection from the
+    # workspace directory, against the manifest's base layer.
+    assert entry["parameter_patch"] == {"frequency_max": {"from": None, "to": 125}}
 
     # Re-registration with stale derived fields: silently corrected from the
     # directory, only updated_at records it, lineage is never rewritten.
@@ -467,6 +469,39 @@ def test_reregister_workspace_silently_corrects_derived_fields(tmp_path):
     assert entry["updated_at"] == "2026-04-01T00:00:00Z"
     assert entry["source_workspace_id"] == "ws_0002"
     assert entry["branch_from"] == branch_from
+
+
+def test_register_workspace_keeps_an_explicit_parameter_patch(tmp_path):
+    workspace = tmp_path / "ws_0010"
+    _write_workspace_facts(
+        workspace,
+        steps=[{"name": "Synthesis", "tool": "yosys", "state": "Success"}],
+        parameters={
+            "pdk": "ics55",
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+            "frequency_max": 125,
+            "_flow": {"start": "Synthesis", "end": "Synthesis"},
+        },
+    )
+    create_project_manifest(tmp_path, "Demo", "gcd", now="2026-01-01T00:00:00Z")
+
+    registered = mutate_project_manifest(
+        tmp_path,
+        {
+            "type": "register_workspace",
+            "workspace_id": "ws_0010",
+            "workspace_path": str(workspace),
+            "parameter_patch": {"frequency_max": {"from": 100, "to": 200}},
+        },
+    )
+
+    # An import's inspected patch is used as given; only a registration that
+    # carries none takes its projection from the workspace directory.
+    assert registered["workspaces"][0]["parameter_patch"] == {
+        "frequency_max": {"from": 100, "to": 200}
+    }
 
 
 def test_reregister_workspace_without_drift_keeps_updated_at(tmp_path):

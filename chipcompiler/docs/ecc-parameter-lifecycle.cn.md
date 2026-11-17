@@ -47,6 +47,15 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
   被重跑的步骤按当前参数重新生成配置输入，下游步骤标记为未开始。
 - **GUI 运行**：`workspace.open` 本身不做配置刷新。派生配置在两条时机刷新：通过 GUI 保存参数时（`workspace.step_configuration.update` / `workspace.configuration.update`），以及运行前 flow 中存在 stale 步骤时。因此同一 `home/params.toml` 下 GUI 会话与 CLI 会话收敛到同一套 `config/*.json`。
 
+manifest 投影跟随目录：workspace 条目的 `parameter_patch` 是
+`home/params.toml` 相对 `base_design.parameters` 的差异，在 workspace
+创建、派生以及每次 workspace 作用域的 `ecc param apply/set/unset` 之后重新推导。
+这里只收敛 patch；`start_step`/`end_step`/`status` 仍由各自的写入方维护。
+`ecc config --workspace NAME` 以 `scope=workspace`（`source=workspace`）
+呈现 workspace 当前值，与 project 各层并列；创建期 `--set`
+（`home/cli-param-overrides.json`）标为 `source="cli (create-time)"`：
+对已有 workspace 它是历史，而不是当前生效值。
+
 ## CLI 与 GUI 差异
 
 | 关注点 | CLI（`ecc`） | GUI（ECOS Studio） |

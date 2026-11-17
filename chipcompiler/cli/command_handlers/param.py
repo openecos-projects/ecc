@@ -519,17 +519,21 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("workspace_parameter_apply_failed", reason=str(exc))]
         )
-    return CommandResult.ok(
-        [
-            {
-                "status": "applied",
-                "scope": "workspace",
-                "workspace_id": ctx.run_id,
-                "workspace": str(updated.directory),
-                "workspace_revision": committed["workspaceRevision"],
-            }
-        ]
-    )
+    records = [
+        {
+            "status": "applied",
+            "scope": "workspace",
+            "workspace_id": ctx.run_id,
+            "workspace": str(updated.directory),
+            "workspace_revision": committed["workspaceRevision"],
+        }
+    ]
+    from chipcompiler.cli.command_handlers import workspace_params
+
+    problem = workspace_params.refresh_manifest_projection(ctx)
+    if problem is not None:
+        records.append(problem)
+    return CommandResult.ok(records)
 
 
 def _parse_parameter_sets(values: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
