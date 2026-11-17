@@ -152,9 +152,7 @@ def _selected_dynamic_flow_step_names(
 
 
 def _normalize_flow_step_name(value) -> str:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    return normalize_flow_step(value)
+    return str(value or "").strip()
 
 
 def _flow_step_template(name: str, tool: str, state: str, *, index: int | None) -> FlowStepEntry:

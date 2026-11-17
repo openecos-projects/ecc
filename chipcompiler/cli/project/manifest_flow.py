@@ -37,14 +37,12 @@ def manifest_synthesis_lec(entry, cfg) -> list | None:
     ecc.toml ``skip_steps`` replaces the entry's policy. None: no insertion.
     """
     from chipcompiler.data import StepEnum
-    from chipcompiler.rtl2gds import inserted_step_name, normalize_flow_step
+    from chipcompiler.rtl2gds import inserted_step_name
 
     if entry is None or "flow.skip_steps" in getattr(cfg, "_explicit_keys", frozenset()):
         return None
     declared = getattr(entry, "skip_steps", None)
-    if declared is None or any(
-        normalize_flow_step(name) == StepEnum.LEC.value for name in declared
-    ):
+    if declared is None or any(str(name) == StepEnum.LEC.value for name in declared):
         return None
     return [inserted_step_name(StepEnum.LEC.value, StepEnum.SYNTHESIS.value)]
 

@@ -199,10 +199,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
                 ]
             )
         return CommandResult.ok(records)
-
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    step_token = normalize_flow_step(requested_step_token)
+    step_token = str(requested_step_token)
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         flow_steps = get_flow_step_names(run_dir)

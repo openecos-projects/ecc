@@ -23,7 +23,7 @@ from chipcompiler.params import (
     validate_value,
 )
 from chipcompiler.project.manifest import CONFIG_FILENAME
-from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
+from chipcompiler.rtl2gds import get_flow_builders
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -57,7 +57,7 @@ def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
     builder = get_flow_builders().get(preset)
     if builder is None or schema.workspace_wide or schema.pdk_target is not None:
         return None
-    if any(schema.applies_to(normalize_flow_step(step)) for step, _tool, _state in builder()):
+    if any(schema.applies_to(str(step)) for step, _tool, _state in builder()):
         return None
     return CommandResult.err(
         [error_record("parameter_not_in_flow", param=schema.param, preset=preset)],
@@ -86,14 +86,12 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
-    selected_step = normalize_flow_step(getattr(args, "step", None) or "").casefold()
+    selected_step = str(getattr(args, "step", None) or "")
     show_all = bool(getattr(args, "all", False))
     preset = getattr(ctx.config, "flow_preset", "")
     builder = get_flow_builders().get(preset)
     flow_step_names = (
-        [normalize_flow_step(step).casefold() for step, _tool, _state in builder()]
-        if builder is not None
-        else []
+        [str(step) for step, _tool, _state in builder()] if builder is not None else []
     )
     flow_steps = set(flow_step_names)
     first_flow_step = flow_step_names[0] if flow_step_names else ""

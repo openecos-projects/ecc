@@ -407,7 +407,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "timing optimization", "--plain", "--project", project_dir])
+        rc = cli_main.run(["config", "timing_optimization", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
@@ -416,7 +416,7 @@ class TestConfigStepResolved:
             "default/config/dreamplace_ecc.json",
         ]
         assert all(item["source"] == "workspace_config" for item in records)
-        assert all(item["step"] == "timing optimization" for item in records)
+        assert all(item["step"] == "timing_optimization" for item in records)
 
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,

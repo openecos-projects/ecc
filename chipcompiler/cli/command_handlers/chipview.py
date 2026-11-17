@@ -81,14 +81,11 @@ def _read_flow_steps(workspace_dir: Path) -> list[dict]:
 
 
 def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
     requested_lower = requested.strip().lower()
     if not requested_lower:
         return False
-    # A step alias ("place", "timing optimization") resolves to its flow step;
-    # a directory selector matches the step's directory exactly.
-    return normalize_flow_step(requested) == name or requested_lower in {
+    # The step name or its directory selects the step.
+    return requested_lower in {
         name.lower(),
         directory.lower(),
         f"{name}_{tool}".lower(),

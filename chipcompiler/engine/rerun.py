@@ -178,8 +178,6 @@ def run_only(
     if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
-    # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
-    # actual WorkspaceStep through the persisted canonical name, not the raw selector.
     workspace_step = flow.get_workspace_step(steps[index]["name"])
     if workspace_step is None:
         raise RuntimeError(f"step {steps[index]['name']!r} has no workspace step")
@@ -192,19 +190,6 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == name:
-            return index
-    # Selectors accept any CLI spelling of a persisted step ("postfloorplan",
-    # "post_floorplan", "POSTFLOORPLAN", "synth", ...) — only an unambiguous
-    # canonical form may not be guessed at.
-    from chipcompiler.rtl2gds.builder import normalize_flow_step
-
-    canonical = normalize_flow_step(name)
-    for index, step in enumerate(steps):
-        if step.get("name") == canonical:
-            return index
-    folded = str(name or "").casefold()
-    for index, step in enumerate(steps):
-        if str(step.get("name", "")).casefold() == folded:
             return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")

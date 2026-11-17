@@ -86,11 +86,9 @@ def build_step_parameter_record(
     workspace: Any, step_name: str, tool: str, directory: Path | None = None
 ) -> dict[str, Any]:
     """Step-applicable parameters with value, default and source, plus the config they reach."""
-    from chipcompiler.rtl2gds import normalize_flow_step
-
     parameters: Mapping[str, object] = workspace.parameters.data
     pdk = str(parameters.get("pdk") or "") or None
-    step = normalize_flow_step(step_name)
+    step = str(step_name)
     schemas = sorted(
         (
             schema

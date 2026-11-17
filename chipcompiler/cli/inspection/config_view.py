@@ -297,11 +297,10 @@ def build_step_config_items(
         step_dir_tool,
     )
     from chipcompiler.data import step_config_paths
-    from chipcompiler.rtl2gds import normalize_flow_step
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     requested_step_token = step_token or ""
-    step_token = normalize_flow_step(requested_step_token)
+    step_token = str(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1

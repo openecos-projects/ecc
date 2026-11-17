@@ -126,8 +126,8 @@ def test_chipview_rejects_incomplete_geometry_manifest(tmp_path, monkeypatch):
     assert "view" in result.records[0]["reason"]
 
 
-# A directory, the step name, or a step alias selects the step.
-@pytest.mark.parametrize("selector", ["routing_ecc", "routing", "route"])
+# A directory or the step name selects the step.
+@pytest.mark.parametrize("selector", ["routing_ecc", "routing"])
 def test_chipview_launches_viewer_with_geometry_manifest(tmp_path, monkeypatch, selector):
     workspace = _workspace(tmp_path)
     viewer = tmp_path / "chip-viewer-native"

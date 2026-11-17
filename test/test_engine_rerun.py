@@ -190,31 +190,6 @@ class TestSelectedStepNames:
         with pytest.raises(ValueError, match="placement.*cts"):
             rerun.selected_step_names(flow, only="bogus")
 
-    def test_selectors_accept_alias_and_case_spellings(self, tmp_path):
-        flow = _make_run_flow(
-            tmp_path,
-            [
-                ("synthesis", "Success"),
-                ("floorplan", "Success"),
-                ("placement", "Success"),
-                ("cts", "Unstart"),
-            ],
-        )
-
-        assert rerun.selected_step_names(flow, from_step="floorplan") == [
-            "floorplan",
-            "placement",
-            "cts",
-        ]
-        assert rerun.selected_step_names(flow, from_step="FLOORPLAN", through="cts") == [
-            "floorplan",
-            "placement",
-            "cts",
-        ]
-        assert rerun.selected_step_names(flow, only="Place", force=True) == ["placement"]
-        # Alias resolution still honors the no-force no-op on a success.
-        assert rerun.selected_step_names(flow, only="synth") == []
-
 
 class TestRunFrom:
     def test_reexecutes_suffix_and_clears_only_executed_outputs(self, monkeypatch, tmp_path):
@@ -423,16 +398,6 @@ class TestRunOnly:
         assert _flow_states(flow) == expected
         # The rerun step's previous response was removed before it ran.
         assert load_response(tmp_path / f"{selected}_ecc") is None
-
-    def test_alias_runs_persisted_canonical_step(self, monkeypatch, tmp_path):
-        flow = _make_run_flow(tmp_path, [("synthesis", "Success")])
-        calls = _fake_execution(flow, monkeypatch)
-
-        result = rerun.run_only(flow, "synth", force=True)
-
-        assert result.ok
-        assert result.executed == ("synthesis",)
-        assert calls == [("synthesis", True)]
 
     def test_non_success_step_runs_without_force(self, monkeypatch, tmp_path):
         flow = _make_run_flow(tmp_path, [("placement", "Incomplete")])

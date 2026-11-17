@@ -372,8 +372,7 @@ class TestLogListingMode:
         assert rc == 0
         assert plain_records(capsys.readouterr().out)[0]["line"] == "post-route equivalence"
 
-        # An inserted step selector resolves case-insensitively on both sides.
-        rc = cli_main.run(["log", "LEC@CTS", "--plain", "--project", project_dir])
+        rc = cli_main.run(["log", "lec@cts", "--plain", "--project", project_dir])
 
         assert rc == 0
         assert plain_records(capsys.readouterr().out)[0]["line"] == "clock-tree equivalence"
