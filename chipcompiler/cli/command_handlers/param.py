@@ -5,9 +5,7 @@ from chipcompiler.cli.command_handlers.param_step_values import (
     list_record,
     maps_to_str,
     pdk_target_str,
-    step_diff_records,
-    step_list_records,
-    value_at_step,
+    record_at_step,
 )
 from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -105,19 +103,23 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     first_flow_step = flow_step_names[0] if flow_step_names else ""
     if selected_step and flow_steps and selected_step not in flow_steps:
         return CommandResult.ok([])
+    by_key = {rp.key: rp for rp in resolved}
     records = []
     for rp in resolved:
         s = rp.schema
         if flow_steps and not s.workspace_wide and not flow_steps.intersection(s.steps):
             continue
+        if rp.step is not None:
+            # Without a step, list each step value ecc.toml sets ([params.step.<step>]);
+            # a step view shows its own value in the parameter's row.
+            if not selected_step:
+                records.append(list_record(ctx, rp, pdk))
+            continue
         if selected_step and not s.listed_at(selected_step, first_flow_step):
             continue
-        _value, source = value_at_step(rp, toml_overrides, selected_step or None)
-        if selected_step or show_all or not s.has_direct_target or source != "default":
-            records.append(list_record(ctx, rp, toml_overrides, selected_step or None, pdk))
-        if not selected_step:
-            # Without a step, also list each step value ecc.toml sets ([params.step.<step>]).
-            records.extend(step_list_records(ctx, rp, toml_overrides, pdk))
+        shown = record_at_step(by_key, rp, selected_step or None)
+        if selected_step or show_all or not s.has_direct_target or shown.is_explicit:
+            records.append(list_record(ctx, shown, pdk, step=selected_step or None))
 
     return CommandResult.ok(records)
 
@@ -180,8 +182,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
-    rp = next(r for r in resolved if r.param == schema.param)
-    value, source = value_at_step(rp, toml_overrides, step)
+    by_key = {r.key: r for r in resolved}
+    rp = record_at_step(by_key, by_key[schema.param], step)
+    value, source = rp.value, rp.source
 
     record = {
         "param": key,
@@ -407,13 +410,12 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
         if rp.value != rp.default:
             records.append(
                 {
-                    "param": rp.param,
+                    "param": rp.key,
                     "value": rp.value,
                     "default": rp.default,
                     "source": rp.source,
                 }
             )
-        records.extend(step_diff_records(rp, toml_overrides))
 
     if not records:
         return CommandResult.ok([{"diff_status": "clean"}])

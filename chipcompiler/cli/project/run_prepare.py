@@ -359,10 +359,12 @@ def execute_fresh_run(
     pdk_root = resolve_pdk_root(cfg)
 
     if cfg.params_overrides or cli_overrides:
+        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
         from chipcompiler.params import (
             build_backend_overrides,
             build_config_overrides,
             build_pdk_overrides,
+            build_step_params,
             resolve_parameters,
         )
 
@@ -376,15 +378,10 @@ def execute_fresh_run(
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
         pdk_cli_overrides = build_pdk_overrides(resolved)
-        param_sources = {item.param: item.source for item in resolved if item.is_explicit}
-        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY, resolve_step_parameters
-
-        step_values, step_sources = resolve_step_parameters(
-            (cli_overrides or {}, "cli"), (cfg.params_overrides or {}, "ecc.toml")
-        )
-        if step_values:
-            parameters[STEP_PARAMS_KEY] = step_values
-        param_sources.update(step_sources)
+        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
+        step_params = build_step_params(resolved)
+        if step_params:
+            parameters[STEP_PARAMS_KEY] = step_params
     else:
         pdk_cli_overrides = {}
         param_sources = {}

@@ -230,7 +230,6 @@ def build_project_config_items(
     )
     from chipcompiler.cli.command_handlers.param_step_values import maps_to_str
 
-    rp_by_param = {rp.param: rp for rp in resolved_params}
     for rp in resolved_params:
         if rp.schema.has_direct_target and not rp.is_explicit:
             continue
@@ -238,15 +237,14 @@ def build_project_config_items(
             {
                 "kind": "param",
                 "scope": "project",
-                "key": rp.param,
+                "key": rp.key,
                 "value": rp.value,
                 "default": rp.default,
                 "source": rp.source,
                 "maps_to": maps_to_str(rp.schema.maps_to),
-                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
+                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.key}", project),
             }
         )
-    items.extend(_step_value_items(rp_by_param, cli_provenance, toml_overrides, project))
 
     # Parameter resolution errors (including ecc.toml [params] parse errors)
     # must not be swallowed: a view that silently shows defaults hides that
@@ -386,33 +384,3 @@ def _manifest_parameter_overrides(cfg: "ProjectConfig") -> dict[str, float]:
     ):
         return {}
     return {"design.frequency_mhz": cfg.design_frequency_mhz}
-
-
-def _step_value_items(rp_by_param: dict, cli_overrides, toml_overrides, project) -> list[dict]:
-    """Records of the explicit step values (``<step>:<param>``) of step-scoped parameters."""
-    from chipcompiler.cli.command_handlers.param_step_values import maps_to_str
-    from chipcompiler.data.step_parameters import resolve_step_parameters, step_key
-
-    values, sources = resolve_step_parameters(
-        (cli_overrides or {}, "cli"), (toml_overrides or {}, "ecc.toml")
-    )
-    items = []
-    for step, params in values.items():
-        for param, value in params.items():
-            rp = rp_by_param.get(param)
-            if rp is None:
-                continue
-            key = step_key(step, param)
-            items.append(
-                {
-                    "kind": "param",
-                    "scope": "project",
-                    "key": key,
-                    "value": value,
-                    "default": rp.default,
-                    "source": sources[key],
-                    "maps_to": maps_to_str(rp.schema.maps_to),
-                    "inspect_cmd": disclosure_cmd(f"ecc param show {key}", project),
-                }
-            )
-    return items

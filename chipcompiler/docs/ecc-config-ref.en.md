@@ -224,7 +224,7 @@ The step is part of the key, `<step>:<param>`:
 
 ```bash
 ecc param set placement:place.target_density 0.7                  # ecc.toml [params.step.placement.place]
-ecc param set --workspace NAME diff_opt:place.timing_sizing_action resize
+ecc param set --workspace NAME diff_opt:place.timing_sizing_action up
 ecc param apply --workspace NAME --step placement --set place.target_density=0.7
 ecc run --set placement:place.num_threads=12
 ```

@@ -4,9 +4,8 @@ import pytest
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
 from chipcompiler.data.parameter import save_parameter
-from chipcompiler.data.step_parameters import resolve_step_parameters
 from chipcompiler.data.workspace import init_workspace_config
-from chipcompiler.params import parse_cli_overrides
+from chipcompiler.params import build_step_params, parse_cli_overrides, resolve_parameters
 from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
 from chipcompiler.utility import json_read
 
@@ -20,7 +19,7 @@ def test_step_config_keeps_cli_overrides_above_nested_workspace_settings(
         ["placement:place.gpugr_backend=cpu_pr_mt", "placement:place.l_shape_routability_flag=1"]
     )
     assert errors == []
-    step_params, _sources = resolve_step_parameters((cli_values, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli_values)[0])
     # A workspace-wide patch under either key spelling still reaches the step config.
     config_overrides = {config_key: {"l_shape_update_interval": 12}}
     workspace = Workspace(

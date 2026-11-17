@@ -5,6 +5,7 @@ specific PDK path validation remains in ``chipcompiler.cli.project.params``.
 """
 
 import json
+from copy import deepcopy
 from dataclasses import dataclass
 
 from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
@@ -348,10 +349,17 @@ class ResolvedParam:
     default: object
     source: str
     schema: ParamSchema
+    #: The step of a step-scoped (DreamPlace) value; ``None`` for the parameter itself.
+    step: str | None = None
 
     @property
     def is_explicit(self) -> bool:
         return self.source != "default"
+
+    @property
+    def key(self) -> str:
+        """The override key: ``<step>:<param>`` for a step value, else the parameter."""
+        return self.param if self.step is None else step_key(self.step, self.param)
 
 
 def resolve_parameters(
@@ -365,19 +373,31 @@ def resolve_parameters(
     resolved, errors = [], []
     for schema in PARAM_REGISTRY:
         default = schema.default_for(pdk)
-        value, source = default, "default"
-        for layer, layer_source in layers:
-            if schema.param not in layer:
-                continue
-            value, source = layer[schema.param], layer_source
-            if source != "cli":
-                value, type_error = validate_schema_type(value, schema)
-                if type_error:
-                    errors.append(type_error)
-            errors.extend(validate_value(value, schema, pdk))
-            break
+        found = _resolve_key(schema.param, schema, layers, pdk, errors)
+        value, source = found if found is not None else (default, "default")
         resolved.append(ResolvedParam(schema.param, value, default, source, schema))
+        # A step-scoped parameter also resolves each step value a layer sets.
+        for step in schema.steps if is_step_scoped(schema) else ():
+            found = _resolve_key(step_key(step, schema.param), schema, layers, pdk, errors)
+            if found is not None:
+                value, source = found
+                resolved.append(ResolvedParam(schema.param, value, default, source, schema, step))
     return resolved, errors
+
+
+def _resolve_key(key, schema, layers, pdk, errors):
+    """``(value, source)`` of *key* from the highest layer setting it, or ``None``."""
+    for layer, source in layers:
+        if key not in layer:
+            continue
+        value = layer[key]
+        if source != "cli":
+            value, type_error = validate_schema_type(value, schema)
+            if type_error:
+                errors.append(type_error)
+        errors.extend(validate_value(value, schema, pdk))
+        return value, source
+    return None
 
 
 def build_backend_overrides(resolved, *, include_defaults: bool = False):
@@ -417,6 +437,15 @@ def config_patch(resolved):
                 current = current.setdefault(key, {})
             current[target.json_path[-1]] = target.render(item.value)
     return overrides
+
+
+def build_step_params(resolved) -> dict[str, dict[str, object]]:
+    """The ``step_params`` payload (``{step: {param: value}}``) of the resolved step values."""
+    values: dict[str, dict[str, object]] = {}
+    for item in resolved:
+        if item.step is not None:
+            values.setdefault(item.step, {})[item.param] = deepcopy(item.value)
+    return values
 
 
 def build_pdk_overrides(resolved):

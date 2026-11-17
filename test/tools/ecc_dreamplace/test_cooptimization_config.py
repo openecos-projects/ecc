@@ -7,12 +7,16 @@ import tomli_w
 
 from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
 from chipcompiler.data.step_parameters import (
-    resolve_step_parameters,
     step_key,
     step_parameter_view,
 )
 from chipcompiler.data.workspace.config_overrides import apply_config_overrides
-from chipcompiler.params import parse_cli_overrides, parse_toml_params
+from chipcompiler.params import (
+    build_step_params,
+    parse_cli_overrides,
+    parse_toml_params,
+    resolve_parameters,
+)
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_direct_config_overrides
 
@@ -105,7 +109,7 @@ def test_window_override_reaches_dreamplace_config(public, dreamplace_default_co
     direct = {key.removeprefix("place."): value for key, value in public.items()}
     toml, errors = parse_toml_params({"step": {"placement": {"place": direct}}})
     assert (toml, errors) == (step_keyed, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     actual = apply_direct_config_overrides(
         dreamplace_default_config, step_parameter_view({"step_params": step_params}, "placement")
     )
@@ -129,7 +133,7 @@ def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_de
             ]
         )
         assert errors == []
-        step_params, _sources = resolve_step_parameters((cli, "cli"))
+        step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
         config = apply_direct_config_overrides(
             config,
             step_parameter_view({"step_params": step_params}, "placement"),
@@ -145,7 +149,7 @@ def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_pa
     text = tomli_w.dumps({"params": {"step": {"placement": {"place": public}}}})
     parsed, errors = parse_toml_params(tomllib.loads(text)["params"])
     assert errors == []
-    step_params, _sources = resolve_step_parameters((parsed, "ecc.toml"))
+    step_params = build_step_params(resolve_parameters(toml_overrides=parsed)[0])
     parameters = step_parameter_view({"step_params": step_params}, "placement")
     path = tmp_path / "dreamplace.json"
     baseline = root / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
