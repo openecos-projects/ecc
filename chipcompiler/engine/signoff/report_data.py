@@ -1,24 +1,19 @@
 """Data contract for the design-summary report.
 
 Mirrors ecos/gui/packages/shared/src/contracts/designReport.ts (snake_case)
-plus the stage-name canonicalization table shared by extraction and
-formatting.
+plus the table mapping flow step names and step directories to the
+report's stage labels, shared by extraction and formatting.
 """
 
 import dataclasses
 
 STAGE_CANONICAL_NAMES = {
     "synthesis": "Synth",
-    "synth": "Synth",
     "synthesis_yosys": "Synth",
-    "yosys": "Synth",
-    "prefloorplan": "PreFloorplan",
     "pre_floorplan": "PreFloorplan",
     "pre_floorplan_ecc": "PreFloorplan",
-    "macroplacement": "MacroPlacement",
     "macro_placement": "MacroPlacement",
     "macro_placement_dreamplace": "MacroPlacement",
-    "postfloorplan": "PostFloorplan",
     "post_floorplan": "PostFloorplan",
     "post_floorplan_ecc": "PostFloorplan",
     "lec": "LEC",
@@ -26,24 +21,16 @@ STAGE_CANONICAL_NAMES = {
     "post_route_lec": "LEC",
     "post_route_lec_kepler_formal": "LEC",
     "placement": "Place",
-    "place": "Place",
     "placement_dreamplace": "Place",
-    "dreamplace": "Place",
-    "global_placement": "Place",
-    "detailed_placement": "Place",
     "diff_sizing": "DiffSizing",
     "diff_opt": "DiffOpt",
     "diff_opt_dreamplace": "DiffOpt",
     "cts": "CTS",
     "cts_ecc": "CTS",
     "legalization": "Legal",
-    "legal": "Legal",
     "legalization_dreamplace": "Legal",
     "routing": "Route",
-    "route": "Route",
     "routing_ecc": "Route",
-    "global_route": "Route",
-    "detail_route": "Route",
     "drc": "DRC",
     "drc_ecc": "DRC",
     "lvs": "LVS",
@@ -56,11 +43,10 @@ STAGE_CANONICAL_NAMES = {
     "sta_ecc": "STA",
     "sta_signoff": "STA",
     "signoff": "STA",
-    "post_route_sta": "STA",
     "sta_corner": "STA",
-    "power": "Power",
-    "power_ecc": "Power",
     "sta_power": "Power",
+    "power_analysis": "Power",
+    "power_analysis_ecc": "Power",
     "harden": "Harden",
     "harden_ecc": "Harden",
 }
@@ -279,4 +265,4 @@ class ParsedQorSummaryMetrics:
 
 
 def canonicalize_stage_name(name: str) -> str:
-    return STAGE_CANONICAL_NAMES.get(name.lower(), name)
+    return STAGE_CANONICAL_NAMES.get(name, name)
