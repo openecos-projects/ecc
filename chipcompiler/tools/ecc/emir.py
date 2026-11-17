@@ -4,9 +4,13 @@ from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.data.handshake import load_request, power_source
-from chipcompiler.data.step import StepDirectories
+from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories
 from chipcompiler.data.types import DesignState
-from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
+from chipcompiler.tools.ecc.emir_artifacts import (
+    discard_ir_snapshot,
+    publish_emir_reports,
+    publish_ir_snapshot,
+)
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import instance_power_path
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
@@ -19,6 +23,8 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     from chipcompiler.tools.ecc import runner
 
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+    if step.output.geometry_manifest is not None:
+        discard_ir_snapshot(step.data.steps[StepEnum.EMIR.value], step.output.geometry_manifest)
     config = json_read(workspace.config[StepEnum.EMIR.value])
     technology_file = config["technology_file_path"]
     if not technology_file:
@@ -70,6 +76,11 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
         sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Imcomplete)
         return False
     report_dir = step.report.dir
+    try:
+        if step.output.geometry_manifest is not None:
+            publish_ir_snapshot(step.data.steps[StepEnum.EMIR.value], step.output.geometry_manifest)
+    except (OSError, ValueError, KeyError) as error:
+        workspace.logger.warning("Failed to publish IR spatial data: %s", error)
     if report_dir is None:
         workspace.logger.warning("EMIR report directory is not configured")
     else:
