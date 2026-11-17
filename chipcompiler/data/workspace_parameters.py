@@ -1,65 +1,44 @@
 """Workspace-local parameter persistence shared by Engine and CLI."""
 
 from copy import deepcopy
-from typing import Final
 
-from chipcompiler.data.config_params.common import ConfigTarget
+from chipcompiler.data.config_params.common import WORKSPACE_WIDE, ConfigTarget
 from chipcompiler.data.parameter import update_parameters
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
     build_backend_overrides,
     build_config_overrides,
 )
-from chipcompiler.data.types import SkippableStepEnum, StepEnum
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
 WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
 # Layer (``ecc.toml`` / ``cli``) that supplied each explicit parameter at creation.
 PARAM_SOURCES_KEY = "_param_sources"
-# Steps a parameter's ``applies`` may name and still be set on an existing workspace.
-_SETTABLE_APPLIES: Final = frozenset(
-    {
-        StepEnum.SYNTHESIS.value,
-        StepEnum.FLOORPLAN.value,
-        StepEnum.PLACEMENT.value,
-        StepEnum.MACRO_PLACEMENT.value,
-        StepEnum.CTS.value,
-        StepEnum.ROUTING.value,
-        StepEnum.FILLER.value,
-        StepEnum.RCX.value,
-        StepEnum.STA.value,
-        StepEnum.EMIR.value,
-        SkippableStepEnum.TIMING_OPT.value,
-        SkippableStepEnum.DIFF_OPT.value,
-        StepEnum.DIFF_SIZING.value,
-    }
-)
 _MISSING = object()
 
 
 def workspace_param_step(schema, workspace=None) -> str | None:
     """The earliest flow step a parameter change invalidates.
 
-    ``applies`` may name several steps (``"placement,diff_opt"``) or ``"all"``;
-    both resolve against the Workspace's flow when one is given.
+    A workspace-wide parameter invalidates the Workspace's first step; a
+    parameter naming several steps resolves against the Workspace's flow.
+    Without a Workspace the declared order decides (``"all"`` for a
+    workspace-wide parameter).
     """
     if schema.output_only:
         return None
-    # Only multi-step and "all" parameters need the flow to pick their step.
-    flow_names: list[str] = []
-    if workspace is not None and ("," in schema.applies or schema.applies == "all"):
-        flow_names = [str(step.get("name", "")) for step in workspace.flow.steps()]
-    candidates: list[str] = []
-    for applies in (part.strip() for part in schema.applies.split(",")):
-        if applies == "all":
-            # Without a Workspace the caller only asks whether the parameter is settable.
-            candidates.extend(flow_names[:1] or ["all"])
-        elif applies in _SETTABLE_APPLIES:
-            candidates.append(applies)
-    if not candidates:
+    if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
-    return next((name for name in flow_names if name in candidates), candidates[0])
+    # Only multi-step and workspace-wide parameters need the flow to pick their step.
+    flow_names = (
+        [str(step.get("name", "")) for step in workspace.flow.steps()]
+        if workspace is not None and (schema.workspace_wide or len(schema.steps) > 1)
+        else []
+    )
+    if schema.workspace_wide:
+        return flow_names[0] if flow_names else WORKSPACE_WIDE
+    return next((name for name in flow_names if schema.applies_to(name)), schema.steps[0])
 
 
 def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:

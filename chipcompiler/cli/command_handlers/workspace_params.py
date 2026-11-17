@@ -89,12 +89,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     for schema in list_schemas():
         if schema.pdk_target is not None or (not args.all and schema.param not in overrides):
             continue
-        schema_steps = {
-            normalize_flow_step(schema.group).casefold(),
-            *(normalize_flow_step(part.strip()).casefold() for part in schema.applies.split(",")),
-        }
-        global_at_first_step = schema.applies == "all" and selected_step == first_step
-        if selected_step and selected_step not in schema_steps and not global_at_first_step:
+        if selected_step and not schema.listed_at(selected_step, first_step):
             continue
         try:
             value = workspace_param_value(workspace, schema)

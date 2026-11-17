@@ -41,32 +41,12 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
     return None
 
 
-def _parameter_flow_step(value: str) -> str:
-    """Canonical flow step owning a parameter or its shared config section."""
-    applies = normalize_flow_step(value)
-    if applies.casefold() == "floorplan":
-        # Floorplan is a shared configuration section owned by the floorplan
-        # steps, not a standalone flow step.
-        return "pre_floorplan"
-    return applies
-
-
-def _parameter_flow_steps(applies: str) -> set[str]:
-    """Casefolded canonical flow steps named by a (possibly comma-separated) ``applies``."""
-    return {
-        _parameter_flow_step(part.strip()).casefold()
-        for part in applies.split(",")
-        if part.strip() != "all"
-    }
-
-
 def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
     preset = getattr(ctx.config, "flow_preset", "")
     builder = get_flow_builders().get(preset)
-    if builder is None or schema.applies == "all" or schema.pdk_target is not None:
+    if builder is None or schema.workspace_wide or schema.pdk_target is not None:
         return None
-    flow_steps = {normalize_flow_step(step).casefold() for step, _tool, _state in builder()}
-    if _parameter_flow_steps(schema.applies) & flow_steps:
+    if any(schema.applies_to(normalize_flow_step(step)) for step, _tool, _state in builder()):
         return None
     return CommandResult.err(
         [error_record("parameter_not_in_flow", param=schema.param, preset=preset)],
@@ -113,12 +93,9 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
     records = []
     for rp in resolved:
         s = rp.schema
-        applies = _parameter_flow_steps(s.applies)
-        if flow_steps and s.applies != "all" and not applies & flow_steps:
+        if flow_steps and not s.workspace_wide and not flow_steps.intersection(s.steps):
             continue
-        schema_steps = {_parameter_flow_step(s.group).casefold(), *applies}
-        global_at_first_step = s.applies == "all" and selected_step == first_flow_step
-        if selected_step and selected_step not in schema_steps and not global_at_first_step:
+        if selected_step and not s.listed_at(selected_step, first_flow_step):
             continue
         if not selected_step and not show_all and s.has_direct_target and not rp.is_explicit:
             continue
