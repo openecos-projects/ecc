@@ -11,7 +11,7 @@ from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
 from chipcompiler.data.config_params.common import ConfigTarget, ParamSchema, PdkVariant
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
 from chipcompiler.data.config_params.sdc import SCHEMAS as SDC_SCHEMAS
-from chipcompiler.data.step_parameters import STEP_TABLE, parse_step_key, step_key
+from chipcompiler.data.step_parameters import STEP_TABLE, is_step_scoped, parse_step_key, step_key
 
 _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ParamSchema(
@@ -395,6 +395,16 @@ def build_backend_overrides(resolved, *, include_defaults: bool = False):
 
 
 def build_config_overrides(resolved):
+    """The workspace config patch of the explicit *resolved* values.
+
+    Step-scoped (DreamPlace) values never patch the workspace baseline: each
+    step replays its own values (:func:`config_patch` in ``step_config_patch``).
+    """
+    return config_patch(item for item in resolved if not is_step_scoped(item.schema))
+
+
+def config_patch(resolved):
+    """``{config_key: {json path...}}`` of the explicit direct-config *resolved* values."""
     overrides = {}
     for item in resolved:
         # Parameters stored in the workspace payload (maps_to) are derived from

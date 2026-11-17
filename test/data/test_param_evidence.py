@@ -15,6 +15,7 @@ from chipcompiler.params import (
 )
 from chipcompiler.params.evidence import build_step_parameter_record
 from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
+from test.flow_fixture import current_flow_document
 
 
 def _workspace(tmp_path: Path, minimal_ics55_pdk_factory: Any, parameters: dict) -> Any:
@@ -30,6 +31,10 @@ def _workspace(tmp_path: Path, minimal_ics55_pdk_factory: Any, parameters: dict)
     )
     workspace = load_workspace(str(tmp_path / "workspace"))
     assert workspace is not None
+    workspace.flow.data = current_flow_document(
+        {"name": name, "tool": tool, "state": "Unstart"}
+        for name, tool in (("placement", "dreamplace"), ("diff_opt", "dreamplace"), ("cts", "ecc"))
+    )
     return workspace
 
 
@@ -110,3 +115,40 @@ def test_record_lists_only_configs_the_step_consumes(
 
     assert set(record["config"]) == {"routing", "db"}
     assert record["config"]["routing"]["RT.-bottom_routing_layer"] == "MET2"
+
+
+def test_each_step_records_its_own_value_and_source(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+) -> None:
+    schema = lookup_schema("place.timing_sizing_action")
+    assert schema is not None
+    workspace = _workspace(
+        tmp_path,
+        minimal_ics55_pdk_factory,
+        {
+            **default_ics55_parameters,
+            "step_params": {"diff_opt": {"place.timing_sizing_action": "quad"}},
+            PARAM_SOURCES_KEY: {"diff_opt:place.timing_sizing_action": "ecc.toml"},
+        },
+    )
+    update_workspace_param_value(workspace, schema, "up", step="placement")
+
+    records = {
+        step: _record(build_step_parameter_record(workspace, step, "dreamplace"), schema.param)
+        for step in ("placement", "diff_opt")
+    }
+
+    assert records == {
+        "placement": {
+            "param": schema.param,
+            "value": "up",
+            "default": schema.default,
+            "source": "workspace",
+        },
+        "diff_opt": {
+            "param": schema.param,
+            "value": "quad",
+            "default": schema.default,
+            "source": "ecc.toml",
+        },
+    }

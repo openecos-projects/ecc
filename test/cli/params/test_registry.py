@@ -3,6 +3,8 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli.project.effective_config import _diverging_lower_keys
+from chipcompiler.data.parameter_schema import config_patch
+from chipcompiler.data.step_parameters import is_step_scoped
 from chipcompiler.params import (
     PARAM_REGISTRY,
     ConfigTarget,
@@ -341,7 +343,9 @@ class TestBackendMapping:
             schema=schema,
         )
         assert build_backend_overrides([rp]) == {}
-        assert build_config_overrides([rp]) == {"dreamplace": {"target_density": 0.65}}
+        # A step-scoped value replays per step, never onto the workspace baseline.
+        assert build_config_overrides([rp]) == {}
+        assert config_patch([rp]) == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = _required_schema("floorplan.core_util")
@@ -425,7 +429,8 @@ class TestBackendMapping:
         rp = next(item for item in resolved if item.param == schema.param)
 
         backend = build_backend_overrides([rp])
-        config = build_config_overrides([rp])
+        config = config_patch([rp])
+        assert build_config_overrides([rp]) == ({} if is_step_scoped(schema) else config)
         pdk = build_pdk_overrides([rp])
         assert isinstance(backend, dict)
         assert isinstance(config, dict)

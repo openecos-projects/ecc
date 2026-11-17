@@ -4,7 +4,18 @@ from pathlib import Path
 
 from chipcompiler.data import PDK, OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
+from chipcompiler.data.workspace.config_manifest import (
+    derived_config_manifest_path,
+    modified_derived_configs,
+    record_derived_config,
+)
 from chipcompiler.tools.ecc_dreamplace import builder
+from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule
+from chipcompiler.tools.ecc_dreamplace.run_modes import (
+    GEOMETRY_ONLY_CONFIG,
+    MODE_FLAGS,
+    DreamplaceRunMode,
+)
 from chipcompiler.utility import json_read
 
 
@@ -90,3 +101,98 @@ def test_a_step_value_reaches_only_its_own_step_config(
         StepEnum.MACRO_PLACEMENT.value: baseline["target_density"],
     }
     assert json_read(workspace.config["dreamplace"]) == baseline
+
+
+def test_placement_and_diff_opt_keep_distinct_actions_through_profile_expansion(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    workspace.parameters.data["step_params"] = {
+        "placement": {"place.timing_sizing_action": "up"},
+        "diff_opt": {"place.timing_sizing_action": "quad"},
+    }
+    record_derived_config(workspace)
+    manifest = derived_config_manifest_path(workspace.directory).read_bytes()
+    monkeypatch.setattr(builder.ecc_builder, "build_step_config", lambda *_: None)
+    # The drive table needs real buffer Liberty data; its path is all the profile checks.
+    monkeypatch.setattr(
+        builder,
+        "prepare_diff_opt_drive_table",
+        lambda _workspace, _step, params: params
+        | {"buffering_candidate_drive_strength_table": "generated.json"},
+    )
+    steps = [
+        _step(workspace, tmp_path, name)
+        for name in (StepEnum.PLACEMENT.value, SkippableStepEnum.DIFF_OPT.value)
+    ]
+
+    for step in steps:
+        builder.build_step_config(workspace, step)
+
+    # Both configs are resolved through ``resolve_flow_config``; the explicit
+    # step value is replayed over the profile defaults.
+    assert {
+        step.name: json_read(builder.step_config_path(workspace, step))["timing_sizing_action"]
+        for step in steps
+    } == {StepEnum.PLACEMENT.value: "up", SkippableStepEnum.DIFF_OPT.value: "quad"}
+    assert modified_derived_configs(workspace.directory) == []
+    assert derived_config_manifest_path(workspace.directory).read_bytes() == manifest
+
+
+def test_geometry_only_steps_persist_the_settings_their_mode_forces(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    monkeypatch.setattr(builder.ecc_builder, "build_step_config", lambda *_: None)
+    modes = {
+        StepEnum.MACRO_PLACEMENT.value: DreamplaceRunMode.MACRO_PLACEMENT,
+        StepEnum.LEGALIZATION.value: DreamplaceRunMode.LEGALIZATION,
+        SkippableStepEnum.TIMING_OPT.value: DreamplaceRunMode.LEGALIZATION,
+    }
+
+    persisted = {}
+    for name in modes:
+        step = _step(workspace, tmp_path, name)
+        builder.write_step_config(workspace, step)
+        config = json_read(builder.step_config_path(workspace, step))
+        persisted[name] = {key: config[key] for key in config if key in _forced_keys(modes[name])}
+
+    assert persisted == {
+        name: {**GEOMETRY_ONLY_CONFIG, **MODE_FLAGS[mode]} for name, mode in modes.items()
+    }
+
+
+def _forced_keys(mode: DreamplaceRunMode) -> set[str]:
+    return {*GEOMETRY_ONLY_CONFIG, *MODE_FLAGS[mode]}
+
+
+def test_an_inner_legalization_runs_on_its_owner_step_file(tmp_path, make_ics55_parameters) -> None:
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    owner = _step(workspace, tmp_path, SkippableStepEnum.TIMING_OPT.value)
+    workspace.parameters.data["step_params"] = {"placement": {"place.target_density": 0.71}}
+    path = builder.write_step_config(workspace, owner)
+    module = DreamplaceModule(
+        workspace=workspace,
+        step=owner,
+        ecc_module=None,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+        output_def=None,
+        output_verilog=None,
+    )
+
+    params = module._build_params(_Params, mode=DreamplaceRunMode.LEGALIZATION)
+
+    assert module.param_path == path
+    assert (params.target_density, params.global_place_flag, params.detailed_place_flag) == (
+        json_read(workspace.config["dreamplace"])["target_density"],
+        0,
+        0,
+    )
+
+
+class _Params:
+    """Records what ``DreamplaceModule`` loads, as DreamPlace's ``Params`` would."""
+
+    def fromJson(self, config: dict) -> None:
+        self.__dict__.update(config)

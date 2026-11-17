@@ -43,6 +43,7 @@ from .macro_location_handoff import (
 from .macro_location_handoff import (
     verify_published_macro_location as _verify_published_macro_location,
 )
+from .parameter_steps import earliest_flow_step, require_flow_step, step_catalog
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
@@ -149,7 +150,7 @@ def _apply_workspace_parameters(
     allowed: set[str] | None = None
     step: str | None = None
     if step_id is not None:
-        step, step_schemas = _step_catalog(workspace, step_id)
+        step, step_schemas = step_catalog(workspace, step_id)
         allowed = {schema.param for schema in step_schemas}
 
     schemas = {}
@@ -176,6 +177,7 @@ def _apply_workspace_parameters(
         except ValueError as exc:
             raise WorkspaceLifecycleError("parameter_requires_refresh", str(exc)) from exc
         if affected_step is not None:
+            require_flow_step(workspace, parameter, affected_step, step_value=scope is not None)
             affected_steps.append(affected_step)
         schemas[parameter] = schema
         scopes[parameter] = scope
@@ -191,7 +193,7 @@ def _apply_workspace_parameters(
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
         normalized_sets[parameter] = normalized
 
-    first_step = _earliest_flow_step(workspace, affected_steps) if affected_steps else None
+    first_step = earliest_flow_step(workspace, affected_steps) if affected_steps else None
     if commit_step_output:
         if step is None or first_step is None:
             raise WorkspaceLifecycleError(
@@ -296,17 +298,6 @@ def _apply_workspace_parameters(
 def _value_errors(workspace: Any, value: object, schema: Any) -> list[str]:
     """Range and choice errors of *value* under the Workspace's PDK family."""
     return validate_value(value, schema, workspace.pdk.name)
-
-
-def _earliest_flow_step(workspace: Any, affected_steps: list[str]) -> str:
-    identities = {str(step) for step in affected_steps}
-    for step in workspace.flow.steps():
-        name = str(step.get("name", ""))
-        if name in identities:
-            return name
-    raise WorkspaceLifecycleError(
-        "parameter_not_in_flow", "No affected parameter step exists in this Workspace flow"
-    )
 
 
 def _update_workspace_configuration(
@@ -490,7 +481,7 @@ def build_workspace_configuration_projection(
 
 
 def read_step_configuration(workspace: Any, step_id: str) -> dict[str, Any]:
-    step, schemas = _step_catalog(workspace, step_id)
+    step, schemas = step_catalog(workspace, step_id)
     snapshot = _read_snapshot_metadata(workspace)
     if not schemas:
         raise WorkspaceLifecycleError(
@@ -572,7 +563,7 @@ def _update_workspace_step_configuration(
                 "actualWorkspaceRevision": snapshot["workspaceRevision"],
             },
         )
-    step, schemas = _step_catalog(workspace, step_id)
+    step, schemas = step_catalog(workspace, step_id)
     allowed = {schema.param: schema for schema in schemas}
     changed = False
     changed_schemas = []
@@ -626,12 +617,23 @@ def _update_workspace_step_configuration(
             updated["workspaceRevision"],
         )
         return _load_committed_workspace(target)
-    invalidate_from(EngineFlow(workspace), step)
+    # A workspace-wide value edited from this step's view may feed earlier steps.
+    first_step = earliest_flow_step(
+        workspace,
+        [
+            step,
+            *(
+                workspace_param_step(schema, workspace, step if is_step_scoped(schema) else None)
+                for schema in changed_schemas
+            ),
+        ],
+    )
+    invalidate_from(EngineFlow(workspace), first_step)
     updated = invalidate_engineering_snapshot(
         workspace,
         workspace_id=snapshot["workspaceId"],
         cause="workspace.step_configuration_updated",
-        first_invalidated_step=step,
+        first_invalidated_step=first_step,
     )
     write_workspace_command(
         target,
@@ -641,24 +643,6 @@ def _update_workspace_step_configuration(
         updated["workspaceRevision"],
     )
     return _load_committed_workspace(target)
-
-
-def _step_catalog(workspace: Any, step_id: str):
-    identity = str(step_id)
-    steps = [str(step.get("name", "")) for step in workspace.flow.steps() if step.get("name")]
-    step = next(
-        (candidate for candidate in steps if str(candidate) == identity),
-        None,
-    )
-    if step is None:
-        raise WorkspaceLifecycleError("unknown_flow_step", f"Flow Step not found: {step_id}")
-    first = str(steps[0])
-    schemas = tuple(
-        schema
-        for schema in list_schemas()
-        if schema.pdk_target is None and schema.listed_at(identity, first)
-    )
-    return step, schemas
 
 
 def _public_parameter_record(workspace: Any, schema, step: str) -> dict[str, Any]:

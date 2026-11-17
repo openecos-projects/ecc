@@ -18,7 +18,7 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 
 ### 0.1 配置文件放在哪
 
-每次运行（run）的 workspace 下有一个共享 `config/` 目录，所有步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）：
+每次运行（run）的 workspace 下有一个共享 `config/` 目录，非 DreamPlace 步骤的 JSON 配置都落在这里，**同名文件会被后运行的步骤原地重写**（每步只更新与自己相关的字段）。DreamPlace 是例外：`config/dreamplace_ecc.json` 只是 workspace 的**基线**，每个 DreamPlace 步骤各自写入并读取自己的 `<step dir>/config/dreamplace_ecc.json`，任何 DreamPlace 步骤都不会共用或覆盖其他步骤的文件（见 §1.6）：
 
 ```
 <workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
@@ -43,6 +43,9 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 ├── synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
 ├── lec@synthesis_kepler_formal/  # 插入的 RTL vs 网表 SEC 检查（data/lec_config.yaml、data/rtl.f）
+├── placement_dreamplace/
+│   └── config/dreamplace_ecc.json  # 该步骤自己的 DreamPlace 配置（macro_placement、
+│                                   # diff_opt、diff_sizing、legalization、timing_optimization 同理）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
 └── post_route_lec_kepler_formal/  # 布线后 LEC 步骤（默认引擎；YAML 配置）
@@ -132,13 +135,13 @@ graph LR
 
 ```bash
 ecc param list --step cts
-ecc param list --step floorplan
+ecc param list --step pre_floorplan
 ecc param list --all              # 完整审核 schema（配置了 preset 的项目里 pdk.* 需要 --all --plain）
 ecc param list --all --plain      # 完整目录，含 pdk.* 路径参数
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
-ecc run --set place.num_threads=12
+ecc run --set placement:place.num_threads=12
 ```
 
 标量按 schema 类型解析；列表和对象值使用 JSON 字面量，数组整体替换。持久化值写入嵌套 TOML 表，例如：
@@ -204,7 +207,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 |---|---|---|
 | 写入位置 | `ecc.toml` 的 `[params.<group>]` 或 `[pdk.overrides]`（保留注释与格式） | `<workspace>/home/params.toml` 的 `[params]`，同时记录 `workspace_param_overrides` |
 | 生效时机 | 下次 `ecc run` **新建** workspace 时 | 立即刷新生成配置；参数所属步骤及其后缀标记为待执行（输出 `from_step` / `invalidated_steps`），后续 `ecc run --workspace NAME` 从该步骤续跑 |
-| 可改参数 | 全部已审核 schema（含 `pdk.*` 路径参数） | 不含 `pdk.*`（路径改动必须改 `ecc.toml` 后执行 `ecc workspace refresh NAME`）；且参数所属步骤必须存在于该 workspace 的持久化 flow，否则报 `workspace_param_refresh_failed` |
+| 可改参数 | 全部已审核 schema（含 `pdk.*` 路径参数） | 不含 `pdk.*`（路径改动必须改 `ecc.toml` 后执行 `ecc workspace refresh NAME`）；且按步骤取值所属的步骤必须存在于该 workspace 的持久化 flow，否则报 `unknown_flow_step`（workspace 级参数的所有相关步骤都不在 flow 中时报 `parameter_not_in_flow`） |
 | 前提 | 项目须有 `ecc.toml`；缺少该文件的纯清单项目会报 `param_requires_ecc_toml` | 须为清单项目中声明的受管 workspace（否则报 `workspace_param_requires_managed_workspace`） |
 | 恢复 | `unset` 从 `ecc.toml` 删除对应键 | `unset` 恢复 `baseline` 并清除该条覆盖记录 |
 
@@ -232,7 +235,7 @@ ecc run --set placement:place.num_threads=12
 target_density = 0.7
 ```
 
-在 workspace 中，取值保存在 `params.toml` 的 `[params.step_params.<step>]` 下，journal 记录带有 `step`，修改只从该步骤开始失效。`route.bottom_layer`/`route.top_layer` 仍为 workspace 级：它们写入 routing 配置并镜像到 DreamPlace 基线，因此修改会从 placement 开始失效。
+在 workspace 中，取值保存在 `params.toml` 的 `[params.step_params.<step>]` 下，journal 记录带有 `step`，修改只从该步骤开始失效。`route.bottom_layer`/`route.top_layer` 仍为 workspace 级（不带步骤的键）。workspace 级参数的修改会从读取其任一目标配置的最早 flow 步骤开始失效：`route.bottom_layer` 还会写入 floorplan 的 db 配置，因此从 pre_floorplan 开始失效；`route.top_layer` 供给 DreamPlace 的 gpugr 层，因此从 macro_placement/placement 开始失效。
 
 ### 1.5 手工宏摆放（`ecc macro`）
 
@@ -420,7 +423,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 5. macro placement / placement / diff_sizing / legalization（DreamPlace）
 
-每个步骤由 workspace 基线 `config/dreamplace_ecc.json` 和自己的取值（§1.6）解析出 `<step dir>/config/dreamplace_ecc.json`，再设置 `def_input`、`verilog_input`、`result_dir`。`macro_placement` 使用 `macro_placement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `placement_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+每个步骤由 workspace 基线 `config/dreamplace_ecc.json` 和自己的取值（§1.6）解析出 `<step dir>/config/dreamplace_ecc.json`，再设置 `def_input`、`verilog_input`、`result_dir`。`macro_placement` 使用 `macro_placement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `placement_dreamplace/data/pl`；`diff_sizing` 与其他 DreamPlace 步骤一样解析自己的步骤文件（带有自己的 diff-sizing 默认值）；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -464,7 +467,7 @@ GP 内 sizing 窗口的系数策略使用一个参数 `place.timing_opt_coeffici
 以下 `ecc.toml` 配置与默认值一致：
 
 ```toml
-[params.place.timing_opt_coefficients]
+[params.step.placement.place.timing_opt_coefficients]
 mode = "fixed"
 wns = 500.0
 tns = 5.0
@@ -486,7 +489,7 @@ cap = 1.0
 例如单独调整 S50 为 1000/10/1/1：
 
 ```toml
-[params.place.diff_sizing_coefficients]
+[params.step.diff_sizing.place.diff_sizing_coefficients]
 wns = 1000.0
 tns = 10.0
 cap = 1.0
@@ -494,9 +497,9 @@ slew = 1.0
 ```
 
 新建 workspace 也可使用
-`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
+`ecc run --set 'diff_sizing:place.diff_sizing_coefficients={"tns":10.0}'` 单独覆盖 TNS。
 已有 workspace 使用
-`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
+`ecc param set diff_sizing:place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`。
 S50 继续使用 RRR=3、padding=0 和最终 legalization；placement bin 使用 256×256
 预设并进行自适应计算，计算上限仍为 512×512，GR route grid 跟随该自适应 bin
 并按 die aspect ratio 调整。
@@ -569,7 +572,7 @@ workspace（`home/params.toml` 与 `home/flow.json` 都不含它），也不会�
 第三个字段按 `wns, tns, slew, cap` 排列：
 
 ```toml
-[params.place]
+[params.step.diff_opt.place]
 diff_optimization_mode = "joint"
 diff_optimization_flows = [
   ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
@@ -654,7 +657,7 @@ snapshot + RRR3 路径。显式设置 `place.timing_rc_mode` 也会作为该步�
 （默认 `[500, 5, 1, 1]`）。生成的步骤配置等价于：
 
 ```toml
-[params.place]
+[params.step.diff_sizing.place]
 diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
@@ -664,7 +667,7 @@ diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 自定义链示例：
 
 ```toml
-[params.place]
+[params.step.diff_sizing.place]
 diff_sizing_optimization_flows = [
   ["up", 10, [500, 5, 1, 1], 1],
   ["down", 1, [500, 5, 1, 1], 0.1],
@@ -684,9 +687,9 @@ diff_sizing_optimization_flows = [
 `1000` 倍；slew/cap 和 norm 外层权重沿用各自设置。
 窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
 `diff_sizing` S50 的 `size_only` 模式跳过这项增长。新建 workspace 可通过
-`ecc run --set place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
-`[params.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
-`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`。
+`ecc run --set placement:place.timing_coeff_growth_factor=1.0` 或 `ecc.toml` 的
+`[params.step.placement.place] timing_coeff_growth_factor = 1.0` 配置；已有 workspace 使用
+`ecc param set placement:place.timing_coeff_growth_factor 1.0 --workspace NAME`。
 
 `place.timing_aggregation_mode` 控制 AAT/RAT 传播以及 endpoint rise/fall 和
 timing-check 候选的聚合方式：默认 `smooth` 使用 LSE，`hard` 使用 max/min。
@@ -700,7 +703,7 @@ backend 都会导出 recovery check。
 例如，在 `ecc.toml` 中设置：
 
 ```toml
-[params.place]
+[params.step.placement.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
 timing_metric_scope = "setup_plus_recovery"
@@ -757,10 +760,10 @@ timing_metric_scope = "setup_plus_recovery"
 | `pin_stretch_ratio` / `max_pin_opt_adjust_rate` | 1.4142 / 1.5 | 引脚拉伸比 / 调整倍率上限 |
 | `risa_weights` | 0 | 使用 RISA 拥塞权重 |
 
-GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。
-`[params.dreamplace]` 中显式设置的
-`gpugr_bottom_routing_layer`/`gpugr_top_routing_layer` 优先。
-其他 DreamPlace 专用参数也可放在该节，不必新增 ECC 顶层参数。
+GPUGR 默认继承 workspace 的 `bottom_layer`/`top_layer`。placement 步骤上显式设置的
+`place.gpugr_bottom_routing_layer`/`place.gpugr_top_routing_layer`（例如写在
+`[params.step.placement.place]` 下）优先。其他 DreamPlace 专用选项以按步骤的
+`place.*` 参数提供（`ecc param list --step placement`）。
 
 ### 单元 padding 与边界
 
@@ -1040,7 +1043,7 @@ ecc param set design.frequency_mhz VALUE
 `temp_directory_path` 为流程生成/保护路径，不能通过 CLI 设置；其余已审核的 `floorplan_ecc.json` 字段用法相同，例如：
 
 ```bash
-ecc param list --step floorplan
+ecc param list --step pre_floorplan
 ecc param set floorplan.core_util VALUE
 ecc param set floorplan.die_builder.die_size.width_micron VALUE   # 嵌套字段使用点路径
 ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
@@ -1052,13 +1055,15 @@ ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
 
 ```bash
 ecc param list --step placement
-ecc param set place.target_density VALUE
-ecc param set place.num_threads VALUE
+ecc param set placement:place.target_density VALUE
+ecc param set placement:place.num_threads VALUE
 ```
+
+legalization 没有可设置的 DreamPlace 参数；它使用 workspace 基线加自己的强制项。
 
 ### 15.5 timing optimization
 
-Sizer 的 FF/MIN hold-only pass 使用 ECC 自己维护的配置。其内部 DreamPlace 合法化使用 §15.4 的 `place.*` 参数，布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和生成脚本仍由流程管理。
+Sizer 的 FF/MIN hold-only pass 使用 ECC 自己维护的配置。其内部 DreamPlace 合法化由 workspace 基线（§1.6）解析出自己的 `<step dir>/config/dreamplace_ecc.json`，没有可设置的 DreamPlace 参数；布线层限制使用 §15.6 的 `route.bottom_layer` / `route.top_layer`；Sizer 的输入、输出和生成脚本仍由流程管理。
 
 ```bash
 ecc param list --step timing_optimization
@@ -1153,12 +1158,12 @@ ecc param list --step cts                 # 查看 CTS 全部可调字段
 ecc param list --all                      # 查看完整审核 schema（--all --plain 同时列出 pdk.*）
 ecc param apply --set k=v --unset k2      # 原子批量应用参数修改
 ecc param show KEY / diff                 # 单参数 / 与默认差异
-ecc param set place.target_density 0.55  # 改参数（写入 ecc.toml，下次新建 workspace 时生效）
+ecc param set placement:place.target_density 0.55  # 改按步骤参数（写入 ecc.toml，下次新建 workspace 时生效）
 ecc param set cts.skew_bound 0.05         # 直配 CTS JSON 字段
-ecc param unset place.target_density     # 移除覆盖，恢复默认值
+ecc param unset placement:place.target_density     # 移除覆盖，恢复默认值
 ecc param set cts.skew_bound 0.06 --workspace default  # 只改指定 workspace（见 §1.4）
 ecc param diff --workspace default        # 该 workspace 的局部覆盖及 baseline
-ecc run --set place.target_density=0.55  # 一次性覆盖：仅新建（含 --overwrite）workspace 时生效
+ecc run --set placement:place.target_density=0.55  # 一次性覆盖：仅新建（含 --overwrite）workspace 时生效
 ```
 
 修改层级建议：**参数统一走 `ecc param`（宏摆放走 `ecc macro`）；用 `--step` / `--all` 发现字段；不要直接改 `params.toml` 或 `config/` 下的受管文件**。步骤配置派生会覆盖映射字段；完整的 `ecc workspace refresh` 在检测到修改时会拒绝执行，除非显式传入 `--force`。

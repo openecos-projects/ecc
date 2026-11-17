@@ -192,7 +192,7 @@ measurement. The example values are not universal recommendations.
     "fixed_sdc_frequency_pdk": true,
     "parameters": {
       "floorplan.core_util": [0.25, 0.30, 0.35],
-      "place.target_density": [0.15, 0.20, 0.25]
+      "placement:place.target_density": [0.15, 0.20, 0.25]
     },
     "first_round_max_candidates": 3,
     "max_search_candidates": 8,
@@ -446,17 +446,19 @@ and the persisted flow determine execution.
 | `floorplan.aspect_ratio` | float; width/height | Wirelength, channels, outline | pre_floorplan |
 | `floorplan.core_margin` | JSON pair of numbers, µm | Edge/IO/PDN space | floorplan |
 | `floorplan.die_builder.mode`, die_size width/height_micron | Mode and fixed dimensions | Fixed-die experiments | floorplan |
-| `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | place |
-| `place.stop_overflow` | float; 0–1 | Placement stopping threshold | place |
-| `place.routability_opt_flag` | int; 0/1 | Congestion-driven placement | place |
-| `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | place |
-| `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | place |
+| `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | placement |
+| `place.stop_overflow` | float; 0–1 | Placement stopping threshold | placement |
+| `place.routability_opt_flag` | int; 0/1 | Congestion-driven placement | placement |
+| `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | placement |
+| `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | placement |
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
 | `cts.max_fanout` | int; current range 1–200 | Clock-tree structure | CTS; may also affect generated SDC, so inspect invalidation |
 | `cts.routing_layer`, `cts.buffer_type` | JSON lists | Supported clock layers/buffer cells | CTS |
 | `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | timing_optimization |
-| `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | May affect placement routing proxies and Sizer; inspect invalidation |
+| `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | Workspace-wide (unqualified keys); invalidates from the earliest step reading their target configs (`route.bottom_layer`: pre_floorplan; `route.top_layer`: macro_placement/placement), and may affect Sizer; inspect invalidation |
 | `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macro_placement |
+
+The `place.*` rows are DreamPlace parameters held per flow step: set and read them with the step in the key (`placement:place.target_density`), never as bare names. The names in this table are the parameter names.
 
 floorplan.core_util, place.target_density, and final core_utilization are distinct.
 Density does not directly determine die area. A higher target_density is not itself
@@ -552,7 +554,7 @@ ecc status --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc report step --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc param diff --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --plain
 ecc param show floorplan.core_util --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ```
 
 If there is no trustworthy baseline, create a full baseline using an unused name:
@@ -604,7 +606,7 @@ core_util=0.30, target_density=0.20, and all other inputs/parameters fixed:
 ```bash
 PPA_CANDIDATE=ppa-density-015-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.15 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.15 --plain
 
 ecc status --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
 ecc report step placement --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
@@ -636,7 +638,7 @@ For the same verified baseline, hold core_util constant and search placement den
 PPA_SWEEP=ppa-density-r1
 ecc sweep create --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --param floorplan.core_util=0.30 \
-  --param place.target_density=0.15,0.20,0.25
+  --param placement:place.target_density=0.15,0.20,0.25
 ecc sweep show --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
 ecc sweep run --project "$PPA_PROJECT" --name "$PPA_SWEEP" --max-candidates 3
 ecc sweep verify --project "$PPA_PROJECT" --name "$PPA_SWEEP"
@@ -722,8 +724,8 @@ PPA_ITER=ppa-iter-001
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-before.snapshot.json" --json
 ecc param apply --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
-  --set place.target_density=0.25 --set place.stop_overflow=0.08 --plain
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
+  --set placement:place.target_density=0.25 --set placement:place.stop_overflow=0.08 --plain
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_ITER" --resume --plain
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-after.snapshot.json" --json
@@ -811,7 +813,7 @@ This is a two-parameter example; carry every actual winner difference:
 ```bash
 PPA_FINAL=ppa-final-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.25 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.25 --plain
 ecc signoff inspect --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --json
 ecc report qor --project "$PPA_PROJECT" --workspace "$PPA_FINAL" \
   -o "$PPA_EVIDENCE/final-qor.txt" --json > "$PPA_EVIDENCE/final-qor.json"
@@ -979,7 +981,7 @@ If hold is a real bottleneck, then explore the existing Sizer's
 | --- | --- | --- | --- |
 | pre_floorplan / post_floorplan | `floorplan.core_util`, `floorplan.aspect_ratio`; core_margin/supported die_size when needed | Outline, area, actual core utilization, available capacity, macro/channel/PDN evidence | Reuse fixed synthesis; rerun floorplan and later stages |
 | macro_placement | Public `macro.placements` / macro commands; legal coordinates/orientations | Macro legality, channels, pin access, later routability | Reuse only the unchanged prefix before macro placement |
-| place | `place.target_density`, `place.cell_padding_x`, `place.routability_opt_flag` | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid post_floorplan; rerun place and later stages |
+| placement | `place.target_density`, `place.cell_padding_x`, `place.routability_opt_flag` (set as `placement:place.*`) | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid post_floorplan; rerun placement and later stages |
 | cts / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
 | timing_optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
 
@@ -1101,12 +1103,12 @@ mkdir -p "$DSE_EVIDENCE"
 
 ecc run --project "$DSE_PROJECT" --workspace dse-place-001 \
   --from synthesis --to placement \
-  --set floorplan.core_util=0.30 --set place.target_density=0.20 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.20 --plain
 
 ecc report step post_floorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.floorplan.json"
-ecc report step place --project "$DSE_PROJECT" --workspace dse-place-001 \
+ecc report step placement --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section feature --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.place.json"
 ecc report snapshot --project "$DSE_PROJECT" --workspace dse-place-001 \
@@ -1139,20 +1141,20 @@ DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
 ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
   --project "$DSE_PROJECT" --from placement --plain
-ecc param set place.target_density 0.25 \
+ecc param set placement:place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
 ecc param diff --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ecc status --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ```
 
 Read parameter invalidation and states before execution. If the change returns
-`from_step=place` and invalidates only its suffix, use this range.
+`from_step=placement` and invalidates only its suffix, use this range.
 If invalidation starts earlier, rerun from that actual earliest step:
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --from placement --to placement --plain
-ecc report step place --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
+ecc report step placement --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.place.json"
 ```
@@ -1222,7 +1224,7 @@ DSE_INPUT_NETLIST=/absolute/path/to/verified-postfloorplan.v.gz
 ecc project set design.def "$DSE_INPUT_DEF" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc project set design.netlist "$DSE_INPUT_NETLIST" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
-  --from placement --to placement --set place.target_density=0.25 --plain
+  --from placement --to placement --set placement:place.target_density=0.25 --plain
 ```
 
 For floorplan exploration, use a fixed synthesized netlist with a pre_floorplan→placement

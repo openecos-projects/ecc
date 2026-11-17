@@ -1,11 +1,18 @@
 """Workspace-local parameter edits, their baseline journal and rebuild carry-over."""
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from copy import deepcopy
 
 from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, validate_value
-from chipcompiler.data.step_parameters import STEP_PARAMS_KEY, step_values
+from chipcompiler.data.step_parameters import (
+    STEP_PARAMS_KEY,
+    ParameterStepError,
+    check_parameter_step,
+    is_step_scoped,
+    step_key,
+    step_values,
+)
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.data.workspace_parameters import (
     PARAM_SOURCES_KEY,
@@ -119,14 +126,20 @@ def _rebind_liberty(carried: dict[str, object], pdk_root: str) -> None:
                     record[field] = _pdk_relative_liberty(record[field], pdk_root)
 
 
-def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -> list[str]:
+def invalid_carried_parameters(
+    carried: Mapping[str, object],
+    pdk: str | None,
+    flow_steps: Collection[str] | None = None,
+) -> list[str]:
     """Range and choice errors of carried values under the new PDK family.
 
     Covers the journaled workspace edits, the direct config patch (which also
     holds the values given at creation through ``ecc.toml`` or ``--set``), the
-    per-step values and the stored tunables.
+    per-step values and the stored tunables. A step value (or step journal
+    record) must name a step its parameter is declared for and, given the new
+    *flow_steps*, a step of the new flow.
     """
-    errors: list[str] = []
+    errors = _invalid_carried_steps(carried, flow_steps)
     for schema in list_schemas():
         if schema.maps_to is None:
             continue
@@ -156,4 +169,32 @@ def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -
                 node = node.get(key, MISSING) if isinstance(node, Mapping) else MISSING
             if node is not MISSING:
                 errors.extend(validate_value(target.parse(node), schema, pdk))
+    return errors
+
+
+def _invalid_carried_steps(
+    carried: Mapping[str, object], flow_steps: Collection[str] | None
+) -> list[str]:
+    scoped = [(step, param) for step, values in step_values(carried).items() for param in values]
+    records = carried.get(WORKSPACE_PARAM_OVERRIDES_KEY)
+    scoped.extend(
+        (str(record["step"]), str(record.get("key", "")))
+        for record in (records if isinstance(records, list) else [])
+        if isinstance(record, dict) and record.get("step") is not None
+    )
+    errors: list[str] = []
+    for step, param in dict.fromkeys(scoped):
+        schema = lookup_schema(param)
+        if schema is None:
+            errors.append(f"unknown parameter {param} carried at step {step}")
+            continue
+        try:
+            check_parameter_step(schema, step)
+        except ParameterStepError as exc:
+            errors.append(str(exc))
+            continue
+        if not is_step_scoped(schema):
+            errors.append(f"{param} is workspace-wide but was carried at step {step}")
+        elif flow_steps is not None and step not in flow_steps:
+            errors.append(f"{step_key(step, param)}: step {step} is not in the new flow")
     return errors

@@ -71,7 +71,8 @@ def edit_and_apply(
         return rows
     if group:
         identity = str(group)
-        rows = [row for row in rows if _row_applies_to(row, identity)]
+        first_step = _first_flow_step(ctx, workspace_scope=bool(args.workspace))
+        rows = [row for row in rows if _row_listed_at(row, identity, first_step)]
         if not rows:
             return CommandResult.err([error_record("unknown_step", step=group)])
     if not rows:
@@ -261,13 +262,28 @@ def _row(
     )
 
 
-def _row_applies_to(row: "ParamRow", step: str) -> bool:
-    """Whether *row*'s parameter is declared for the flow *step* ``--step`` names."""
+def _row_listed_at(row: "ParamRow", step: str, first_step: str) -> bool:
+    """Whether *row* belongs to the per-step view of *step* (the catalogs' ``listed_at`` rule)."""
     from chipcompiler.params import lookup_schema
 
     row_step, param = split_step_key(row.param)
     schema = lookup_schema(param)
-    return schema is not None and schema.applies_to(step) and row_step in (None, step)
+    return schema is not None and schema.listed_at(step, first_step) and row_step in (None, step)
+
+
+def _first_flow_step(ctx: CommandContext, *, workspace_scope: bool) -> str:
+    """The first step of the workspace's flow, or of the project's preset."""
+    if workspace_scope:
+        from chipcompiler.data import load_workspace
+
+        workspace = load_workspace(ctx.run_dir)
+        steps = workspace.flow.steps() if workspace is not None else []
+        return str(steps[0].get("name", "")) if steps else ""
+    from chipcompiler.rtl2gds import get_flow_builders
+
+    builder = get_flow_builders().get(getattr(ctx.config, "flow_preset", ""))
+    steps = list(builder()) if builder is not None else []
+    return str(steps[0][0]) if steps else ""
 
 
 def value_text(value: object) -> str:

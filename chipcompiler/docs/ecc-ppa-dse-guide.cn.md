@@ -161,7 +161,7 @@ null 表示用户未设置上限，不表示测量值为零。这里的数值不
     "fixed_sdc_frequency_pdk": true,
     "parameters": {
       "floorplan.core_util": [0.25, 0.30, 0.35],
-      "place.target_density": [0.15, 0.20, 0.25]
+      "placement:place.target_density": [0.15, 0.20, 0.25]
     },
     "first_round_max_candidates": 3,
     "max_search_candidates": 8,
@@ -382,17 +382,19 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `floorplan.aspect_ratio` | float；宽高比 | 长线、通道、外形 | pre_floorplan |
 | `floorplan.core_margin` | JSON 二元数值列表，µm | 边缘/IO/PDN空间 | floorplan |
 | `floorplan.die_builder.mode`、die_size 的 width/height_micron | 模式与固定尺寸 | 固定 die 外形实验 | floorplan |
-| `place.target_density` | float，当前范围 0.1–0.95 | 布局紧凑程度与拥塞 | place |
-| `place.stop_overflow` | float，0–1 | 布局收敛阈值 | place |
-| `place.routability_opt_flag` | int，0/1 | 拥塞驱动布局 | place |
-| `place.cell_padding_x` | int，数据库单位 dbu | pin access/拥塞折中 | place |
-| `place.random_seed`、`place.deterministic_flag` | 需按 schema 查看类型与条件 | 复现控制，必要时 seed 复验 | place |
+| `place.target_density` | float，当前范围 0.1–0.95 | 布局紧凑程度与拥塞 | placement |
+| `place.stop_overflow` | float，0–1 | 布局收敛阈值 | placement |
+| `place.routability_opt_flag` | int，0/1 | 拥塞驱动布局 | placement |
+| `place.cell_padding_x` | int，数据库单位 dbu | pin access/拥塞折中 | placement |
+| `place.random_seed`、`place.deterministic_flag` | 需按 schema 查看类型与条件 | 复现控制，必要时 seed 复验 | placement |
 | `cts.skew_bound` | 当前 schema 为 str，物理量 ns | CTS skew/面积/功耗折中 | CTS |
 | `cts.max_fanout` | int，当前范围 1–200 | 时钟树结构 | CTS；还可能影响自动 SDC，需要看 invalidation |
 | `cts.routing_layer`、`cts.buffer_type` | JSON 列表 | 工艺允许的时钟层与缓冲单元 | CTS |
 | `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | timing_optimization |
-| `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | 可能影响布局路由代理和 Sizer；以 invalidation 为准 |
+| `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | workspace 级（不带步骤的键）；从读取其目标配置的最早步骤开始失效（`route.bottom_layer`：pre_floorplan；`route.top_layer`：macro_placement/placement），并可能影响 Sizer；以 invalidation 为准 |
 | `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macro_placement |
+
+`place.*` 行是按流程步骤保存的 DreamPlace 参数：设置和读取时键中要带步骤（`placement:place.target_density`），不能用裸名。表中写的是参数名。
 
 floorplan.core_util、place.target_density 与最终 core_utilization 是三个不同概念。
 密度不直接决定 die 面积；提高 target_density 不能被直接记为面积减少。
@@ -477,7 +479,7 @@ ecc status --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc report step --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc param diff --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --plain
 ecc param show floorplan.core_util --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ```
 
 如果没有可信 baseline，使用未占用名称创建完整 baseline：
@@ -525,7 +527,7 @@ ecc signoff check --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ```bash
 PPA_CANDIDATE=ppa-density-015-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.15 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.15 --plain
 
 ecc status --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
 ecc report step placement --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
@@ -556,7 +558,7 @@ ecc report project --project "$PPA_PROJECT" --json
 PPA_SWEEP=ppa-density-r1
 ecc sweep create --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --param floorplan.core_util=0.30 \
-  --param place.target_density=0.15,0.20,0.25
+  --param placement:place.target_density=0.15,0.20,0.25
 ecc sweep show --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
 ecc sweep run --project "$PPA_PROJECT" --name "$PPA_SWEEP" --max-candidates 3
 ecc sweep verify --project "$PPA_PROJECT" --name "$PPA_SWEEP"
@@ -631,8 +633,8 @@ PPA_ITER=ppa-iter-001
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-before.snapshot.json" --json
 ecc param apply --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
-  --set place.target_density=0.25 --set place.stop_overflow=0.08 --plain
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
+  --set placement:place.target_density=0.25 --set placement:place.stop_overflow=0.08 --plain
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_ITER" --resume --plain
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-after.snapshot.json" --json
@@ -714,7 +716,7 @@ promote 记录 winner，不把候选复制回 baseline，也不自动改变项�
 ```bash
 PPA_FINAL=ppa-final-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.25 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.25 --plain
 ecc signoff inspect --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --json
 ecc report qor --project "$PPA_PROJECT" --workspace "$PPA_FINAL" \
   -o "$PPA_EVIDENCE/final-qor.txt" --json > "$PPA_EVIDENCE/final-qor.json"
@@ -855,7 +857,7 @@ synthesis → lec@synthesis（由 [flow] insert_steps 插入时）→ pre_floorp
 | --- | --- | --- | --- |
 | pre_floorplan / post_floorplan | `floorplan.core_util`、`floorplan.aspect_ratio`；必要时 core_margin / 已支持 die_size | die 外形、面积、有效 core utilization、可用放置空间；宏/通道/PDN 证据 | 可复用固定综合；floorplan 及之后重跑 |
 | macro_placement | 已公开的 `macro.placements` / macro 命令；合法方向与坐标 | 宏合法性、通道、pin 可达性及后续可布性 | 只能复用宏摆放之前未变更的前缀 |
-| place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 post_floorplan；place 及之后重跑 |
+| placement | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag`（以 `placement:place.*` 设置） | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 post_floorplan；placement 及之后重跑 |
 | cts / legalization | `cts.skew_bound`；有明确证据再加入 max_fanout、buffer_type、routing_layer | skew、clock wirelength、buffer count/area、时钟树深度、合法化结果 | 可复用有效 placement，但以 param 实际失效范围为准 |
 | timing_optimization | `timing_opt.hold_margin` | 当前 hold pass 的真实输出、插入代价；后续 setup/hold 风险 | 复用未失效的前缀；完整 RCX/STA 最后验证 |
 
@@ -952,12 +954,12 @@ mkdir -p "$DSE_EVIDENCE"
 
 ecc run --project "$DSE_PROJECT" --workspace dse-place-001 \
   --from synthesis --to placement \
-  --set floorplan.core_util=0.30 --set place.target_density=0.20 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.20 --plain
 
 ecc report step post_floorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.floorplan.json"
-ecc report step place --project "$DSE_PROJECT" --workspace dse-place-001 \
+ecc report step placement --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section feature --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.place.json"
 ecc report snapshot --project "$DSE_PROJECT" --workspace dse-place-001 \
@@ -986,19 +988,19 @@ DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
 ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
   --project "$DSE_PROJECT" --from placement --plain
-ecc param set place.target_density 0.25 \
+ecc param set placement:place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
 ecc param diff --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ecc status --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ```
 
-读取 param 输出的失效边界和状态，再执行：如果参数修改返回 `from_step=place` 且仅 place 后缀失效，
+读取 param 输出的失效边界和状态，再执行：如果参数修改返回 `from_step=placement` 且仅 placement 后缀失效，
 可以使用以下命令；如失效更早，改为实际最早步骤，不能跳过它。
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --from placement --to placement --plain
-ecc report step place --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
+ecc report step placement --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.place.json"
 ```
@@ -1059,7 +1061,7 @@ DSE_INPUT_NETLIST=/absolute/path/to/verified-postfloorplan.v.gz
 ecc project set design.def "$DSE_INPUT_DEF" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc project set design.netlist "$DSE_INPUT_NETLIST" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
-  --from placement --to placement --set place.target_density=0.25 --plain
+  --from placement --to placement --set placement:place.target_density=0.25 --plain
 ```
 
 要探索 floorplan，改用固定综合网表的 `pre_floorplan → placement` 范围，并重新生成 floorplan；

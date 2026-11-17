@@ -514,7 +514,7 @@ ecc run [OPTIONS]
   --force            强制重跑已成功的 --only 步骤
   --preset TEXT      本次运行的 flow preset 覆盖（不写回 ecc.toml），如 --preset syn_sta
   --overwrite        覆盖已存在的 workspace（仅删除真正的 ECC workspace 目录，含安全校验）
-  --set KEY=VALUE    参数覆盖，可重复（如 --set place.target_density=0.65），会记录到 run 的 provenance
+  --set KEY=VALUE    参数覆盖，可重复（如 --set placement:place.target_density=0.65），会记录到 run 的 provenance
   --plain           面向脚本的 key=value 输出
 ```
 
@@ -850,15 +850,15 @@ config=design.top scope=project value=gcd resolved=gcd source=ecc.toml
 config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 ...
 
-$ ecc config floorplan  # 步骤级
+$ ecc config pre_floorplan  # 步骤级
 [config]
   step:
     db_ecc.json (config)
       path: default/config/db_ecc.json
-  inspect: ecc config floorplan
+  inspect: ecc config pre_floorplan
     floorplan_ecc.json (config)
       path: default/config/floorplan_ecc.json
-  inspect: ecc config floorplan
+  inspect: ecc config pre_floorplan
 ```
 
 ## 8.5. project / workspace — 编辑项目资源与刷新 workspace
@@ -1273,7 +1273,7 @@ ecc param set KEY VALUE --workspace NAME  # 仅修改指定 workspace，不写 e
 `set`/`unset` 修改打包——默认项目作用域，或以 `--workspace NAME` 指定一个
 workspace——整批落地为一次原子更新和一次失效；批内任一校验失败则什么都不写。
 workspace 作用域下 `--step STEP` 进一步把批次限制为该步骤可配置的参数（否则报
-`parameter_not_applicable`），`--expected-revision`/`--command-id`/`--no-wait`
+`parameter_not_applicable`），并把不带步骤的按步骤键补全为该步骤（`--step placement --set place.target_density=0.7`）；`--expected-revision`/`--command-id`/`--no-wait`
 承载自动化契约（见 §5.1）。
 
 `param edit` 是 `param apply` 的交互形式，作用于项目（`ecc.toml`），或以
@@ -1286,7 +1286,7 @@ workspace 作用域下 `--step STEP` 进一步把批次限制为该步骤可配�
 `pdk.*`，且仅限其 flow 中的步骤）。没有终端时报 `param_edit_requires_terminal`；脚本和
 agent 使用 `param apply`。
 
-通用选项：`--project DIR`、`--plain`。`list`、`show`、`set`、`unset` 和 `diff` 还接受 `--workspace NAME`。此时参数写入该 workspace 的 `home/params.toml`（不写 `ecc.toml`），刷新其生成配置，并将参数所属步骤及其后缀标记为待执行；后续 `ecc run --workspace NAME` 从该步骤继续。workspace 局部设置会记录到 `workspace_param_overrides`（含修改前的 `baseline`）——`param diff --workspace NAME` 与该 baseline 对比，`param unset KEY --workspace NAME` 恢复 baseline。只有 `ecc param list --all` 中的已审核参数可局部设置，且参数所属步骤必须存在于该 workspace 的持久化 flow 中（否则报 `workspace_param_refresh_failed`，例如对只有综合的 workspace 设 `place.*`）；`pdk.*` 路径字段仍需修改 `ecc.toml` 后执行 `ecc workspace refresh`：
+通用选项：`--project DIR`、`--plain`。`list`、`show`、`set`、`unset` 和 `diff` 还接受 `--workspace NAME`。此时参数写入该 workspace 的 `home/params.toml`（不写 `ecc.toml`），刷新其生成配置，并将参数所属步骤及其后缀标记为待执行（workspace 级参数则从读取其任一目标配置的最早 flow 步骤开始）；后续 `ecc run --workspace NAME` 从该步骤继续。workspace 局部设置会记录到 `workspace_param_overrides`（含修改前的 `baseline`）——`param diff --workspace NAME` 与该 baseline 对比，`param unset KEY --workspace NAME` 恢复 baseline。只有 `ecc param list --all` 中的已审核参数可局部设置，且按步骤取值所属的步骤必须存在于该 workspace 的持久化 flow 中（否则报 `unknown_flow_step`，例如对只有综合的 workspace 设 `placement:place.target_density`）；`pdk.*` 路径字段仍需修改 `ecc.toml` 后执行 `ecc workspace refresh`：
 
 ```console
 $ ecc param set design.frequency_mhz 150 --workspace default --plain
@@ -1328,8 +1328,14 @@ $ ecc param list
   sta
     sta.max_paths                  1000
 
-$ ecc param set place.target_density 0.65
-  set place.target_density = 0.65 (ecc.toml)
+$ ecc param set placement:place.target_density 0.65
+  set placement:place.target_density = 0.65 (ecc.toml)
+
+$ ecc param set place.target_density 0.65     # 按步骤参数必须带步骤
+[error]
+  parameter_step_required place.target_density is set per step; name one of: placement
+  param: place.target_density
+rc=1
 
 $ ecc param set cts.skew_bound 0.05
   set cts.skew_bound = 0.05 (ecc.toml)
@@ -1338,16 +1344,16 @@ $ ecc param set pdk.tech prtech/techLEF/N551P6M_ecos.lef
   set pdk.tech = prtech/techLEF/N551P6M_ecos.lef (ecc.toml)
 
 $ ecc param diff
-  place.target_density           0.65 (was 0.4, ecc.toml)
+  placement:place.target_density 0.65 (was 0.4, ecc.toml)
 
-$ ecc param show place.target_density
-  place.target_density
+$ ecc param show placement:place.target_density
+  placement:place.target_density
     value          0.65
     default        0.4
     source         ecc.toml
     type           float
     applies        placement
-    maps to        DreamPlace.target_density
+    config target  dreamplace:target_density
     description    Target placement density
     range          [0.1, 1.0]
     ...
@@ -1362,7 +1368,7 @@ rc=1
 `set` 会在 `ecc.toml` 末尾维护对应分组表；`unset` 后表被清理：
 
 ```toml
-[params.place]
+[params.step.placement.place]
 target_density = 0.65
 
 [params.floorplan.die_builder]
@@ -1631,7 +1637,7 @@ rc=6                        # 诊断为 failed 或 blocked 时退出码 6（见 
 创建确定性的参数 sweep。重复使用 `--param` 定义笛卡尔积；候选记录保存在 `experiments/<name>/`，不会修改项目 manifest 或 baseline workspace。sweep/explore 的完整参考——计划与结果 schema、执行隔离、排序规则——见 [Sweep 参考手册](ecc-sweep-ref.cn.md)：
 
 ```bash
-ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.skew_bound=0.08,0.10
+ecc sweep create --project /path/to/project --name density --param placement:place.target_density=0.60,0.65 --param cts.skew_bound=0.08,0.10
 ecc sweep list --project /path/to/project                  # 已有 sweep 名称的 JSON 数组
 ecc sweep show --project /path/to/project --name density    # sweep 计划（sweep.json）
 ecc sweep run --project /path/to/project --name density [--max-candidates N]
@@ -1874,7 +1880,7 @@ $ ecc report step drc --section analysis
 使用已有命令显式查询 Engineering Snapshot 登记的 DEF 和 Verilog 输出：
 
 ```bash
-ecc report step place --workspace <workspace> --section outputs
+ecc report step placement --workspace <workspace> --section outputs
 ecc report step sta --workspace <workspace> --section outputs --json
 ```
 
@@ -1984,7 +1990,7 @@ ecc compare run --baseline before.json --current after.json --json
 ```bash
 mkdir -p comparisons
 ecc report snapshot --workspace /path/to/workspace --output comparisons/before.json
-ecc param set place.target_density 0.30 --workspace /path/to/workspace
+ecc param set placement:place.target_density 0.30 --workspace /path/to/workspace
 ecc run --workspace /path/to/workspace --resume
 ecc report snapshot --workspace /path/to/workspace --output comparisons/after.json
 ecc compare run --baseline comparisons/before.json --current comparisons/after.json --json
@@ -2279,14 +2285,14 @@ ecc run --preset rtl2gds           # 一次性跑完整链（synthesis→…→h
 ecc run                            # 再跑一次：已成功 → no_op；中断/失败 → 自动续跑
 ecc status                         # 看步骤状态；失败时：
 ecc log placement                  # 看出错步骤日志（TEXT 模式自动高亮错误行）
-ecc param set place.target_density 0.55   # 调参数后重跑
+ecc param set placement:place.target_density 0.55   # 调参数后重跑
 ecc run --overwrite --preset rtl2gds
-ecc param set place.target_density 0.65 --workspace default   # 或只局部调一个 workspace 的参数，不动 ecc.toml
+ecc param set placement:place.target_density 0.65 --workspace default   # 或只局部调一个 workspace 的参数，不动 ecc.toml
 ecc run --workspace default        # 从失效步骤继续跑
 ecc run --workspace default --only placement --force   # 或原地单步复跑（已成功需 --force）
 ecc run --workspace default --from cts --to routing  # 或原地重跑一段
 ecc workspace refresh default      # ecc.toml 的输入/PDK/preset 变了，重建 workspace 但不执行
-ecc config place                   # 查看该步实际生效的配置文件
+ecc config placement                   # 查看该步实际生效的配置文件
 ecc signoff inspect                # 签核就绪度（blocked 也 rc=0）
 ecc signoff export -o gcd_signoff.tar.gz    # 就绪后导出签核包
 ecc report summary                 # 生成文本设计总结（signoff/<design>_design_summary.txt）
@@ -2303,7 +2309,7 @@ ecc chipview --workspace default --step filler
 # `--workspace` 在创建前自动登记到 project.json。
 ecc init gcd && cd gcd
 ecc run --workspace baseline --preset rtl2gds                 # 基线：默认参数
-ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.65
+ecc run --workspace exp1 --preset rtl2gds --set placement:place.target_density=0.65
 ecc status --workspace exp1
 ecc log --workspace exp1
 ecc report qor --workspace baseline    # 两个 run 的 QoR 报告分别对比

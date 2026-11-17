@@ -17,6 +17,7 @@ from chipcompiler.data.config_params.common import (
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
     build_config_overrides,
+    config_patch,
     resolve_parameters,
     validate_value,
 )
@@ -75,7 +76,7 @@ def _resolved(schema: ParamSchema, value: object) -> ResolvedParam:
 
 
 def test_override_patch_fans_out_to_every_target_with_transforms_and_elements() -> None:
-    patch = build_config_overrides(
+    patch = config_patch(
         [_resolved(_LAYER, "MET1"), _resolved(_FLAG, "on"), _resolved(_MARGIN, [3, 5])]
     )
 

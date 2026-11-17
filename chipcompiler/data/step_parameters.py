@@ -112,18 +112,14 @@ def unset_step_value(parameters: dict, step: str, param: str) -> None:
 
 def step_config_patch(parameters: Mapping[str, object], step: str) -> dict:
     """*step*'s values as a direct config patch (``{config_key: {json path...}}``)."""
-    from chipcompiler.data.parameter_schema import (
-        ResolvedParam,
-        build_config_overrides,
-        lookup_schema,
-    )
+    from chipcompiler.data.parameter_schema import ResolvedParam, config_patch, lookup_schema
 
     resolved = []
     for param, value in step_values(parameters).get(step, {}).items():
         schema = lookup_schema(param)
         if schema is not None:
             resolved.append(ResolvedParam(param, value, schema.default, "workspace", schema))
-    return build_config_overrides(resolved)
+    return config_patch(resolved)
 
 
 def step_parameter_view(parameters: Mapping[str, object], step: str) -> dict:
