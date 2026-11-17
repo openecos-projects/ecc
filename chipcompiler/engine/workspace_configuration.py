@@ -44,7 +44,7 @@ from .macro_location_handoff import (
 from .macro_location_handoff import (
     verify_published_macro_location as _verify_published_macro_location,
 )
-from .parameter_steps import earliest_flow_step, require_flow_step, step_catalog
+from .parameter_steps import earliest_flow_step, edit_scope, require_flow_step, step_catalog
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
@@ -156,6 +156,7 @@ def _apply_workspace_parameters(
 
     schemas = {}
     scopes: dict[str, str | None] = {}
+    identities: set[tuple[str | None, str]] = set()
     normalized_sets = {}
     affected_steps = []
     for parameter in (*sets, *unsets):
@@ -164,12 +165,7 @@ def _apply_workspace_parameters(
         schema = lookup_schema(name)
         if schema is None or schema.pdk_target is not None:
             raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
-        if key_step is None and allowed is not None and name not in allowed:
-            raise WorkspaceLifecycleError(
-                "parameter_not_applicable",
-                f"Parameter {parameter} is not configurable at {step_id}",
-            )
-        scope = (key_step or step) if is_step_scoped(schema) else None
+        scope = edit_scope(schema, parameter, key_step, step, allowed, identities)
         try:
             check_parameter_step(schema, scope if is_step_scoped(schema) else key_step)
             affected_step = workspace_param_step(schema, workspace, scope)

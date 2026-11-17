@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from chipcompiler.data.step_parameters import is_step_scoped
 from chipcompiler.params import list_schemas
 
 from .workspace_lifecycle import WorkspaceLifecycleError
@@ -49,3 +50,38 @@ def require_flow_step(workspace: Any, parameter: str, step: str, *, step_value: 
     raise WorkspaceLifecycleError(
         "parameter_not_in_flow", f"No step of {parameter} exists in this Workspace flow"
     )
+
+
+def edit_scope(
+    schema: Any,
+    parameter: str,
+    key_step: str | None,
+    step: str | None,
+    allowed: set[str] | None,
+    seen: set[tuple[str | None, str]],
+) -> str | None:
+    """The step scope of one batch edit (``None`` for a workspace-wide value).
+
+    *key_step* is the step named in the key (``placement:place.x``), *step* the
+    batch's selected step with its *allowed* parameters. Rejects a step prefix
+    on a workspace-wide parameter, an edit outside the selected step, and a
+    second edit of the same stored value (tracked in *seen*).
+    """
+    if key_step is not None and not is_step_scoped(schema):
+        raise WorkspaceLifecycleError(
+            "parameter_not_applicable",
+            f"{schema.param} is workspace-wide; drop the '{key_step}:' step prefix",
+        )
+    if allowed is not None and (
+        schema.param not in allowed or (key_step is not None and key_step != step)
+    ):
+        raise WorkspaceLifecycleError(
+            "parameter_not_applicable", f"Parameter {parameter} is not configurable at {step}"
+        )
+    scope = (key_step or step) if is_step_scoped(schema) else None
+    if (scope, schema.param) in seen:
+        raise WorkspaceLifecycleError(
+            "conflicting_parameter_patch", "Parameters cannot be repeated or set and unset"
+        )
+    seen.add((scope, schema.param))
+    return scope
