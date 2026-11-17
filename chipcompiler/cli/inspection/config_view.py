@@ -228,21 +228,39 @@ def build_project_config_items(
         manifest_overrides=_manifest_parameter_overrides(cfg),
         pdk=pdk,
     )
-    from chipcompiler.cli.command_handlers.param_step_values import maps_to_str
+    from chipcompiler.cli.command_handlers.param_step_values import maps_to_str, record_at_step
+    from chipcompiler.data.step_parameters import is_step_scoped, step_key
 
+    by_key = {rp.key: rp for rp in resolved_params}
+    flow_steps = _flow_step_names(cfg, flow_config)
+    shown_params: list[tuple[str, object]] = []
     for rp in resolved_params:
+        if rp.step is not None:
+            continue  # step values are shown through their parameter's step rows
+        if not is_step_scoped(rp.schema):
+            shown_params.append((rp.key, rp))
+            continue
+        # A step-scoped parameter has no project-wide value: show it at each
+        # declared step in the flow (and at any step a layer sets explicitly),
+        # keyed <step>:<param> so its inspect command resolves.
+        for step in rp.schema.steps:
+            shown = record_at_step(by_key, rp, step)
+            if not flow_steps or step in flow_steps or shown.is_explicit:
+                shown_params.append((step_key(step, rp.param), shown))
+
+    for key, rp in shown_params:
         if rp.schema.has_direct_target and not rp.is_explicit:
             continue
         items.append(
             {
                 "kind": "param",
                 "scope": "project",
-                "key": rp.key,
+                "key": key,
                 "value": rp.value,
                 "default": rp.default,
                 "source": rp.source,
                 "maps_to": maps_to_str(rp.schema.maps_to),
-                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.key}", project),
+                "inspect_cmd": disclosure_cmd(f"ecc param show {key}", project),
             }
         )
 
@@ -258,6 +276,21 @@ def build_project_config_items(
         return [*error_records, *items], 1
 
     return items, 0
+
+
+def _flow_step_names(cfg: "ProjectConfig", flow_config: dict | None) -> set[str]:
+    """Names of the steps of the project's flow; empty when it cannot be built."""
+    from chipcompiler.rtl2gds import build_flow_range, get_flow_builders
+
+    if isinstance(flow_config, dict) and "start_step" in flow_config:
+        try:
+            steps = build_flow_range(flow_config["start_step"], flow_config["end_step"])
+        except (KeyError, ValueError):
+            return set()
+    else:
+        builder = get_flow_builders().get(cfg.flow_preset)
+        steps = builder() if builder is not None else []
+    return {str(step) for step, _tool, _state in steps}
 
 
 def _load_cli_provenance(run_dir: str, pdk: str | None) -> tuple[dict[str, object], str | None]:

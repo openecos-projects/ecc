@@ -10,6 +10,7 @@ from chipcompiler.data.types import LEC_STEP_TOOLS, StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
+from .candidate_verification import verify_candidate_step_configs
 from .data import (
     FoundationExtractor,
     bind_candidate_input,
@@ -25,12 +26,7 @@ from .data.candidate_materialization import (
     validate_candidate_materialization_receipt,
 )
 from .data.candidate_registry import FLOORPLAN_TARGET_FLOW_STEP
-from .data.candidate_step_values import (
-    expected_step_config_values,
-    seed_steps,
-    store_candidate_seed,
-    verify_executed_step_configs,
-)
+from .data.candidate_step_values import seed_steps, store_candidate_seed
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .floorplan_mode import (
@@ -188,7 +184,7 @@ class FlowAgentRuntimeApi:
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
             _run_candidate_steps(flow, steps, observer)
-            _verify_candidate_step_configs(
+            verify_candidate_step_configs(
                 candidate_workspace,
                 request,
                 executed_steps=steps,
@@ -1073,24 +1069,6 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
             )
         shutil.rmtree(directory)
     directory.mkdir(parents=True, exist_ok=True)
-
-
-def _verify_candidate_step_configs(
-    workspace, request, *, executed_steps: list, seed_step_names: list[str]
-) -> None:
-    """Check each executed DreamPlace step resolved the candidate seed and knob values."""
-    try:
-        written = (
-            candidate_written_patch(workspace, request.target_step, request.patch)
-            if request.patch
-            else []
-        )
-        verify_executed_step_configs(
-            executed_steps,
-            expected_step_config_values(written, seed_step_names, request.seed),
-        )
-    except ValueError as exc:
-        raise RuntimeApiError("command_failed", str(exc)) from exc
 
 
 def _run_candidate_steps(flow, steps, observer) -> None:

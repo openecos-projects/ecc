@@ -10,6 +10,7 @@ import re
 import shutil
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from .candidate_artifacts import (
@@ -55,7 +56,7 @@ def materialize_candidate_config(
     normalized_patch, knobs = _prepare_patch(workspace, target_step, patch)
     configs, config_paths, before_hashes = _load_configs(workspace, knobs)
     before_configs = deepcopy(configs)
-    _apply_patch(configs, knobs, normalized_patch)
+    _apply_patch(workspace, configs, knobs, normalized_patch)
     if configs == before_configs:
         raise CandidateMaterializationError("candidate materialization patch did not change config")
     snapshots = _write_config_snapshots(
@@ -413,6 +414,7 @@ def _config_path(workspace: Any, config_key: str) -> Path:
 
 
 def _apply_patch(
+    workspace: Any,
     configs: dict[str, dict[str, Any]],
     knobs: list[CandidateKnob],
     patch: list[dict[str, Any]],
@@ -422,12 +424,14 @@ def _apply_patch(
     values = {item["knob_id"]: item["value"] for item in patch}
     for knob in knobs:
         if is_step_value_knob(knob):
-            set_step_value(
-                configs[knob_store_key(knob)],
-                knob.target_step,
-                knob_step_parameter(knob).param,
-                knob_store_value(knob, values[knob.knob_id]),
-            )
+            store = configs[knob_store_key(knob)]
+            schema = knob_step_parameter(knob)
+            value = knob_store_value(knob, values[knob.knob_id])
+            # A value equal to the step's effective value (stored step value,
+            # else the baseline config) changes nothing: leave the store as is
+            # so the no-op check rejects the candidate.
+            if value != _effective_step_value(workspace, store, schema, knob.target_step):
+                set_step_value(store, knob.target_step, schema.param, value)
             continue
         current = configs[knob.config_key]
         for key in knob.json_path[:-1]:
@@ -438,6 +442,22 @@ def _apply_patch(
             current = child
         value = values[knob.knob_id]
         current[knob.json_path[-1]] = int(value) if knob.value_type == "bool_int" else value
+
+
+def _effective_step_value(
+    workspace: Any, parameters: dict[str, Any], schema: Any, step: str
+) -> Any:
+    """The value *schema* resolves to at *step* from the loaded *parameters* store."""
+    from chipcompiler.data.workspace_parameters import workspace_param_value
+
+    view = SimpleNamespace(
+        parameters=SimpleNamespace(data=parameters),
+        config=getattr(workspace, "config", {}) or {},
+    )
+    try:
+        return workspace_param_value(view, schema, step=step)
+    except ValueError as error:
+        raise CandidateMaterializationError(str(error)) from error
 
 
 def _write_configs(
