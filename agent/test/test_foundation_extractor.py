@@ -165,32 +165,32 @@ def _make_workspace(
     _write_json(
         ws / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Floorplan",
+                    "name": "floorplan",
                     "tool": "ecc",
                     "state": "Success",
                     "info": {},
-                    **step_fields("Floorplan", "ecc"),
+                    **step_fields("floorplan", "ecc"),
                 },
                 {
-                    "name": "place",
+                    "name": "placement",
                     "tool": "dreamplace",
                     "state": "Success",
-                    **step_fields("place", "dreamplace"),
+                    **step_fields("placement", "dreamplace"),
                 },
                 {
-                    "name": "CTS",
+                    "name": "cts",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("CTS", "ecc"),
+                    **step_fields("cts", "ecc"),
                 },
                 {
-                    "name": "route",
+                    "name": "routing",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("route", "ecc"),
+                    **step_fields("routing", "ecc"),
                 },
                 {
                     "name": "drc",
@@ -201,38 +201,35 @@ def _make_workspace(
             ],
         },
     )
-    from chipcompiler.data.parameter_keys import normalize_parameter_dict
     from chipcompiler.data.workspace_config import save_workspace_config
 
     assert save_workspace_config(
         ws,
-        normalize_parameter_dict(
-            {
-                "PDK": "ics55",
-                "Design": "gcd",
-                "Die": {"Size": [], "Area": 0},
-                "Core": {
-                    "Size": [],
-                    "Area": 0,
-                    "Utilitization": 0.5,
-                    "Margin": [2, 2],
-                    "Aspect ratio": 1,
-                },
-                "Max fanout": 20,
-                "Target density": 0.3,
-                "Target overflow": 0.1,
-                "Cell padding x": 600,
-                "Routability opt flag": 1,
-                "Bottom layer": "MET2",
-                "Top layer": "MET5",
-            }
-        ),
+        {
+            "pdk": "ics55",
+            "design": "gcd",
+            "die": {"size": [], "area": 0},
+            "core": {
+                "size": [],
+                "area": 0,
+                "utilitization": 0.5,
+                "margin": [2, 2],
+                "aspect_ratio": 1,
+            },
+            "max_fanout": 20,
+            "target_density": 0.3,
+            "target_overflow": 0.1,
+            "cell_padding_x": 600,
+            "routability_opt_flag": 1,
+            "bottom_layer": "MET2",
+            "top_layer": "MET5",
+        },
     )
     for stage_dir, stage_name in [
-        ("Floorplan_ecc", "Floorplan"),
-        ("place_dreamplace", "place"),
-        ("CTS_ecc", "CTS"),
-        ("route_ecc", "route"),
+        ("floorplan_ecc", "floorplan"),
+        ("placement_dreamplace", "placement"),
+        ("cts_ecc", "cts"),
+        ("routing_ecc", "routing"),
         ("drc_ecc", "drc"),
     ]:
         _write_json(
@@ -248,7 +245,7 @@ def _make_workspace(
             {"-min_filler_width": 1},
         )
         _write_json(
-            ws / stage_dir / "config" / "route_ecc.json",
+            ws / stage_dir / "config" / "routing_ecc.json",
             {
                 "RT": {
                     "-bottom_routing_layer": "MET2",
@@ -310,158 +307,159 @@ def _make_workspace(
         )
 
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "density_map" / "place_allcell_density.csv",
+        ws / "placement_dreamplace" / "feature" / "density_map" / "placement_allcell_density.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "density_map" / "place_macro_density.csv",
+        ws / "placement_dreamplace" / "feature" / "density_map" / "placement_macro_density.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "density_map" / "place_stdcell_density.csv",
+        ws / "placement_dreamplace" / "feature" / "density_map" / "placement_stdcell_density.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "margin_map" / "place_horizontal_margin.csv",
+        ws / "placement_dreamplace" / "feature" / "margin_map" / "placement_horizontal_margin.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "margin_map" / "place_vertical_margin.csv",
+        ws / "placement_dreamplace" / "feature" / "margin_map" / "placement_vertical_margin.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "margin_map" / "place_union_margin.csv",
+        ws / "placement_dreamplace" / "feature" / "margin_map" / "placement_union_margin.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "RUDY_map" / "place_rudy_union.csv", [[1, 2], [3, 4]]
+        ws / "placement_dreamplace" / "feature" / "RUDY_map" / "placement_rudy_union.csv",
+        [[1, 2], [3, 4]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_allcell_density.csv",
+        / "placement_allcell_density.csv",
         [[10, 11], [12, 13]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_allcell_pin_density.csv",
+        / "placement_allcell_pin_density.csv",
         [[20, 21], [22, 23]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_allnet_density.csv",
+        / "placement_allnet_density.csv",
         [[30, 31], [32, 33]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_global_net_density.csv",
+        / "placement_global_net_density.csv",
         [[34, 35], [36, 37]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_local_net_density.csv",
+        / "placement_local_net_density.csv",
         [[38, 39], [40, 41]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_macro_density.csv",
+        / "placement_macro_density.csv",
         [[0, 0], [0, 0]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_macro_pin_density.csv",
+        / "placement_macro_pin_density.csv",
         [[0, 0], [0, 0]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_stdcell_density.csv",
+        / "placement_stdcell_density.csv",
         [[10, 11], [12, 13]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_stdcell_pin_density.csv",
+        / "placement_stdcell_pin_density.csv",
         [[20, 21], [22, 23]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "margin_map"
-        / "place_union_margin.csv",
+        / "placement_union_margin.csv",
         [[40, 41], [42, 43]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "RUDY_map"
-        / "place_rudy_union.csv",
+        / "placement_rudy_union.csv",
         [[50, 51], [52, 53]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "RUDY_map"
-        / "place_lut_rudy_union.csv",
+        / "placement_lut_rudy_union.csv",
         [[150, 151], [152, 153]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "egr_congestion_map"
-        / "place_egr_horizontal_overflow.csv",
+        / "placement_egr_horizontal_overflow.csv",
         [[5]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "egr_congestion_map"
-        / "place_egr_vertical_overflow.csv",
+        / "placement_egr_vertical_overflow.csv",
         [[7]],
     )
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -483,7 +481,7 @@ END DESIGN
         + "\n",
     )
     _write_text(
-        ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.def",
+        ws / "floorplan_ecc" / "output" / "gcd_floorplan.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -514,17 +512,17 @@ END DESIGN
 """.strip()
         + "\n",
     )
-    _write_sample_gcell_info(ws / "place_dreamplace")
-    _write_sample_egr_demand_capacity(ws / "place_dreamplace")
+    _write_sample_gcell_info(ws / "placement_dreamplace")
+    _write_sample_egr_demand_capacity(ws / "placement_dreamplace")
     _write_json(
-        ws / "place_dreamplace" / "feature" / "place.map.json",
+        ws / "placement_dreamplace" / "feature" / "placement.map.json",
         {
-            "Density": {"cell": {"allcell_density": "density_map/place_allcell_density.csv"}},
+            "Density": {"cell": {"allcell_density": "density_map/placement_allcell_density.csv"}},
             "Congestion": {
                 "map": {
                     "egr": {
-                        "horizontal": "egr_congestion_map/place_egr_horizontal_overflow.csv",
-                        "vertical": "egr_congestion_map/place_egr_vertical_overflow.csv",
+                        "horizontal": "egr_congestion_map/placement_egr_horizontal_overflow.csv",
+                        "vertical": "egr_congestion_map/placement_egr_vertical_overflow.csv",
                     }
                 },
                 "overflow": {"top_average": {"horizontal": 5, "vertical": 7}},
@@ -534,29 +532,37 @@ END DESIGN
     if include_route_maps:
         _write_csv(
             ws
-            / "route_ecc"
+            / "routing_ecc"
             / "feature"
             / "egr_congestion_map"
-            / "route_egr_horizontal_overflow.csv",
+            / "routing_egr_horizontal_overflow.csv",
             [[1, 0], [2, 3]],
         )
         _write_csv(
-            ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_vertical_overflow.csv",
+            ws
+            / "routing_ecc"
+            / "feature"
+            / "egr_congestion_map"
+            / "routing_egr_vertical_overflow.csv",
             [[0, 4], [1, 1]],
         )
         _write_csv(
-            ws / "route_ecc" / "feature" / "egr_congestion_map" / "route_egr_union_overflow.csv",
+            ws
+            / "routing_ecc"
+            / "feature"
+            / "egr_congestion_map"
+            / "routing_egr_union_overflow.csv",
             [[1, 4], [3, 4]],
         )
         _write_json(
-            ws / "route_ecc" / "feature" / "route.map.json",
+            ws / "routing_ecc" / "feature" / "routing.map.json",
             {
                 "Congestion": {
                     "map": {
                         "egr": {
-                            "horizontal": "egr_congestion_map/route_egr_horizontal_overflow.csv",
-                            "vertical": "egr_congestion_map/route_egr_vertical_overflow.csv",
-                            "union": "egr_congestion_map/route_egr_union_overflow.csv",
+                            "horizontal": "egr_congestion_map/routing_egr_horizontal_overflow.csv",
+                            "vertical": "egr_congestion_map/routing_egr_vertical_overflow.csv",
+                            "union": "egr_congestion_map/routing_egr_union_overflow.csv",
                         }
                     },
                     "overflow": {"top_average": {"horizontal": 2.5, "vertical": 3.0}},
@@ -564,9 +570,9 @@ END DESIGN
             },
         )
     if include_route_artifacts:
-        _write_sample_gcell_info(ws / "route_ecc")
+        _write_sample_gcell_info(ws / "routing_ecc")
         _write_text(
-            ws / "route_ecc" / "output" / "gcd_route.def",
+            ws / "routing_ecc" / "output" / "gcd_routing.def",
             """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -602,7 +608,7 @@ END DESIGN
             + "\n",
         )
         _write_text(
-            ws / "route_ecc" / "data" / "rt" / "rt.log",
+            ws / "routing_ecc" / "data" / "rt" / "rt.log",
             """
 [RT Info printDatabase]     idx:0 order:9 name:MET2 prefer_direction:horizontal
 [RT Info printDatabase]     idx:1 order:11 name:MET3 prefer_direction:vertical
@@ -619,7 +625,7 @@ END DESIGN
         if include_native_demand_capacity:
             _write_text(
                 ws
-                / "route_ecc"
+                / "routing_ecc"
                 / "data"
                 / "rt"
                 / "space_router"
@@ -693,9 +699,9 @@ END DESIGN
                 + "\n",
             )
         _write_json(
-            ws / "route_ecc" / "feature" / "route.step.json",
+            ws / "routing_ecc" / "feature" / "routing.step.json",
             {
-                "route": {
+                "routing": {
                     "DR": [
                         {
                             "iter": 1,
@@ -708,7 +714,7 @@ END DESIGN
             },
         )
         _write_json(
-            ws / "route_ecc" / "data" / "sta" / "gcd.rpt.json",
+            ws / "routing_ecc" / "data" / "sta" / "gcd.rpt.json",
             {
                 "summary": [
                     {
@@ -724,7 +730,7 @@ END DESIGN
             },
         )
         _write_json(
-            ws / "route_ecc" / "data" / "sta" / "wire_paths" / "wire_path_1.json",
+            ws / "routing_ecc" / "data" / "sta" / "wire_paths" / "wire_path_1.json",
             [
                 {
                     "node_0": {
@@ -848,10 +854,10 @@ def test_iccd_full_v1_extractor_writes_parquet_contract_and_no_legacy_defaults(t
     assert manifest["created_at"]
     assert manifest["generated_by"]["extractor"] == "agent.data.foundation.FoundationExtractor"
     assert [stage["stage_name"] for stage in manifest["stages"]] == [
-        "Floorplan",
-        "place",
-        "CTS",
-        "route",
+        "floorplan",
+        "placement",
+        "cts",
+        "routing",
         "drc",
     ]
     assert manifest["tables"]["patches"]["row_count"] == 4
@@ -1057,13 +1063,15 @@ def test_iccd_full_v1_extractor_publishes_drc_attribution_inputs(tmp_path: Path)
 
 def test_iccd_full_v1_r3_rejects_negative_native_demand_capacity(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    early_router = ws / "place_dreamplace" / "data" / "rt" / "rt_temp_directory" / "early_router"
+    early_router = (
+        ws / "placement_dreamplace" / "data" / "rt" / "rt_temp_directory" / "early_router"
+    )
     for layer in ("MET2", "MET3"):
         _write_csv(early_router / f"net_map_{layer}.csv", [[0, 0], [0, 0]])
         _write_csv(early_router / f"supply_map_{layer}.csv", [[1, 1], [1, 1]])
-    for path in (ws / "place_dreamplace" / "feature" / "egr_congestion_map").glob("*.csv"):
+    for path in (ws / "placement_dreamplace" / "feature" / "egr_congestion_map").glob("*.csv"):
         path.unlink()
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+    for path in (ws / "placement_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
         "*pin_density.csv"
     ):
         path.unlink()
@@ -1084,11 +1092,11 @@ def test_iccd_full_v1_r3_rejects_negative_native_demand_capacity(tmp_path: Path)
 
 def test_iccd_full_v1_r3_prefers_direct_nonnegative_egr_overflow_map(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    map_dir = ws / "place_dreamplace" / "feature" / "egr_congestion_map"
+    map_dir = ws / "placement_dreamplace" / "feature" / "egr_congestion_map"
     for path in map_dir.glob("*.csv"):
         path.unlink()
-    _write_csv(map_dir / "place_egr_union_overflow.csv", [[0.0, 0.0], [0.0, 9.0]])
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+    _write_csv(map_dir / "placement_egr_union_overflow.csv", [[0.0, 0.0], [0.0, 9.0]])
+    for path in (ws / "placement_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
         "*pin_density.csv"
     ):
         path.unlink()
@@ -1245,7 +1253,7 @@ def test_iccd_full_v1_extractor_emits_stage_and_table_progress_logs(tmp_path: Pa
     messages = [record.getMessage() for record in caplog.records]
     assert any("foundation_extract start" in message for message in messages)
     assert any("foundation_stage start name=write_vectors" in message for message in messages)
-    assert any("foundation_vectors stage_done stage=route" in message for message in messages)
+    assert any("foundation_vectors stage_done stage=routing" in message for message in messages)
     assert any(
         "foundation_table done name=run_patch_route_labels" in message for message in messages
     )
@@ -1280,7 +1288,7 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
         ],
     )
     expected = 0
-    for stage in ["Floorplan", "place", "CTS", "route", "drc"]:
+    for stage in ["floorplan", "placement", "cts", "routing", "drc"]:
         for _entity, folder in (
             ("patch", "patches"),
             ("instance", "instances"),
@@ -1311,7 +1319,7 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
     assert {"macro_count", "net_count_overlap"} <= set(feature_columns)
     feature_rows = table_rows("run_stage_patch_features")
     place0 = next(
-        row for row in feature_rows if row["stage_name"] == "place" and row["patch_id"] == 0
+        row for row in feature_rows if row["stage_name"] == "placement" and row["patch_id"] == 0
     )
     assert place0["macro_count"] == 1
     assert place0["net_count_overlap"] == 1
@@ -1366,12 +1374,12 @@ def test_parquet_contract_preserves_all_semantic_blocks_and_auditable_views(tmp_
         )
     )
     assert progressive["stage_policy"] == {
-        "P1": ["Floorplan"],
-        "P2": ["Floorplan", "place"],
-        "P3": ["Floorplan", "place", "CTS"],
+        "P1": ["floorplan"],
+        "P2": ["floorplan", "placement"],
+        "P3": ["floorplan", "placement", "cts"],
     }
     assert progressive["leakage_policy"]["route_truth_as_preroute_input"] == "forbidden"
-    assert "route" not in progressive["allowed_input_stages"]["P3"]
+    assert "routing" not in progressive["allowed_input_stages"]["P3"]
     assert "run_patch_route_label_layers" in progressive["forbidden_input_tables"]
 
 
@@ -1395,14 +1403,14 @@ def test_stage_table_preserves_runtime_and_peak_memory_from_flow(tmp_path: Path)
     ).to_pylist()
     by_stage = {row["stage_name"]: row for row in rows}
 
-    assert by_stage["Floorplan"]["runtime_s"] == 7.0
-    assert by_stage["Floorplan"]["peak_memory_mb"] == 101.5
-    assert by_stage["place"]["runtime_s"] == 3723.0
-    assert by_stage["place"]["peak_memory_mb"] == 202.25
-    assert by_stage["CTS"]["runtime_s"] == 4.5
-    assert by_stage["CTS"]["peak_memory_mb"] == 303.0
-    assert by_stage["route"]["runtime_s"] is None
-    assert by_stage["route"]["peak_memory_mb"] is None
+    assert by_stage["floorplan"]["runtime_s"] == 7.0
+    assert by_stage["floorplan"]["peak_memory_mb"] == 101.5
+    assert by_stage["placement"]["runtime_s"] == 3723.0
+    assert by_stage["placement"]["peak_memory_mb"] == 202.25
+    assert by_stage["cts"]["runtime_s"] == 4.5
+    assert by_stage["cts"]["peak_memory_mb"] == 303.0
+    assert by_stage["routing"]["runtime_s"] is None
+    assert by_stage["routing"]["peak_memory_mb"] is None
 
 
 def test_write_tables_passes_iterables_without_eager_list_materialization(
@@ -1431,7 +1439,7 @@ def test_write_tables_passes_iterables_without_eager_list_materialization(
         yield {
             "design_id": "design:gcd",
             "run_id": "run:gcd",
-            "stage_name": "route",
+            "stage_name": "routing",
             "path_id": "path:1",
             "startpoint": "{}",
             "endpoint": "{}",
@@ -1478,7 +1486,7 @@ def test_write_parquet_writes_in_batches_when_batch_size_is_set(tmp_path: Path, 
         {
             "design_id": "design:gcd",
             "run_id": "run:gcd",
-            "stage_name": "route",
+            "stage_name": "routing",
             "path_id": f"path:{idx}",
             "startpoint": "{}",
             "endpoint": "{}",
@@ -1794,7 +1802,7 @@ def test_provenance_rows_do_not_materialize_large_table_iterables(tmp_path: Path
         "run_stage_patch_maps": OneShotRows(
             [
                 {
-                    "stage_name": "place",
+                    "stage_name": "placement",
                     "patch_id": 0,
                     "category": "density",
                     "channel": "cell_density",
@@ -1805,7 +1813,7 @@ def test_provenance_rows_do_not_materialize_large_table_iterables(tmp_path: Path
         "run_stage_patch_features": OneShotRows(
             [
                 {
-                    "stage_name": "place",
+                    "stage_name": "placement",
                     "patch_id": 0,
                     "feature_availability_code": "available",
                     "provenance_id": "prov:feature",
@@ -1815,7 +1823,7 @@ def test_provenance_rows_do_not_materialize_large_table_iterables(tmp_path: Path
         "stage_deltas": OneShotRows(
             [
                 {
-                    "to_stage": "place",
+                    "to_stage": "placement",
                     "entity_type": "patch",
                     "entity_key": "patch:0",
                     "metric_name": "available_from",
@@ -1826,7 +1834,7 @@ def test_provenance_rows_do_not_materialize_large_table_iterables(tmp_path: Path
         "semantic_blocks": OneShotRows(
             [
                 {
-                    "stage_name": "place",
+                    "stage_name": "placement",
                     "entity_type": "patch",
                     "entity_key": "patch:0",
                     "block_name": "source_refs",
@@ -1864,7 +1872,7 @@ def test_build_table_rows_reuses_dynamic_rows_for_provenance(tmp_path: Path, mon
         stages,
         extractor._collect_def_data(stages),
     )
-    route_stage = next((stage for stage in stages if stage.name == "route"), None)
+    route_stage = next((stage for stage in stages if stage.name == "routing"), None)
     assert route_stage is not None
     labels = extractor._write_labels(
         parse_route_native_demand_capacity_artifacts(route_stage.directory, canonical_grid)[
@@ -1925,7 +1933,7 @@ def test_route_native_demand_capacity_jsonl_is_read_streaming(tmp_path: Path, mo
     ws = _make_workspace(tmp_path)
     path = (
         ws
-        / "route_ecc"
+        / "routing_ecc"
         / "data"
         / "rt"
         / "space_router"
@@ -2174,21 +2182,21 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
         "views/ml/dataset_index.json",
         "views/agent/run_summary.json",
         "labels/route_native_demand_capacity.jsonl",
-        "vectors/instances/place.jsonl",
+        "vectors/instances/placement.jsonl",
         "vectors/tech/layers.json",
         "vectors/tech/cells.json",
         "vectors/tech/vias.json",
-        "vectors/nets/route.jsonl",
-        "vectors/pins/route.jsonl",
-        "vectors/wires/route.jsonl",
-        "vectors/routing_graphs/route.jsonl",
-        "vectors/timing_paths/route.jsonl",
-        "vectors/patches/place.jsonl",
-        "maps/place/density.json",
-        "maps/place/congestion.json",
+        "vectors/nets/routing.jsonl",
+        "vectors/pins/routing.jsonl",
+        "vectors/wires/routing.jsonl",
+        "vectors/routing_graphs/routing.jsonl",
+        "vectors/timing_paths/routing.jsonl",
+        "vectors/patches/placement.jsonl",
+        "maps/placement/density.json",
+        "maps/placement/congestion.json",
     ]:
         assert (foundation_dir / rel).exists(), rel
-    assert not (foundation_dir / "maps" / "place" / "egr_overflow.json").exists()
+    assert not (foundation_dir / "maps" / "placement" / "egr_overflow.json").exists()
 
     summary = json.loads((foundation_dir / "summary.json").read_text(encoding="utf-8"))
     assert "profile" not in summary
@@ -2222,12 +2230,12 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert "top_layer" in summary["parameters"]
     assert "Max fanout" not in summary["parameters"]
     metrics = summary["metrics"]
-    assert metrics["route"]["wire_count"] > 0
-    assert metrics["route"]["wire_length"] > 0
-    assert metrics["route"]["route_via_count"] > 0
-    assert "route_patch_overflow_count" not in metrics["route"]
-    assert "features" not in metrics["route"]
-    assert "route.step.json" not in metrics["route"]
+    assert metrics["routing"]["wire_count"] > 0
+    assert metrics["routing"]["wire_length"] > 0
+    assert metrics["routing"]["route_via_count"] > 0
+    assert "route_patch_overflow_count" not in metrics["routing"]
+    assert "features" not in metrics["routing"]
+    assert "routing.step.json" not in metrics["routing"]
     assert all(
         all("path" not in key.lower() for key in stage_metrics)
         for stage_metrics in metrics.values()
@@ -2244,7 +2252,7 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert manifest["workspace"] == str(ws.resolve())
     assert isinstance(manifest["sources"], list)
     assert "home/flow.json" in manifest["sources"]
-    assert "place_dreamplace/analysis/place_metrics.json" in manifest["sources"]
+    assert "placement_dreamplace/analysis/placement_metrics.json" in manifest["sources"]
     assert all(not Path(source).is_absolute() for source in manifest["sources"])
     assert all(isinstance(source, str) for source in manifest["sources"])
     assert manifest["artifacts"] == {
@@ -2270,7 +2278,7 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
     assert "gcell" not in grid["patches"][0]
 
     place_congestion = json.loads(
-        (foundation_dir / "maps" / "place" / "congestion.json").read_text()
+        (foundation_dir / "maps" / "placement" / "congestion.json").read_text()
     )
     assert place_congestion["category"] == "congestion"
     assert [item["value"] for item in place_congestion["maps"]["horizontal"]["values"]] == [
@@ -2292,8 +2300,10 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
         7.0,
     ]
 
-    indexed_density = json.loads((foundation_dir / "maps" / "place" / "density.json").read_text())
-    assert "place_allcell_density" not in indexed_density["maps"]
+    indexed_density = json.loads(
+        (foundation_dir / "maps" / "placement" / "density.json").read_text()
+    )
+    assert "placement_allcell_density" not in indexed_density["maps"]
     assert [item["value"] for item in indexed_density["maps"]["allcell_density"]["values"]] == [
         10.0,
         11.0,
@@ -2313,7 +2323,7 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
         33.0,
     ]
 
-    indexed_margin = json.loads((foundation_dir / "maps" / "place" / "margin.json").read_text())
+    indexed_margin = json.loads((foundation_dir / "maps" / "placement" / "margin.json").read_text())
     assert [item["value"] for item in indexed_margin["maps"]["union"]["values"]] == [
         40.0,
         41.0,
@@ -2321,7 +2331,7 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
         43.0,
     ]
 
-    indexed_rudy = json.loads((foundation_dir / "maps" / "place" / "rudy.json").read_text())
+    indexed_rudy = json.loads((foundation_dir / "maps" / "placement" / "rudy.json").read_text())
     assert [item["value"] for item in indexed_rudy["maps"]["rudy_union"]["values"]] == [
         50.0,
         51.0,
@@ -2329,13 +2339,13 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
         53.0,
     ]
     assert all("lut" not in key for key in indexed_rudy["maps"])
-    assert not (foundation_dir / "maps" / "place" / "ignored.json").exists()
+    assert not (foundation_dir / "maps" / "placement" / "ignored.json").exists()
     assert not (foundation_dir / "maps" / "canonical").exists()
     assert not (foundation_dir / "maps" / "raw").exists()
 
     instances = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "instances" / "place.jsonl")
+        for line in (foundation_dir / "vectors" / "instances" / "placement.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -2369,19 +2379,21 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
 
     nets = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "nets" / "routing.jsonl").read_text().splitlines()
     ]
     pins = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "pins" / "routing.jsonl").read_text().splitlines()
     ]
     wires = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "wires" / "routing.jsonl")
+        .read_text()
+        .splitlines()
     ]
     timing_paths = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "timing_paths" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "timing_paths" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -2438,7 +2450,7 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
 
     patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "patches" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -2502,13 +2514,13 @@ def test_iccd_full_v1_extractor_writes_full_contract(tmp_path: Path):
 
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     assert "profile" not in quality
-    assert quality["availability"]["instances"]["place"] == "available"
+    assert quality["availability"]["instances"]["placement"] == "available"
     assert quality["availability"]["labels"]["route_native_demand_capacity"] == "available"
     assert "route_reconstructed_demand_capacity" not in quality["availability"]["labels"]
     assert "route_reconstructed_congestion" not in quality["availability"]["labels"]
     assert "route_patch_overflow" not in quality["availability"]["labels"]
     assert quality["availability"]["drc"]["drc"] == "available"
-    assert quality["availability"]["timing_paths"]["route"] == "available"
+    assert quality["availability"]["timing_paths"]["routing"] == "available"
     assert "null_reason" in quality
     assert "route_reconstructed_congestion_count" not in summary["labels"]
     assert "route_reconstructed_demand_capacity_count" not in summary["labels"]
@@ -2671,11 +2683,11 @@ def test_iccd_full_v1_orders_instance_record_fields_like_documented_schema(tmp_p
     ws = _make_workspace(tmp_path)
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"]
+        export_legacy_debug=True, stages=["placement"]
     )
 
     row = json.loads(
-        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "placement.jsonl")
         .read_text()
         .splitlines()[0]
     )
@@ -2698,7 +2710,7 @@ def test_iccd_full_v1_orders_instance_record_fields_like_documented_schema(tmp_p
 def test_iccd_full_v1_timing_criticality_is_scoped_by_analysis_context(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_json(
-        ws / "route_ecc" / "data" / "sta" / "gcd.rpt.json",
+        ws / "routing_ecc" / "data" / "sta" / "gcd.rpt.json",
         {
             "summary": [
                 {
@@ -2780,7 +2792,7 @@ def test_iccd_full_v1_timing_criticality_is_scoped_by_analysis_context(tmp_path:
     )
     for idx in range(1, 5):
         _write_json(
-            ws / "route_ecc" / "data" / "sta" / "wire_paths" / f"wire_path_{idx}.json",
+            ws / "routing_ecc" / "data" / "sta" / "wire_paths" / f"wire_path_{idx}.json",
             [
                 {
                     "node_0": {
@@ -2803,12 +2815,12 @@ def test_iccd_full_v1_timing_criticality_is_scoped_by_analysis_context(tmp_path:
         )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["route"]
+        export_legacy_debug=True, stages=["routing"]
     )
 
     records = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl")
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -2836,11 +2848,11 @@ def test_iccd_full_v1_timing_paths_use_semantic_nulls_for_missing_spatial_maps(t
     ws = _make_workspace(tmp_path, include_route_maps=False)
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["route"]
+        export_legacy_debug=True, stages=["routing"]
     )
 
     record = json.loads(
-        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "route.jsonl")
+        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "routing.jsonl")
         .read_text()
         .splitlines()[0]
     )
@@ -2854,7 +2866,7 @@ def test_iccd_full_v1_timing_paths_use_semantic_nulls_for_missing_spatial_maps(t
 def test_iccd_full_v1_timing_paths_mark_missing_spatial_anchors_semantically(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.def",
+        ws / "floorplan_ecc" / "output" / "gcd_floorplan.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -2873,7 +2885,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json",
+        ws / "floorplan_ecc" / "output" / "gcd_floorplan.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -2894,7 +2906,7 @@ END DESIGN
         },
     )
     _write_json(
-        ws / "Floorplan_ecc" / "data" / "sta" / "gcd.rpt.json",
+        ws / "floorplan_ecc" / "data" / "sta" / "gcd.rpt.json",
         {
             "summary": [
                 {
@@ -2921,7 +2933,7 @@ END DESIGN
         },
     )
     _write_json(
-        ws / "Floorplan_ecc" / "data" / "sta" / "wire_paths" / "wire_path_1.json",
+        ws / "floorplan_ecc" / "data" / "sta" / "wire_paths" / "wire_path_1.json",
         [
             {"node_0": {"Point": "U1/A", "Capacitance": 0.1, "slew": 0.2, "trans_type": "rise"}},
             {"node_1": {"Point": "U1/Y", "Capacitance": 0.4, "slew": 0.6, "trans_type": "fall"}},
@@ -2929,11 +2941,11 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["Floorplan"]
+        export_legacy_debug=True, stages=["floorplan"]
     )
 
     record = json.loads(
-        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "Floorplan.jsonl")
+        (ws / "foundation_data" / "ecc" / "vectors" / "timing_paths" / "floorplan.jsonl")
         .read_text()
         .splitlines()[0]
     )
@@ -2945,7 +2957,7 @@ END DESIGN
 def test_iccd_full_v1_enriches_instances_from_def_components(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -2965,7 +2977,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "place_dreamplace" / "output" / "gcd_place.json",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -2998,13 +3010,13 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"]
+        export_legacy_debug=True, stages=["placement"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     instances = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "instances" / "place.jsonl")
+        for line in (foundation_dir / "vectors" / "instances" / "placement.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -3022,7 +3034,7 @@ END DESIGN
 def test_iccd_full_v1_uses_semantic_null_for_floorplan_unplaced_stdcells(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.def",
+        ws / "floorplan_ecc" / "output" / "gcd_floorplan.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -3041,7 +3053,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json",
+        ws / "floorplan_ecc" / "output" / "gcd_floorplan.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -3063,11 +3075,11 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["Floorplan"]
+        export_legacy_debug=True, stages=["floorplan"]
     )
 
     row = json.loads(
-        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "Floorplan.jsonl").read_text()
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "floorplan.jsonl").read_text()
     )
     assert row["physical_state"]["placement_status"] == "unplaced"
     assert row["physical_state"]["origin"] is None
@@ -3081,52 +3093,56 @@ def test_iccd_full_v1_adds_instance_patch_anchor(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_allcell_density.csv",
+        / "placement_allcell_density.csv",
         [[0.5, 0.0], [0.0, 0.0]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
-        / "place_allcell_pin_density.csv",
+        / "placement_allcell_pin_density.csv",
         [[2.0, 0.0], [0.0, 0.0]],
     )
     _write_csv(
         ws
-        / "place_dreamplace"
+        / "placement_dreamplace"
         / "feature"
         / "gcell_patch_map"
         / "RUDY_map"
-        / "place_rudy_union.csv",
+        / "placement_rudy_union.csv",
         [[0.01, 0.0], [0.0, 0.0]],
     )
     _write_csv(
-        ws / "place_dreamplace" / "feature" / "egr_congestion_map" / "place_egr_union_overflow.csv",
+        ws
+        / "placement_dreamplace"
+        / "feature"
+        / "egr_congestion_map"
+        / "placement_egr_union_overflow.csv",
         [[3.0, 0.0], [0.0, 0.0]],
     )
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
-        "place_*density.csv"
+    for path in (ws / "placement_dreamplace" / "feature" / "gcell_patch_map" / "density_map").glob(
+        "placement_*density.csv"
     ):
-        if path.name not in {"place_allcell_density.csv", "place_allcell_pin_density.csv"}:
+        if path.name not in {"placement_allcell_density.csv", "placement_allcell_pin_density.csv"}:
             path.unlink()
-    for path in (ws / "place_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map").glob(
-        "place_*rudy*.csv"
+    for path in (ws / "placement_dreamplace" / "feature" / "gcell_patch_map" / "RUDY_map").glob(
+        "placement_*rudy*.csv"
     ):
-        if path.name != "place_rudy_union.csv":
+        if path.name != "placement_rudy_union.csv":
             path.unlink()
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"]
+        export_legacy_debug=True, stages=["placement"]
     )
 
     record = json.loads(
-        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "placement.jsonl")
         .read_text()
         .splitlines()[0]
     )
@@ -3183,7 +3199,7 @@ def test_patch_anchor_uses_grid_lookup_without_scanning_all_patches():
 def test_iccd_full_v1_adds_instance_connectivity_summary(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -3205,7 +3221,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "place_dreamplace" / "output" / "gcd_place.json",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [240, 0], [240, 200], [0, 200], [0, 0]]},
@@ -3249,12 +3265,12 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"]
+        export_legacy_debug=True, stages=["placement"]
     )
 
     rows = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "place.jsonl")
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "placement.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -3275,7 +3291,7 @@ END DESIGN
 def test_iccd_full_v1_tracks_cts_inserted_instances(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -3294,7 +3310,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "place_dreamplace" / "output" / "gcd_place.json",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -3315,7 +3331,7 @@ END DESIGN
         },
     )
     _write_text(
-        ws / "CTS_ecc" / "output" / "gcd_CTS.def",
+        ws / "cts_ecc" / "output" / "gcd_cts.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -3336,7 +3352,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "CTS_ecc" / "output" / "gcd_CTS.json",
+        ws / "cts_ecc" / "output" / "gcd_cts.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -3369,17 +3385,17 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place", "CTS"]
+        export_legacy_debug=True, stages=["placement", "cts"]
     )
 
     cts_instances = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "CTS.jsonl")
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "instances" / "cts.jsonl")
         .read_text()
         .splitlines()
     ]
     cts_buf = next(item for item in cts_instances if item["name"] == "clk_leaf_0_0_buf")
-    assert cts_buf["progressive_metadata"]["created_stage"] == "CTS"
+    assert cts_buf["progressive_metadata"]["created_stage"] == "cts"
     assert cts_buf["progressive_metadata"]["created_stage_source"] == "first_observed"
     assert cts_buf["progressive_metadata"]["exists_in_prev_stage"] is False
     assert cts_buf["progressive_metadata"]["exists_in_place"] is False
@@ -3421,15 +3437,15 @@ END DESIGN
 
 def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    _write_sample_gcell_info(ws / "CTS_ecc")
-    _write_sample_egr_demand_capacity(ws / "CTS_ecc")
+    _write_sample_gcell_info(ws / "cts_ecc")
+    _write_sample_egr_demand_capacity(ws / "cts_ecc")
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
         [[100, 101], [102, 103]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3437,12 +3453,12 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         [[104, 105], [106, 107]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
         [[108, 109], [110, 111]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3451,7 +3467,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3459,12 +3475,12 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         [[116, 117], [118, 119]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
         [[0, 0], [0, 0]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3472,12 +3488,12 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         [[124, 125], [126, 127]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
         [[100, 101], [102, 103]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3485,15 +3501,15 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
         [[132, 133], [134, 135]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
         [[110, 111], [112, 113]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "margin_map" / "cts_union_margin.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "margin_map" / "cts_union_margin.csv",
         [[120, 121], [122, 123]],
     )
     floorplan_layout = json.loads(
-        (ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json").read_text(encoding="utf-8")
+        (ws / "floorplan_ecc" / "output" / "gcd_floorplan.json").read_text(encoding="utf-8")
     )
     floorplan_layout["data"].append(
         {
@@ -3504,23 +3520,23 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
             ],
         }
     )
-    _write_json(ws / "Floorplan_ecc" / "output" / "gcd_Floorplan.json", floorplan_layout)
+    _write_json(ws / "floorplan_ecc" / "output" / "gcd_floorplan.json", floorplan_layout)
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(export_legacy_debug=True)
 
     foundation_dir = ws / "foundation_data" / "ecc"
     for rel in [
-        "maps/Floorplan/density.json",
-        "maps/Floorplan/floorplan.json",
-        "maps/place/density.json",
-        "maps/place/congestion.json",
-        "maps/CTS/density.json",
-        "maps/CTS/congestion.json",
+        "maps/floorplan/density.json",
+        "maps/floorplan/floorplan.json",
+        "maps/placement/density.json",
+        "maps/placement/congestion.json",
+        "maps/cts/density.json",
+        "maps/cts/congestion.json",
     ]:
         assert (foundation_dir / rel).exists(), rel
 
     floorplan_density = json.loads(
-        (foundation_dir / "maps" / "Floorplan" / "density.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "floorplan" / "density.json").read_text(encoding="utf-8")
     )
     assert set(floorplan_density["maps"]) == {
         "allcell_density",
@@ -3541,7 +3557,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     ]
 
     floorplan_specific = json.loads(
-        (foundation_dir / "maps" / "Floorplan" / "floorplan.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "floorplan" / "floorplan.json").read_text(encoding="utf-8")
     )
     assert floorplan_specific["category"] == "floorplan"
     assert [item["value"] for item in floorplan_specific["maps"]["io_pin_density"]["values"]] == [
@@ -3566,7 +3582,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     floorplan_map_values = {
         (row["channel"], row["patch_id"]): row["value"]
         for row in map_rows
-        if row["stage_name"] == "Floorplan" and row["category"] == "floorplan"
+        if row["stage_name"] == "floorplan" and row["category"] == "floorplan"
     }
     assert set(channel for channel, _ in floorplan_map_values) == {
         "io_pin_density",
@@ -3603,12 +3619,12 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     floorplan_pg_counts = {
         row["patch_id"]: row["pg_net_count"]
         for row in feature_rows
-        if row["stage_name"] == "Floorplan"
+        if row["stage_name"] == "floorplan"
     }
     assert floorplan_pg_counts == {0: 1, 1: 1, 2: 0, 3: 0}
 
     place_density = json.loads(
-        (foundation_dir / "maps" / "place" / "density.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "placement" / "density.json").read_text(encoding="utf-8")
     )
     assert set(place_density["maps"]) == set(floorplan_density["maps"])
     assert place_density["maps"]["allcell_density"]["values"][0] == {
@@ -3619,7 +3635,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     }
 
     place_congestion = json.loads(
-        (foundation_dir / "maps" / "place" / "congestion.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "placement" / "congestion.json").read_text(encoding="utf-8")
     )
     assert place_congestion["grid"] == {"source": "irt_gcell_info", "rows": 2, "cols": 2}
     assert [item["value"] for item in place_congestion["maps"]["union"]["values"]] == [
@@ -3631,7 +3647,7 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     assert "strictly_aligned" not in json.dumps(place_congestion)
 
     cts_density = json.loads(
-        (foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "cts" / "density.json").read_text(encoding="utf-8")
     )
     assert set(cts_density["maps"]) == set(place_density["maps"])
     assert cts_density["maps"]["allcell_density"]["values"][3] == {
@@ -3642,27 +3658,27 @@ def test_iccd_full_v1_writes_patch_indexed_stage_maps_for_floorplan_place_cts(tm
     }
 
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
-    assert quality["availability"]["maps"]["Floorplan"] == "available"
+    assert quality["availability"]["maps"]["floorplan"] == "available"
 
 
 def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_density(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    _write_sample_gcell_info(ws / "CTS_ecc")
+    _write_sample_gcell_info(ws / "cts_ecc")
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
         [[0.4, 0.5], [0.6, 0.7]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
         [[0, 0.01], [0.02, 0]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
         [[0.1, 0.2], [0.3, 0.4]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3671,7 +3687,7 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3680,7 +3696,7 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -3688,11 +3704,11 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
         [[1, 2], [3, 4]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_lut_rudy_union.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_lut_rudy_union.csv",
         [[5, 6], [7, 8]],
     )
 
@@ -3703,7 +3719,7 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     assert not (foundation_dir / "maps" / "raw").exists()
 
     cts_density = json.loads(
-        (foundation_dir / "maps" / "CTS" / "density.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "cts" / "density.json").read_text(encoding="utf-8")
     )
     allcell = [item["value"] for item in cts_density["maps"]["allcell_density"]["values"]]
     macro = [item["value"] for item in cts_density["maps"]["macro_density"]["values"]]
@@ -3717,10 +3733,10 @@ def test_iccd_full_v1_drops_legacy_map_dirs_lutrudy_and_filler_from_allcell_dens
     assert allcell_pin == [1.0, 3.0, 5.0, 4.0]
 
     cts_rudy = json.loads(
-        (foundation_dir / "maps" / "CTS" / "rudy.json").read_text(encoding="utf-8")
+        (foundation_dir / "maps" / "cts" / "rudy.json").read_text(encoding="utf-8")
     )
     assert set(cts_rudy["maps"]) == {"rudy_union"}
-    assert not (foundation_dir / "maps" / "CTS" / "ignored.json").exists()
+    assert not (foundation_dir / "maps" / "cts" / "ignored.json").exists()
     raw_refs = json.loads(
         (foundation_dir / "raw_refs" / "artifacts.json").read_text(encoding="utf-8")
     )
@@ -3757,7 +3773,7 @@ def test_iccd_full_v1_keeps_native_missing_without_reconstructed_fallback(tmp_pa
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "patches" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -3796,7 +3812,7 @@ def test_iccd_full_v1_uses_json_native_route_file_under_space_router(tmp_path: P
     ws = _make_workspace(tmp_path, include_native_demand_capacity=False)
     _write_json(
         ws
-        / "route_ecc"
+        / "routing_ecc"
         / "data"
         / "rt"
         / "space_router"
@@ -3828,7 +3844,7 @@ def test_iccd_full_v1_uses_json_native_route_file_under_space_router(tmp_path: P
 def test_iccd_full_v1_ignores_route_native_files_outside_space_router(tmp_path: Path):
     ws = _make_workspace(tmp_path, include_native_demand_capacity=False)
     _write_text(
-        ws / "route_ecc" / "data" / "rt" / "route_native_demand_capacity_final.jsonl",
+        ws / "routing_ecc" / "data" / "rt" / "route_native_demand_capacity_final.jsonl",
         json.dumps(
             {
                 "row": 0,
@@ -3861,14 +3877,14 @@ def test_source_signature_is_cached_until_reset(tmp_path: Path):
     extractor = FoundationExtractor(ws, profile="iccd_full_v1")
 
     first = extractor._source_signature()
-    new_file = ws / "place_dreamplace" / "output" / "new_after_cache.txt"
+    new_file = ws / "placement_dreamplace" / "output" / "new_after_cache.txt"
     new_file.write_text("new", encoding="utf-8")
     second = extractor._source_signature()
 
     assert second == first
     extractor._source_signature_cache = None
     third = extractor._source_signature()
-    assert "place_dreamplace/output/new_after_cache.txt" in third
+    assert "placement_dreamplace/output/new_after_cache.txt" in third
 
 
 def test_precomputed_timing_electrical_context_matches_legacy_helpers():
@@ -3895,13 +3911,17 @@ def test_precomputed_timing_electrical_context_matches_legacy_helpers():
         },
     ]
 
-    precomputed = extractor_module._timing_electrical_contexts_by_patch(timing_paths, stage="place")
+    precomputed = extractor_module._timing_electrical_contexts_by_patch(
+        timing_paths, stage="placement"
+    )
 
     for patch_id in [0, 1, 2]:
         timing_context, electrical_context = precomputed[patch_id]
-        assert timing_context == extractor_module._timing_for_patch(timing_paths, patch_id, "place")
+        assert timing_context == extractor_module._timing_for_patch(
+            timing_paths, patch_id, "placement"
+        )
         assert electrical_context == extractor_module._electrical_for_patch(
-            timing_paths, patch_id, "place"
+            timing_paths, patch_id, "placement"
         )
 
 
@@ -3913,13 +3933,13 @@ def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
     foundation_dir = ws / "foundation_data" / "ecc"
     place_patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "place.jsonl")
+        for line in (foundation_dir / "vectors" / "patches" / "placement.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
     route_patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "patches" / "routing.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -4038,14 +4058,14 @@ def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
     assert place0["label_refs"]["label_source_status"] == "missing"
     assert place0["drc_context"]["feature_role"] == "route_or_drc_analysis"
     assert place0["drc_context"]["available_for_training_input"] is False
-    assert place0["progressive_metadata"]["available_from"] == "Floorplan"
+    assert place0["progressive_metadata"]["available_from"] == "floorplan"
     assert place0["progressive_metadata"]["stage_order_index"] == 1
     assert place0["progressive_metadata"]["is_progressive_input_stage"] is True
     assert place0["progressive_metadata"]["is_route_oracle_stage"] is False
     assert "route_oracle" not in place0["progressive_metadata"]["input_blocks"]
     assert place0["progressive_metadata"]["oracle_blocks"] == []
-    assert place0["source_refs"]["stage_def"] == "place_dreamplace/output/gcd_place.def"
-    assert place0["source_refs"]["density_maps"] == "maps/place/density.json"
+    assert place0["source_refs"]["stage_def"] == "placement_dreamplace/output/gcd_placement.def"
+    assert place0["source_refs"]["density_maps"] == "maps/placement/density.json"
     assert place0["source_refs"]["route_label_definition"] is None
     assert place0["null_reason"]["route_oracle"] == "not_route_stage"
 
@@ -4082,15 +4102,15 @@ def test_iccd_full_v1_patch_records_follow_vec_patches_schema(tmp_path: Path):
 
 def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats(tmp_path: Path):
     ws = _make_workspace(tmp_path)
-    _write_sample_gcell_info(ws / "CTS_ecc")
-    _write_sample_egr_demand_capacity(ws / "CTS_ecc")
+    _write_sample_gcell_info(ws / "cts_ecc")
+    _write_sample_egr_demand_capacity(ws / "cts_ecc")
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allcell_density.csv",
         [[100, 101], [102, 103]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -4098,20 +4118,20 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
         [[104, 105], [106, 107]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_allnet_density.csv",
         [[108, 109], [110, 111]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_macro_density.csv",
         [[0, 0], [0, 0]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "density_map" / "cts_stdcell_density.csv",
         [[100, 101], [102, 103]],
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -4120,7 +4140,7 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
     )
     _write_csv(
         ws
-        / "CTS_ecc"
+        / "cts_ecc"
         / "feature"
         / "gcell_patch_map"
         / "density_map"
@@ -4128,7 +4148,7 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
         [[0, 0], [0, 0]],
     )
     _write_csv(
-        ws / "CTS_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
+        ws / "cts_ecc" / "feature" / "gcell_patch_map" / "RUDY_map" / "cts_rudy_union.csv",
         [[110, 111], [112, 113]],
     )
 
@@ -4136,17 +4156,17 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
 
     foundation_dir = ws / "foundation_data" / "ecc"
     place0 = json.loads(
-        (foundation_dir / "vectors" / "patches" / "place.jsonl")
+        (foundation_dir / "vectors" / "patches" / "placement.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     cts0 = json.loads(
-        (foundation_dir / "vectors" / "patches" / "CTS.jsonl")
+        (foundation_dir / "vectors" / "patches" / "cts.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     route0 = json.loads(
-        (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        (foundation_dir / "vectors" / "patches" / "routing.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()[0]
     )
@@ -4192,19 +4212,19 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
 
     patch_quality = quality["patches"]
     assert patch_quality["rows_by_stage"] == {
-        "Floorplan": 4,
-        "place": 4,
-        "CTS": 4,
-        "route": 4,
+        "floorplan": 4,
+        "placement": 4,
+        "cts": 4,
+        "routing": 4,
         "drc": 4,
     }
-    assert patch_quality["schema_coverage_by_stage"]["route"]["complete_records"] == 4
-    assert patch_quality["pre_route_estimators_availability_by_stage"]["place"] == {
+    assert patch_quality["schema_coverage_by_stage"]["routing"]["complete_records"] == 4
+    assert patch_quality["pre_route_estimators_availability_by_stage"]["placement"] == {
         "available": 4,
         "missing": 0,
         "not_applicable": 0,
     }
-    assert patch_quality["pre_route_estimators_availability_by_stage"]["route"] == {
+    assert patch_quality["pre_route_estimators_availability_by_stage"]["routing"] == {
         "available": 0,
         "missing": 0,
         "not_applicable": 4,
@@ -4216,13 +4236,13 @@ def test_iccd_full_v1_patch_records_compute_progressive_deltas_and_quality_stats
         "relaxed": 2,
         "unknown": 0,
     }
-    assert patch_quality["refs_truncated_count_by_stage"]["route"] == 0
-    assert patch_quality["timing_context_availability_by_stage"]["route"] == {
+    assert patch_quality["refs_truncated_count_by_stage"]["routing"] == 0
+    assert patch_quality["timing_context_availability_by_stage"]["routing"] == {
         "available": 1,
         "missing": 3,
         "not_applicable": 0,
     }
-    assert patch_quality["electrical_context_availability_by_stage"]["route"] == {
+    assert patch_quality["electrical_context_availability_by_stage"]["routing"] == {
         "available": 1,
         "missing": 3,
         "not_applicable": 0,
@@ -4250,7 +4270,7 @@ def test_iccd_full_v1_honors_stage_filter_and_raw_refs_option(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"], include_raw_refs=False
+        export_legacy_debug=True, stages=["placement"], include_raw_refs=False
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
@@ -4262,11 +4282,11 @@ def test_iccd_full_v1_honors_stage_filter_and_raw_refs_option(tmp_path: Path):
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
 
     assert "stages" not in summary
-    assert [item["name"] for item in summary["flow"]["steps"]] == ["place"]
-    assert (foundation_dir / "vectors" / "instances" / "place.jsonl").exists()
-    assert not (foundation_dir / "vectors" / "instances" / "route.jsonl").exists()
+    assert [item["name"] for item in summary["flow"]["steps"]] == ["placement"]
+    assert (foundation_dir / "vectors" / "instances" / "placement.jsonl").exists()
+    assert not (foundation_dir / "vectors" / "instances" / "routing.jsonl").exists()
     assert not (foundation_dir / "raw_refs" / "artifacts.json").exists()
-    assert manifest["options"]["stages"] == ["place"]
+    assert manifest["options"]["stages"] == ["placement"]
     assert manifest["options"]["include_raw_refs"] is False
     assert "raw_refs" not in manifest["artifacts"]
     assert evidence["raw_refs"] is None
@@ -4290,7 +4310,7 @@ def test_iccd_full_v1_rejects_unknown_stage_filter(tmp_path: Path):
 def test_iccd_full_v1_writes_canonical_pin_records_without_flat_fields(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4313,12 +4333,12 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place"]
+        export_legacy_debug=True, stages=["placement"]
     )
 
     rows = [
         json.loads(line)
-        for line in (ws / "foundation_data" / "ecc" / "vectors" / "pins" / "place.jsonl")
+        for line in (ws / "foundation_data" / "ecc" / "vectors" / "pins" / "placement.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -4390,19 +4410,16 @@ def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribu
     tmp_path: Path,
 ):
     ws = _make_workspace(tmp_path)
-    from chipcompiler.data.parameter_keys import normalize_parameter_dict
     from chipcompiler.data.workspace_config import save_workspace_config
 
     assert save_workspace_config(
         ws,
-        normalize_parameter_dict(
-            {
-                "PDK": "unit-test",
-                "PDK Root": str(ws / "pdk"),
-                "Design": "gcd",
-                "Core": {"Utilitization": 0.5},
-            }
-        ),
+        {
+            "pdk": "unit-test",
+            "pdk_root": str(ws / "pdk"),
+            "design": "gcd",
+            "core": {"utilitization": 0.5},
+        },
     )
     _write_text(
         ws / "pdk" / "unit.lef",
@@ -4433,7 +4450,7 @@ END LIBRARY
         + "\n",
     )
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4457,7 +4474,7 @@ END DESIGN
         + "\n",
     )
     _write_text(
-        ws / "route_ecc" / "output" / "gcd_route.def",
+        ws / "routing_ecc" / "output" / "gcd_routing.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4485,10 +4502,10 @@ END DESIGN
 """.strip()
         + "\n",
     )
-    _write_sample_gcell_info(ws / "route_ecc")
+    _write_sample_gcell_info(ws / "routing_ecc")
     _write_text(
         ws
-        / "route_ecc"
+        / "routing_ecc"
         / "data"
         / "rt"
         / "space_router"
@@ -4540,17 +4557,19 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place", "route", "drc"]
+        export_legacy_debug=True, stages=["placement", "routing", "drc"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     place_rows = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "pins" / "place.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "pins" / "placement.jsonl")
+        .read_text()
+        .splitlines()
     ]
     route_rows = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "pins" / "routing.jsonl").read_text().splitlines()
     ]
     u1_a = next(row for row in place_rows if row["pin_key"] == "U1:A")
     u1_y = next(row for row in place_rows if row["pin_key"] == "U1:Y")
@@ -4577,13 +4596,13 @@ END DESIGN
     assert route_u1_a["route_context"]["nearby_drc_count"] == 2
     assert route_u1_a["route_context"]["local_final_overflow"] == 3.0
     assert route_u1_a["route_context"]["net_detour_ratio"] is not None
-    assert route_u1_a["route_context"]["source"] == "route_ecc/output/gcd_route.def"
+    assert route_u1_a["route_context"]["source"] == "routing_ecc/output/gcd_routing.def"
 
 
 def test_iccd_full_v1_pin_progressive_and_route_leakage_guard(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "place_dreamplace" / "output" / "gcd_place.def",
+        ws / "placement_dreamplace" / "output" / "gcd_placement.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4602,7 +4621,7 @@ END DESIGN
         + "\n",
     )
     _write_text(
-        ws / "CTS_ecc" / "output" / "gcd_CTS.def",
+        ws / "cts_ecc" / "output" / "gcd_cts.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4623,7 +4642,7 @@ END DESIGN
         + "\n",
     )
     _write_json(
-        ws / "CTS_ecc" / "output" / "gcd_CTS.json",
+        ws / "cts_ecc" / "output" / "gcd_cts.json",
         {
             "design name": "gcd",
             "diearea": {"path": [[0, 0], [200, 0], [200, 200], [0, 200], [0, 0]]},
@@ -4656,7 +4675,7 @@ END DESIGN
     )
 
     _write_text(
-        ws / "route_ecc" / "output" / "gcd_route.def",
+        ws / "routing_ecc" / "output" / "gcd_routing.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4682,24 +4701,24 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place", "CTS", "route"]
+        export_legacy_debug=True, stages=["placement", "cts", "routing"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     place_pin = json.loads(
-        (foundation_dir / "vectors" / "pins" / "place.jsonl")
+        (foundation_dir / "vectors" / "pins" / "placement.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()[0]
     )
     cts_rows = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "pins" / "CTS.jsonl")
+        for line in (foundation_dir / "vectors" / "pins" / "cts.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
     route_rows = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "pins" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "pins" / "routing.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -4710,7 +4729,7 @@ END DESIGN
     assert place_pin["route_context"] is None
     assert place_pin["progressive_metadata"]["route_only_oracle"] is False
     assert "local_final_overflow" not in json.dumps(place_pin)
-    assert new_cts_pin["progressive_metadata"]["available_from"] == "CTS"
+    assert new_cts_pin["progressive_metadata"]["available_from"] == "cts"
     assert new_cts_pin["progressive_metadata"]["introduced_by_cts"] is True
     assert new_cts_pin["progressive_metadata"]["exists_in_place"] is False
     assert moved_cts_pin["progressive_metadata"]["prev_net"] == "clk"
@@ -4724,7 +4743,7 @@ END DESIGN
 def test_iccd_full_v1_wire_primary_patch_is_in_intersections_on_grid_boundary(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "route_ecc" / "output" / "gcd_route.def",
+        ws / "routing_ecc" / "output" / "gcd_routing.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -4752,13 +4771,15 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["route"]
+        export_legacy_debug=True, stages=["routing"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     wire = next(
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "wires" / "routing.jsonl")
+        .read_text()
+        .splitlines()
         if line.strip()
     )
     primary_patch_id = wire["patch_anchor"]["primary_patch_id"]
@@ -4778,7 +4799,7 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     foundation_dir = ws / "foundation_data" / "ecc"
     nets = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "nets" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "nets" / "routing.jsonl").read_text().splitlines()
     ]
     n1 = next(row for row in nets if row["net_key"] == "n1")
     assert list(n1) == [
@@ -4927,15 +4948,17 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     } <= set(n1["progressive_metadata"])
     assert n1["progressive_metadata"]["exists_in_prev_stage"] is True
     assert n1["progressive_metadata"]["exists_in_place"] is True
-    assert n1["source_refs"]["def"] == "route_ecc/output/gcd_route.def"
+    assert n1["source_refs"]["def"] == "routing_ecc/output/gcd_routing.def"
     assert n1["source_refs"]["def_section"] == "NETS"
     assert n1["source_refs"]["def_index"] == 0
-    assert n1["source_refs"]["sta"] == "route_ecc/data/sta/gcd.rpt.json"
-    assert n1["source_refs"]["route"] == "route_ecc/output/gcd_route.def"
+    assert n1["source_refs"]["sta"] == "routing_ecc/data/sta/gcd.rpt.json"
+    assert n1["source_refs"]["route"] == "routing_ecc/output/gcd_routing.def"
 
     place_nets = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "nets" / "place.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "nets" / "placement.jsonl")
+        .read_text()
+        .splitlines()
     ]
     place_n1 = next(row for row in place_nets if row["net_key"] == "n1")
     assert place_n1["route_analysis"] is None
@@ -4947,7 +4970,9 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
 
     wires = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "wires" / "route.jsonl").read_text().splitlines()
+        for line in (foundation_dir / "vectors" / "wires" / "routing.jsonl")
+        .read_text()
+        .splitlines()
     ]
     wire = next(
         row
@@ -4975,7 +5000,7 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
         "source_refs",
         "null_reason",
     ]
-    assert wire["wire_key"].startswith("route:NETS:n1:")
+    assert wire["wire_key"].startswith("routing:NETS:n1:")
     assert wire["identity"]["wire_class"] == "signal"
     assert wire["geometry"]["segment_kind"] == "wire_segment"
     assert wire["geometry"]["bbox"] is not None
@@ -5068,7 +5093,7 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
 
     place_wires = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "wires" / "Floorplan.jsonl")
+        for line in (foundation_dir / "vectors" / "wires" / "floorplan.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -5083,20 +5108,20 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert any(row["identity"]["segment_kind"] == "wire_segment" for row in wires)
 
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
-    assert quality["wires"]["route"]["record_count"] == len(wires)
-    assert quality["wires"]["route"]["route_context_coverage"] == 1.0
-    assert quality["wires"]["route"]["patch_intersection_coverage"] == 1.0
-    assert quality["wires"]["route"]["route_context_source"] == {
+    assert quality["wires"]["routing"]["record_count"] == len(wires)
+    assert quality["wires"]["routing"]["route_context_coverage"] == 1.0
+    assert quality["wires"]["routing"]["patch_intersection_coverage"] == 1.0
+    assert quality["wires"]["routing"]["route_context_source"] == {
         "routed_def_reconstruction": len(wires)
     }
 
-    pre_route_graphs = (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(
-        encoding="utf-8"
-    )
+    pre_route_graphs = (
+        foundation_dir / "vectors" / "routing_graphs" / "placement.jsonl"
+    ).read_text(encoding="utf-8")
     assert pre_route_graphs == ""
     route_graphs = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -5146,13 +5171,13 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert graph["terminal_matching"]["matched_terminal_count"] >= 1
     assert graph["terminal_matching"]["terminal_match_rate"] is not None
     assert graph["route_context"]["route_only_oracle"] is True
-    assert graph["route_context"]["source"] == "route_ecc/output/gcd_route.def"
+    assert graph["route_context"]["source"] == "routing_ecc/output/gcd_routing.def"
     assert graph["route_context"]["total_routed_length"] == 800.0
     assert graph["route_context"]["via_count"] == 1
     assert graph["route_context"]["wire_segment_count"] == 4
     assert graph["progressive_metadata"] == {
-        "available_from": "route",
-        "created_stage": "route",
+        "available_from": "routing",
+        "created_stage": "routing",
         "exists_before_route": False,
         "not_available_before_route": True,
         "route_only_oracle": True,
@@ -5187,12 +5212,12 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     }
     assert via_edge["patch_intersections"][0]["layer"] == "MET2/MET3"
     assert via_edge["patch_intersections"][0]["intersection_kind"] == "via_point"
-    assert via_edge["source_refs"]["def"] == "route_ecc/output/gcd_route.def"
+    assert via_edge["source_refs"]["def"] == "routing_ecc/output/gcd_routing.def"
     assert via_edge["null_reason"].get("wire_ref") == "via_transition_has_no_wire_segment_ref"
 
     wire_edge = next(edge for edge in graph["edges"] if edge["edge_kind"] == "wire_segment")
     assert wire_edge["source_vertex_id"] != wire_edge["target_vertex_id"]
-    assert wire_edge["wire_ref"]["wire_key"].startswith("route:NETS:n1:")
+    assert wire_edge["wire_ref"]["wire_key"].startswith("routing:NETS:n1:")
     assert wire_edge["via_ref"] is None
     assert wire_edge["patch_intersections"][0]["layer"] == wire_edge["geometry"]["layer"]
     assert wire_edge["patch_intersections"][0]["intersection_kind"] == "segment_overlap"
@@ -5209,7 +5234,7 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
 
     patches = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "patches" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "patches" / "routing.jsonl")
         .read_text()
         .splitlines()
     ]
@@ -5302,10 +5327,10 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert met2["capacity_summary"]["stage_track_variants"]
     assert (
         met2["capacity_summary"]["patch_capacity_ref"]
-        == "foundation_data/ecc/vectors/patches/route.jsonl:native_demand_capacity_by_layer"
+        == "foundation_data/ecc/vectors/patches/routing.jsonl:native_demand_capacity_by_layer"
     )
-    assert met2["stage_metadata"]["missing_stages"] == ["place", "CTS", "drc"]
-    assert met2["stage_metadata"]["stage_sources"]["route"] == [
+    assert met2["stage_metadata"]["missing_stages"] == ["placement", "cts", "drc"]
+    assert met2["stage_metadata"]["stage_sources"]["routing"] == [
         "def_routed_wires",
         "def_tracks",
         "def_vias",
@@ -5325,9 +5350,9 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert nand2["classification"]["source"] == "heuristic_name_rule"
     assert nand2["physical_properties"]["size_source"] in {"missing", "lef_macro_size"}
     assert nand2["pin_summary"]["summary_source"] in {"def_net_terminals", "lef_macro_pins"}
-    assert nand2["usage_summary"]["first_seen_stage"] == "Floorplan"
+    assert nand2["usage_summary"]["first_seen_stage"] == "floorplan"
     assert nand2["usage_summary"]["route_only_usage"] is False
-    assert nand2["stage_metadata"]["missing_stages"] == ["CTS", "drc"]
+    assert nand2["stage_metadata"]["missing_stages"] == ["cts", "drc"]
 
     via23 = next(via for via in vias if via["name"] == "VIA23")
     assert via23["identity"]["via_type"] == "fixed"
@@ -5345,7 +5370,7 @@ def test_iccd_full_v1_writes_nested_net_wire_graph_patch_and_tech_records(tmp_pa
     assert via23["usage_summary"]["total_usage_count"] == 1
     assert via23["usage_summary"]["usage_source"] == "def_routed_wires"
     assert via23["usage_summary"]["route_only_usage"] is True
-    assert via23["stage_metadata"]["stage_sources"]["route"] == ["def_routed_wires", "def_vias"]
+    assert via23["stage_metadata"]["stage_sources"]["routing"] == ["def_routed_wires", "def_vias"]
     assert via23["source_refs"]["liberty"] is None
     assert via23["null_reason"]["geometry_bottom_rect"] == "via_geometry_not_available_from_def"
 
@@ -5354,16 +5379,16 @@ def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
     ws = _make_workspace(tmp_path)
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["place", "route"]
+        export_legacy_debug=True, stages=["placement", "routing"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
-    assert (foundation_dir / "vectors" / "routing_graphs" / "place.jsonl").read_text(
+    assert (foundation_dir / "vectors" / "routing_graphs" / "placement.jsonl").read_text(
         encoding="utf-8"
     ) == ""
     route_graphs = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "routing.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -5404,9 +5429,9 @@ def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
     assert graph["terminal_matching"]["strategy"] == "exact_shape_then_nearest_same_net"
     assert graph["terminal_matching"]["expected_terminal_count"] >= 2
     assert graph["terminal_matching"]["terminal_match_rate"] is not None
-    assert graph["progressive_metadata"]["available_from"] == "route"
+    assert graph["progressive_metadata"]["available_from"] == "routing"
     assert graph["progressive_metadata"]["not_available_before_route"] is True
-    assert graph["route_context"]["source"] == "route_ecc/output/gcd_route.def"
+    assert graph["route_context"]["source"] == "routing_ecc/output/gcd_routing.def"
     assert graph["coverage"]["edge_patch_intersection_coverage"] == 1.0
 
     assert all(
@@ -5444,7 +5469,7 @@ def test_routing_graph_records_follow_vec_routing_graph_schema(tmp_path: Path):
 
 
 def _append_large_route_nets(ws: Path, *, count: int = 1005) -> None:
-    shutil_target = ws / "route_ecc" / "data" / "sta"
+    shutil_target = ws / "routing_ecc" / "data" / "sta"
     if shutil_target.exists():
         import shutil
 
@@ -5456,7 +5481,7 @@ def _append_large_route_nets(ws: Path, *, count: int = 1005) -> None:
         net_lines.append(f"  + ROUTED MET2 ( 0 {y} ) ( 200 * )")
         net_lines.append("  ;")
     _write_text(
-        ws / "route_ecc" / "output" / "gcd_route.def",
+        ws / "routing_ecc" / "output" / "gcd_routing.def",
         "\n".join(
             [
                 "VERSION 5.8 ;",
@@ -5494,7 +5519,7 @@ def test_large_route_design_does_not_degrade_source_backed_tables(tmp_path: Path
     ws = _make_workspace(tmp_path)
     _append_large_route_nets(ws)
 
-    result = FoundationExtractor(ws, profile="iccd_full_v1").extract(stages=["route"])
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract(stages=["routing"])
     foundation_dir = result.foundation_dir
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -5518,21 +5543,21 @@ def test_large_design_quality_distinguishes_missing_source_from_perf_degrade(tmp
     ws = _make_workspace(tmp_path)
     _append_large_route_nets(ws)
 
-    result = FoundationExtractor(ws, profile="iccd_full_v1").extract(stages=["route"])
+    result = FoundationExtractor(ws, profile="iccd_full_v1").extract(stages=["routing"])
     foundation_dir = result.foundation_dir
     quality = json.loads((foundation_dir / "quality.json").read_text(encoding="utf-8"))
     manifest = json.loads((foundation_dir / "manifest.json").read_text(encoding="utf-8"))
 
     timing_paths = pq.read_table(foundation_dir / manifest["tables"]["timing_paths"]["path"])
     assert timing_paths.num_rows == 0
-    assert quality["availability"]["timing_paths"]["route"] in {
+    assert quality["availability"]["timing_paths"]["routing"] in {
         "missing",
         "missing_source",
         "missing_timing_source",
         "missing_timing_paths_source",
         "sta_report_missing_or_empty",
     }
-    assert quality["null_reason"]["timing_paths"]["route"] in {
+    assert quality["null_reason"]["timing_paths"]["routing"] in {
         "missing",
         "missing_source",
         "missing_timing_source",
@@ -5557,7 +5582,7 @@ def test_large_design_quality_distinguishes_missing_source_from_perf_degrade(tmp
 def test_routing_graph_strict_blockers_are_enforced(tmp_path: Path):
     ws = _make_workspace(tmp_path)
     _write_text(
-        ws / "route_ecc" / "output" / "gcd_route.def",
+        ws / "routing_ecc" / "output" / "gcd_routing.def",
         """
 VERSION 5.8 ;
 DIVIDERCHAR "/" ;
@@ -5590,13 +5615,13 @@ END DESIGN
     )
 
     FoundationExtractor(ws, profile="iccd_full_v1").extract(
-        export_legacy_debug=True, stages=["route", "drc"]
+        export_legacy_debug=True, stages=["routing", "drc"]
     )
 
     foundation_dir = ws / "foundation_data" / "ecc"
     route_graphs = [
         json.loads(line)
-        for line in (foundation_dir / "vectors" / "routing_graphs" / "route.jsonl")
+        for line in (foundation_dir / "vectors" / "routing_graphs" / "routing.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]

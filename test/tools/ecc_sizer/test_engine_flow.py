@@ -68,7 +68,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
     # Preferred order is legalization then Timing Opt; a trailing extra
     # legalize sibling after Timing Opt is still a valid cached-DB boundary.
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
@@ -164,7 +164,7 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
@@ -214,7 +214,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     workspace.flow.path = Path(workspace.directory) / "home" / "flow.json"
     workspace.flow.path.parent.mkdir(parents=True, exist_ok=True)
     flow_data: FlowDocument = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": SkippableStepEnum.TIMING_OPT.value,
@@ -249,7 +249,7 @@ def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypat
     step.subflow.path.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "path": str(step.subflow.path),
                 "steps": [
                     {

@@ -86,7 +86,7 @@ def run_macro_placement(
             workspace.logger.error(
                 "Manual macro placement is required, but macro.placements and %s are not "
                 "configured. Complete macro placement in Chip Viewer or run `ecc macro`, "
-                "then rerun macroPlacement.",
+                "then rerun macro_placement.",
                 workspace.config.get("macro_location", "config/macro_location.tcl"),
             )
             sub_flow.update_step(

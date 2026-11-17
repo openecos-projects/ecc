@@ -32,7 +32,7 @@ def test_build_run_preflight_reports_missing_inputs(tmp_path):
     flow = SimpleNamespace(
         workspace_steps=[
             SimpleNamespace(
-                name="place",
+                name="placement",
                 tool="ecc",
                 input=StepInput(verilog=existing, def_=missing),
                 output=OutputPaths(),
@@ -40,11 +40,11 @@ def test_build_run_preflight_reports_missing_inputs(tmp_path):
         ]
     )
 
-    result = build_run_preflight(flow, ["place"], only="place", force=False)
+    result = build_run_preflight(flow, ["placement"], only="placement", force=False)
 
     assert result["ready"] is False
     assert result["selected_steps"][0]["tool"] == "ecc"
-    assert result["missing_inputs"] == [{"step": "place", "input": "def", "path": str(missing)}]
+    assert result["missing_inputs"] == [{"step": "placement", "input": "def", "path": str(missing)}]
 
 
 def test_output_paths_serializes_declared_paths(tmp_path):

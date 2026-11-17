@@ -20,7 +20,7 @@ def location_project(tmp_path, manifest_stubs):
         (root / "home" / "flow.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
                             "name": "drc",
@@ -142,7 +142,7 @@ def test_external_workspace_can_be_inferred_with_explicit_project(
 def test_standalone_workspace_defaults_to_current_absolute_path(tmp_path, monkeypatch, capsys):
     current = tmp_path / "standalone"
     (current / "home").mkdir(parents=True)
-    (current / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
+    (current / "home" / "flow.json").write_text('{"schema_version": 3, "steps": []}')
     monkeypatch.chdir(current)
 
     assert cli_main.run(["status", "--json"]) == 0
@@ -188,7 +188,7 @@ def test_legacy_workspace_uses_exact_current_path(tmp_path, create_cli_project, 
     project = Path(create_cli_project())
     current = project / "runs" / "trial"
     (current / "home").mkdir(parents=True)
-    (current / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
+    (current / "home" / "flow.json").write_text('{"schema_version": 3, "steps": []}')
     monkeypatch.chdir(current)
 
     ctx = build_context(_input())

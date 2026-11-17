@@ -666,7 +666,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]
@@ -680,7 +680,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]
@@ -688,7 +688,7 @@ class TestListingPrettyRenderer:
         render_log_listing_pretty(records, file=buf, color=False)
         out = buf.getvalue()
         assert "synthesis" in out
-        assert "Synthesis_yosys/log/synthesis.log" in out
+        assert "synthesis_yosys/log/synthesis.log" in out
 
     def test_listing_inspect_cmd(self):
         from io import StringIO
@@ -696,7 +696,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]
@@ -710,7 +710,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]
@@ -719,7 +719,7 @@ class TestListingPrettyRenderer:
         out = buf.getvalue()
         assert "[logs]" in out
         assert "synthesis" in out
-        assert "Synthesis_yosys/log/synthesis.log" in out
+        assert "synthesis_yosys/log/synthesis.log" in out
         assert "ecc log synthesis" in out
 
     def test_listing_color_enabled_has_ansi(self):
@@ -728,7 +728,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]
@@ -742,7 +742,7 @@ class TestListingPrettyRenderer:
         records = [
             {
                 "step": "synthesis",
-                "source": "Synthesis_yosys/log/synthesis.log",
+                "source": "synthesis_yosys/log/synthesis.log",
                 "inspect_cmd": "ecc log synthesis",
             },
         ]

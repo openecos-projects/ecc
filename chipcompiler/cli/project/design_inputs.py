@@ -27,21 +27,21 @@ class ResolvedDesignInputs:
 
 _PHYSICAL_STEPS = frozenset(
     {
-        "macroPlacement",
-        "postFloorplan",
+        "macro_placement",
+        "post_floorplan",
         "preplace",
-        "place",
+        "placement",
         "diff_opt",
         "diff_sizing",
-        "CTS",
+        "cts",
         "legalization",
-        "Timing optimization",
-        "route",
+        "timing_optimization",
+        "routing",
         "filler",
-        "RCX",
+        "rcx",
         "drc",
         "lvs",
-        "Harden",
+        "harden",
     }
 )
 
@@ -51,11 +51,11 @@ def required_inputs_for_step(step: str) -> tuple[str, ...]:
     from chipcompiler.rtl2gds import normalize_flow_step
 
     canonical = normalize_flow_step(step)
-    if canonical == "Synthesis":
+    if canonical == "synthesis":
         return ("rtl",)
-    if canonical == "postRouteLec":
+    if canonical == "post_route_lec":
         return ("netlist", "golden_netlist")
-    if canonical == "preFloorplan":
+    if canonical == "pre_floorplan":
         return ("netlist",)
     if canonical == "sta":
         return ("def", "netlist", "spef")
@@ -103,7 +103,7 @@ def validate_entry_inputs(cfg: "ProjectConfig", entry_step: str | None) -> list[
         value = values[field_name]
         if field_name == "rtl":
             if not value:
-                errors.append("step_input_missing: Synthesis requires design.rtl")
+                errors.append("step_input_missing: synthesis requires design.rtl")
                 continue
             errors.extend(_validate_rtl_sources(value))
             continue

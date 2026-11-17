@@ -24,12 +24,12 @@ def test_every_flow_step_has_a_policy():
 
 def test_only_a_canonical_inserted_step_has_the_lec_policy():
     lec = FLOW_STEP_POLICIES[StepEnum.LEC.value]
-    assert [flow_step_policy(name) for name in ("lec@Synthesis", "lec@Timing_optimization")] == [
+    assert [flow_step_policy(name) for name in ("lec@synthesis", "lec@timing_optimization")] == [
         lec,
         lec,
     ]
     # lec@ must be followed by a step an LEC can be inserted after.
-    for name in ("lec@bogus", "lec@filler", "lec@", "lec@Timing optimization"):
+    for name in ("lec@bogus", "lec@filler", "lec@", "lec@timing optimization", "lec@CTS"):
         with pytest.raises(ValueError, match="no flow policy registered"):
             flow_step_policy(name)
 
@@ -56,30 +56,30 @@ def test_independent_signoff_analyses_form_parallel_waves():
     from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 
     ledger = build_dynamic_flow_data(
-        {"start_step": "route", "end_step": "Harden", "skip_steps": []}
+        {"start_step": "routing", "end_step": "harden", "skip_steps": []}
     )
 
     assert _waves(ledger.get("steps", [])) == [
-        ["route"],
+        ["routing"],
         ["filler"],
-        ["lvs", "drc", "antennaCheck", "postRouteLec", "RCX"],
-        ["sta", "powerAnalysis"],
+        ["lvs", "drc", "antenna_check", "post_route_lec", "rcx"],
+        ["sta", "power_analysis"],
         ["emir"],
-        ["Harden"],
+        ["harden"],
     ]
 
 
 def test_an_explicit_input_inside_a_wave_starts_a_new_wave():
     from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 
-    ledger = build_dynamic_flow_data({"start_step": "filler", "end_step": "RCX", "skip_steps": []})
+    ledger = build_dynamic_flow_data({"start_step": "filler", "end_step": "rcx", "skip_steps": []})
     steps = ledger.get("steps", [])
     next(step for step in steps if step["name"] == "drc")["input_step"] = "lvs"
 
     assert _waves(steps) == [
         ["filler"],
         ["lvs"],
-        ["drc", "antennaCheck", "postRouteLec", "RCX"],
+        ["drc", "antenna_check", "post_route_lec", "rcx"],
     ]
 
 
@@ -92,9 +92,9 @@ def test_ledgers_without_categories_run_every_step_alone():
 def test_skipped_steps_hand_their_input_to_the_next_enabled_step():
     ledger = build_dynamic_flow_data(
         {
-            "start_step": "place",
-            "end_step": "route",
-            "skip_steps": ["diff_opt", "diff_sizing", "CTS"],
+            "start_step": "placement",
+            "end_step": "routing",
+            "skip_steps": ["diff_opt", "diff_sizing", "cts"],
         }
     )
     records = ledger.get("steps", [])
@@ -103,8 +103,8 @@ def test_skipped_steps_hand_their_input_to_the_next_enabled_step():
     assert {
         step["name"]: resolver.input_step_name(index) for index, step in enumerate(records)
     } == {
-        "place": None,
-        "legalization": "place",
-        "Timing optimization": "legalization",
-        "route": "Timing optimization",
+        "placement": None,
+        "legalization": "placement",
+        "timing_optimization": "legalization",
+        "routing": "timing_optimization",
     }

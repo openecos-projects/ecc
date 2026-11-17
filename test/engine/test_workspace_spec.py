@@ -62,8 +62,8 @@ def test_workspace_spec_discovery_and_validation_are_canonical_and_side_effect_f
     rtl2gds = flows["rtl2gds"]
     assert set(rtl2gds["skippableStepIds"]) == {
         "diff_opt",
-        "postRouteLec",
-        "Timing optimization",
+        "post_route_lec",
+        "timing_optimization",
     }
     assert set(rtl2gds["skippableStepIds"]) <= set(rtl2gds["stepIds"])
     assert rtl2gds["defaultSkippedStepIds"] == ["diff_opt"]
@@ -156,8 +156,8 @@ def test_validated_workspace_spec_creates_main_compatible_workspace(
     assert created.directory == target
     assert reopened.directory == target
     assert reopened.design.name == "gcd"
-    assert reopened.flow.steps()[0]["name"] == "Synthesis"
-    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
+    assert reopened.flow.steps()[0]["name"] == "synthesis"
+    cts = json.loads(reopened.config["cts"].read_text(encoding="utf-8"))
     assert cts["buffer_type"] == reopened.pdk.buffers
 
 
@@ -217,14 +217,14 @@ def test_partial_flow_spec_preserves_requested_boundaries(tmp_path, minimal_ics5
     spec = deepcopy(payload["workspaceSpec"])
     spec["flow"] = {
         "flowId": "rtl2gds",
-        "fromStepId": "Synthesis",
-        "throughStepId": "preFloorplan",
+        "fromStepId": "synthesis",
+        "throughStepId": "pre_floorplan",
     }
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
 
     assert [step["name"] for step in load_workspace(workspace.directory).flow.steps()] == [
-        "Synthesis",
-        "preFloorplan",
+        "synthesis",
+        "pre_floorplan",
     ]
 
 
@@ -489,13 +489,13 @@ def test_workspace_spec_create_and_update_materialize_step_directories(
     created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
 
     expected_directories = [
-        "Synthesis_yosys",
-        "preFloorplan_ecc",
-        "macroPlacement_dreamplace",
+        "synthesis_yosys",
+        "pre_floorplan_ecc",
+        "macro_placement_dreamplace",
         "preplace_sizer",
         "timing_optimization_sizer",
-        "route_ecc",
-        "Harden_ecc",
+        "routing_ecc",
+        "harden_ecc",
     ]
     _assert_step_directories(target, expected_directories)
 
@@ -748,7 +748,7 @@ def test_workspace_spec_update_carries_workspace_parameters_and_their_journal(
     )
 
     reopened = load_workspace(target)
-    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
+    cts = json.loads(reopened.config["cts"].read_text(encoding="utf-8"))
     assert reopened.parameters.data["clock"] == "clock"
     assert reopened.parameters.data["frequency_max"] == 250.0
     assert cts["skew_bound"] == "0.12"
@@ -780,7 +780,7 @@ def test_workspace_spec_update_carries_parameters_when_the_flow_changes(
         "carry-flow-1",
     )
 
-    cts = json.loads(updated.workspace.config["CTS"].read_text(encoding="utf-8"))
+    cts = json.loads(updated.workspace.config["cts"].read_text(encoding="utf-8"))
     assert cts["skew_bound"] == "0.12"
     assert list(tmp_path.glob(".workspace.staging-*")) == []
 

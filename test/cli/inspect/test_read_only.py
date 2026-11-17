@@ -19,7 +19,7 @@ class TestReadOnly:
         run_dir = os.path.join(project_dir, "runs", "default")
         create_flow_json(run_dir)
         create_step_dir(
-            run_dir, "CTS", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
+            run_dir, "cts", "ecc", subdirs=["output"], files={"output/design.def": "def content"}
         )
 
         cli_main.run(["config", "--project", project_dir])

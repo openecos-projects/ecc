@@ -25,7 +25,7 @@ def matrix_project(tmp_path, manifest_stubs):
             steps
             if steps is not None
             else [
-                {"name": "place", "tool": "dreamplace", "state": "Success"},
+                {"name": "placement", "tool": "dreamplace", "state": "Success"},
                 {"name": "drc", "tool": "ecc", "state": "Success"},
             ]
         )
@@ -222,7 +222,7 @@ def test_sta_keeps_setup_and_hold_counts_separate(matrix_project, capsys, counts
     assert checker["violation_count"] is None
 
 
-@pytest.mark.parametrize("step", ["RCX", "powerAnalysis"])
+@pytest.mark.parametrize("step", ["rcx", "power_analysis"])
 def test_other_checkers_do_not_invent_violation_counts(matrix_project, capsys, step):
     project, add = matrix_project
     add("trial", 80, steps=[{"name": step, "tool": "ecc", "state": "Success"}])
@@ -237,13 +237,13 @@ def test_other_checkers_do_not_invent_violation_counts(matrix_project, capsys, s
 def test_lec_saved_verdict_does_not_invent_counts_or_verify_files(matrix_project, tmp_path, capsys):
     project, add = matrix_project
     root, _report = add(
-        "trial", 80, steps=[{"name": "postRouteLec", "tool": "kepler_formal", "state": "Success"}]
+        "trial", 80, steps=[{"name": "post_route_lec", "tool": "kepler_formal", "state": "Success"}]
     )
     result = (
         root
-        / step_directory_for_tool("postRouteLec", "kepler_formal")
+        / step_directory_for_tool("post_route_lec", "kepler_formal")
         / "output"
-        / "gcd_postRouteLec_result.json"
+        / "gcd_post_route_lec_result.json"
     )
     result.parent.mkdir(parents=True)
     result.write_text(json.dumps({"status": "proven", "gate_verilog": str(tmp_path / "missing.v")}))
@@ -262,7 +262,7 @@ def test_explicit_category_controls_checker_projection(matrix_project, capsys):
         80,
         steps=[
             {"name": "drc", "tool": "ecc", "state": "Success", "category": "PNR"},
-            {"name": "Harden", "tool": "ecc", "state": "Success", "category": "CHECKER"},
+            {"name": "harden", "tool": "ecc", "state": "Success", "category": "CHECKER"},
         ],
     )
     _metric_file(root, "drc", {"drc_count": 8})
@@ -275,14 +275,14 @@ def test_explicit_category_controls_checker_projection(matrix_project, capsys):
 
 def test_different_flows_align_by_step_and_tool(matrix_project, capsys):
     project, add = matrix_project
-    add("first", 80, steps=[{"name": "place", "tool": "one", "state": "Success"}])
-    add("second", 90, steps=[{"name": "place", "tool": "two", "state": "Success"}])
+    add("first", 80, steps=[{"name": "placement", "tool": "one", "state": "Success"}])
+    add("second", 90, steps=[{"name": "placement", "tool": "two", "state": "Success"}])
 
     report = _run(project, capsys)
 
     assert report["columns"] == [
-        {"step": "place", "token": "placement", "tool": "one"},
-        {"step": "place", "token": "placement", "tool": "two"},
+        {"step": "placement", "token": "placement", "tool": "one"},
+        {"step": "placement", "token": "placement", "tool": "two"},
     ]
     assert [row["workspace_id"] for row in report["workspaces"]] == ["second", "first"]
 
@@ -323,7 +323,7 @@ def test_bad_qor_is_retained_without_score(matrix_project, capsys, kind):
         elif kind == "identity":
             payload["workspace"] = "/different/workspace"
         else:
-            payload["flow_steps"]["place"] = "Unstart"
+            payload["flow_steps"]["placement"] = "Unstart"
         path.write_text(json.dumps(payload))
 
     report = _run(project, capsys)
@@ -538,7 +538,7 @@ def test_invalid_metric_selector_cannot_report_clean(matrix_project, capsys):
 
 def test_running_workspace_marks_score_as_provisional(matrix_project, capsys):
     project, add = matrix_project
-    add("trial", 80, steps=[{"name": "place", "tool": "dreamplace", "state": "Ongoing"}])
+    add("trial", 80, steps=[{"name": "placement", "tool": "dreamplace", "state": "Ongoing"}])
 
     row = _run(project, capsys)["workspaces"][0]
 

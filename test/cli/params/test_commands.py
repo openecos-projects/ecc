@@ -298,7 +298,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -352,7 +352,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -380,7 +380,7 @@ class TestRunSet:
 
         params = capture["kwargs"]["parameters"]
         assert params["config_overrides"] == {
-            "CTS": {"skew_bound": "0.05"},
+            "cts": {"skew_bound": "0.05"},
             "emir": {"technology_file_path": str(tmp_path / "process.tech")},
         }
         assert capture["kwargs"]["pdk_overrides"]["tech"].endswith("prtech/custom.lef")
@@ -441,7 +441,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -505,7 +505,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -531,7 +531,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -554,7 +554,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -571,7 +571,7 @@ class TestPrettyOutput:
         rc = cli_main.run(["param", "list", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "place" in out
+        assert "placement" in out
         assert "place.target_density" in out
 
     def test_param_list_plain_is_one_line_per_record(
@@ -842,7 +842,7 @@ class TestProjectParameterPdkAndSteps:
         project_dir = create_cli_project()
 
         rc = cli_main.run(
-            ["param", "list", "--all", "--step", "place", "--project", project_dir, "--plain"]
+            ["param", "list", "--all", "--step", "placement", "--project", project_dir, "--plain"]
         )
 
         assert rc == 0

@@ -27,7 +27,7 @@ def test_toggles_write_every_flow_key_explicitly(capsys, create_cli_project):
     project_dir = create_cli_project()
     before = _toml(project_dir)
 
-    rc, records = _edit(capsys, project_dir, "--disable", "CTS", "--enable", "diff_opt", "--yes")
+    rc, records = _edit(capsys, project_dir, "--disable", "cts", "--enable", "diff_opt", "--yes")
 
     assert rc == 0
     assert records[0] == {
@@ -36,27 +36,27 @@ def test_toggles_write_every_flow_key_explicitly(capsys, create_cli_project):
         "path": os.path.join(project_dir, "ecc.toml"),
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
-        "skip_steps": ["CTS"],
+        "skip_steps": ["cts"],
         "insert_steps": [],
         "max_parallel_steps": 4,
         "enabled": ["diff_opt"],
-        "disabled": ["CTS"],
+        "disabled": ["cts"],
         "inserted": [],
         "removed": [],
     }
     assert [
         record["step"] for record in records[1:] if record["warning"] == "flow_step_degraded"
     ] == [
-        "route",
+        "routing",
         "sta",
-        "powerAnalysis",
-        "Harden",
+        "power_analysis",
+        "harden",
     ]
     after = _toml(project_dir)
     assert after["flow"] == {
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
-        "skip_steps": ["CTS"],
+        "skip_steps": ["cts"],
         "max_parallel_steps": 4,
     }
     assert {key: value for key, value in after.items() if key != "flow"} == {
@@ -76,10 +76,10 @@ def test_selection_missing_required_data_is_not_written(capsys, create_cli_proje
         {
             "kind": "error",
             "error": "flow_selection_invalid",
-            "step": "route",
+            "step": "routing",
             "missing": ["legal"],
-            "fixes": ["Timing optimization", "legalization"],
-            "reason": "route requires legal; enable Timing optimization or legalization",
+            "fixes": ["timing_optimization", "legalization"],
+            "reason": "routing requires legal; enable timing_optimization or legalization",
         }
     ]
     with open(os.path.join(project_dir, "ecc.toml")) as f:
@@ -94,7 +94,7 @@ def test_a_project_without_a_preset_is_not_edited(capsys, create_cli_project):
     with open(toml_path, "w") as f:
         f.write(before)
 
-    rc, records = _edit(capsys, project_dir, "--disable", "CTS", "--yes")
+    rc, records = _edit(capsys, project_dir, "--disable", "cts", "--yes")
 
     assert rc == 1
     assert records == [
@@ -156,7 +156,7 @@ def test_toggles_keep_the_projects_current_max_parallel_steps(capsys, create_cli
     project_dir = create_cli_project()
     _declare_max_parallel_steps(project_dir, 2)
 
-    rc, records = _edit(capsys, project_dir, "--disable", "CTS", "--yes")
+    rc, records = _edit(capsys, project_dir, "--disable", "cts", "--yes")
 
     assert rc == 0
     assert records[0]["max_parallel_steps"] == 2
@@ -167,13 +167,13 @@ def test_the_flag_and_toggles_are_written_together(capsys, create_cli_project):
     project_dir = create_cli_project()
 
     rc, records = _edit(
-        capsys, project_dir, "--disable", "CTS", "--max-parallel-steps", "3", "--yes"
+        capsys, project_dir, "--disable", "cts", "--max-parallel-steps", "3", "--yes"
     )
 
     assert rc == 0
-    assert (records[0]["disabled"], records[0]["max_parallel_steps"]) == (["CTS"], 3)
+    assert (records[0]["disabled"], records[0]["max_parallel_steps"]) == (["cts"], 3)
     flow = _toml(project_dir)["flow"]
-    assert (flow["skip_steps"], flow["max_parallel_steps"]) == (["diff_opt", "CTS"], 3)
+    assert (flow["skip_steps"], flow["max_parallel_steps"]) == (["diff_opt", "cts"], 3)
 
 
 def test_max_parallel_steps_without_a_terminal_needs_yes(capsys, create_cli_project):
@@ -242,7 +242,7 @@ def test_toggles_without_a_terminal_need_yes(capsys, create_cli_project):
     with open(os.path.join(project_dir, "ecc.toml")) as f:
         before = f.read()
 
-    rc, records = _edit(capsys, project_dir, "--disable", "CTS")
+    rc, records = _edit(capsys, project_dir, "--disable", "cts")
 
     assert rc == 1
     assert [record["error"] for record in records] == ["flow_edit_requires_confirmation"]
@@ -353,17 +353,17 @@ def test_the_terminal_flag_change_is_confirmed_before_it_is_written(
 def test_a_policy_skipping_the_flow_target_is_edited_with_it_enabled(
     capsys, monkeypatch, create_cli_project, set_flow_preset, args, keys
 ):
-    # syn_sta ends at Synthesis, which this policy skips.
+    # syn_sta ends at synthesis, which this policy skips.
     project_dir = create_cli_project()
     set_flow_preset(project_dir, "syn_sta")
     with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
-        f.write('skip_steps = ["Synthesis"]\n')
+        f.write('skip_steps = ["synthesis"]\n')
     _scripted_terminal(monkeypatch, keys)
 
     rc = cli_main.run(["flow", "edit", "--project", project_dir, *args])
 
     assert rc == 0
-    assert "  enabled: Synthesis" in capsys.readouterr().out
+    assert "  enabled: synthesis" in capsys.readouterr().out
     assert _toml(project_dir)["flow"]["skip_steps"] == []
 
 
@@ -386,7 +386,7 @@ def test_declined_selection_is_not_written(capsys, monkeypatch, create_cli_proje
     ("args", "mismatch"),
     [
         # A ledger without CTS cannot grow it in the middle.
-        (["--enable", "CTS"], True),
+        (["--enable", "cts"], True),
         # Newly skipped steps stay inert in an existing ledger.
         (["--disable", "emir"], False),
     ],
@@ -395,11 +395,11 @@ def test_existing_workspaces_the_selection_contradicts_are_reported(
     capsys, create_cli_project, args, mismatch
 ):
     project_dir = create_cli_project()
-    _edit(capsys, project_dir, "--disable", "CTS", "--yes")
+    _edit(capsys, project_dir, "--disable", "cts", "--yes")
     home = os.path.join(project_dir, "default", "home")
     os.makedirs(home)
     ledger = build_dynamic_flow_data(
-        {"preset": "rtl2gds", "skip_steps": [*DEFAULT_SKIP_STEPS, "CTS"]}
+        {"preset": "rtl2gds", "skip_steps": [*DEFAULT_SKIP_STEPS, "cts"]}
     )
     with open(os.path.join(home, "flow.json"), "w") as f:
         json.dump(ledger, f)
@@ -417,18 +417,18 @@ def test_plain_records_state_the_written_selection(capsys, create_cli_project):
     project_dir = create_cli_project()
 
     rc = cli_main.run(
-        ["flow", "edit", "--project", project_dir, "--plain", "--disable", "CTS", "--yes"]
+        ["flow", "edit", "--project", project_dir, "--plain", "--disable", "cts", "--yes"]
     )
 
     assert rc == 0
     assert capsys.readouterr().out.splitlines() == [
         f"record=flow_edit status=written path={os.path.join(project_dir, 'ecc.toml')} "
-        "preset=rtl2gds lec_engine=kepler_formal skip_steps=\"['diff_opt', 'CTS']\" "
-        "insert_steps=[] max_parallel_steps=4 enabled=[] disabled=['CTS'] inserted=[] removed=[]",
+        "preset=rtl2gds lec_engine=kepler_formal skip_steps=\"['diff_opt', 'cts']\" "
+        "insert_steps=[] max_parallel_steps=4 enabled=[] disabled=['cts'] inserted=[] removed=[]",
         *(
             f"kind=warning warning=flow_step_degraded step={step} missing=['clock_tree'] "
-            f"fixes=['CTS'] reason=\"{step} runs with degraded results without clock_tree; "
-            'enable CTS"'
-            for step in ("route", "sta", "powerAnalysis", "Harden")
+            f"fixes=['cts'] reason=\"{step} runs with degraded results without clock_tree; "
+            'enable cts"'
+            for step in ("routing", "sta", "power_analysis", "harden")
         ),
     ]

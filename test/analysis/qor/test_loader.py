@@ -51,21 +51,21 @@ def _write_step_payload(root, directory, metrics):
     )
 
 
-_STEP_TOOLS = {"Synthesis": "yosys", "place": "dreamplace"}
+_STEP_TOOLS = {"synthesis": "yosys", "placement": "dreamplace"}
 
 
 _STEP_DIRECTORIES = {
-    "Synthesis": "Synthesis_yosys",
-    "postFloorplan": "postFloorplan_ecc",
-    "place": "place_dreamplace",
-    "CTS": "CTS_ecc",
-    "route": "route_ecc",
+    "synthesis": "synthesis_yosys",
+    "post_floorplan": "post_floorplan_ecc",
+    "placement": "placement_dreamplace",
+    "cts": "cts_ecc",
+    "routing": "routing_ecc",
     "drc": "drc_ecc",
     "lvs": "lvs_ecc",
-    "RCX": "RCX_ecc",
+    "rcx": "rcx_ecc",
     "sta": "sta_ecc",
-    "powerAnalysis": "powerAnalysis_ecc",
-    "Harden": "Harden_ecc",
+    "power_analysis": "power_analysis_ecc",
+    "harden": "harden_ecc",
 }
 
 
@@ -74,7 +74,7 @@ def _make_workspace(tmp_path, steps):
     _write(
         os.path.join(root, "home", "flow.json"),
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": name,
@@ -106,16 +106,16 @@ def _make_workspace(tmp_path, steps):
 SUCCESS = "Success"
 
 _FULL_FLOW = {
-    "Synthesis": SUCCESS,
-    "postFloorplan": SUCCESS,
-    "place": SUCCESS,
-    "CTS": SUCCESS,
-    "route": SUCCESS,
+    "synthesis": SUCCESS,
+    "post_floorplan": SUCCESS,
+    "placement": SUCCESS,
+    "cts": SUCCESS,
+    "routing": SUCCESS,
     "drc": SUCCESS,
     "lvs": SUCCESS,
-    "RCX": SUCCESS,
+    "rcx": SUCCESS,
     "sta": SUCCESS,
-    "Harden": SUCCESS,
+    "harden": SUCCESS,
 }
 
 
@@ -124,12 +124,12 @@ class TestMetricSelection:
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         _write_step_payload(
             workspace.directory,
-            "place_ecc".replace("place_ecc", "place_dreamplace"),
+            "place_ecc".replace("place_ecc", "placement_dreamplace"),
             [_metric("place_hpwl", 100.0, project_role="trend")],
         )
         _write_step_payload(
             workspace.directory,
-            "route_ecc",
+            "routing_ecc",
             [_metric("place_hpwl", 200.0, project_role="final")],
         )
         inputs: Any = load_workspace_qor_inputs(workspace)
@@ -139,35 +139,37 @@ class TestMetricSelection:
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         _write_step_payload(
             workspace.directory,
-            "place_dreamplace",
+            "placement_dreamplace",
             [_metric("place_hpwl", 100.0, project_role="trend")],
         )
         _write_step_payload(
             workspace.directory,
-            "route_ecc",
+            "routing_ecc",
             [_metric("place_hpwl", 111.0, project_role="trend")],
         )
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("place_hpwl") == 111.0
-        assert inputs.metrics["place_hpwl"].step == "route"
+        assert inputs.metrics["place_hpwl"].step == "routing"
 
     def test_stale_payload_of_unstarted_step_is_ignored(self, tmp_path):
         steps = dict(_FULL_FLOW)
-        steps["route"] = "Unstart"
+        steps["routing"] = "Unstart"
         workspace = _make_workspace(tmp_path, steps)
-        _write_step_payload(workspace.directory, "route_ecc", [_metric("route_wirelength", 9999.0)])
+        _write_step_payload(
+            workspace.directory, "routing_ecc", [_metric("route_wirelength", 9999.0)]
+        )
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("route_wirelength") is None
-        assert "route" not in inputs.analyzed_steps
+        assert "routing" not in inputs.analyzed_steps
         assert inputs.parse_failures == 0  # unstarted steps are not failures
 
     def test_step_skipped_from_the_ledger_contributes_nothing(self, tmp_path):
-        steps = {name: state for name, state in _FULL_FLOW.items() if name != "CTS"}
+        steps = {name: state for name, state in _FULL_FLOW.items() if name != "cts"}
         workspace = _make_workspace(tmp_path, steps)
-        _write_step_payload(workspace.directory, "CTS_ecc", [_metric("cts_skew", 9999.0)])
+        _write_step_payload(workspace.directory, "cts_ecc", [_metric("cts_skew", 9999.0)])
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("cts_skew") is None
-        assert "CTS" not in inputs.analyzed_steps
+        assert "cts" not in inputs.analyzed_steps
         assert inputs.parse_failures == 0
 
     def test_failed_payload_counts_as_parse_failure(self, tmp_path):
@@ -264,7 +266,7 @@ class TestCornerLoading:
         _write(
             os.path.join(
                 workspace.directory,
-                "Synthesis_yosys",
+                "synthesis_yosys",
                 "feature",
                 "post_synthesis",
                 "power_summary.json",
@@ -280,23 +282,23 @@ class TestCornerLoading:
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 7.0
         assert inputs.power_source_path.endswith(
-            "Synthesis_yosys/feature/post_synthesis/power_summary.json"
+            "synthesis_yosys/feature/post_synthesis/power_summary.json"
         )
         assert inputs.power_source_kind == "synthesis"
         assert inputs.power_corner == "post_synthesis"
 
     def test_signoff_power_uses_worst_configured_corner(self, tmp_path):
-        workspace = _make_workspace(tmp_path, {**_FULL_FLOW, "powerAnalysis": SUCCESS})
+        workspace = _make_workspace(tmp_path, {**_FULL_FLOW, "power_analysis": SUCCESS})
         _write(
             os.path.join(
                 workspace.directory,
-                "powerAnalysis_ecc",
+                "power_analysis_ecc",
                 "feature",
-                "powerAnalysis.step.json",
+                "power_analysis.step.json",
             ),
             {
                 "schema_version": 1,
-                "step": "powerAnalysis",
+                "step": "power_analysis",
                 "power_summary": {
                     "schema_version": 1,
                     "dynamic_uw": 8.0,
@@ -309,24 +311,24 @@ class TestCornerLoading:
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_total_uw == 9.0
         assert inputs.power_source_path.endswith(
-            "powerAnalysis_ecc/feature/powerAnalysis.step.json"
+            "power_analysis_ecc/feature/power_analysis.step.json"
         )
         assert inputs.power_source_kind == "signoff"
-        assert inputs.power_corner == "powerAnalysis"
+        assert inputs.power_corner == "power_analysis"
 
     def test_power_analysis_summary_replaces_sta_power_source(self, tmp_path):
-        steps = {**_FULL_FLOW, "powerAnalysis": SUCCESS}
+        steps = {**_FULL_FLOW, "power_analysis": SUCCESS}
         workspace = _make_workspace(tmp_path, steps)
         _write(
             os.path.join(
                 workspace.directory,
-                "powerAnalysis_ecc",
+                "power_analysis_ecc",
                 "feature",
-                "powerAnalysis.step.json",
+                "power_analysis.step.json",
             ),
             {
                 "schema_version": 1,
-                "step": "powerAnalysis",
+                "step": "power_analysis",
                 "power_summary": {
                     "schema_version": 1,
                     "dynamic_uw": 8.0,
@@ -359,18 +361,18 @@ class TestCornerLoading:
 
         assert inputs.power_total_uw == 9.0
         assert inputs.power_source_path.endswith(
-            "powerAnalysis_ecc/feature/powerAnalysis.step.json"
+            "power_analysis_ecc/feature/power_analysis.step.json"
         )
         assert inputs.power_source_kind == "signoff"
-        assert inputs.power_corner == "powerAnalysis"
+        assert inputs.power_corner == "power_analysis"
 
     def test_incomplete_power_analysis_does_not_score_stale_power_summary(self, tmp_path):
-        steps = {**_FULL_FLOW, "powerAnalysis": "Incomplete"}
+        steps = {**_FULL_FLOW, "power_analysis": "Incomplete"}
         workspace = _make_workspace(tmp_path, steps)
         _write(
             os.path.join(
                 workspace.directory,
-                "powerAnalysis_ecc",
+                "power_analysis_ecc",
                 "feature",
                 "power_summary.json",
             ),

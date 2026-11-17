@@ -16,7 +16,7 @@ def test_worker_sees_its_own_read_only_ledger(tmp_path):
     flow = Flow(
         path=tmp_path / "home" / "flow.json",
         data=current_flow_document(
-            [{"name": "postRouteLec", "tool": "kepler_formal", "state": "Ongoing"}]
+            [{"name": "post_route_lec", "tool": "kepler_formal", "state": "Ongoing"}]
         ),
     )
     assert save_ledger(flow)
@@ -24,7 +24,7 @@ def test_worker_sees_its_own_read_only_ledger(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path, flow=flow, logger=logging.getLogger(__name__))
 
     view = _worker_view(workspace)
-    _initialize_worker_db(view, SimpleNamespace(name="postRouteLec", tool="kepler_formal"))
+    _initialize_worker_db(view, SimpleNamespace(name="post_route_lec", tool="kepler_formal"))
 
     assert workspace.flow is flow and flow.data is ledger
     assert (view.flow.read_only, view.flow.data == ledger, view.flow.data is ledger) == (

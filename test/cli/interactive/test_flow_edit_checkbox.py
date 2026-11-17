@@ -61,17 +61,17 @@ def _moves_to(step: str) -> list[str]:
 
 
 def test_space_toggles_the_step_under_the_cursor_and_enter_saves():
-    result, output = _edit([*_moves_to("CTS"), _SPACE, _ENTER])
+    result, output = _edit([*_moves_to("cts"), _SPACE, _ENTER])
 
-    assert result == EditedSelection((*DEFAULT_SKIP_STEPS, "CTS"), (), 4)
-    assert "route runs with degraded results without clock_tree; enable CTS" in output
+    assert result == EditedSelection((*DEFAULT_SKIP_STEPS, "cts"), (), 4)
+    assert "routing runs with degraded results without clock_tree; enable cts" in output
 
 
 def test_the_flow_target_stays_enabled():
     result, output = _edit([_UP, _SPACE, _ENTER])
 
     assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)
-    assert "Harden ends the flow and stays enabled" in output
+    assert "harden ends the flow and stays enabled" in output
 
 
 def test_a_selection_missing_required_data_cannot_be_saved():
@@ -80,7 +80,7 @@ def test_a_selection_missing_required_data_cannot_be_saved():
     result, output = _edit(keys)
 
     assert result is None
-    assert "route requires legal; enable Timing optimization or legalization" in output
+    assert "routing requires legal; enable timing_optimization or legalization" in output
     assert "resolve the errors before saving" in output
 
 
@@ -135,7 +135,7 @@ def test_a_value_above_the_default_and_every_stage_is_kept_and_can_be_lowered():
 
 
 def test_the_default_bounds_the_value_when_no_stage_is_parallel():
-    view_of = _view_of_project(4, start="Synthesis", end="preFloorplan")
+    view_of = _view_of_project(4, start="synthesis", end="pre_floorplan")
 
     result, _output = _edit([_RIGHT, _ENTER], view_of=view_of)
 
@@ -163,7 +163,7 @@ def test_the_legend_and_key_hint_follow_the_value():
 
 
 def test_the_value_is_shown_when_no_stage_has_parallel_steps():
-    view_of = _view_of_project(4, start="Synthesis", end="preFloorplan")
+    view_of = _view_of_project(4, start="synthesis", end="pre_floorplan")
 
     result, output = _edit([_LEFT, _ENTER], view_of=view_of)
 
@@ -235,16 +235,16 @@ def test_one_terminal_read_splits_into_its_keys(chunk, keys):
 
 
 def test_i_inserts_an_lec_after_the_step_under_the_cursor():
-    # route, then the row above it (Timing optimization), then route again,
-    # now two rows down: below the inserted lec@Timing_optimization.
-    keys = [*_moves_to("route"), "i", _UP, "i", _DOWN, _DOWN, "i", _ENTER]
+    # route, then the row above it (timing_optimization), then route again,
+    # now two rows down: below the inserted lec@timing_optimization.
+    keys = [*_moves_to("routing"), "i", _UP, "i", _DOWN, _DOWN, "i", _ENTER]
 
     result, output = _edit(keys)
 
     assert result == EditedSelection(
-        DEFAULT_SKIP_STEPS, ("lec@Timing_optimization", "lec@route"), 4
+        DEFAULT_SKIP_STEPS, ("lec@timing_optimization", "lec@routing"), 4
     )
-    assert "lec@route is already inserted" in output
+    assert "lec@routing is already inserted" in output
 
 
 def test_an_lec_can_only_be_inserted_after_a_design_building_step():
@@ -255,6 +255,6 @@ def test_an_lec_can_only_be_inserted_after_a_design_building_step():
 
 
 def test_toggling_an_inserted_row_removes_it():
-    result, _output = _edit([*_moves_to("CTS"), _DOWN, _SPACE, _ENTER], insert=("lec@CTS",))
+    result, _output = _edit([*_moves_to("cts"), _DOWN, _SPACE, _ENTER], insert=("lec@cts",))
 
     assert result == EditedSelection(DEFAULT_SKIP_STEPS, (), 4)

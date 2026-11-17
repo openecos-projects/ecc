@@ -39,7 +39,7 @@ def current_flow_document(steps: Iterable[Mapping[str, Any]]) -> FlowDocument:
         for key, value in fields.items():
             record.setdefault(key, value)
         records.append(cast(FlowStepEntry, record))
-    return {"schema_version": 2, "steps": records}
+    return {"schema_version": 3, "steps": records}
 
 
 def step_directory(name, tool) -> StepDirectory:

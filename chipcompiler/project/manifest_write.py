@@ -25,12 +25,12 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.project.manifest import (
-    _CANONICAL_TO_MANIFEST_STEP,
     MANIFEST_FILENAME,
     PRESET_MANIFEST_RANGE,
     ManifestError,
     _slugify,
     base_design_from_config,
+    is_manifest_flow_step,
 )
 
 logger = logging.getLogger(__name__)
@@ -332,15 +332,11 @@ def manifest_range_for_steps(start: str, end: str) -> tuple[str, str]:
     """The GUI manifest range for a pair of flow step spellings."""
     from chipcompiler.rtl2gds import normalize_flow_step
 
-    canonical_start = normalize_flow_step(start)
-    canonical_end = normalize_flow_step(end)
-    try:
-        return (
-            _CANONICAL_TO_MANIFEST_STEP[canonical_start],
-            _CANONICAL_TO_MANIFEST_STEP[canonical_end],
-        )
-    except KeyError as exc:
-        raise ManifestError(f"unknown workspace flow step: {exc.args[0]}") from None
+    steps = (normalize_flow_step(start), normalize_flow_step(end))
+    for step in steps:
+        if not is_manifest_flow_step(step):
+            raise ManifestError(f"unknown workspace flow step: {step!r}")
+    return steps
 
 
 def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
@@ -354,7 +350,7 @@ def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
         return manifest_range_for_steps(
             flow_config["start_step"], flow_config.get("end_step") or flow_config["start_step"]
         )
-    preset_range = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+    preset_range = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, PRESET_MANIFEST_RANGE["rtl2gds"])
     if not (
         cfg.flow_preset in PRESET_MANIFEST_RANGE
         and isinstance(flow_config, dict)
@@ -371,8 +367,7 @@ def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
     first = next(
         (name for name, _tool in preset_chain(cfg.flow_preset) if name not in skipped), None
     )
-    start = _CANONICAL_TO_MANIFEST_STEP.get(first or "")
-    return (start or preset_range[0], preset_range[1])
+    return (first or preset_range[0], preset_range[1])
 
 
 def append_workspace_entry(

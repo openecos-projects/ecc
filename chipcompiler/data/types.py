@@ -32,34 +32,34 @@ class StepBaseEnum(StrEnum):
 class StepEnum(StepBaseEnum):
     """RTL2GDS flow step names (core chain steps)"""
 
-    RTL2GDS = "RTL2GDS"
-    INIT = "Init"
-    SYNTHESIS = "Synthesis"
-    FLOORPLAN = "Floorplan"  # shared floorplan configuration key, not a flow step
-    PRE_FLOORPLAN = "preFloorplan"
-    MACRO_PLACEMENT = "macroPlacement"
-    POST_FLOORPLAN = "postFloorplan"
+    RTL2GDS = "rtl2gds"
+    INIT = "init"
+    SYNTHESIS = "synthesis"
+    FLOORPLAN = "floorplan"  # shared floorplan configuration key, not a flow step
+    PRE_FLOORPLAN = "pre_floorplan"
+    MACRO_PLACEMENT = "macro_placement"
+    POST_FLOORPLAN = "post_floorplan"
     PREPLACE = "preplace"
-    PLACEMENT = "place"
+    PLACEMENT = "placement"
     DIFF_SIZING = "diff_sizing"
-    CTS = "CTS"
+    CTS = "cts"
     LEGALIZATION = "legalization"
-    ROUTING = "route"
+    ROUTING = "routing"
     FILLER = "filler"
-    GDS = "GDS"
-    SIGNOFF = "Signoff"
+    GDS = "gds"
+    SIGNOFF = "signoff"
     STA = "sta"
     DRC = "drc"
-    ANTENNA_CHECK = "antennaCheck"
+    ANTENNA_CHECK = "antenna_check"
     LVS = "lvs"
-    RCX = "RCX"
-    POWER_ANALYSIS = "powerAnalysis"
+    RCX = "rcx"
+    POWER_ANALYSIS = "power_analysis"
     EMIR = "emir"
-    ABSTRACT_LEF = "Abstract lef"
-    HARDEN = "Harden"
+    ABSTRACT_LEF = "abstract_lef"
+    HARDEN = "harden"
     DEFVIEW = "defview"
     #: Logic equivalence check. Not a chain step: a selection inserts it after
-    #: a design-building step (``lec@CTS``; ``[flow] insert_steps``).
+    #: a design-building step (``lec@cts``; ``[flow] insert_steps``).
     LEC = "lec"
 
 
@@ -67,12 +67,12 @@ class SkippableStepEnum(StepBaseEnum):
     """Optional flow steps a project may exclude from its ledger.
 
     These are check/optimization steps whose outputs downstream steps can
-    do without; persisted string values match the former StepEnum members.
+    do without.
     """
 
     DIFF_OPT = "diff_opt"
-    POST_ROUTE_LEC = "postRouteLec"
-    TIMING_OPT = "Timing optimization"
+    POST_ROUTE_LEC = "post_route_lec"
+    TIMING_OPT = "timing_optimization"
 
     def is_skippable(self) -> bool:
         return True
@@ -329,7 +329,7 @@ INSERTED_STEP_MARK: Final = "@"
 
 
 def inserted_step_kind(name: str) -> str | None:
-    """The insertable step an inserted step name is a copy of (``lec`` for ``lec@CTS``).
+    """The insertable step an inserted step name is a copy of (``lec`` for ``lec@cts``).
 
     Only a canonical inserted name counts: ``lec@`` followed by a step an LEC
     can be inserted after (``rtl2gds.lec_insert_anchors``), so ``lec@bogus`` or
@@ -348,7 +348,7 @@ def inserted_step_kind(name: str) -> str | None:
 def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
     """The registered policy for a flow step; unknown names raise.
 
-    An inserted step (``lec@CTS``) has the policy of the step it copies.
+    An inserted step (``lec@cts``) has the policy of the step it copies.
     """
     value = step.value if isinstance(step, StepBaseEnum) else str(step)
     try:
@@ -390,7 +390,7 @@ class ToolName(StrEnum):
 
 
 class LECEngineEnum(StrEnum):
-    """Engines that can own LEC steps (inserted ``lec@<step>`` and postRouteLec)."""
+    """Engines that can own LEC steps (inserted ``lec@<step>`` and post_route_lec)."""
 
     KEPLER_FORMAL = "kepler_formal"
 

@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from chipcompiler.data.checklist import workspace_checklist_path
+from chipcompiler.data.schema_versions import ENGINEERING_SNAPSHOT, supported_schema_version
 from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
 from chipcompiler.engine.snapshot_limits import (
     CHECKLIST_READ_MAX_BYTES,
@@ -20,7 +21,7 @@ from chipcompiler.engine.snapshot_qor import (
 )
 from chipcompiler.utility import JsonObject, JsonReadError, json_read_strict, json_write
 
-SNAPSHOT_SCHEMA_VERSION = 6
+SNAPSHOT_SCHEMA_VERSION = supported_schema_version(ENGINEERING_SNAPSHOT)
 SNAPSHOT_FILENAME = "engineering-snapshot.json"
 STALE_SNAPSHOT_FILENAME = "engineering-snapshot.stale.json"
 SNAPSHOT_REBUILD_REQUIRED = "snapshot_rebuild_required"

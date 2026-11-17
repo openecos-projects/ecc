@@ -17,7 +17,7 @@ import ast
 from pathlib import Path
 
 import chipcompiler
-from chipcompiler.data.step import STEP_DIRECTORIES, step_storage_name
+from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.types import SkippableStepEnum, ToolName
 
 _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
@@ -25,8 +25,7 @@ _PACKAGE_ROOT = Path(chipcompiler.__file__).resolve().parent
 _STEP_DIRECTORY_LITERALS = frozenset(
     {
         *STEP_DIRECTORIES.values(),
-        f"{step_storage_name(SkippableStepEnum.TIMING_OPT.value, ToolName.SIZER.value)}"
-        f"_{ToolName.SIZER.value}",
+        f"{SkippableStepEnum.TIMING_OPT.value}_{ToolName.SIZER.value}",
     }
 )
 
@@ -175,13 +174,13 @@ def test_first_party_sources_follow_the_guard():
 
 
 def test_guard_rejects_a_directory_literal_outside_the_owner(tmp_path):
-    _write(tmp_path, "engine/consumer.py", 'DIR = "Harden_ecc"\n')
+    _write(tmp_path, "engine/consumer.py", 'DIR = "harden_ecc"\n')
 
-    assert scan(tmp_path) == [("engine/consumer.py", 1, "step-directory", "Harden_ecc")]
+    assert scan(tmp_path) == [("engine/consumer.py", 1, "step-directory", "harden_ecc")]
 
 
 def test_guard_accepts_the_same_literal_in_the_owner_table(tmp_path):
-    _write(tmp_path, "data/step/directories.py", 'DIR = "Harden_ecc"\n')
+    _write(tmp_path, "data/step/directories.py", 'DIR = "harden_ecc"\n')
 
     assert scan(tmp_path) == []
 
@@ -245,7 +244,7 @@ def test_guard_ignores_unrelated_strings(tmp_path):
 
 
 def test_guard_excludes_thirdparty(tmp_path):
-    _write(tmp_path, "thirdparty/vendor.py", 'DIR = "Harden_ecc"\nNAME = "subflow.json"\n')
+    _write(tmp_path, "thirdparty/vendor.py", 'DIR = "harden_ecc"\nNAME = "subflow.json"\n')
 
     assert scan(tmp_path) == []
 

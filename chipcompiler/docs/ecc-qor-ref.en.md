@@ -10,7 +10,7 @@ This manual documents ECC's current QoR scheme (**ECC-QoR V3**, report `schema_v
 
 ```mermaid
 graph LR
-    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
+    A["Per-step artifacts<br/>qor_metrics.json / qor_summary.json<br/>power_analysis.step.json"] --> B["ECC QoR V3 engine<br/>(single scorer)"]
     B --> C["home/qor_report.json<br/>auto-refreshed after each step"]
     C --> D["ECOS Studio<br/>(renderer: 5-dim breakdown / gates / diagnoses)"]
     B --> E["ecc report qor<br/>text report → signoff/*.txt"]
@@ -141,9 +141,9 @@ $$
 - `I_route` (detailed-routing inflation): pin access, via transitions, DRC avoidance;
 - With a zero/missing denominator the ratio is strictly UNKNOWN — **epsilon padding is prohibited** (it would break the algebraic identity).
 
-**Cross-stage compatibility (current degraded path)**: `I_route`/`I_total` divide quantities from different stages (place → route), and CTS inserts clock-tree nets between them. The toolchain does not yet emit a net-level mapping, therefore:
+**Cross-stage compatibility (current degraded path)**: `I_route`/`I_total` divide quantities from different stages (placement → routing), and CTS inserts clock-tree nets between them. The toolchain does not yet emit a net-level mapping, therefore:
 
-- CTS inserted buffers (or its counts are unknown) → place→route is `INCOMPATIBLE` and `I_route`/`I_total` are strictly UNKNOWN;
+- CTS inserted buffers (or its counts are unknown) → placement→routing is `INCOMPATIBLE` and `I_route`/`I_total` are strictly UNKNOWN;
 - Q_I degrades to scoring `I_place` (intra-placement, one netlist, `EXACT_COMPATIBLE`), and the report states `INCOMPATIBLE route side` explicitly;
 - Once the toolchain emits net mappings, the full `I_total` path activates (the same design's Q_I will then change — see the worked example in §4.4).
 
@@ -189,7 +189,7 @@ $$
 | P_total ≥ P_budget | 0.0 (clamped) |
 | No budget declared | null (UNKNOWN, excluded from the composite) |
 
-- P_total is the total iPW signoff power (dynamic + leakage, µW) from the dedicated `powerAnalysis` step; when that result is unavailable it falls back to the post-synthesis STA estimate (the report's `power.source_kind` says `signoff` / `synthesis`).
+- P_total is the total iPW signoff power (dynamic + leakage, µW) from the dedicated `power_analysis` step; when that result is unavailable it falls back to the post-synthesis STA estimate (the report's `power.source_kind` says `signoff` / `synthesis`).
 - The budget unit is **watts**: `qor_power_budget_w = 0.5` means 0.5 W (§8).
 
 ### 3.5 Q_R — Robustness Quality
@@ -310,7 +310,7 @@ Intervention hypotheses are ordered by a three-tier lexicographic policy:
 2. **Tier 2 (quality limiters/bottlenecks)**: descending bottleneck severity, ahead of optimization opportunities;
 3. **Tier 3 (optimization opportunities)**: downsizing suggestions for over-provisioned margins.
 
-Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt_flag` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
+Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt_flag` (requires a trial reroute); area → floorplan utilization targets; robustness → cts balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
 
 ## 8. User-Configurable Parameters
 
@@ -343,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | Per-step metrics | `<step_dir>/analysis/qor_metrics.json` (schema_version 3, emitted by every step — **unchanged**) | metric values and provenance |
 | Per-corner timing | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | signed setup/hold WS, TNS, NVP; PVT dispersion |
-| Power | `powerAnalysis_ecc/feature/powerAnalysis.step.json` (`power_summary`, with legacy `power_summary.json` fallback; then `Synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
+| Power | `power_analysis_ecc/feature/power_analysis.step.json` (`power_summary`, with legacy `power_summary.json` fallback; then `synthesis_yosys/feature/post_synthesis/power_summary.json`) | P_total |
 | Step states | `home/flow.json` | only steps whose state is `Success` are analyzed (stale artifacts after invalidation never score) |
 | Parameters | `home/params.toml` | profile / budget / frequency |
 
@@ -366,7 +366,7 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 | Feature | Formula | Epistemic class |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
-| F_PWR_LEAK_FRAC | powerAnalysis P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | power_analysis P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -449,10 +449,10 @@ The Engineering Snapshot v6 artifact index carries a `required` flag for every a
                 "congestion_severity": 0.0, "compatibility_status": "INCOMPATIBLE"},
   "power": {"total_uw": null, "budget_uw": null, "source_path": null,
             "source_kind": null, "corner": null},
-  "flow_steps": {"Synthesis": "Success", "postFloorplan": "Success", "place": "Success",
-                 "CTS": "Success", "route": "Success", "drc": "Success",
-                 "lvs": "Success", "RCX": "Success", "sta": "Success",
-                 "Harden": "Success"},
+  "flow_steps": {"synthesis": "Success", "post_floorplan": "Success", "placement": "Success",
+                 "cts": "Success", "routing": "Success", "drc": "Success",
+                 "lvs": "Success", "rcx": "Success", "sta": "Success",
+                 "harden": "Success"},
   "config_warnings": []
 }
 ```
@@ -497,7 +497,7 @@ The feasibility veto: one of the seven gates failed (most often setup/hold slack
 No power budget is declared. Add `qor_power_budget_w = <watts>` to the `[params]` table of `home/params.toml` and rerun.
 
 **Q: Q_I shows "I_place … (INCOMPATIBLE route side)". What does that mean?**
-The toolchain emits no net-level mapping after CTS, so place→route wirelength ratios are conservatively INCOMPATIBLE and strictly UNKNOWN; Q_I degrades to the intra-placement I_place score (§3.2). This is a deliberate degradation, not an error.
+The toolchain emits no net-level mapping after CTS, so placement→routing wirelength ratios are conservatively INCOMPATIBLE and strictly UNKNOWN; Q_I degrades to the intra-placement I_place score (§3.2). This is a deliberate degradation, not an error.
 
 **Q: Timing scores 100 but the state is OPPORTUNITY. Should I act?**
 WS exceeds 0.20·T_clk — an over-constraint hint: the design may be over-buffered; consider downsizing drive strengths to recover area/leakage (see the Tier 3 intervention). Whether to act depends on the project's margin policy.

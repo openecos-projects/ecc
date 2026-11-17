@@ -4,7 +4,7 @@ plus ``insert_steps``.
 
 The skip policy comes from the run's flow config (manifest entry or CLI
 range), else an explicit ``ecc.toml`` ``[flow] skip_steps``, else the code
-default. Inserted steps (an LEC after a design-building step, ``lec@CTS``)
+default. Inserted steps (an LEC after a design-building step, ``lec@cts``)
 come from the run's flow config, else ``ecc.toml``; nothing is inserted by
 default. Only a declared policy is checked against the step capabilities: the
 code default is fixed and fits every preset.
@@ -82,7 +82,7 @@ def toggled_skip_steps(
     if any(normalize_flow_step(name) == StepEnum.LEC.value for name in (*enable, *disable)):
         raise ValueError(
             "lec is not a flow step to enable or disable; insert it after a step with "
-            "--insert lec@STEP (lec@Synthesis checks synthesis)"
+            "--insert lec@STEP (lec@synthesis checks synthesis)"
         )
     enabled = set(resolve_skip_steps({"skip_steps": list(enable)}))
     disabled = set(resolve_skip_steps({"skip_steps": list(disable)}))

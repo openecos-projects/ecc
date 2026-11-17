@@ -199,7 +199,7 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
                         ("timing_paths", feature_dir / "timing_paths.json"),
                     )
                 )
-        if step_id == "powerAnalysis":
+        if step_id == "power_analysis":
             timing_files.extend(
                 (
                     ("power_report", power_report_source_path(step_dir)),

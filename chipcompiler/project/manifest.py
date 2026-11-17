@@ -24,70 +24,42 @@ MANIFEST_FILENAME = "project.json"
 CONFIG_FILENAME = "ecc.toml"
 
 PRESET_MANIFEST_RANGE = {
-    "syn_sta": ("Synth", "Synth"),
-    "rtl2gds": ("Synth", "Harden"),
-    "synthesis_lec": ("Synth", "LEC"),
+    "syn_sta": ("synthesis", "synthesis"),
+    "rtl2gds": ("synthesis", "harden"),
+    "synthesis_lec": ("synthesis", "lec@synthesis"),
 }
 
-#: project.json (GUI) display name of each canonical rtl2gds step, in the
-#: manifest's range order: after RCX it orders the signoff checks differently
-#: from the canonical chain, and persisted ranges are validated in this order.
-_CANONICAL_TO_MANIFEST_STEP = {
-    "Synthesis": "Synth",
-    "lec": "LEC",
-    "preFloorplan": "PreFloorplan",
-    "macroPlacement": "MacroPlacement",
-    "postFloorplan": "PostFloorplan",
-    "preplace": "Preplace",
-    "place": "Place",
-    "diff_opt": "DiffOpt",
-    "diff_sizing": "DiffSizing",
-    "CTS": "CTS",
-    "legalization": "Legal",
-    "Timing optimization": "TimingOpt",
-    "route": "Route",
-    "filler": "Filler",
-    "RCX": "RCX",
-    "sta": "STA",
-    "powerAnalysis": "PowerAnalysis",
-    "lvs": "LVS",
-    "postRouteLec": "PostRouteLEC",
-    "drc": "DRC",
-    "antennaCheck": "AntennaCheck",
-    "emir": "EMIR",
-    "Harden": "Harden",
-}
 
-# GUI display names for the canonical rtl2gds chain, in manifest range order.
-MANIFEST_FLOW_STEPS = tuple(_CANONICAL_TO_MANIFEST_STEP.values())
+def _flow_position(step_name: str) -> int | None:
+    """Range position of a flow step in the rtl2gds chain, or None off the chain.
 
-
-def manifest_step_name(name: str) -> str:
-    """The project.json (GUI) name of a ledger step.
-
-    ``lec`` is no chain step any more, but project.json and the GUI still call
-    the synthesis LEC ``LEC``: ``lec@Synthesis`` maps to it. Another inserted
-    LEC maps to the step it follows; any other unknown name is kept.
+    An inserted LEC (``lec@cts``) sits right after the step it checks.
     """
     from chipcompiler.rtl2gds import parse_inserted_step
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
 
-    parsed = parse_inserted_step(name)
-    if parsed is not None:
-        kind, after = parsed
-        name = kind if after == "Synthesis" else after
-    return _CANONICAL_TO_MANIFEST_STEP.get(name, name)
+    chain = rtl2gds_step_names()
+    inserted = parse_inserted_step(step_name)
+    anchor = inserted[1] if inserted is not None else step_name
+    if anchor not in chain:
+        return None
+    return 2 * chain.index(anchor) + (inserted is not None)
 
 
-# Display name -> canonical step value, for skip-policy boundary checks.
-_MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
+def is_manifest_flow_step(step_name: str) -> bool:
+    """Whether a project.json range may start or end at *step_name*."""
+    return _flow_position(step_name) is not None
 
 
 def validate_manifest_range(start_step: str, end_step: str) -> tuple[str, str]:
-    """Validate a persisted start/end range in the current manifest vocabulary."""
+    """Validate a persisted start/end range of rtl2gds flow step names."""
+    positions = []
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
-        if step_name not in MANIFEST_FLOW_STEPS:
+        position = _flow_position(step_name)
+        if position is None:
             raise ManifestError(f"{field_name} is not on the canonical flow chain: {step_name}")
-    if MANIFEST_FLOW_STEPS.index(start_step) > MANIFEST_FLOW_STEPS.index(end_step):
+        positions.append(position)
+    if positions[0] > positions[1]:
         raise ManifestError(f"flow range is reversed: {start_step} -> {end_step}")
     return start_step, end_step
 
@@ -201,14 +173,14 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
         status = "not_started"
     declared_skip, skipped = _workspace_skip_steps(source, index)
-    start_step = _optional_str(source.get("start_step")) or "Synth"
-    end_step = _optional_str(source.get("end_step")) or "Harden"
+    start_step = _optional_str(source.get("start_step")) or "synthesis"
+    end_step = _optional_str(source.get("end_step")) or "harden"
     try:
         start_step, end_step = validate_manifest_range(start_step, end_step)
     except ManifestError as exc:
         raise ManifestError(f"workspaces[{index}] {exc}") from None
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
-        if _MANIFEST_TO_CANONICAL_STEP[step_name] in skipped:
+        if step_name in skipped:
             raise ManifestError(
                 f"workspaces[{index}] {field_name} {step_name!r} is skipped by skip_steps "
                 f"and cannot bound the flow range"

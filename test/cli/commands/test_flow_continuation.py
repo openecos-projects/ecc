@@ -35,7 +35,7 @@ def _write_existing_workspace(
     home = os.path.join(run_dir, "home")
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"schema_version": 2, "steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
     parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
     if pdk_root is not None:
         parameters["pdk_root"] = str(pdk_root)
@@ -406,8 +406,8 @@ class TestFlowMismatchZeroMutation:
         run_dir = os.path.join(project_dir, "ws_0001")
         # The persisted ledger diverges from the configured preset at step one
         # (every preset chain starts with Synthesis).
-        _write_existing_workspace(run_dir, ["place"])
-        output_path = os.path.join(run_dir, "Synthesis_yosys", "output", "gcd.v")
+        _write_existing_workspace(run_dir, ["placement"])
+        output_path = os.path.join(run_dir, "synthesis_yosys", "output", "gcd.v")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write("module gcd; endmodule // sentinel\n")
@@ -429,7 +429,7 @@ class TestFlowMismatchZeroMutation:
     ):
         """A per-workspace project.json skip policy wins over the
         workspace's undeclared one on an existing run: keeping the LEC
-        (skip_steps = [], which inserts lec@Synthesis) against a ledger without
+        (skip_steps = [], which inserts lec@synthesis) against a ledger without
         it is a mismatch that never inserts the step."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -453,7 +453,7 @@ class TestFlowMismatchZeroMutation:
         errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         ledger = json.loads((Path(run_dir) / "home" / "flow.json").read_text())
-        assert "lec@Synthesis" not in [step["name"] for step in ledger["steps"]]
+        assert "lec@synthesis" not in [step["name"] for step in ledger["steps"]]
 
     def test_parameter_mismatch_does_not_rewrite_workspace(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
@@ -480,16 +480,16 @@ name = "ics55"
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "place",
+                            "name": "placement",
                             "tool": "ecc",
                             "state": "Success",
                             "runtime": "",
                             "peak memory (mb)": 0,
                             "info": {},
-                            **step_fields("place", "ecc"),
+                            **step_fields("placement", "ecc"),
                         }
                     ],
                 },

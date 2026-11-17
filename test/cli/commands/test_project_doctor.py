@@ -15,14 +15,14 @@ from chipcompiler.data.parameter import Parameters, save_parameter
 from test.flow_fixture import step_fields
 
 
-def _make_workspace(project_dir, name, *, state="Success", start="Synthesis", end="Harden"):
+def _make_workspace(project_dir, name, *, state="Success", start="synthesis", end="harden"):
     """A consistent workspace directory: range Synthesis..Harden, patch {}."""
     home = project_dir / name / "home"
     home.mkdir(parents=True)
     (home / "flow.json").write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": start,
@@ -66,7 +66,7 @@ class TestProjectDoctorReport:
         _make_workspace(project_dir, "ws_0004")
         entry = {
             **manifest_stubs.entry(project_dir, "ws_0004", status="not_started"),
-            "start_step": "Place",
+            "start_step": "placement",
             "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
         }
         manifest_stubs.write(project_dir, [entry])
@@ -151,7 +151,7 @@ class TestProjectDoctorReport:
         _make_workspace(project_dir, "ws_0001")
         archived = {
             **manifest_stubs.entry(project_dir, "ws_0001", status="archived"),
-            "start_step": "Place",
+            "start_step": "placement",
         }
         missing_archived = manifest_stubs.entry(project_dir, "ghost", status="archived")
         manifest_stubs.write(project_dir, [archived, missing_archived])
@@ -170,7 +170,7 @@ class TestProjectDoctorReport:
         _make_workspace(project_dir, "ws_0001")
         running = {
             **manifest_stubs.entry(project_dir, "ws_0001", status="running"),
-            "start_step": "Place",
+            "start_step": "placement",
             "parameter_patch": {"frequency_max": {"from": 100, "to": 125}},
         }
         missing_running = manifest_stubs.entry(project_dir, "ghost", status="running")
@@ -261,8 +261,8 @@ class TestProjectDoctorFix:
         (entry,) = _manifest(project_dir)["workspaces"]
         assert entry["workspace_id"] == "ws_0002"
         assert entry["workspace_path"] == str(project_dir / "ws_0002")
-        assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "Harden"
+        assert entry["start_step"] == "synthesis"
+        assert entry["end_step"] == "harden"
         assert entry["status"] == "success"
 
         capsys.readouterr()

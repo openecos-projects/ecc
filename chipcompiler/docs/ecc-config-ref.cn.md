@@ -30,7 +30,7 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
 │   ├── floorplan_ecc.json # 布局规划
 │   ├── cts_ecc.json       # 时钟树综合
-│   ├── route_ecc.json     # 布线
+│   ├── routing_ecc.json     # 布线
 │   ├── drc_ecc.json       # DRC（空配置，规则来自 tech LEF）
 │   ├── filler_ecc.json    # 填充单元
 │   ├── rcx_ecc.json       # 寄生提取
@@ -38,14 +38,14 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   ├── sizer_ecc.json     # ECC Sizer hold pass 选项
 │   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
 │   ├── emir_ecc.json      # iEMIR 工艺文件选择
-│   ├── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macroPlacement 或 macro.placements 参数写出）
+│   ├── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macro_placement 或 macro.placements 参数写出）
 │   └── ics55_synthetic.tech # 为 EMIR 复制的打包默认工艺文件
-├── Synthesis_yosys/
+├── synthesis_yosys/
 │   └── data/global_var.tcl  # 综合步骤的"配置"（Tcl 变量，非 JSON）
-├── lec@Synthesis_kepler_formal/  # 插入的 RTL vs 网表 SEC 检查（data/lec_config.yaml、data/rtl.f）
+├── lec@synthesis_kepler_formal/  # 插入的 RTL vs 网表 SEC 检查（data/lec_config.yaml、data/rtl.f）
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # 自动生成的 Sizer 配置
-└── postRouteLec_kepler_formal/  # 布线后 LEC 步骤（默认引擎；YAML 配置）
+└── post_route_lec_kepler_formal/  # 布线后 LEC 步骤（默认引擎；YAML 配置）
 ```
 
 > 历史变化：旧版本的 `flow_ecc.json`（配置路径聚合器）与 `fixfanout_ecc.json`（高扇出修复，独立步骤）已随 ecc-tools 更新移除。`cts.max_fanout` 现在同时写入自动生成 SDC 的 `set_max_fanout` 约束和 CTS 的 `max_fanout` 字段。
@@ -66,7 +66,7 @@ graph LR
 | 来源 | 决定的内容 | 举例 |
 |---|---|---|
 | 模板默认值 | 算法类参数的出厂值 | CTS `skew_bound=0.08` |
-| 用户参数 | 旧语义参数 + 全部已审核静态工具字段 | `floorplan.core_util` → `die_util.utilization`；`cts.skew_bound` → CTS JSON |
+| 用户参数 | 旧语义参数 + 全部已审核静态工具字段 | `floorplan.core_util` → `die_util.utilization`；`cts.skew_bound` → cts JSON |
 | PDK | 工艺相关单元与库 | `buffer_type` ← PDK buffers 列表；STA liberty corners |
 | 步骤调度 | 输入/输出路径（链式传递） | `db_ecc.json` 的 `def_path` 每步指向上一步输出 |
 
@@ -79,25 +79,25 @@ graph LR
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
-| lec@&lt;step&gt; | — | 引擎生成配置 | 插入的 LEC 检查（`[flow] insert_steps`）；`lec@Synthesis` 比较 RTL 与综合后网表，其他插入检查比较该步骤网表与综合网表；kepler-formal（YAML）；未证明时步骤失败并终止后续流程，见 §11 |
-| preFloorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
-| macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
-| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
+| lec@&lt;step&gt; | — | 引擎生成配置 | 插入的 LEC 检查（`[flow] insert_steps`）；`lec@synthesis` 比较 RTL 与综合后网表，其他插入检查比较该步骤网表与综合网表；kepler-formal（YAML）；未证明时步骤失败并终止后续流程，见 §11 |
+| pre_floorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
+| macro_placement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
+| post_floorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
 | preplace | ✓ | 无 | Sizer 的布局前准备读取 `db_ecc.json` |
 | placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
 | diff_sizing | — | `dreamplace_ecc.json` | 独立可微 sizing 与 DreamPlace 布局共用该配置 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
 | timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
-| routing | ✓ | `route_ecc.json` | |
+| routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | 无 | 工具默认行为 |
 | drc | ✓ | `drc_ecc.json`（空） | 规则来自 tech LEF |
-| antennaCheck | ✓ | 无 | 读取 `db_ecc.json`；advisory 步骤，分析未完成不会单独中断 flow |
-| postroutelec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC（kepler-formal），见 §11 |
+| antenna_check | ✓ | 无 | 读取 `db_ecc.json`；advisory 步骤，分析未完成不会单独中断 flow |
+| post_route_lec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC（kepler-formal），见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
-| powerAnalysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，不在 `_STEP_CONFIG_KEYS` 中 |
+| power_analysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，不在 `_STEP_CONFIG_KEYS` 中 |
 | emir | ✓ | `emir_ecc.json` | iEMIR 工艺文件；advisory 步骤，见 §13.5 |
 | harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中；`ecc config harden` 会明确显示该步骤没有配置 |
 
@@ -212,7 +212,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.5 手工宏摆放（`ecc macro`）
 
-`macro.placements` 保存手工硬宏摆放，取值为 `{instance, x, y, orientation}` 对象的 JSON 数组（坐标单位微米；实例以 `fixed` 状态提交）。它与 §1.1 的语义参数同类——不写入任何 `config/*.json` 字段，而是在创建或刷新 workspace 配置时渲染进 `config/macro_location.tcl`。只要它非空，`macroPlacement` 保留 load/save 流程但跳过 DreamPlace 宏摆放、保留生成的交接文件；`postFloorplan` 随后依据该文件提交宏。清空该参数即恢复 DreamPlace 自动摆放。
+`macro.placements` 保存手工硬宏摆放，取值为 `{instance, x, y, orientation}` 对象的 JSON 数组（坐标单位微米；实例以 `fixed` 状态提交）。它与 §1.1 的语义参数同类——不写入任何 `config/*.json` 字段，而是在创建或刷新 workspace 配置时渲染进 `config/macro_location.tcl`。只要它非空，`macro_placement` 保留 load/save 流程但跳过 DreamPlace 宏摆放、保留生成的交接文件；`post_floorplan` 随后依据该文件提交宏。清空该参数即恢复 DreamPlace 自动摆放。
 
 | 命令 | 作用 |
 |---|---|
@@ -221,11 +221,11 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `ecc macro import PATH` | 解析 `placeInstance` 交接文件（微米、R 记法；跳过注释与 `setInstancePlacementStatus` 行）并整表替换该参数；空文件清空参数，畸形语句整体报错不写入 |
 | `ecc macro show` | 列出当前摆放与生成的 Tcl 路径；workspace scope 额外解析现有 Tcl 输出 `file_placements` 与 `diverged`（文件与参数是否一致） |
 
-`ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macroPlacement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
+`ecc param` 的两种 scope 都适用：项目 scope（默认）把列表存进 `ecc.toml` `[params.macro]`，在下一次新建 run 或 `ecc workspace refresh` 时生效；`--workspace NAME` 写入 `home/params.toml`，立即重生成 Tcl，并把 `macro_placement` 及其后缀标记为待重跑。该列表也可以按普通 JSON 参数设置，例如 `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`。
 
-设置 `macro.manual_placement true`（参数 ID 为 `macro.manual_placement`，在 Studio 中位于 Floorplan 配置下；例如 `ecc param set macro.manual_placement true --workspace default`）可把 `macroPlacement` 变成强制手摆检查点。启用后，只有当 `macro.placements` 非空且生成的 `config/macro_location.tcl` 包含可解析的摆放时该步骤才继续；否则步骤以未完成状态中断。请先在 Chip Viewer 完成并保存宏摆放，或执行 `ecc macro` 命令，再重跑该步骤。该检查对没有硬宏的设计同样生效，因此仅在确实需要手摆宏时启用。
+设置 `macro.manual_placement true`（参数 ID 为 `macro.manual_placement`，在 Studio 中位于 Floorplan 配置下；例如 `ecc param set macro.manual_placement true --workspace default`）可把 `macro_placement` 变成强制手摆检查点。启用后，只有当 `macro.placements` 非空且生成的 `config/macro_location.tcl` 包含可解析的摆放时该步骤才继续；否则步骤以未完成状态中断。请先在 Chip Viewer 完成并保存宏摆放，或执行 `ecc macro` 命令，再重跑该步骤。该检查对没有硬宏的设计同样生效，因此仅在确实需要手摆宏时启用。
 
-交接文件必须覆盖设计中的全部硬宏，否则 `postFloorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
+交接文件必须覆盖设计中的全部硬宏，否则 `post_floorplan` 会报出缺失的实例名。文件格式详见 [floorplan-flow.cn.md](floorplan-flow.cn.md)。
 
 ### 1.6 自动生成的 SDC
 
@@ -294,7 +294,7 @@ timing_exception_txt = '''
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
 | `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认时序入口（生成的 Tcl 或用户提供的完整约束） |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
-| `OUTPUT.output_dir_path` | `Harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
+| `OUTPUT.output_dir_path` | `harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
 | `LayerSettings.routing_layer_1st` | `MET2` | 参数 `route.bottom_layer` | 首个可用绕线层（影响数据库层设置） |
 
 ## 3. synthesis（Yosys）
@@ -307,8 +307,8 @@ timing_exception_txt = '''
 | `clk_freq_mhz` | `100` | 参数 `design.frequency_mhz` | 目标频率（换算 `clk_period_ps` 供时序驱动综合） |
 | `use_slang` | `false` | 运行时探测 | 是否用 slang 前端读 SystemVerilog（默认 Verilog 模式） |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL 源文件列表 |
-| `final_netlist_file` | `output/gcd_Synthesis.v.gz` | 步骤调度 | 输出门级网表（供 floorplan） |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | 最后一次网表变换之后写出的映射网表副本；没有 LEC 步骤读取它（`lec@Synthesis` 读取 RTL，其他 LEC 读取综合网表） |
+| `final_netlist_file` | `output/gcd_synthesis.v.gz` | 步骤调度 | 输出门级网表（供 floorplan） |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | 步骤调度 | 最后一次网表变换之后写出的映射网表副本；没有 LEC 步骤读取它（`lec@synthesis` 读取 RTL，其他 LEC 读取综合网表） |
 | `final_netlist_sim_file` | `…_sim.v.gz` | 步骤调度 | 仿真用网表（含 SDF 相关信息） |
 | `synth_stat_json` / `synth_check_rpt` 等 | `report/`、`feature/` 下 | 步骤调度 | 统计与检查报告输出 |
 | `keep_hierarchy` | `false` | 模板 | 是否保留模块层级 |
@@ -319,7 +319,7 @@ timing_exception_txt = '''
 | `abc_load` | `0.015` | PDK | ABC 映射负载电容（pF） |
 | `lib_stdcell_list` | H7CR/H7CL | PDK（排除 H7CH） | 传给 ABC、DFF 和 clockgate 的库列表；`pdk.libs` 中配置的 IO 库也会传入，不额外排除 |
 | `lib_list` | H7CR/H7CL | PDK / workspace DB | 通过 `read_liberty -lib` 读取的模型库；配置 IO 库后用于识别已有 IO 实例，H7CH 仍不加载 |
-| `tmp_dir` | `Synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
+| `tmp_dir` | `synthesis_yosys/data/tmp` | 步骤调度 | 中间文件目录 |
 
 ICS55 内置 PDK 不默认加载 IO cell 的 LEF 和 Liberty。设计需要 IO cell 时，在
 `[pdk.overrides]` 中把 `IP/IO/ICsprout_55LLULP1233_IO_251013/lef/ICSIOA_N55_3P3_1P6M1TM_ecos.lef`
@@ -337,13 +337,13 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `preFloorplan` 和 `postFloorplan` 共享。`preFloorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macroPlacement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`postFloorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
+配置 `floorplan_ecc.json` 由 `pre_floorplan` 和 `post_floorplan` 共享。`pre_floorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macro_placement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`post_floorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → placement IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
 
 ### ifp（iFP 布图引擎）
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `temp_directory_path` | 每步生成 → `preFloorplan_ecc/data/fp` 或 `postFloorplan_ecc/data/fp` | iFP 中间数据目录 |
+| `temp_directory_path` | 每步生成 → `pre_floorplan_ecc/data/fp` 或 `post_floorplan_ecc/data/fp` | iFP 中间数据目录 |
 | `thread_number` | 16 | 并行线程数 |
 
 ### macro_placer（宏摆放）
@@ -396,7 +396,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 5. macro placement / placement / diff_sizing / legalization（DreamPlace）
 
-这些步骤共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macroPlacement` 使用 `macroPlacement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `place_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+这些步骤共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macro_placement` 使用 `macro_placement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `placement_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -420,7 +420,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 | `enable_fillers` | 0 | 独立布局阶段不插入 filler |
 | `routability_opt_flag` | 1 `*place.routability_opt_flag` | 绕线拥塞驱动的布局优化 |
 | `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | 旧版时序优化开关关闭；启用时序评估 |
-| `macro_place_flag` | 0 | 专用 `macroPlacement` 步骤会启用该开关 |
+| `macro_place_flag` | 0 | 专用 `macro_placement` 步骤会启用该开关 |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | 出图 / 拥塞图导出 / 布局评估 |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | 导出中间解 |
 
@@ -491,29 +491,29 @@ skip_steps = []  # 开启 diff_opt；默认值为 ["diff_opt"]
 
 `skip_steps`（`ecc.toml`、`home/params.toml` 以及 `project.json` 的
 `workspaces[].skip_steps`）可以列出 rtl2gds 链上的任意步骤，不再限于 `diff_opt`、
-`postRouteLec` 和 `Timing optimization`；接受 `synth`、`cts`、`TimingOpt` 等别名，未知步骤名仍被拒绝。
+`post_route_lec` 和 `timing_optimization`；接受 `synth`、`cts`、`TimingOpt` 等别名，未知步骤名仍被拒绝。
 `lec` 不是链上的步骤（LEC 用 `insert_steps` 插入）；列出的 `lec` 会被忽略，已有文件照常可用。
 缺省该键时取代码默认值 `["diff_opt"]`；`[]` 运行全部步骤。选择能否运行由步骤能力决定——
 每个步骤必需的设计数据、可选使用的设计数据及其产出：
 
 - 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 与 workspace 创建都会拒绝，
-  修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `Timing optimization` 时报
-  `route requires legal; enable Timing optimization or legalization`）。
-- 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告。跳过 `CTS` 时警告
-  `route runs with degraded results without clock_tree; enable CTS`（`sta`、`powerAnalysis`、
-  `Harden` 同理）；跳过 CTS 后的布线与 STA 使用 CTS 之前的（理想时钟）时序约束。
-- preset 的最后一步是 flow 目标，不能跳过（`rtl2gds` 为 `Harden`，`syn_sta` 为 `Synthesis`）；
+  修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `timing_optimization` 时报
+  `routing requires legal; enable timing_optimization or legalization`）。
+- 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告。跳过 `cts` 时警告
+  `route runs with degraded results without clock_tree; enable CTS`（`sta`、`power_analysis`、
+  `harden` 同理）；跳过 CTS 后的布线与 STA 使用 CTS 之前的（理想时钟）时序约束。
+- preset 的最后一步是 flow 目标，不能跳过（`rtl2gds` 为 `harden`，`syn_sta` 为 `synthesis`）；
   显式的范围起点（`home/params.toml` `[flow] start`、`ecc run --from`、`project.json`
-  `start_step`）同样不能跳过。preset 的首步可以跳过：跳过 `Synthesis` 后，运行从
-  `preFloorplan` 进入，使用声明的 `[design] netlist`（postSynthesis 输入模式）；入口步骤的输入照旧检查。
+  `start_step`）同样不能跳过。preset 的首步可以跳过：跳过 `synthesis` 后，运行从
+  `pre_floorplan` 进入，使用声明的 `[design] netlist`（postSynthesis 输入模式）；入口步骤的输入照旧检查。
 - 跳过签核检查步骤（`drc`、`lvs`、`sta`）即没有签核证据：`ecc signoff check` 将该门禁报告为
   `unknown`，绝不会报 pass。
 
 `[flow] insert_steps` 在某个构建设计的步骤之后插入一次 LEC 检查：
-`insert_steps = ["lec@Synthesis", "lec@CTS"]`。它可以跟在 `Synthesis` 到 `route` 之间的任何步骤之后
-（`filler` 之后已有 `postRouteLec`）；LEC 是唯一可以插入的步骤，因为它不修改设计。插入的步骤命名为
-`lec@<step>`（空格写成下划线：`lec@Timing_optimization`），与该步骤同进退。`lec@Synthesis` 比较 RTL
-与综合后的网表（kepler-formal SEC）；其他插入的检查把该步骤的网表与 `postRouteLec` 的 golden 网表
+`insert_steps = ["lec@synthesis", "lec@cts"]`。它可以跟在 `synthesis` 到 `routing` 之间的任何步骤之后
+（`filler` 之后已有 `post_route_lec`）；LEC 是唯一可以插入的步骤，因为它不修改设计。插入的步骤命名为
+`lec@<step>`（如 `lec@timing_optimization`），与该步骤同进退。`lec@synthesis` 比较 RTL
+与综合后的网表（kepler-formal SEC）；其他插入的检查把该步骤的网表与 `post_route_lec` 的 golden 网表
 比较（见 §11）。它属于 workspace 的 flow 目标
 （`home/params.toml`），增加或删除都需要 `--overwrite` 或新 workspace；它只能在 `ecc.toml` 中声明。
 详见用户指南 §8.6。
@@ -819,7 +819,7 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 ## 7. cts（ecc-tools）
 
-配置 `cts_ecc.json`。子阶段：load data → run CTS → save data → analysis。
+配置 `cts_ecc.json`。子阶段：load data → run cts → save data → analysis。
 
 | 参数 | 模板默认 | 示例（gcd） | 含义 |
 |---|---|---|---|
@@ -834,7 +834,7 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 ## 8. routing（ecc-tools）
 
-配置 `route_ecc.json`，`RT` 组即绕线器参数。子阶段：load data → run routing → save data → analysis。
+配置 `routing_ecc.json`，`RT` 组即绕线器参数。子阶段：load data → run routing → save data → analysis。
 
 | 参数 | 模板默认 | 示例（gcd） | 含义 |
 |---|---|---|---|
@@ -843,22 +843,22 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 | `RT.-thread_number` | `"50"` | 50 | 布线并行线程数 |
 | `RT.-enable_timing` | `"0"` | 0 | 时序驱动布线（默认关） |
 | `RT.-output_csv` / `-output_inter_result` | `"0"` | 0 | 导出 CSV / 中间结果 |
-| `RT.-temp_directory_path` | 每步生成 → `route_ecc/data/rt` | 布线中间数据目录 |
+| `RT.-temp_directory_path` | 每步生成 → `routing_ecc/data/rt` | 布线中间数据目录 |
 
 ## 9. drc / lvs（ecc-tools）
 
 - **drc**：`drc_ecc.json` 为空对象 `{}`——检查规则来自 tech LEF 的层定义与规则，无可调参数。
 - **lvs**：无配置文件，工具按默认流程比对版图与网表（输入输出经 `db_ecc.json` 链式传递）。
-- **antennaCheck**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告并复制为 `antennaCheck_ecc/report/antennaCheck.rpt`，同时通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antennaCheck.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antennaCheck`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在；signoff checklist 以非阻塞报告项检查规范报告。
+- **antenna_check**：使用与 DRC 相同的布线后版图数据库作为输入。ECC 生成原生 `antenna_check.rpt` 报告并复制为 `antenna_check_ecc/report/antenna_check.rpt`，同时通过 `-step_json` 将 feature 路径传给 ecc-tools；ecc-tools 写出结构化的 `feature/antenna_check.step.json`。该 JSON 使用 `schema_version: 1`，标识步骤为 `antenna_check`，记录 `antenna_check.violation_count` 和诊断计数，并在 `violations` 数组中保存详细违例。ECC 判定步骤成功时，原生报告和结构化 JSON 必须同时存在；signoff checklist 以非阻塞报告项检查规范报告。
 
 原生接口可以这样指定输出路径：
 
 ```python
-ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antenna_check.step.json"})
 ```
 
 ```tcl
-check_antenna -step_json /path/to/antennaCheck.step.json
+check_antenna -step_json /path/to/antenna_check.step.json
 ```
 
 两者的子阶段均为 load data → run DRC/LVS → save data → analysis。
@@ -880,18 +880,18 @@ workspace）。
 
 | 步骤 | 步骤目录 | 生成的配置 | 报告 |
 |---|---|---|---|
-| `lec@<step>`、`postRouteLec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`、`script/run_lec.yaml` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`、`report/miter_log.txt` |
+| `lec@<step>`、`post_route_lec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`、`script/run_lec.yaml` | `report/equiv_status.rpt`、`report/run_lec_status.rpt`、`report/miter_log.txt` |
 
 所有 LEC 步骤共用结果契约 `output/<设计>_<步骤>_result.json`：`status` 为 `proven` 或 `incomplete`，并记录 golden 与 gate 文件的路径、SHA-256、大小与报告路径。只有这些身份信息仍与当前文件一致时证明才有效；未证明或过期的结果会使步骤失败。
 
 | 项 | 内容 |
 |---|---|
-| `lec@Synthesis` 输入 | golden 为 Synthesis 读取的 RTL：其 filelist，否则其 RTL 文件；gate 为综合后的网表。kepler-formal 只在时序等价检查中读取 RTL，因此配置为 `format: sv2v`、`verification: sec`，不施加复位序列。RTL 经生成的 `data/rtl.f` 以 `sv_design1_flist` 传入：它像 Synthesis 一样定义 `SYNTHESIS`，并用 `-F` 嵌套 filelist，使其相对路径源文件与 `+incdir+` 相对 filelist 自身目录解析。结果记录读取该 RTL 时读取的每个文件的身份：RTL 文件，或 filelist 及其源文件、include 目录下的文件和其用 `-F` 嵌套的每个 filelist，再加上它们 `` `include `` 的每个文件（包含文件所在目录或任一 include 目录中的每个同名文件，无论前端选中哪一个）。路径按操作系统打开文件的方式解析，跟随符号链接。修改其中任何一个都会使证明失效（stale）；无法确定 RTL 读取的文件时（`-F`、`+incdir+`、`-I`/`--include-directory`/`--isystem` 与 `+define+` 以外的 filelist 选项，如 `-f`、`-v`、`-y` 或 `--libmap`；含环境变量的路径；以宏 `` `include ``），该步骤在运行 kepler-formal 之前失败并指出对应条目。 |
-| `postRouteLec` 输入 | golden 优先级：步骤显式覆盖 → `design.golden_netlist` → 综合映射网表 → 原始输入。`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antennaCheck` 之后、`RCX` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
-| 其他 `lec@<step>` 输入 | golden 与 `postRouteLec` 相同；gate 为它所跟步骤的输出网表（可跟在 `preFloorplan` 到 `route` 之间的任何步骤之后）。其后的步骤仍读取那一步的输出。网表之间的检查为组合等价检查（`format: verilog`、`verification: lec`）。 |
-| 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/postRouteLec/`。插入的 LEC 结果只留在各自步骤的 checklist 中。 |
+| `lec@synthesis` 输入 | golden 为 Synthesis 读取的 RTL：其 filelist，否则其 RTL 文件；gate 为综合后的网表。kepler-formal 只在时序等价检查中读取 RTL，因此配置为 `format: sv2v`、`verification: sec`，不施加复位序列。RTL 经生成的 `data/rtl.f` 以 `sv_design1_flist` 传入：它像 Synthesis 一样定义 `SYNTHESIS`，并用 `-F` 嵌套 filelist，使其相对路径源文件与 `+incdir+` 相对 filelist 自身目录解析。结果记录读取该 RTL 时读取的每个文件的身份：RTL 文件，或 filelist 及其源文件、include 目录下的文件和其用 `-F` 嵌套的每个 filelist，再加上它们 `` `include `` 的每个文件（包含文件所在目录或任一 include 目录中的每个同名文件，无论前端选中哪一个）。路径按操作系统打开文件的方式解析，跟随符号链接。修改其中任何一个都会使证明失效（stale）；无法确定 RTL 读取的文件时（`-F`、`+incdir+`、`-I`/`--include-directory`/`--isystem` 与 `+define+` 以外的 filelist 选项，如 `-f`、`-v`、`-y` 或 `--libmap`；含环境变量的路径；以宏 `` `include ``），该步骤在运行 kepler-formal 之前失败并指出对应条目。 |
+| `post_route_lec` 输入 | golden 优先级：步骤显式覆盖 → `design.golden_netlist` → 综合映射网表 → 原始输入。`filler` 输出网表为 gate（`filler_ecc/output/<设计>_filler.v.gz`）。它位于 `antenna_check` 之后、`rcx` 之前；post-route LEC 是唯一不按 checker 结果继续传递的例外。 |
+| 其他 `lec@<step>` 输入 | golden 与 `post_route_lec` 相同；gate 为它所跟步骤的输出网表（可跟在 `pre_floorplan` 到 `routing` 之间的任何步骤之后）。其后的步骤仍读取那一步的输出。网表之间的检查为组合等价检查（`format: verilog`、`verification: lec`）。 |
+| 签核 | 当前有效的 `status=proven` 计入签核清单；布线后 LEC 结果进入签核包的 `final/reports/post_route_lec/`。插入的 LEC 结果只留在各自步骤的 checklist 中。 |
 
-`lec@Synthesis` 的证据强度：在我们的测试中，kepler-formal 的 SEC 能发现一个小型带寄存器设计的变异，
+`lec@synthesis` 的证据强度：在我们的测试中，kepler-formal 的 SEC 能发现一个小型带寄存器设计的变异，
 但把 `gcd` 的三个手工 RTL 变异（其中一个把 16 位 `resp_msg` 输出取反）判为与正确 RTL 的网表等价，
 而同样的取反若出现在网表一侧则能被发现。因此该检查通过时，证据强度不如网表之间的检查。
 
@@ -900,10 +900,10 @@ workspace）。
 ```toml
 [flow]
 preset = "rtl2gds"
-insert_steps = ["lec@Synthesis"]
+insert_steps = ["lec@synthesis"]
 ```
 
-`synthesis_lec` preset 只运行 Synthesis 与 `lec@Synthesis`。
+`synthesis_lec` preset 只运行 Synthesis 与 `lec@synthesis`。
 
 ## 12. rcx（ecc-tools）
 
@@ -912,7 +912,7 @@ insert_steps = ["lec@Synthesis"]
 | 参数 | 模板默认 | 示例（gcd） | 含义 |
 |---|---|---|---|
 | `thread_num` | 64 | 64 | 提取并行线程数 |
-| `output` | `/RCX_ecc/output` | `RCX_ecc/data` | 提取结果（SPEF）输出目录 |
+| `output` | `/rcx_ecc/output` | `rcx_ecc/data` | 提取结果（SPEF）输出目录 |
 
 输出 SPEF 按 `<设计>_<RCcorner>_<温度>C.spef` 命名（如 `gcd_Cworst_125C.spef`），corner 集合与 STA 的 `signoff` 对齐（由 STA 步骤按 sta_ecc.json 校验 SPEF 完整性）。
 
@@ -930,7 +930,7 @@ insert_steps = ["lec@Synthesis"]
 默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
 `liberty` 中保留 MAX/WCL/ML 库组，供显式覆盖 `sta.signoff` 时选择；这不会让最终 STA
 自动检查这些库组，也不改变综合、CTS、Sizer 等前序阶段的用库。
-Harden 与 powerAnalysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
+Harden 与 power_analysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
 `signoff` 列表顺序不会改变该选择。若覆盖 `sta.signoff` 后不含 TYP/TYPICAL，
 这两个步骤会失败，而不会静默改用其他 corner。
 
@@ -953,14 +953,14 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 | `timing_max_{in2out,in2reg,reg2out,reg2reg}.rpt` | setup 报告（按路径类型：输入到输出/输入到寄存器/寄存器到输出/寄存器到寄存器），**签核要求 4 份齐全** |
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | hold 报告（同上拆分，非签核必需） |
 
-功耗由独立的 `powerAnalysis` iPW 步骤产生，而不是由每个 STA corner
+功耗由独立的 `power_analysis` iPW 步骤产生，而不是由每个 STA corner
 产生。该步骤使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF。其原生输出为
-`powerAnalysis_ecc/data/pw/power_reporter/power.rpt` 和
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
-`powerAnalysis_ecc/report/powerAnalysis.rpt`，并从报告生成
-`powerAnalysis_ecc/feature/powerAnalysis.step.json` 供 QoR 使用，将数据放在
+`power_analysis_ecc/data/pw/power_reporter/power.rpt` 和
+`power_analysis_ecc/data/pw/power_reporter/instance_power.bin`；ECC 将该报告原子复制为
+`power_analysis_ecc/report/power_analysis.rpt`，并从报告生成
+`power_analysis_ecc/feature/power_analysis.step.json` 供 QoR 使用，将数据放在
 其 `power_summary` 关键字下。signoff checklist 同时检查该规范报告。
-旧的 `powerAnalysis_ecc/feature/power_summary.json`
+旧的 `power_analysis_ecc/feature/power_summary.json`
 保留作兼容回退。step 文件不再生成重复的顶层 `metrics` 对象。报告存在时，
 签核包会将其单独收录为 `final/timing/power/power.rpt`。
 
@@ -977,14 +977,14 @@ ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 ```
 
 iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位置文件
-（`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`）以及 `powerAnalysis`
+（`post_floorplan_ecc/data/fp/pdn_generator/power.ploc`）以及 `power_analysis`
 生成的逐实例功耗。子阶段为 load data → run EMIR → save data。原生报告位于
 `emir_ecc/data/emir/emir_reporter/`，并会复制到 `emir_ecc/report/`。
 `emir` 是 advisory 步骤：分析未完成会被记录，但不会单独阻断后续流程。
 
 ## 14. harden（ecc-tools）
 
-无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`Harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_Harden.gds`、`<设计>_Harden.lef` 与 `<设计>_Harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF 生成时序 LIB。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_Harden.png`，签核包仍可能将其收录。
+无专属配置文件：复用 `db_ecc.json` 定位输入（`filler` 输出的 DEF/网表）与输出（`harden_ecc/output`）。子阶段仅 load data → run harden。当前产物为 `<设计>_harden.gds`、`<设计>_harden.lef` 与 `<设计>_harden.lib`（版图 / 抽象 LEF / 时序 LIB）。Harden 使用 TYP/TYPICAL 签核项的 Liberty 与 SPEF 生成时序 LIB。Harden 不发布 geometry snapshot，也不生成 PNG；若旧 workspace 中仍留有历史 `<设计>_harden.png`，签核包仍可能将其收录。
 
 ## 15. 各步骤的 ECC CLI 配置命令
 
@@ -1060,18 +1060,18 @@ ecc param set route.top_layer VALUE
 ecc param set route.RT.-thread_number VALUE
 ```
 
-`route_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。
+`routing_ecc.json` 的临时目录由步骤调度生成，不能通过 CLI 设置。
 
-### 15.7 插入的 LEC 检查、drc、lvs、postroutelec 与 powerAnalysis
+### 15.7 插入的 LEC 检查、drc、lvs、post_route_lec 与 power_analysis
 
-这些步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，LEC 步骤使用自行生成的 kepler-formal 配置（见 §11），LVS 走工具默认流程，`powerAnalysis` 没有显式步骤配置（运行器内部复用 `db_ecc.json`）。可用下列命令确认实际配置文件：
+这些步骤没有可由 `ecc param` 修改的步骤配置：`drc_ecc.json` 为空，LEC 步骤使用自行生成的 kepler-formal 配置（见 §11），LVS 走工具默认流程，`power_analysis` 没有显式步骤配置（运行器内部复用 `db_ecc.json`）。可用下列命令确认实际配置文件：
 
 ```bash
 ecc config lec@synthesis   # 插入的 LEC 检查，按其步骤名
 ecc config drc
 ecc config lvs
-ecc config postroutelec
-ecc config poweranalysis
+ecc config post_route_lec
+ecc config power_analysis
 ```
 
 ### 15.8 filler

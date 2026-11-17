@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from .common import content_digest, digest, effective_parameters, grid, read, require, workspace
+from .common import content_digest, digest, effective_parameters, read, require, workspace
 
 
 @dataclass(frozen=True)
@@ -39,8 +39,8 @@ def validate_windows(windows: list, policy: dict):
 def inspect_placement(batch: Path, case: dict):
     name = case["name"]
     out = batch / "cases" / name
-    place = workspace(batch, name) / "place_dreamplace"
-    log = place / "log/place.log"
+    place = workspace(batch, name) / "placement_dreamplace"
+    log = place / "log/placement.log"
     params = effective_parameters(log)
     expected = read(out / "preflight.json")["parameters"]
     require({key: params[key] for key in expected} == expected, f"Runtime profile changed: {name}")
@@ -84,8 +84,8 @@ def inspect_placement(batch: Path, case: dict):
                 == {"wns": params["timing_wns_coeff"], "tns": params["timing_tns_coeff"]},
                 f"GP timing coefficients were not restored: {name}",
             )
-    definition = place / "output" / f"{name}_place.def.gz"
-    netlist = place / "output" / f"{name}_place.v.gz"
+    definition = place / "output" / f"{name}_placement.def.gz"
+    netlist = place / "output" / f"{name}_placement.v.gz"
     flow = read(place.parent / "home/flow.json")
     require(all(step["state"] == "Success" for step in flow["steps"]), f"Flow incomplete: {name}")
     report = {

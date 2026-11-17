@@ -100,7 +100,7 @@ def _upstream_directories(workspace: Workspace, step: EccStep) -> tuple[Path, Pa
     """The steps that built the power grid and analyzed power, from req.json.
 
     A grid the project declares instead of building has no upstream step; it
-    is read from the postFloorplan directory the ledger records.
+    is read from the post_floorplan directory the ledger records.
     """
     if step.directory is None:
         raise ValueError(f"{step.name} step directory is not configured")

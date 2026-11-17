@@ -31,7 +31,7 @@ def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", LedgerOnlyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",

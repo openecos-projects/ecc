@@ -125,7 +125,7 @@ class TestConfigSurface:
             before = f.read()
         argv = ["flow", command, "--project", project_dir, "--json"]
         if command == "edit":
-            argv += ["--disable", "CTS", "--yes"]
+            argv += ["--disable", "cts", "--yes"]
 
         assert cli_main.run(argv) == 1
 

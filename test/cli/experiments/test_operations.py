@@ -17,7 +17,7 @@ def test_collect_candidate_evidence_reads_a_blocked_flow_projection(tmp_path, mo
     workspace = _workspace(
         tmp_path,
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "sta",
@@ -43,7 +43,7 @@ def test_collect_candidate_evidence_does_not_block_passed_flow_steps(tmp_path, m
     workspace = _workspace(
         tmp_path,
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "sta",
@@ -95,7 +95,7 @@ def test_collect_candidate_evidence_does_not_block_passed_flow_steps(tmp_path, m
 def test_collect_candidate_evidence_reads_status_step_records(
     tmp_path, monkeypatch, record, expected
 ):
-    workspace = _workspace(tmp_path, {"schema_version": 2, "steps": []})
+    workspace = _workspace(tmp_path, {"schema_version": 3, "steps": []})
     payload = [
         {"workspace_id": "default", "status": "success", "workspace": str(workspace)},
         record,
@@ -116,7 +116,7 @@ def test_collect_candidate_evidence_keeps_incomplete_steps_out_of_passed(tmp_pat
     workspace = _workspace(
         tmp_path,
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "sta",

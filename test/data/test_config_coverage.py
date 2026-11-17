@@ -13,12 +13,12 @@ from chipcompiler.params import list_schemas
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "chipcompiler"
 TEMPLATES = {
     "db": _PACKAGE_ROOT / "tools/ecc/configs/db_ecc.json",
-    "CTS": _PACKAGE_ROOT / "tools/ecc/configs/cts_ecc.json",
-    "Floorplan": _PACKAGE_ROOT / "tools/ecc/configs/floorplan_ecc.json",
+    "cts": _PACKAGE_ROOT / "tools/ecc/configs/cts_ecc.json",
+    "floorplan": _PACKAGE_ROOT / "tools/ecc/configs/floorplan_ecc.json",
     "dreamplace": _PACKAGE_ROOT / "tools/ecc_dreamplace/configs/dreamplace_ecc.json",
-    "route": _PACKAGE_ROOT / "tools/ecc/configs/route_ecc.json",
+    "routing": _PACKAGE_ROOT / "tools/ecc/configs/routing_ecc.json",
     "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
-    "RCX": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
+    "rcx": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
     "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
     "emir": _PACKAGE_ROOT / "tools/ecc/configs/emir_ecc.json",
     "sizer": _PACKAGE_ROOT / "tools/ecc/configs/sizer_ecc.json",
@@ -36,7 +36,7 @@ PROTECTED_FIELDS = {
         ("INPUT", "sdc_path"),
         ("OUTPUT", "output_dir_path"),
     },
-    "Floorplan": {
+    "floorplan": {
         ("ifp", "temp_directory_path"),
         ("macro_placer", "file_path"),
         ("io_placer", "mode"),
@@ -51,8 +51,8 @@ PROTECTED_FIELDS = {
         ("result_dir",),
         ("verilog_input",),
     },
-    "route": {("RT", "-temp_directory_path")},
-    "RCX": {("output",)},
+    "routing": {("RT", "-temp_directory_path")},
+    "rcx": {("output",)},
 }
 
 

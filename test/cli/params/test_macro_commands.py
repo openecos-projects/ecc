@@ -36,16 +36,16 @@ def _workspace(workspace_dir):
         flow=SimpleNamespace(
             path=parameters_path.parent / "flow.json",
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
-                    {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
+                    {"name": "synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                     {
-                        "name": "macroPlacement",
+                        "name": "macro_placement",
                         "state": "Success",
                         "runtime": "",
                         "peak memory (mb)": 0,
                     },
-                    {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
+                    {"name": "placement", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                 ],
             },
         ),
@@ -239,7 +239,7 @@ def test_macro_set_workspace_persists_and_invalidates_suffix(
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "set"
     assert record["instance"] == "u_ram0"
-    assert record["from_step"] == "macroPlacement"
+    assert record["from_step"] == "macro_placement"
     assert "'u_ram0'" in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
@@ -496,7 +496,7 @@ def test_macro_import_workspace_replaces_placements_and_invalidates_suffix(
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "imported"
-    assert record["from_step"] == "macroPlacement"
+    assert record["from_step"] == "macro_placement"
     assert "'u_a'" in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_a", "x": 10.0, "y": 20.5, "orientation": "R0"}
@@ -573,7 +573,7 @@ def test_macro_import_workspace_can_commit_published_step_output(
             {
                 "command_id": "macro-publish-1",
                 "commit_step_output": True,
-                "step_id": "macroPlacement",
+                "step_id": "macro_placement",
             },
         )
     ]

@@ -37,7 +37,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         {"core": "utilitization"},
         range=(0.01, 1.0),
         example="0.45",
-        config_target=ConfigTarget("Floorplan", ("die_builder", "die_util", "utilization")),
+        config_target=ConfigTarget("floorplan", ("die_builder", "die_util", "utilization")),
         pdk_variants={"sg13g2": PdkVariant(0.65)},
     ),
     ParamSchema(
@@ -52,12 +52,12 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         example="[2, 2]",
         pdk_variants={"sg13g2": PdkVariant([17.5, 17.5])},
         config_target=ConfigTarget(
-            "Floorplan", ("die_builder", "margin", "left_micron"), element=0
+            "floorplan", ("die_builder", "margin", "left_micron"), element=0
         ),
         extra_config_targets=(
-            ConfigTarget("Floorplan", ("die_builder", "margin", "right_micron"), element=0),
-            ConfigTarget("Floorplan", ("die_builder", "margin", "top_micron"), element=1),
-            ConfigTarget("Floorplan", ("die_builder", "margin", "bottom_micron"), element=1),
+            ConfigTarget("floorplan", ("die_builder", "margin", "right_micron"), element=0),
+            ConfigTarget("floorplan", ("die_builder", "margin", "top_micron"), element=1),
+            ConfigTarget("floorplan", ("die_builder", "margin", "bottom_micron"), element=1),
         ),
     ),
     ParamSchema(
@@ -71,7 +71,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         {"core": "aspect_ratio"},
         range=(0.1, 10.0),
         example="1.0",
-        config_target=ConfigTarget("Floorplan", ("die_builder", "die_util", "aspect_ratio")),
+        config_target=ConfigTarget("floorplan", ("die_builder", "die_util", "aspect_ratio")),
     ),
     ParamSchema(
         "cts.max_fanout",
@@ -83,7 +83,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "Maximum fanout for clock tree synthesis",
         range=(1, 200),
         example="16",
-        config_target=ConfigTarget("CTS", ("max_fanout",)),
+        config_target=ConfigTarget("cts", ("max_fanout",)),
         fork=True,
     ),
     ParamSchema(
@@ -124,7 +124,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "Bottom routing layer",
         choices=("MET1", "MET2", "MET3", "MET4", "MET5"),
         example="MET2",
-        config_target=ConfigTarget("route", ("RT", "-bottom_routing_layer")),
+        config_target=ConfigTarget("routing", ("RT", "-bottom_routing_layer")),
         extra_config_targets=(
             ConfigTarget("db", ("LayerSettings", "routing_layer_1st")),
             ConfigTarget("dreamplace", ("gpugr_bottom_routing_layer",)),
@@ -144,7 +144,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         "Top routing layer",
         choices=("MET2", "MET3", "MET4", "MET5", "MET6"),
         example="MET5",
-        config_target=ConfigTarget("route", ("RT", "-top_routing_layer")),
+        config_target=ConfigTarget("routing", ("RT", "-top_routing_layer")),
         extra_config_targets=(ConfigTarget("dreamplace", ("gpugr_top_routing_layer",)),),
         pdk_variants={"sg13g2": PdkVariant("Metal5", ("Metal2", "Metal3", "Metal4", "Metal5"))},
         fork=True,
@@ -180,7 +180,7 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         default=False,
         applies="all",
         description=(
-            "Generate clock-tree visualization data for postFloorplan, CTS, and filler; "
+            "Generate clock-tree visualization data for post_floorplan, CTS, and filler; "
             "filler uses TYPICAL RC when available"
         ),
         maps_to={"geometry": "clock_tree"},

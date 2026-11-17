@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from chipcompiler.engine.analysis import collect_workspace_projections
 from test.flow_fixture import step_fields
 
-STEP = "lec@Synthesis"
+STEP = "lec@synthesis"
 TOOL = "kepler_formal"
 
 
@@ -16,7 +16,7 @@ def test_analysis_emits_the_lec_result_of_an_inserted_step(tmp_path):
         directory=tmp_path,
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [{"name": STEP, "tool": TOOL, "state": "Success", **fields}],
             }
         ),

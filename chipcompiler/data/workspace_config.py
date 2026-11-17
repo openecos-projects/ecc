@@ -165,7 +165,7 @@ def validate_flow_config(flow: object) -> dict:
         from chipcompiler.data.flow_plan import flow_target, preset_chain
 
         # The preset's target is its last step that is not an inserted check
-        # (synthesis_lec ends with lec@Synthesis, which skipping Synthesis
+        # (synthesis_lec ends with lec@synthesis, which skipping Synthesis
         # drops too); its first step may be skipped, the declared inputs then
         # stand in for it.
         target = flow_target(preset_chain(preset))
@@ -302,11 +302,7 @@ def _split_payload(data: dict) -> dict[str, Any]:
 
 
 def _merge_payload(sections: dict[str, Any]) -> dict:
-    """Inverse of _split_payload: flatten TOML sections back to one dict.
-
-    Persisted keys must already use the canonical flat vocabulary; legacy
-    display keys are rejected rather than normalized.
-    """
+    """Inverse of _split_payload: flatten TOML sections back to one dict."""
     for name in ("params", "design", "pdk"):
         section = sections.get(name)
         if section is not None and not isinstance(section, dict):
@@ -328,14 +324,7 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
         if value is not None and (str(value or "").strip() or param_key not in params):
             params[param_key] = value
 
-    from .parameter_keys import normalize_parameter_dict
-
-    normalized = normalize_parameter_dict(params)
-    if normalized != params:
-        raise WorkspaceConfigError(
-            "legacy parameter keys are not supported; create a new workspace with canonical keys"
-        )
-    return normalized
+    return params
 
 
 def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
@@ -389,7 +378,7 @@ def ledger_flow_section(names: list[str]) -> dict:
     """The (unvalidated) [flow] section describing a ledger's step names.
 
     Its range runs from the first to the last chain step; the inserted steps
-    (``lec@CTS``) are its ``insert_steps``, since an inserted name never
+    (``lec@cts``) are its ``insert_steps``, since an inserted name never
     bounds a range.
     """
     from chipcompiler.rtl2gds import parse_inserted_step

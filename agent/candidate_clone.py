@@ -25,14 +25,13 @@ def candidate_clone_ignore(source_root: Path, target_step: str | None):
             rerun = rerun or name == target_step
             if not rerun:
                 continue
-            # The directory the ledger records (``09_CTS_ecc``), else the
+            # The directory the ledger records (``09_cts_ecc``), else the
             # legacy unindexed names.
             directory = step.get("directory")
             if isinstance(directory, str) and is_step_directory_name(directory):
                 skipped_step_roots.add(source_root / directory)
             if isinstance(name, str) and isinstance(tool, str):
                 skipped_step_roots.add(source_root / f"{name}_{tool}")
-                skipped_step_roots.add(source_root / f"{'_'.join(name.split()).lower()}_{tool}")
 
     def ignore(directory, names):
         current = Path(directory).resolve()

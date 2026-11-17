@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from chipcompiler.analysis.qor.schema import validate_report
-from chipcompiler.cli.core.output import normalize_state, normalize_step_name
+from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.discovery import get_run_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
@@ -102,12 +102,12 @@ def build_project_matrix(manifest: ProjectManifest) -> dict:
                 identity,
                 {
                     "step": step["name"],
-                    "token": normalize_step_name(step["name"]),
+                    "token": step["name"],
                     "tool": step["tool"],
                 },
             )
             category = flow_category(step).value
-            state = normalize_state(step["state"])
+            state = flow_step_status(step["state"])
             checker = (
                 checker_evidence(root, step, manifest.design_name)
                 if category == FlowStepCategory.CHECKER.value

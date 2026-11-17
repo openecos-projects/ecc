@@ -35,8 +35,8 @@ class TestVirginFirstRun:
         (entry,) = manifest["workspaces"]
         assert entry["workspace_id"] == "default"
         assert entry["workspace_path"] == run_dir
-        assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "Harden"
+        assert entry["start_step"] == "synthesis"
+        assert entry["end_step"] == "harden"
         # Flow state belongs to flow.json. The manifest status is legacy
         # compatibility data and is not changed by a run.
         assert entry["status"] == "not_started"
@@ -385,7 +385,7 @@ class TestExistingRunGuards:
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
         from chipcompiler.data.workspace_config import save_workspace_config
 
         assert save_workspace_config(
@@ -444,8 +444,8 @@ class TestHybridFullLayering:
                 {
                     "workspace_id": "ws_0001",
                     "workspace_path": str(project_dir / "ws_0001"),
-                    "start_step": "Place",
-                    "end_step": "Route",
+                    "start_step": "placement",
+                    "end_step": "routing",
                 }
             ],
         )
@@ -569,15 +569,15 @@ class TestExplicitRunLogOrdering:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "place",
+                            "name": "placement",
                             "tool": "ecc",
                             "state": "Success",
                             "runtime": "",
                             "info": {},
-                            **step_fields("place", "ecc"),
+                            **step_fields("placement", "ecc"),
                         }
                     ],
                 },
@@ -656,4 +656,4 @@ class TestExplicitRunLogOrdering:
         (record,) = manifest_stubs.records()
         assert record["error"] == "run_log_open_failed"
         ledger = json.loads(Path(run_dir, "home", "flow.json").read_text())
-        assert [step["name"] for step in ledger["steps"]] == ["place"]
+        assert [step["name"] for step in ledger["steps"]] == ["placement"]

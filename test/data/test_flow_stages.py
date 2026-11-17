@@ -26,12 +26,12 @@ def test_the_post_filler_checkers_form_parallel_stages():
     stages = _by_name(steps, plan_stages(steps))
 
     assert stages["filler"] == StepStage(12, "", ())
-    assert stages["lvs"] == StepStage(13, "a", ("drc", "antennaCheck", "postRouteLec", "RCX"))
-    assert stages["RCX"] == StepStage(13, "e", ("lvs", "drc", "antennaCheck", "postRouteLec"))
-    assert stages["sta"] == StepStage(14, "a", ("powerAnalysis",))
-    assert stages["powerAnalysis"] == StepStage(14, "b", ("sta",))
+    assert stages["lvs"] == StepStage(13, "a", ("drc", "antenna_check", "post_route_lec", "rcx"))
+    assert stages["rcx"] == StepStage(13, "e", ("lvs", "drc", "antenna_check", "post_route_lec"))
+    assert stages["sta"] == StepStage(14, "a", ("power_analysis",))
+    assert stages["power_analysis"] == StepStage(14, "b", ("sta",))
     assert stages["emir"] == StepStage(15, "", ())
-    assert stages["Harden"] == StepStage(16, "", ())
+    assert stages["harden"] == StepStage(16, "", ())
 
 
 def test_a_disabled_step_has_no_stage_and_the_stages_after_it_renumber():
@@ -40,8 +40,8 @@ def test_a_disabled_step_has_no_stage_and_the_stages_after_it_renumber():
 
     assert stages["drc"] == StepStage(None, "", ())
     assert stages["drc"].label == ""
-    assert stages["lvs"] == StepStage(13, "a", ("antennaCheck", "postRouteLec", "RCX"))
-    assert stages["Harden"] == StepStage(16, "", ())
+    assert stages["lvs"] == StepStage(13, "a", ("antenna_check", "post_route_lec", "rcx"))
+    assert stages["harden"] == StepStage(16, "", ())
 
 
 def _waves(names, stages):
@@ -66,7 +66,7 @@ def _ledger_waves(flow_config):
 
 _CHAIN_NAMES = [name for name, _tool in _RTL2GDS]
 _SYNTHESIS_TO_FILLER = _CHAIN_NAMES[
-    _CHAIN_NAMES.index("Synthesis") : _CHAIN_NAMES.index("filler") + 1
+    _CHAIN_NAMES.index("synthesis") : _CHAIN_NAMES.index("filler") + 1
 ]
 
 
@@ -82,9 +82,11 @@ _SYNTHESIS_TO_FILLER = _CHAIN_NAMES[
             {"preset": "rtl2gds", "skip_steps": _SYNTHESIS_TO_FILLER}, id="synthesis-to-filler"
         ),
         pytest.param(
-            {"start_step": "Synthesis", "end_step": "postRouteLec"}, id="range-to-postRouteLec"
+            {"start_step": "synthesis", "end_step": "post_route_lec"}, id="range-to-post_route_lec"
         ),
-        pytest.param({"start_step": "route", "end_step": "RCX", "skip_steps": []}, id="route-RCX"),
+        pytest.param(
+            {"start_step": "routing", "end_step": "rcx", "skip_steps": []}, id="route-RCX"
+        ),
         pytest.param({"preset": "syn_sta"}, id="syn_sta"),
         pytest.param({"preset": "synthesis_lec", "skip_steps": []}, id="synthesis_lec"),
     ],
@@ -109,25 +111,25 @@ def test_after_keeps_a_producer_unless_another_producer_relays_all_it_gives():
     assert {
         name: needs[name].after
         for name in (
-            "route",
+            "routing",
             "lvs",
-            "postRouteLec",
-            "RCX",
+            "post_route_lec",
+            "rcx",
             "sta",
-            "powerAnalysis",
+            "power_analysis",
             "emir",
-            "Harden",
+            "harden",
         )
     } == {
-        "route": ("Timing optimization", "CTS"),
+        "routing": ("timing_optimization", "cts"),
         "lvs": ("filler",),
-        "postRouteLec": ("filler", "Synthesis"),
-        "RCX": ("filler",),
+        "post_route_lec": ("filler", "synthesis"),
+        "rcx": ("filler",),
         # RCX relays filled from filler, but nothing else relays CTS's clock tree.
-        "sta": ("RCX", "CTS"),
-        "powerAnalysis": ("RCX", "CTS"),
-        "emir": ("powerAnalysis", "postFloorplan"),
-        "Harden": ("RCX", "CTS"),
+        "sta": ("rcx", "cts"),
+        "power_analysis": ("rcx", "cts"),
+        "emir": ("power_analysis", "post_floorplan"),
+        "harden": ("rcx", "cts"),
     }
 
 
@@ -135,13 +137,13 @@ def test_a_capability_nothing_provides_has_no_producer():
     steps = _plan()
     needs = _by_name(steps, plan_needs(steps))
 
-    assert needs["Synthesis"].producers == (("rtl", None),)
-    assert needs["Synthesis"].after == ()
+    assert needs["synthesis"].producers == (("rtl", None),)
+    assert needs["synthesis"].after == ()
 
 
 def test_producers_are_the_enabled_steps_only():
-    steps = _plan(skip=[*DEFAULT_SKIP_STEPS, "CTS"])
+    steps = _plan(skip=[*DEFAULT_SKIP_STEPS, "cts"])
     needs = _by_name(steps, plan_needs(steps))
 
-    assert dict(needs["route"].producers)["clock_tree"] is None
-    assert needs["route"].after == ("Timing optimization",)
+    assert dict(needs["routing"].producers)["clock_tree"] is None
+    assert needs["routing"].after == ("timing_optimization",)

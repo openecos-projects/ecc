@@ -205,7 +205,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                     error_record(
                         "step_output_not_published",
                         param=MACRO_PARAM,
-                        reason="Workspace has no published macroPlacement output",
+                        reason="Workspace has no published macro_placement output",
                     )
                 ]
             )
@@ -240,7 +240,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                 expected,
                 {MACRO_PARAM: placements},
                 (),
-                step_id="macroPlacement" if args.commit_step_output else None,
+                step_id="macro_placement" if args.commit_step_output else None,
                 commit_step_output=args.commit_step_output,
                 command_id=args.command_id or str(uuid.uuid4()),
             )

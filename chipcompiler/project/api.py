@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chipcompiler.project.manifest import (
     MANIFEST_FILENAME,
+    PRESET_MANIFEST_RANGE,
     ManifestError,
     load_manifest,
     validate_manifest_range,
@@ -294,8 +295,8 @@ def _workspace_range(workspace: Path, mutation: dict) -> tuple[str, str]:
     try:
         ledger = json.loads((workspace / "home" / "flow.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return "Synth", "Harden"
-    return flow_range_from_ledger(ledger) or ("Synth", "Harden")
+        return PRESET_MANIFEST_RANGE["rtl2gds"]
+    return flow_range_from_ledger(ledger) or PRESET_MANIFEST_RANGE["rtl2gds"]
 
 
 def _select_workspace(document: dict, mutation: dict) -> None:

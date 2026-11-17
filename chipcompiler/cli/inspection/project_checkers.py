@@ -2,7 +2,7 @@ from math import isfinite
 from pathlib import Path
 
 from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
-from chipcompiler.cli.core.output import normalize_state
+from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.data import LEC_STEP_TOOLS
 from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories, recorded_step_directory
@@ -24,7 +24,7 @@ def checker_evidence(root: Path, step: dict, design: str) -> dict:
         "counts": {},
         "source": None,
     }
-    if normalize_state(step["state"]) != "success":
+    if flow_step_status(step["state"]) != "success":
         return record
     name, tool = step["name"], step["tool"]
     # Checker evidence is only read for the tool each step canonically runs.

@@ -57,7 +57,7 @@ def flow_mocks(monkeypatch):
 
     capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}
     workspace_obj = SimpleNamespace(
-        name="workspace", flow=SimpleNamespace(data={"schema_version": 2, "steps": []})
+        name="workspace", flow=SimpleNamespace(data={"schema_version": 3, "steps": []})
     )
     project_flow_options = flow_options.sync_flow_options_projection
 
@@ -83,7 +83,7 @@ def flow_mocks(monkeypatch):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -186,11 +186,11 @@ def patch_all_flow_builders():
     def _patch(monkeypatch):
         markers = {}
         for attr, marker in (
-            ("build_rtl2gds_flow", "GDS"),
-            ("build_syn_sta_flow", "Signoff"),
-            ("build_synthesis_lec_flow", "Abstract lef"),
+            ("build_rtl2gds_flow", "gds"),
+            ("build_syn_sta_flow", "signoff"),
+            ("build_synthesis_lec_flow", "abstract_lef"),
         ):
-            steps = [("Synthesis", "yosys", "Unstart"), (marker, "ecc", "Unstart")]
+            steps = [("synthesis", "yosys", "Unstart"), (marker, "ecc", "Unstart")]
             markers[attr] = steps
             monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
         return markers

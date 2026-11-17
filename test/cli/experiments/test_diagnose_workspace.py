@@ -16,19 +16,19 @@ def test_diagnose_workspace_uses_current_flow_and_qor_schema(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
-                    **step_fields("Synthesis", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
             ],
         },
@@ -77,19 +77,19 @@ def test_diagnose_workspace_reports_non_advisory_failed_step(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Incomplete",
-                    **step_fields("Synthesis", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
             ],
         },
@@ -103,7 +103,7 @@ def test_diagnose_workspace_reports_non_advisory_failed_step(tmp_path):
     result = diagnose_workspace(project, "ws_0001")
 
     assert result["status"] == "failed"
-    assert result["flow"] == {"status": "failed", "failed_steps": ["Synthesis"]}
+    assert result["flow"] == {"status": "failed", "failed_steps": ["synthesis"]}
     assert result["qor"] == {"available": True, "score": 12.5}
 
 
@@ -113,13 +113,13 @@ def test_diagnose_workspace_does_not_fail_on_advisory_step(tmp_path):
     _write_json(
         workspace / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "antennaCheck",
+                    "name": "antenna_check",
                     "tool": "ecc",
                     "state": "Incomplete",
-                    **step_fields("antennaCheck", "ecc"),
+                    **step_fields("antenna_check", "ecc"),
                 },
                 {
                     "name": "emir",
@@ -128,10 +128,10 @@ def test_diagnose_workspace_does_not_fail_on_advisory_step(tmp_path):
                     **step_fields("emir", "ecc"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
             ],
         },

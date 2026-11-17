@@ -60,7 +60,7 @@ def _quiet_completion(monkeypatch, refresh=lambda _workspace, _step: None):
 
 
 def test_a_reload_holds_back_a_concurrent_state_save(tmp_path, monkeypatch):
-    flow = _flow(tmp_path, ["RCX"])
+    flow = _flow(tmp_path, ["rcx"])
     read, resume = threading.Event(), threading.Event()
 
     def held_load(path):
@@ -72,7 +72,7 @@ def test_a_reload_holds_back_a_concurrent_state_save(tmp_path, monkeypatch):
     monkeypatch.setattr(engine_flow, "load_flow_document", held_load)
     reload = threading.Thread(target=EngineFlow, args=(flow.workspace,))
     save = threading.Thread(
-        target=flow.set_state, kwargs={"name": "RCX", "tool": "ecc", "state": StateEnum.Ongoing}
+        target=flow.set_state, kwargs={"name": "rcx", "tool": "ecc", "state": StateEnum.Ongoing}
     )
     try:
         reload.start()
@@ -88,7 +88,7 @@ def test_a_reload_holds_back_a_concurrent_state_save(tmp_path, monkeypatch):
         save.join()
 
     (on_disk,) = _on_disk(flow)
-    assert ((flow.get_step("RCX", "ecc") or {}).get("state"), on_disk["state"]) == (
+    assert ((flow.get_step("rcx", "ecc") or {}).get("state"), on_disk["state"]) == (
         "Ongoing",
         "Ongoing",
     )

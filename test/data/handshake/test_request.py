@@ -31,7 +31,7 @@ def _wired_flow(tmp_path, *, legacy: bool = False) -> EngineFlow:
     )
     flow = EngineFlow(workspace)
     ledger = build_dynamic_flow_data(
-        {"start_step": "Synthesis", "end_step": "Harden", "skip_steps": []}
+        {"start_step": "synthesis", "end_step": "harden", "skip_steps": []}
     )
     if legacy:
         # Ledgers written before steps recorded their directory.
@@ -84,9 +84,9 @@ def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, legacy):
 def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
     flow = _wired_flow(tmp_path)
     write_response(
-        tmp_path / "18_RCX_ecc",
+        tmp_path / "18_rcx_ecc",
         StepResponse(
-            step="RCX",
+            step="rcx",
             tool="ecc",
             attempt_id="attempt-rcx",
             status=ResponseStatus.SUCCESS,
@@ -106,13 +106,13 @@ def test_sta_accepts_the_filled_design_and_rcx_parasitics(tmp_path):
     assert request.design_source == UpstreamResponse("13_filler_ecc", None)
     assert dict(request.upstream) == {
         DesignState.FILLED: UpstreamResponse("13_filler_ecc", None),
-        DesignState.CLOCK_TREE: UpstreamResponse("09_CTS_ecc", None),
-        AnalysisData.PARASITICS: UpstreamResponse("18_RCX_ecc", "attempt-rcx"),
+        DesignState.CLOCK_TREE: UpstreamResponse("09_cts_ecc", None),
+        AnalysisData.PARASITICS: UpstreamResponse("18_rcx_ecc", "attempt-rcx"),
     }
     assert request.final_step is False
 
 
-@pytest.mark.parametrize(("name", "final"), [("Harden", True), ("place", False)])
+@pytest.mark.parametrize(("name", "final"), [("harden", True), ("placement", False)])
 def test_only_the_last_ledger_step_is_final(tmp_path, name, final):
     _step, request = _request(_wired_flow(tmp_path), name)
 
@@ -121,7 +121,7 @@ def test_only_the_last_ledger_step_is_final(tmp_path, name, final):
 
 def test_a_step_outside_the_workspace_is_rejected(tmp_path):
     flow = _wired_flow(tmp_path)
-    step = flow.get_workspace_step("place")
+    step = flow.get_workspace_step("placement")
     assert step is not None
     flow.workspace.directory = tmp_path / "elsewhere"
 
@@ -145,9 +145,9 @@ def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
         DesignState.FILLED: "13_filler_ecc",
-        DesignState.PDN: "04_postFloorplan_ecc",
-        AnalysisData.POWER: "20_powerAnalysis_ecc",
-        AnalysisData.PARASITICS: "18_RCX_ecc",
+        DesignState.PDN: "04_post_floorplan_ecc",
+        AnalysisData.POWER: "20_power_analysis_ecc",
+        AnalysisData.PARASITICS: "18_rcx_ecc",
     }
 
 
@@ -156,5 +156,5 @@ def test_routing_links_legality_to_the_last_legalizing_step(tmp_path):
 
     assert {item: source.step_directory for item, source in request.upstream.items()} == {
         DesignState.LEGAL: "11_timing_optimization_sizer",
-        DesignState.CLOCK_TREE: "09_CTS_ecc",
+        DesignState.CLOCK_TREE: "09_cts_ecc",
     }

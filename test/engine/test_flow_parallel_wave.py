@@ -13,7 +13,7 @@ from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS, StateEnum, Workspace
 from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
 from chipcompiler.engine import EngineFlow
 
-_WAVE = ["lvs", "drc", "antennaCheck", "postRouteLec", "RCX"]
+_WAVE = ["lvs", "drc", "antenna_check", "post_route_lec", "rcx"]
 _WAIT = 5.0
 
 
@@ -85,7 +85,7 @@ def wave_flow(tmp_path, monkeypatch) -> EngineFlow:
     # A file-backed ledger: its lock is what serializes the wave's callbacks.
     flow.workspace.flow.path = tmp_path / "home" / "flow.json"
     flow.workspace.flow.data = build_dynamic_flow_data(
-        {"start_step": "filler", "end_step": "RCX", "skip_steps": []}
+        {"start_step": "filler", "end_step": "rcx", "skip_steps": []}
     )
     flow.workspace_steps = [
         SimpleNamespace(name=record["name"], tool=record["tool"])

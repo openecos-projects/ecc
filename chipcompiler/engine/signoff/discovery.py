@@ -104,7 +104,7 @@ class CollectorDiscoveryMixin:
 
     def _design_from_outputs(self, workspace_dir: Path) -> str:
         for step_name, suffix in (
-            (StepEnum.HARDEN.value, "_Harden.gds"),
+            (StepEnum.HARDEN.value, f"_{StepEnum.HARDEN.value}.gds"),
             (StepEnum.FILLER.value, "_filler.v.gz"),
         ):
             pattern = f"{StepDirectories.at(workspace_dir).name(step_name)}/output/*{suffix}"

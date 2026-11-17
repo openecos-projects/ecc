@@ -38,9 +38,9 @@ def fake_worker(*_args, **_kwargs):
 def make_flow(directory):
     workspace = Workspace(directory=directory)
     workspace.flow.path = directory / "flow.json"
-    workspace.flow.data = {"steps": [{"name": "route", "tool": "ecc", "state": "Unstart"}]}
+    workspace.flow.data = {"steps": [{"name": "routing", "tool": "ecc", "state": "Unstart"}]}
     flow = EngineFlow(workspace)
-    flow.workspace_steps = [EccStep(name="route", directory=directory, tool="ecc")]
+    flow.workspace_steps = [EccStep(name="routing", directory=directory, tool="ecc")]
     flow.check_step_result = lambda **_kwargs: True
     return flow
 

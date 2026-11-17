@@ -75,7 +75,7 @@ def _freeze_entry_inputs(
     workspace: Workspace, netlist: Path | None, def_path: Path | None, step: str
 ) -> None:
     for role, path in (("netlist", netlist), ("DEF", def_path)):
-        required = role == "netlist" or step != "preFloorplan"
+        required = role == "netlist" or step != "pre_floorplan"
         if required and (path is None or not path.is_file()):
             raise WorkspaceLifecycleError(
                 "step_input_missing", f"{step} requires an existing source output {role}: {path}"

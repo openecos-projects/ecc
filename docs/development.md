@@ -119,12 +119,12 @@ uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --ho
 ## Testing
 
 The default timing optimization flow after placement is
-`place → diff_sizing → CTS → legalization → Timing optimization → route`.
+`placement → diff_sizing → cts → legalization → timing_optimization → routing`.
 Set `[flow] skip_steps = []` to insert the optional `diff_opt` step
-between `place` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
+between `placement` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
 The controller's ordered mode/flow tuple configuration is documented in
 [the configuration reference](../chipcompiler/docs/ecc-config-ref.en.md).
-`diff_sizing` remains the DreamPlace standalone GR S50 lane; `Timing optimization`
+`diff_sizing` remains the DreamPlace standalone GR S50 lane; `timing_optimization`
 is the separate ECC-Sizer step after CTS and legalization.
 
 ```bash
@@ -748,7 +748,7 @@ uv run ecc pdk show
 editing `ecc.toml`. Valid names are auto-discovered from
 `chipcompiler/rtl2gds/builder.py` (`rtl2gds | syn_sta | synthesis_lec`); the
 `rtl2gds` preset is the full synthesis-to-harden chain (22 canonical steps;
-LEC checks other than `postRouteLec` are inserted with `[flow] insert_steps`,
+LEC checks other than `post_route_lec` are inserted with `[flow] insert_steps`,
 see [Skippable Flow Steps](#skippable-flow-steps);
 Harden emits GDS + abstract LEF + timing LIB):
 
@@ -758,41 +758,41 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Skippable Flow Steps
 
-The default post-route sequence is `route → filler → lvs → drc → antennaCheck
-→ postRouteLec → RCX → sta → powerAnalysis → emir → Harden`. LVS, DRC and the
+The default post-route sequence is `routing → filler → lvs → drc → antenna_check
+→ post_route_lec → rcx → sta → power_analysis → emir → harden`. LVS, DRC and the
 antenna checker check the filled layout before post-route equivalence checking;
 RCX then provides the parasitics for
-timing and power analysis. LEC, antennaCheck and emir do not supply physical artifacts to later steps.
-RCX bypasses antennaCheck and the LEC proof; Harden bypasses emir, so an
+timing and power analysis. LEC, antenna_check and emir do not supply physical artifacts to later steps.
+RCX bypasses antenna_check and the LEC proof; Harden bypasses emir, so an
 advisory failure cannot leave downstream stages without physical inputs. This order applies to
 newly created preset flows and canonical ranges; existing workspace ledgers and
 explicit custom flows retain their stored order.
 
-All physical signoff steps in this sequence, including LVS, DRC, antennaCheck,
-RCX, STA, powerAnalysis, EMIR, and Harden, load the filler output as their
+All physical signoff steps in this sequence, including LVS, DRC, antenna_check,
+RCX, STA, power_analysis, EMIR, and Harden, load the filler output as their
 physical design input. Their own DEF, Verilog, and database snapshots are
 evidence or reports and do not become the next physical source. Post-route LEC
 is the exception: it compares the synthesis netlist (or the declared golden
 netlist) with the filler gate netlist.
 
-The report-only `antennaCheck` step calls iMJ's `init_mj → check_antenna →
+The report-only `antenna_check` step calls iMJ's `init_mj → check_antenna →
 destroy_mj`; it does not insert diodes or repair violations. The native report is
-`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
-`antennaCheck_ecc/report/antennaCheck.rpt`. Violations, native failure and missing reports do not stop the surrounding flow.
-A failed invocation keeps its `Incomplete` execution state. Both antennaCheck and
+`antenna_check_ecc/data/mj/antenna_checker/antenna_check.rpt`, copied unchanged to
+`antenna_check_ecc/report/antenna_check.rpt`. Violations, native failure and missing reports do not stop the surrounding flow.
+A failed invocation keeps its `Incomplete` execution state. Both antenna_check and
 emir appear as nonblocking attention items in home and step checklists, including
 after successful execution, since their reports and coverage need manual review. Step `Success` means the check
 invocation and report publication completed, not a clean-design verdict: absent
 LEF antenna rules or gate-area annotations can leave the check without coverage.
 Inspect the native log and report together. No separate antenna JSON is needed.
 
-The EMIR stage consumes `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv`
+The EMIR stage consumes `power_analysis_ecc/data/pw/power_reporter/instance_power.tsv`
 and the filler physical database. Set `emir.technology_file_path` to the absolute
 path of a real `process.tech`, using `ecc param set` or `[emir]` in `ecc.toml`.
 The value is replayed into `config/emir_ecc.json` when creating or refreshing the
 workspace; editing only that generated JSON is not persistent. The default is
 an empty placeholder and will stop the step. Supply sources come from iFP's
-`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
+`post_floorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
 without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
 intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`;
 after a successful save, every file under `data/emir/emir_reporter/` is published
@@ -806,8 +806,8 @@ must not be used for signoff. Normal projects do not select it automatically.
 
 Any step of the rtl2gds chain can be excluded from a workspace at creation
 time, not only the three optional steps — placement-parasitic optimization
-(`diff_opt`), the post-route LEC (`postRouteLec`), and timing optimization
-(`Timing optimization`). Skipped
+(`diff_opt`), the post-route LEC (`post_route_lec`), and timing optimization
+(`timing_optimization`). Skipped
 steps never enter the workspace's execution ledger — their inputs fall through to the previous
 retained step, and no step directory is created for them. State-machine,
 resume/rerun semantics are unchanged, and existing ledgers are never
@@ -830,12 +830,12 @@ An explicit `skip_steps = []` runs every step, `diff_opt` included.
 Entries accept the same aliases as flow ranges (e.g. `postlec`, `synth`,
 `cts`, `TimingOpt`) and are validated against the steps of the chain;
 unknown names are rejected. `lec` is no chain step any more: `resolve_skip_steps`
-drops it, so existing files that list it keep loading. project.json and the
-GUI still treat `LEC` as a skippable range step, so
-`manifest_flow.manifest_synthesis_lec` turns a workspace entry whose declared
-policy keeps `LEC` into the insertion `lec@Synthesis`, and a range bounded by
-`LEC` is bounded by Synthesis plus that insertion (`manifest_flow.entry_flow_config`;
-`manifest.manifest_step_name` maps `lec@Synthesis` back to `LEC`).
+drops it, so existing files that list it keep loading. A project.json skip
+policy may still name `lec`: `manifest_flow.manifest_synthesis_lec` turns a
+workspace entry whose declared policy keeps `lec` into the insertion
+`lec@synthesis`. A project.json range uses flow step names and may be bounded
+by an inserted step; a range bounded by `lec@synthesis` is bounded by
+`synthesis` plus that insertion (`manifest_flow.entry_flow_config`).
 
 Whether a selection can run is decided by step capabilities — each step's
 required design data, optional design data, and what it provides
@@ -845,31 +845,31 @@ required design data, optional design data, and what it provides
 - An enabled step that lacks required design data is a configuration error;
   `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
   naming the disabled steps to re-enable, e.g. skipping `legalization` and
-  `Timing optimization` gives
-  `route requires legal; enable Timing optimization or legalization`.
+  `timing_optimization` gives
+  `routing requires legal; enable timing_optimization or legalization`.
 - A step that lacks only optional data runs with degraded results and is
-  reported as a `flow_step_degraded` warning, e.g. skipping `CTS` warns
+  reported as a `flow_step_degraded` warning, e.g. skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS` (likewise
-  sta, powerAnalysis, Harden). Routing/STA after a skipped CTS use the
+  sta, power_analysis, Harden). Routing/STA after a skipped CTS use the
   pre-CTS (ideal clock) timing constraints.
 - The preset's final step is the flow target and cannot be skipped (Harden
   for `rtl2gds`, Synthesis for `syn_sta`); neither can an explicit range start
   (`params.toml [flow] start`, `ecc run --from`, `project.json` `start_step`).
-  A preset's first step may be skipped: skipping `Synthesis`
-  enters the run at `preFloorplan` with the declared `[design] netlist`
+  A preset's first step may be skipped: skipping `synthesis`
+  enters the run at `pre_floorplan` with the declared `[design] netlist`
   (postSynthesis input mode); the entry step's inputs are checked as before.
 - Skipping a signoff checker (drc, lvs, sta) means no signoff evidence:
   `ecc signoff check` reports that gate as `unknown`, never pass.
 
-`[flow] insert_steps` (`["lec@CTS"]`) inserts an LEC after a design-building
-step, any of `rtl2gds.lec_insert_anchors()` (`Synthesis` .. `route`). LEC
+`[flow] insert_steps` (`["lec@cts"]`) inserts an LEC after a design-building
+step, any of `rtl2gds.lec_insert_anchors()` (`synthesis` .. `routing`). LEC
 is the only entry of `data.types.INSERTABLE_FLOW_STEPS`: it changes nothing,
 provides nothing, and `FlowInputResolver` already skips LEC records, so the
 chain after it is unchanged. Other steps are not insertable: the capability
 check (`data/flow_check.py`) never takes design data away, so a second
-netlist-changing step after `route` would pass the check while breaking the
+netlist-changing step after `routing` would pass the check while breaking the
 routing, and the tool wrappers branch on the step name. An inserted step's
-ledger name is `lec@<step>` (spaces as underscores; `rtl2gds.inserted_step_name`
+ledger name is `lec@<step>` (`rtl2gds.inserted_step_name`
 / `parse_inserted_step`), unique per step, so every name-keyed layer (ledger,
 `req.json` upstream links, `--from/--only`, the snapshot) keeps working;
 `flow_step_policy` resolves it to the `lec` policy. The insertion is applied
@@ -878,16 +878,16 @@ every ledger-building path (`build_dynamic_flow_data`, the fresh-run seed in
 `run_prepare.py`, the reconcile target, `workspace_reset`), so an inserted step
 exists exactly when its step does; `rerun._through_index` and the derived range
 keep it with its step. `EngineFlow.create_step_workspaces` wires the golden:
-`lec@Synthesis` gets the RTL Synthesis read (`tools.yosys.builder.synthesis_rtl`:
-the filelist, else the RTL file), every other inserted LEC the `postRouteLec`
+`lec@synthesis` gets the RTL Synthesis read (`tools.yosys.builder.synthesis_rtl`:
+the filelist, else the RTL file), every other inserted LEC the `post_route_lec`
 golden. `tools.kepler_formal.builder.checks_rtl` selects kepler-formal's SEC
-config (`format: sv2v`, `verification: sec`) for `lec@Synthesis`. The RTL goes in
+config (`format: sv2v`, `verification: sec`) for `lec@synthesis`. The RTL goes in
 as `sv_design1_flist` through a generated `data/rtl.f`
 (`sec_rtl_filelist_text`): `+define+SYNTHESIS`, as Synthesis reads it, then the
 RTL file or `-F <filelist>`, so the filelist's relative sources and `+incdir+`
 resolve against its own directory, not the step directory kepler-formal runs
 in. The runner reads the RTL as is and accepts SEC's dual-rail proof wording (`No binary-defined difference was
-found.`). The `synthesis_lec` preset builds `Synthesis` + `lec@Synthesis`. It travels with `skip_steps` and
+found.`). The `synthesis_lec` preset builds `synthesis` + `lec@synthesis`. It travels with `skip_steps` and
 `lec_engine` in `workspace_config.FLOW_POLICY_KEYS`, so it is part of the
 persisted flow target (`home/params.toml` `_flow`) and of the mismatch check.
 ECOS Studio does not know inserted step names yet (`flowStepRegistry.ts`
@@ -1025,7 +1025,7 @@ export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
 
 ### Kepler Formal (LEC engine)
 
-Every LEC step (inserted `lec@<step>` checks and `postRouteLec`) runs the
+Every LEC step (inserted `lec@<step>` checks and `post_route_lec`) runs the
 kepler-formal equivalence checker
 (GPL-3.0, invoked as a separate process). Resolution priority in
 `chipcompiler/tools/kepler_formal/utility.py`:
@@ -1065,7 +1065,7 @@ the persisted flow target keep their shape. The Yosys (`yosys_lec`) and dual
 (`lec_dual`) engines were removed: a ledger that records one of them no longer
 matches its target (`flow_mismatch`) and the workspace must be recreated.
 
-`lec@Synthesis` checks the synthesized netlist against the RTL with
+`lec@synthesis` checks the synthesized netlist against the RTL with
 kepler-formal's SEC (its SystemVerilog front end accepts RTL only for
 sequential equivalence). No reset sequence is applied. Its strength depends on
 kepler-formal: on `gcd`, SEC under the default dual-rail encoding proved three
@@ -1174,11 +1174,11 @@ workspace=default
 .venv/bin/ecc run --project "$project" --workspace "$workspace" --resume
 
 # Re-execute the inclusive CTS-to-route range in the persisted flow.
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --from CTS --to route
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --from cts --to routing
 
 # Run exactly one step; add --force if it already succeeded.
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place --force
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement --force
 ```
 
 `--resume`, `--only`, and a range are mutually exclusive, and `--force` is
@@ -1198,7 +1198,7 @@ For Python-level debugging, invoke the same CLI module directly:
 ```bash
 .venv/bin/python -m chipcompiler.cli.main run \
   --workspace "$workspace" \
-  --only place \
+  --only placement \
   --force
 ```
 

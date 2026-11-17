@@ -9,12 +9,12 @@ from chipcompiler.data.workspace.flow_types import FlowDocument
 from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
 
 _STEPS: list[dict[str, str]] = [
-    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-    {"name": "preFloorplan", "tool": "ecc", "state": "Success"},
-    {"name": "macroPlacement", "tool": "dreamplace", "state": "Unstart"},
-    {"name": "postFloorplan", "tool": "ecc", "state": "Unstart"},
-    {"name": "CTS", "tool": "ecc", "state": "Unstart"},
-    {"name": "Timing optimization", "tool": "sizer", "state": "Unstart"},
+    {"name": "synthesis", "tool": "yosys", "state": "Success"},
+    {"name": "pre_floorplan", "tool": "ecc", "state": "Success"},
+    {"name": "macro_placement", "tool": "dreamplace", "state": "Unstart"},
+    {"name": "post_floorplan", "tool": "ecc", "state": "Unstart"},
+    {"name": "cts", "tool": "ecc", "state": "Unstart"},
+    {"name": "timing_optimization", "tool": "sizer", "state": "Unstart"},
 ]
 
 
@@ -42,44 +42,44 @@ def test_resolves_every_committed_step_with_builder_owned_paths(tmp_path):
     assert result["design"] == "gcd"
     assert result["directory"] == "."
     assert [entry["step"] for entry in result["steps"]] == [
-        "Synthesis",
-        "preFloorplan",
-        "macroPlacement",
-        "postFloorplan",
-        "CTS",
-        "Timing optimization",
+        "synthesis",
+        "pre_floorplan",
+        "macro_placement",
+        "post_floorplan",
+        "cts",
+        "timing_optimization",
     ]
     by_step = {entry["step"]: entry for entry in result["steps"]}
-    assert by_step["Synthesis"]["tool"] == "yosys"
-    assert by_step["Synthesis"]["verilog"]["path"].endswith(
-        "Synthesis_yosys/output/gcd_Synthesis.v.gz"
+    assert by_step["synthesis"]["tool"] == "yosys"
+    assert by_step["synthesis"]["verilog"]["path"].endswith(
+        "synthesis_yosys/output/gcd_synthesis.v.gz"
     )
-    assert by_step["preFloorplan"]["def"]["path"].endswith(
-        "preFloorplan_ecc/output/gcd_preFloorplan.def.gz"
+    assert by_step["pre_floorplan"]["def"]["path"].endswith(
+        "pre_floorplan_ecc/output/gcd_pre_floorplan.def.gz"
     )
-    assert by_step["macroPlacement"]["def"]["path"].endswith(
-        "macroPlacement_dreamplace/output/gcd_macroPlacement.def.gz"
+    assert by_step["macro_placement"]["def"]["path"].endswith(
+        "macro_placement_dreamplace/output/gcd_macro_placement.def.gz"
     )
-    assert by_step["CTS"]["verilog"]["path"].endswith("CTS_ecc/output/gcd_CTS.v.gz")
-    assert by_step["Timing optimization"]["def"]["path"].endswith(
+    assert by_step["cts"]["verilog"]["path"].endswith("cts_ecc/output/gcd_cts.v.gz")
+    assert by_step["timing_optimization"]["def"]["path"].endswith(
         "timing_optimization_sizer/output/gcd_timing_optimization.def.gz"
     )
-    assert by_step["preFloorplan"]["state"] == "Success"
-    assert by_step["CTS"]["state"] == "Unstart"
+    assert by_step["pre_floorplan"]["state"] == "Success"
+    assert by_step["cts"]["state"] == "Unstart"
 
 
 def test_artifact_existence_reflects_the_filesystem(tmp_path):
     workspace = _workspace(tmp_path / "ws_0001")
-    output = tmp_path / "ws_0001" / "preFloorplan_ecc" / "output"
+    output = tmp_path / "ws_0001" / "pre_floorplan_ecc" / "output"
     output.mkdir(parents=True)
-    (output / "gcd_preFloorplan.def.gz").write_bytes(b"def")
+    (output / "gcd_pre_floorplan.def.gz").write_bytes(b"def")
 
     result = resolve_workspace_step_outputs(workspace)
     by_step = {entry["step"]: entry for entry in result["steps"]}
 
-    assert by_step["preFloorplan"]["def"]["exists"] is True
-    assert by_step["preFloorplan"]["verilog"]["exists"] is False
-    assert by_step["Synthesis"]["verilog"]["exists"] is False
+    assert by_step["pre_floorplan"]["def"]["exists"] is True
+    assert by_step["pre_floorplan"]["verilog"]["exists"] is False
+    assert by_step["synthesis"]["verilog"]["exists"] is False
 
 
 def test_sdc_comes_from_the_loaded_workspace(tmp_path):
@@ -96,13 +96,13 @@ def test_sdc_comes_from_the_loaded_workspace(tmp_path):
 def test_step_filter_selects_one_entry(tmp_path):
     workspace = _workspace(tmp_path / "ws_0001")
 
-    result = resolve_workspace_step_outputs(workspace, "postFloorplan")
+    result = resolve_workspace_step_outputs(workspace, "post_floorplan")
 
-    assert [entry["step"] for entry in result["steps"]] == ["postFloorplan"]
+    assert [entry["step"] for entry in result["steps"]] == ["post_floorplan"]
 
 
 def test_unknown_step_raises(tmp_path):
     workspace = _workspace(tmp_path / "ws_0001")
 
     with pytest.raises(ValueError, match="flow step not found"):
-        resolve_workspace_step_outputs(workspace, "Floorplan")
+        resolve_workspace_step_outputs(workspace, "floorplan")

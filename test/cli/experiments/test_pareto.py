@@ -38,7 +38,7 @@ def sweep(tmp_path, monkeypatch):
         score = 90.0 if workspace.name.endswith("1") else 85.0
         return {
             "flow": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": "sta",
@@ -132,7 +132,7 @@ def test_objective_contract_rejects_unknown_units_and_polarity(sweep, objective)
 
 def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
     artifacts = []
-    for step, value in (("postFloorplan", 100), ("place", 110)):
+    for step, value in (("post_floorplan", 100), ("placement", 110)):
         reference = f"{step}_ecc/analysis/qor_metrics.json"
         path = tmp_path / reference
         path.parent.mkdir(parents=True)
@@ -159,21 +159,21 @@ def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
     facts = {
         "artifacts": artifacts,
         "flow": {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": step,
                     "tool": "ecc",
                     **step_fields(step, "ecc"),
                 }
-                for step in ("postFloorplan", "place")
+                for step in ("post_floorplan", "placement")
             ],
         },
     }
     with pytest.raises(ValueError, match="ambiguous"):
         pareto._measurement(tmp_path, facts, Objective("core_area", "um^2", "minimize"))
     result = pareto._measurement(
-        tmp_path, facts, Objective("postFloorplan/core_area", "um^2", "minimize")
+        tmp_path, facts, Objective("post_floorplan/core_area", "um^2", "minimize")
     )
     assert result["value"] == 100
 

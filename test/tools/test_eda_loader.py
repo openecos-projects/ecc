@@ -126,7 +126,7 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
 
     step = eda.create_step(
         workspace=workspace,
-        step="Timing optimization",
+        step="timing_optimization",
         eda="sizer",
         input_def=None,
         input_verilog=None,

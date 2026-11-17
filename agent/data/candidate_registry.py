@@ -3,6 +3,8 @@
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from chipcompiler.data.types import StepEnum
+
 from .candidate_artifacts import canonical_json_bytes, sha256_bytes
 
 
@@ -31,26 +33,30 @@ class CandidateKnob:
 
 
 def _cts_number(name: str, minimum: float = 0.0, maximum: float | None = None) -> CandidateKnob:
-    return CandidateKnob(f"cts.{name}", "CTS", "CTS", (name,), "number", minimum, maximum)
+    return CandidateKnob(
+        f"cts.{name}", StepEnum.CTS.value, StepEnum.CTS.value, (name,), "number", minimum, maximum
+    )
 
 
 def _cts_uint(name: str, minimum: int = 1) -> CandidateKnob:
-    return CandidateKnob(f"cts.{name}", "CTS", "CTS", (name,), "uint", minimum)
+    return CandidateKnob(
+        f"cts.{name}", StepEnum.CTS.value, StepEnum.CTS.value, (name,), "uint", minimum
+    )
 
 
-# The RPC-level "Floorplan" target names the shared floorplan configuration,
+# The RPC-level "floorplan" target names the shared floorplan configuration,
 # not a flow step; the backend tool and the phase input bind on its first
 # sub-step when the flow runs the split phase.
-FLOORPLAN_TARGET_FLOW_STEP = {"Floorplan": "preFloorplan"}
+FLOORPLAN_TARGET_FLOW_STEP = {StepEnum.FLOORPLAN.value: StepEnum.PRE_FLOORPLAN.value}
 
 
 CANDIDATE_TARGET_BACKENDS: dict[str, CandidateTargetBackend] = {
-    "Floorplan": CandidateTargetBackend("ecc"),
-    "place": CandidateTargetBackend("dreamplace"),
-    "CTS": CandidateTargetBackend("ecc"),
-    "legalization": CandidateTargetBackend("dreamplace", "legalization_dreamplace"),
-    "route": CandidateTargetBackend("ecc"),
-    "filler": CandidateTargetBackend(
+    StepEnum.FLOORPLAN.value: CandidateTargetBackend("ecc"),
+    StepEnum.PLACEMENT.value: CandidateTargetBackend("dreamplace"),
+    StepEnum.CTS.value: CandidateTargetBackend("ecc"),
+    StepEnum.LEGALIZATION.value: CandidateTargetBackend("dreamplace", "legalization_dreamplace"),
+    StepEnum.ROUTING.value: CandidateTargetBackend("ecc"),
+    StepEnum.FILLER.value: CandidateTargetBackend(
         "ecc",
         enabled=False,
         disabled_reason="ECC filler backend is not implemented in the current runtime",
@@ -61,7 +67,7 @@ CANDIDATE_TARGET_BACKENDS: dict[str, CandidateTargetBackend] = {
 CANDIDATE_KNOBS = (
     CandidateKnob(
         "floorplan.core_util",
-        "Floorplan",
+        StepEnum.FLOORPLAN.value,
         "parameters",
         ("core", "utilitization"),
         "number",
@@ -70,7 +76,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "floorplan.aspect_ratio",
-        "Floorplan",
+        StepEnum.FLOORPLAN.value,
         "parameters",
         ("core", "aspect_ratio"),
         "number",
@@ -78,7 +84,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "floorplan.core_margin",
-        "Floorplan",
+        StepEnum.FLOORPLAN.value,
         "parameters",
         ("core", "margin"),
         "number_pair",
@@ -86,15 +92,15 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "floorplan.tap_distance",
-        "Floorplan",
-        "Floorplan",
+        StepEnum.FLOORPLAN.value,
+        StepEnum.FLOORPLAN.value,
         ("Floorplan", "Tap distance"),
         "uint",
         0,
     ),
     CandidateKnob(
         "place.target_density",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("target_density",),
         "number",
@@ -103,7 +109,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.target_overflow",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("stop_overflow",),
         "number",
@@ -112,7 +118,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.cell_padding_x",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("cell_padding_x",),
         "uint",
@@ -120,14 +126,14 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.routability_opt",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("routability_opt_flag",),
         "bool_int",
     ),
     CandidateKnob(
         "place.density_weight",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("density_weight",),
         "number",
@@ -135,7 +141,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.gp_noise_ratio",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("gp_noise_ratio",),
         "number",
@@ -144,7 +150,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.num_threads",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("num_threads",),
         "uint",
@@ -152,7 +158,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.timing_opt",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("timing_opt_flag",),
         "bool_int",
@@ -161,7 +167,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.enable_net_weighting",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("enable_net_weighting",),
         "bool_int",
@@ -170,7 +176,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "place.pin2pin_weight",
-        "place",
+        StepEnum.PLACEMENT.value,
         "dreamplace",
         ("pin2pin_weight",),
         "number",
@@ -180,30 +186,30 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "route.bottom_layer",
-        "route",
-        "route",
+        StepEnum.ROUTING.value,
+        StepEnum.ROUTING.value,
         ("RT", "-bottom_routing_layer"),
         "string",
     ),
     CandidateKnob(
         "route.top_layer",
-        "route",
-        "route",
+        StepEnum.ROUTING.value,
+        StepEnum.ROUTING.value,
         ("RT", "-top_routing_layer"),
         "string",
     ),
     CandidateKnob(
         "route.thread_number",
-        "route",
-        "route",
+        StepEnum.ROUTING.value,
+        StepEnum.ROUTING.value,
         ("RT", "-thread_number"),
         "uint",
         1,
     ),
     CandidateKnob(
         "route.enable_timing",
-        "route",
-        "route",
+        StepEnum.ROUTING.value,
+        StepEnum.ROUTING.value,
         ("RT", "-enable_timing"),
         "bool_int",
     ),
@@ -215,36 +221,49 @@ CANDIDATE_KNOBS = (
     _cts_number("wirelength_unit_um"),
     _cts_number("wire_width"),
     _cts_uint("max_fanout"),
-    CandidateKnob("cts.routing_layer", "CTS", "CTS", ("routing_layer",), "uint_list", 1),
+    CandidateKnob(
+        "cts.routing_layer",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
+        ("routing_layer",),
+        "uint_list",
+        1,
+    ),
     CandidateKnob(
         "cts.buffer_type",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("buffer_type",),
         "string_list",
         pdk_attribute="buffers",
     ),
     _cts_number("char_buf_redundancy_pct"),
-    CandidateKnob("cts.force_branch_buffer", "CTS", "CTS", ("force_branch_buffer",), "bool"),
+    CandidateKnob(
+        "cts.force_branch_buffer",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
+        ("force_branch_buffer",),
+        "bool",
+    ),
     _cts_number("htree_topology_tolerance"),
     CandidateKnob(
         "cts.enable_analytical_htree",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("enable_analytical_htree",),
         "bool",
     ),
     CandidateKnob(
         "cts.enable_sink_clustering",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("enable_sink_clustering",),
         "bool",
     ),
     CandidateKnob(
         "cts.max_length",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("max_length",),
         "number",
         0.0,
@@ -253,8 +272,8 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "cts.use_netlist",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("use_netlist",),
         "string",
         available=False,
@@ -262,8 +281,8 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "cts.net_list",
-        "CTS",
-        "CTS",
+        StepEnum.CTS.value,
+        StepEnum.CTS.value,
         ("net_list",),
         "string_list",
         available=False,
@@ -271,7 +290,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "legalization.cell_padding_x",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("cell_padding_x",),
         "uint",
@@ -279,7 +298,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "legalization.bndry_padding_x",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("bndry_padding_x",),
         "uint",
@@ -287,7 +306,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "legalization.bndry_padding_y",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("bndry_padding_y",),
         "uint",
@@ -295,14 +314,14 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "legalization.detailed_place_flag",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("detailed_place_flag",),
         "bool_int",
     ),
     CandidateKnob(
         "legalization.num_threads",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("num_threads",),
         "uint",
@@ -310,7 +329,7 @@ CANDIDATE_KNOBS = (
     ),
     CandidateKnob(
         "legalization.deterministic",
-        "legalization",
+        StepEnum.LEGALIZATION.value,
         "dreamplace",
         ("deterministic_flag",),
         "bool_int",

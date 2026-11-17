@@ -9,8 +9,8 @@ workspace already produces:
 - `<step>/analysis/qor_metrics.json`
 - `<step>/analysis/qor_summary.json`
 - `sta_ecc/feature/<corner>/<rc_corner>/qor_summary.json`
-- `postRouteLec_<engine>/output/<design>_postRouteLec_result.json`
-- `Harden_ecc/output/<design>_Harden.{gds,lef,lib}`
+- `post_route_lec_<engine>/output/<design>_post_route_lec_result.json`
+- `harden_ecc/output/<design>_harden.{gds,lef,lib}`
 - the golden/gate netlists referenced by the selected LEC result
 
 The collector is implemented in shell (`export.sh`) with `jq`; the
@@ -38,7 +38,7 @@ This is a collector skeleton, not a signoff gate:
 - The Harden gate requires the missing-count metric and final GDS/LEF/LIB artifacts. Optional Harden area
   metrics do not affect the gate, and `harden_artifact_missing_count == 0` is not enforced.
 - Failure paths (`present=false`, DRC gate fail, LEC missing/stale/cross-engine, Harden missing artifact) are covered by `.github/scripts/signoff-csv-test.sh`; negative WNS/TNS and `harden_artifact_missing_count > 0` thresholds are still not enforced.
-- LEC honors the flow ledger: an absent `postRouteLec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
+- LEC honors the flow ledger: an absent `post_route_lec` step is `skipped` (not required); a present non-`Success` step fails without reading stale residue. Engine selection is strict.
 - Each packaged E2E job uploads its design's CSV products as `e2e-signoff-csv-<design>`. After the matrix,
   `Signoff CSV collector` downloads all available reports, writes one integrated GitHub Actions job summary,
   and uploads the combined `ecc-signoff-csv` artifact. The overview includes area, DRC count, and setup/hold
@@ -69,7 +69,7 @@ Currently exports `drc_count` and the `qor.drc.clean` gate state.
 `status,golden_verilog,golden_sha256,golden_size_bytes,gate_verilog,gate_sha256,gate_size_bytes,source,present`
 
 `status` is `proven`, `incomplete`, `stale`, `missing`, or `skipped`.
-`skipped` is emitted when the flow ledger has no `postRouteLec` step and
+`skipped` is emitted when the flow ledger has no `post_route_lec` step and
 passes the gate as not required. The collector
 re-verifies the recorded `*_sha256` and `*_size_bytes` against the referenced
 netlist files; a missing or changed netlist is reported as `stale`, and only
@@ -86,7 +86,7 @@ Includes Harden QoR metrics and the three final artifacts: `gds`, `lef`, `lib`.
 `step,metric,value,unit,source,present`
 
 Collects `synthesis_cell_area`, `die_area`, `core_area`, and `core_utilization`
-from `Synthesis`, `postFloorplan`, and `Harden` outputs.
+from `synthesis`, `post_floorplan`, and `harden` outputs.
 
 ## Fixture
 

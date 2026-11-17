@@ -34,8 +34,8 @@ CONTEXT_SHA256 = "sha256:" + "a" * 64
 
 
 def test_candidate_artifact_dirs_support_typed_step_outputs(tmp_path):
-    output_dir = tmp_path / "place_dreamplace" / "output"
-    analysis_dir = tmp_path / "place_dreamplace" / "analysis"
+    output_dir = tmp_path / "placement_dreamplace" / "output"
+    analysis_dir = tmp_path / "placement_dreamplace" / "analysis"
     step = SimpleNamespace(
         output=EccOutput(dir=output_dir),
         analysis={"dir": analysis_dir},
@@ -77,22 +77,22 @@ def test_candidate_sizer_preflight_failure_skips_clone(monkeypatch, tmp_path):
         directory=tmp_path,
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     },
                     {
-                        "name": "Timing optimization",
+                        "name": "timing_optimization",
                         "tool": "sizer",
-                        **step_fields("Timing optimization", "sizer"),
+                        **step_fields("timing_optimization", "sizer"),
                     },
                     {
-                        "name": "Harden",
+                        "name": "harden",
                         "tool": "ecc",
-                        **step_fields("Harden", "ecc"),
+                        **step_fields("harden", "ecc"),
                     },
                 ],
             }
@@ -116,8 +116,8 @@ def test_candidate_sizer_preflight_failure_skips_clone(monkeypatch, tmp_path):
     operation = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -140,8 +140,8 @@ def test_candidate_rerun_rejects_workspace_revision_conflict_before_clone(tmp_pa
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -159,27 +159,27 @@ def test_candidate_rerun_rejects_workspace_revision_conflict_before_clone(tmp_pa
 
 def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
     flow_data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             },
             {
-                "name": "place",
+                "name": "placement",
                 "tool": "dreamplace",
-                **step_fields("place", "dreamplace"),
+                **step_fields("placement", "dreamplace"),
             },
             {
-                "name": "Timing optimization",
+                "name": "timing_optimization",
                 "tool": "sizer",
-                **step_fields("Timing optimization", "sizer"),
+                **step_fields("timing_optimization", "sizer"),
             },
             {
-                "name": "Harden",
+                "name": "harden",
                 "tool": "ecc",
-                **step_fields("Harden", "ecc"),
+                **step_fields("harden", "ecc"),
             },
         ],
     }
@@ -187,10 +187,10 @@ def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
     home.mkdir()
     (home / "flow.json").write_text(json.dumps(flow_data), encoding="utf-8")
     for directory in (
-        "Floorplan_ecc",
-        "place_dreamplace",
+        "floorplan_ecc",
+        "placement_dreamplace",
         "timing_optimization_sizer",
-        "Harden_ecc",
+        "harden_ecc",
     ):
         path = tmp_path / directory
         path.mkdir()
@@ -201,15 +201,15 @@ def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path)
 
     candidate, _, _ = _create_candidate_workspace(
-        _EccApi(workspace), workspace, "candidate-1", None, "place"
+        _EccApi(workspace), workspace, "candidate-1", None, "placement"
     )
     candidate_root = Path(candidate.directory)
 
-    assert (candidate_root / "Floorplan_ecc" / "output" / "artifact").is_file()
+    assert (candidate_root / "floorplan_ecc" / "output" / "artifact").is_file()
     for directory in (
-        "place_dreamplace",
+        "placement_dreamplace",
         "timing_optimization_sizer",
-        "Harden_ecc",
+        "harden_ecc",
     ):
         step_root = candidate_root / directory
         assert (step_root / "checklist.json").is_file()
@@ -217,7 +217,7 @@ def test_candidate_clone_skips_step_directories_that_will_be_rerun(tmp_path):
 
 
 def test_candidate_clone_skips_the_indexed_directories_a_ledger_records(tmp_path):
-    steps = [("place", "dreamplace"), ("CTS", "ecc"), ("lec@CTS", "kepler_formal")]
+    steps = [("placement", "dreamplace"), ("cts", "ecc"), ("lec@cts", "kepler_formal")]
     directories = [
         new_step_directory(name, tool, index=index)
         for index, (name, tool) in enumerate(steps, start=7)
@@ -227,7 +227,7 @@ def test_candidate_clone_skips_the_indexed_directories_a_ledger_records(tmp_path
     (home / "flow.json").write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {"name": name, "tool": tool, "directory": directory}
                     for (name, tool), directory in zip(steps, directories, strict=True)
@@ -242,10 +242,10 @@ def test_candidate_clone_skips_the_indexed_directories_a_ledger_records(tmp_path
     workspace = SimpleNamespace(directory=tmp_path)
 
     candidate, _, _ = _create_candidate_workspace(
-        _EccApi(workspace), workspace, "candidate-1", None, "CTS"
+        _EccApi(workspace), workspace, "candidate-1", None, "cts"
     )
 
-    # The rerun steps (CTS and the check inserted after it) start without outputs.
+    # The rerun steps (cts and the check inserted after it) start without outputs.
     assert [
         (Path(candidate.directory) / directory / "output").exists() for directory in directories
     ] == [True, False, False]
@@ -258,36 +258,36 @@ def test_candidate_clone_rejects_invalid_flow_state(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path)
 
     with pytest.raises(RuntimeApiError, match="candidate flow state is invalid"):
-        _create_candidate_workspace(_EccApi(workspace), workspace, "candidate-1", None, "place")
+        _create_candidate_workspace(_EccApi(workspace), workspace, "candidate-1", None, "placement")
 
 
 @pytest.mark.parametrize(
     "target_step,expected_first",
     [
-        ("Floorplan", "Floorplan"),
-        ("place", "place"),
-        ("Timing optimization", "Timing optimization"),
-        ("CTS", "CTS"),
+        ("floorplan", "floorplan"),
+        ("placement", "placement"),
+        ("timing_optimization", "timing_optimization"),
+        ("cts", "cts"),
     ],
 )
 def test_candidate_rerun_slice_starts_at_the_modified_stage(
     target_step: str, expected_first: str
 ) -> None:
     names = (
-        "Synthesis",
-        "Floorplan",
-        "place",
-        "CTS",
+        "synthesis",
+        "floorplan",
+        "placement",
+        "cts",
         "legalization",
-        "Timing optimization",
-        "Harden",
+        "timing_optimization",
+        "harden",
     )
     flow = SimpleNamespace(workspace_steps=tuple(SimpleNamespace(name=name) for name in names))
 
-    steps = _candidate_rerun_steps(flow, target_step, "Harden", "full_flow")
+    steps = _candidate_rerun_steps(flow, target_step, "harden", "full_flow")
 
     assert steps[0].name == expected_first
-    assert steps[-1].name == "Harden"
+    assert steps[-1].name == "harden"
 
 
 def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
@@ -295,22 +295,22 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
         workspace=SimpleNamespace(
             flow=SimpleNamespace(
                 data={
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "Synthesis",
+                            "name": "synthesis",
                             "tool": "yosys",
-                            **step_fields("Synthesis", "yosys"),
+                            **step_fields("synthesis", "yosys"),
                         },
                         {
-                            "name": "lec@Synthesis",
+                            "name": "lec@synthesis",
                             "tool": "kepler_formal",
-                            **step_fields("lec@Synthesis", "kepler_formal"),
+                            **step_fields("lec@synthesis", "kepler_formal"),
                         },
                         {
-                            "name": "Floorplan",
+                            "name": "floorplan",
                             "tool": "ecc",
-                            **step_fields("Floorplan", "ecc"),
+                            **step_fields("floorplan", "ecc"),
                         },
                     ],
                 }
@@ -318,37 +318,37 @@ def test_floorplan_candidate_uses_synthesis_checkpoint_across_lec() -> None:
         )
     )
 
-    assert _candidate_source_step(flow, "Floorplan") == "Synthesis"
+    assert _candidate_source_step(flow, "floorplan") == "synthesis"
 
 
 _CURRENT_FLOW_STEPS = [
-    {"name": "Synthesis", "tool": "yosys"},
-    {"name": "preFloorplan", "tool": "ecc"},
-    {"name": "macroPlacement", "tool": "dreamplace"},
-    {"name": "postFloorplan", "tool": "ecc"},
-    {"name": "place", "tool": "dreamplace"},
-    {"name": "CTS", "tool": "ecc"},
+    {"name": "synthesis", "tool": "yosys"},
+    {"name": "pre_floorplan", "tool": "ecc"},
+    {"name": "macro_placement", "tool": "dreamplace"},
+    {"name": "post_floorplan", "tool": "ecc"},
+    {"name": "placement", "tool": "dreamplace"},
+    {"name": "cts", "tool": "ecc"},
     {"name": "legalization", "tool": "dreamplace"},
-    {"name": "Timing optimization", "tool": "sizer"},
-    {"name": "route", "tool": "ecc"},
+    {"name": "timing_optimization", "tool": "sizer"},
+    {"name": "routing", "tool": "ecc"},
     {"name": "filler", "tool": "ecc"},
-    {"name": "RCX", "tool": "ecc"},
+    {"name": "rcx", "tool": "ecc"},
     {"name": "sta", "tool": "ecc"},
     {"name": "lvs", "tool": "ecc"},
-    {"name": "postRouteLec", "tool": "kepler_formal"},
+    {"name": "post_route_lec", "tool": "kepler_formal"},
     {"name": "drc", "tool": "ecc"},
-    {"name": "Harden", "tool": "ecc"},
+    {"name": "harden", "tool": "ecc"},
 ]
 
 
 def test_place_candidate_binds_the_post_floorplan_predecessor() -> None:
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
-            flow=SimpleNamespace(data={"schema_version": 2, "steps": _CURRENT_FLOW_STEPS})
+            flow=SimpleNamespace(data={"schema_version": 3, "steps": _CURRENT_FLOW_STEPS})
         )
     )
 
-    assert _candidate_source_step(flow, "place") == "postFloorplan"
+    assert _candidate_source_step(flow, "placement") == "post_floorplan"
 
 
 def test_current_flow_topological_edges_are_declared() -> None:
@@ -359,7 +359,7 @@ def test_current_flow_topological_edges_are_declared() -> None:
 
 
 def test_floorplan_target_range_starts_at_the_first_floorplan_sub_step() -> None:
-    range_steps = _candidate_step_range(_CURRENT_FLOW_STEPS, "Floorplan", "Harden", "full_flow")
+    range_steps = _candidate_step_range(_CURRENT_FLOW_STEPS, "floorplan", "harden", "full_flow")
 
     assert [step["name"] for step in range_steps] == [
         step["name"] for step in _CURRENT_FLOW_STEPS[1:]
@@ -396,31 +396,31 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     monkeypatch, tmp_path
 ):
     flow_data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             },
             {
-                "name": "place",
+                "name": "placement",
                 "tool": "dreamplace",
                 "state": "Success",
-                **step_fields("place", "dreamplace"),
+                **step_fields("placement", "dreamplace"),
             },
             {
-                "name": "CTS",
+                "name": "cts",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("CTS", "ecc"),
+                **step_fields("cts", "ecc"),
             },
             {
-                "name": "Harden",
+                "name": "harden",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Harden", "ecc"),
+                **step_fields("harden", "ecc"),
             },
         ],
     }
@@ -436,10 +436,10 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         flow=SimpleNamespace(data=flow_data, path=flow_path),
     )
     for directory in (
-        tmp_path / "place_dreamplace" / "output",
-        tmp_path / "place_dreamplace" / "analysis",
-        tmp_path / "CTS_ecc" / "output",
-        tmp_path / "Harden_ecc" / "output",
+        tmp_path / "placement_dreamplace" / "output",
+        tmp_path / "placement_dreamplace" / "analysis",
+        tmp_path / "cts_ecc" / "output",
+        tmp_path / "harden_ecc" / "output",
     ):
         directory.mkdir(parents=True)
         (directory / "stale").write_text("stale", encoding="utf-8")
@@ -453,26 +453,26 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         flow = _Flow(
             candidate_workspace,
             (
-                SimpleNamespace(name="Floorplan", tool="ecc", output={}),
+                SimpleNamespace(name="floorplan", tool="ecc", output={}),
                 SimpleNamespace(
-                    name="place",
+                    name="placement",
                     tool="dreamplace",
-                    output=EccOutput(dir=root / "place_dreamplace" / "output"),
-                    analysis={"dir": root / "place_dreamplace" / "analysis"},
+                    output=EccOutput(dir=root / "placement_dreamplace" / "output"),
+                    analysis={"dir": root / "placement_dreamplace" / "analysis"},
                 ),
                 SimpleNamespace(
-                    name="CTS",
+                    name="cts",
                     tool="ecc",
-                    output={"dir": root / "CTS_ecc" / "output"},
+                    output={"dir": root / "cts_ecc" / "output"},
                 ),
                 SimpleNamespace(
-                    name="Harden",
+                    name="harden",
                     tool="ecc",
                     output=EccOutput(
-                        dir=root / "Harden_ecc" / "output",
-                        gds=root / "Harden_ecc" / "output" / "gcd_Harden.gds",
-                        lef=root / "Harden_ecc" / "output" / "gcd_Harden.lef",
-                        lib=root / "Harden_ecc" / "output" / "gcd_Harden.lib",
+                        dir=root / "harden_ecc" / "output",
+                        gds=root / "harden_ecc" / "output" / "gcd_harden.gds",
+                        lef=root / "harden_ecc" / "output" / "gcd_harden.lef",
+                        lib=root / "harden_ecc" / "output" / "gcd_harden.lib",
                     ),
                 ),
             ),
@@ -511,8 +511,8 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     result = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -527,12 +527,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert result["kind"] == "candidate_rerun"
     assert result["origin"] == "agent"
     assert result["rerun"] is True
-    assert result["step"] == "place"
+    assert result["step"] == "placement"
     duplicate = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -546,45 +546,45 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert duplicate["deduplicated"] is True
     terminal = _wait_for_terminal(api.ecc_api.operations, result["operationId"])
     assert calls == [
-        ("bind", "place", "Floorplan", "candidate-1"),
+        ("bind", "placement", "floorplan", "candidate-1"),
         (
             "materialize",
-            "place",
+            "placement",
             [{"knob_id": "place.target_density", "value": 0.6}],
             "candidate-1",
         ),
-        ("reapply", "place"),
+        ("reapply", "placement"),
     ]
     candidate_root = tmp_path / ".agent" / "candidates" / "candidate-1"
     candidate_root_ref = ".agent/candidates/candidate-1"
     candidate_manifest_ref = f"{candidate_root_ref}/analysis/candidate_workspace.v1.json"
     candidate_flow = flows[-1]
-    assert candidate_flow.run_calls == [("place", True), ("CTS", True), ("Harden", True)]
+    assert candidate_flow.run_calls == [("placement", True), ("cts", True), ("harden", True)]
     assert candidate_flow.created is True
     assert candidate_flow.initialize_config is False
     assert flow_path.read_bytes() == parent_flow_bytes
     assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
-    assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
-    assert (tmp_path / "place_dreamplace" / "analysis" / "stale").is_file()
-    assert (tmp_path / "CTS_ecc" / "output" / "stale").is_file()
-    assert (tmp_path / "Harden_ecc" / "output" / "stale").is_file()
+    assert (tmp_path / "placement_dreamplace" / "output" / "stale").is_file()
+    assert (tmp_path / "placement_dreamplace" / "analysis" / "stale").is_file()
+    assert (tmp_path / "cts_ecc" / "output" / "stale").is_file()
+    assert (tmp_path / "harden_ecc" / "output" / "stale").is_file()
     assert json.loads(
         (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8")
     ) == {"random_seed": 17, "target_density": 0.6}
     assert candidate_flow.observed_random_seeds == [17]
-    assert not list((candidate_root / "place_dreamplace" / "output").iterdir())
-    assert not list((candidate_root / "place_dreamplace" / "analysis").iterdir())
-    assert not list((candidate_root / "CTS_ecc" / "output").iterdir())
-    assert not (candidate_root / "Harden_ecc" / "output" / "stale").exists()
+    assert not list((candidate_root / "placement_dreamplace" / "output").iterdir())
+    assert not list((candidate_root / "placement_dreamplace" / "analysis").iterdir())
+    assert not list((candidate_root / "cts_ecc" / "output").iterdir())
+    assert not (candidate_root / "harden_ecc" / "output" / "stale").exists()
     candidate_manifest = candidate_root / "analysis" / "candidate_workspace.v1.json"
     result = terminal["result"]
     assert {key: value for key, value in result.items() if key != "candidateManifestSha256"} == {
         "candidateId": "candidate-1",
         "candidateManifestRef": candidate_manifest_ref,
         "candidateRootRef": candidate_root_ref,
-        "endStep": "Harden",
+        "endStep": "harden",
         "executionScope": "full_flow",
-        "targetStep": "place",
+        "targetStep": "placement",
     }
     assert candidate_manifest.is_file()
     assert result["candidateManifestSha256"] == sha256_path(candidate_manifest)
@@ -598,16 +598,16 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         for key in ("harden_gds", "harden_lef", "harden_lib")
     } == {
         "harden_gds": {
-            "ref": "Harden_ecc/output/gcd_Harden.gds",
-            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.gds"),
+            "ref": "harden_ecc/output/gcd_harden.gds",
+            "sha256": sha256_path(candidate_root / "harden_ecc/output/gcd_harden.gds"),
         },
         "harden_lef": {
-            "ref": "Harden_ecc/output/gcd_Harden.lef",
-            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.lef"),
+            "ref": "harden_ecc/output/gcd_harden.lef",
+            "sha256": sha256_path(candidate_root / "harden_ecc/output/gcd_harden.lef"),
         },
         "harden_lib": {
-            "ref": "Harden_ecc/output/gcd_Harden.lib",
-            "sha256": sha256_path(candidate_root / "Harden_ecc/output/gcd_Harden.lib"),
+            "ref": "harden_ecc/output/gcd_harden.lib",
+            "sha256": sha256_path(candidate_root / "harden_ecc/output/gcd_harden.lib"),
         },
     }
     execution_receipt = json.loads(
@@ -620,8 +620,8 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     second = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-2",
             patch=[{"knob_id": "place.routability_opt", "value": True}],
             execution_scope="full_flow",
@@ -663,8 +663,8 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     rejected = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-3",
             patch=[{"knob_id": "place.target_density", "value": 0.7}],
             execution_scope="full_flow",
@@ -676,7 +676,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         )
     )
     terminal = _wait_for_terminal(api.ecc_api.operations, rejected["operationId"], "failed")
-    assert "verified successful Harden candidate" in terminal["error"]["message"]
+    assert "verified successful harden candidate" in terminal["error"]["message"]
     assert not (tmp_path / ".agent" / "candidates" / "candidate-3").exists()
 
 
@@ -690,19 +690,19 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     flow_path.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
                         "state": "Success",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     },
                     {
-                        "name": "Harden",
+                        "name": "harden",
                         "tool": "ecc",
                         "state": "Success",
-                        **step_fields("Harden", "ecc"),
+                        **step_fields("harden", "ecc"),
                     },
                 ],
             }
@@ -727,7 +727,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     }
     steps = tuple(
         SimpleNamespace(name=name, tool=tool, output={})
-        for name, tool in (("place", "dreamplace"), ("Harden", "ecc"))
+        for name, tool in (("placement", "dreamplace"), ("harden", "ecc"))
     )
     flow = SimpleNamespace(
         workspace_steps=steps,
@@ -755,7 +755,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     }
 
     def run_candidate_step(_flow, step, **_kwargs):
-        if step.name == "place":
+        if step.name == "placement":
             report = {
                 "schema_version": "tool.parameter_runtime_report.v2",
                 "knob_id": "place.target_density",
@@ -775,7 +775,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
                 json.dumps(report), encoding="utf-8"
             )
             return
-        raise RuntimeError("Harden failed")
+        raise RuntimeError("harden failed")
 
     monkeypatch.setattr("agent.workspace_api._run_candidate_step", run_candidate_step)
     monkeypatch.setattr(
@@ -786,8 +786,8 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     started = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-failed",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -843,9 +843,9 @@ def test_succeeded_candidate_preserves_flow_when_runtime_report_is_missing(
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text('{"steps": []}', encoding="utf-8")
     for suffix in ("gds", "lef", "lib"):
-        output = tmp_path / "Harden_ecc" / "output"
+        output = tmp_path / "harden_ecc" / "output"
         output.mkdir(parents=True, exist_ok=True)
-        (output / f"gcd_Harden.{suffix}").write_text("artifact", encoding="utf-8")
+        (output / f"gcd_harden.{suffix}").write_text("artifact", encoding="utf-8")
     workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
     parent = {
         "root_ref": None,
@@ -867,8 +867,8 @@ def test_succeeded_candidate_preserves_flow_when_runtime_report_is_missing(
         workspace,
         SimpleNamespace(
             candidate_id="candidate-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             execution_scope="full_flow",
         ),
         ".agent/candidates/candidate-1",
@@ -895,14 +895,14 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     flow = SimpleNamespace(
         workspace=SimpleNamespace(
             flow=SimpleNamespace(
-                data={"schema_version": 2, "steps": [{"name": "Floorplan"}, {"name": "place"}]}
+                data={"schema_version": 3, "steps": [{"name": "floorplan"}, {"name": "placement"}]}
             )
         )
     )
     request = CandidateRerunRequest(
         workspace_id="workspace-1",
-        target_step="place",
-        end_step="Harden",
+        target_step="placement",
+        end_step="harden",
         candidate_id="candidate-1",
         patch=[{"knob_id": "place.target_density", "value": 0.6}],
         execution_scope="full_flow",
@@ -932,8 +932,8 @@ def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(t
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="candidate-1",
                 patch=[
                     {"knob_id": "place.target_density", "value": 0.6},
@@ -958,8 +958,8 @@ def test_candidate_rerun_rejects_invalid_context_hash_before_starting_an_operati
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -983,8 +983,8 @@ def test_candidate_rerun_rejects_invalid_parameter_card_hash_before_starting_an_
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -1002,12 +1002,12 @@ def test_candidate_rerun_rejects_non_harden_end_step_before_starting_an_operatio
     ecc_api = _EccApi(SimpleNamespace(directory=tmp_path))
     api = FlowAgentRuntimeApi(ecc_api)
 
-    with pytest.raises(RuntimeApiError, match="end step must be Harden"):
+    with pytest.raises(RuntimeApiError, match="end step must be harden"):
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="CTS",
+                target_step="placement",
+                end_step="cts",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -1029,8 +1029,8 @@ def test_candidate_rerun_rejects_unsafe_candidate_id_before_starting_an_operatio
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="../escape",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -1054,8 +1054,8 @@ def test_candidate_rerun_rejects_unsafe_parent_candidate_ref_before_starting_an_
         api.candidate_rerun(
             CandidateRerunRequest(
                 workspace_id="workspace-1",
-                target_step="place",
-                end_step="Harden",
+                target_step="placement",
+                end_step="harden",
                 candidate_id="candidate-1",
                 patch=[{"knob_id": "place.target_density", "value": 0.6}],
                 execution_scope="full_flow",
@@ -1080,8 +1080,8 @@ def test_candidate_rerun_rejects_parent_workspace_symlinks(tmp_path):
     operation = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -1119,8 +1119,8 @@ def test_candidate_rerun_removes_partial_clone_on_copy_failure(monkeypatch, tmp_
     operation = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -1217,12 +1217,12 @@ class _Flow:
 
     def run_step(self, step, *, rerun, observer=None) -> StateEnum:
         self.run_calls.append((step.name, rerun))
-        if step.name == "place":
+        if step.name == "placement":
             config = json.loads(
                 Path(self.workspace.config["dreamplace"]).read_text(encoding="utf-8")
             )
             self.observed_random_seeds.append(config.get("random_seed"))
-        if step.name == "Harden":
+        if step.name == "harden":
             for artifact in (step.output.gds, step.output.lef, step.output.lib):
                 Path(artifact).write_text(step.name, encoding="utf-8")
         if observer is not None:
@@ -1244,31 +1244,31 @@ def _wait_for_terminal(operations, operation_id, expected_state="succeeded"):
 
 def _seed_candidate_source_workspace(tmp_path: Path) -> tuple[Path, Path, object]:
     flow_data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             },
             {
-                "name": "place",
+                "name": "placement",
                 "tool": "dreamplace",
                 "state": "Success",
-                **step_fields("place", "dreamplace"),
+                **step_fields("placement", "dreamplace"),
             },
             {
-                "name": "CTS",
+                "name": "cts",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("CTS", "ecc"),
+                **step_fields("cts", "ecc"),
             },
             {
-                "name": "Harden",
+                "name": "harden",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Harden", "ecc"),
+                **step_fields("harden", "ecc"),
             },
         ],
     }
@@ -1279,9 +1279,9 @@ def _seed_candidate_source_workspace(tmp_path: Path) -> tuple[Path, Path, object
     config_path.parent.mkdir()
     config_path.write_text('{"target_density": 0.5}\n', encoding="utf-8")
     for directory in (
-        tmp_path / "place_dreamplace" / "output",
-        tmp_path / "CTS_ecc" / "output",
-        tmp_path / "Harden_ecc" / "output",
+        tmp_path / "placement_dreamplace" / "output",
+        tmp_path / "cts_ecc" / "output",
+        tmp_path / "harden_ecc" / "output",
     ):
         directory.mkdir(parents=True)
         (directory / "stale").write_text("stale", encoding="utf-8")
@@ -1299,26 +1299,26 @@ def _fake_candidate_flow_factory(flows: list):
         flow = _Flow(
             candidate_workspace,
             (
-                SimpleNamespace(name="Floorplan", tool="ecc", output={}),
+                SimpleNamespace(name="floorplan", tool="ecc", output={}),
                 SimpleNamespace(
-                    name="place",
+                    name="placement",
                     tool="dreamplace",
-                    output=EccOutput(dir=root / "place_dreamplace" / "output"),
-                    analysis={"dir": root / "place_dreamplace" / "analysis"},
+                    output=EccOutput(dir=root / "placement_dreamplace" / "output"),
+                    analysis={"dir": root / "placement_dreamplace" / "analysis"},
                 ),
                 SimpleNamespace(
-                    name="CTS",
+                    name="cts",
                     tool="ecc",
-                    output={"dir": root / "CTS_ecc" / "output"},
+                    output={"dir": root / "cts_ecc" / "output"},
                 ),
                 SimpleNamespace(
-                    name="Harden",
+                    name="harden",
                     tool="ecc",
                     output=EccOutput(
-                        dir=root / "Harden_ecc" / "output",
-                        gds=root / "Harden_ecc" / "output" / "gcd_Harden.gds",
-                        lef=root / "Harden_ecc" / "output" / "gcd_Harden.lef",
-                        lib=root / "Harden_ecc" / "output" / "gcd_Harden.lib",
+                        dir=root / "harden_ecc" / "output",
+                        gds=root / "harden_ecc" / "output" / "gcd_harden.gds",
+                        lef=root / "harden_ecc" / "output" / "gcd_harden.lef",
+                        lib=root / "harden_ecc" / "output" / "gcd_harden.lib",
                     ),
                 ),
             ),
@@ -1372,7 +1372,7 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     step_barrier = threading.Barrier(2, timeout=30)
 
     def run_candidate_step(flow, step, *, observer):
-        if step.name == "Harden":
+        if step.name == "harden":
             # Both candidates must be inside step execution at the same
             # moment; a serialized backend times the barrier out and fails
             # both operations instead of passing silently.
@@ -1386,8 +1386,8 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     first = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-1",
             patch=[{"knob_id": "place.target_density", "value": 0.6}],
             execution_scope="full_flow",
@@ -1400,8 +1400,8 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     second = api.candidate_rerun(
         CandidateRerunRequest(
             workspace_id="workspace-1",
-            target_step="place",
-            end_step="Harden",
+            target_step="placement",
+            end_step="harden",
             candidate_id="candidate-2",
             patch=[{"knob_id": "place.routability_opt", "value": True}],
             execution_scope="full_flow",
@@ -1421,10 +1421,10 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     for candidate in ("candidate-1", "candidate-2"):
         candidate_root = tmp_path / ".agent" / "candidates" / candidate
         assert (candidate_root / "analysis" / "candidate_workspace.v1.json").is_file()
-        assert (candidate_root / "Harden_ecc" / "output" / "gcd_Harden.gds").is_file()
+        assert (candidate_root / "harden_ecc" / "output" / "gcd_harden.gds").is_file()
     assert flow_path.read_bytes() == parent_flow_bytes
     assert config_path.read_text(encoding="utf-8") == '{"target_density": 0.5}\n'
-    assert (tmp_path / "place_dreamplace" / "output" / "stale").is_file()
+    assert (tmp_path / "placement_dreamplace" / "output" / "stale").is_file()
 
 
 def test_candidate_snapshot_refuses_while_a_source_operation_is_active(tmp_path):
@@ -1450,8 +1450,8 @@ def test_candidate_snapshot_refuses_while_a_source_operation_is_active(tmp_path)
             api.candidate_rerun(
                 CandidateRerunRequest(
                     workspace_id="workspace-1",
-                    target_step="place",
-                    end_step="Harden",
+                    target_step="placement",
+                    end_step="harden",
                     candidate_id="candidate-1",
                     patch=[{"knob_id": "place.target_density", "value": 0.6}],
                     execution_scope="full_flow",

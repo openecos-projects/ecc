@@ -57,7 +57,7 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
         golden = (
             StepDirectories.of(workspace).path(StepEnum.SYNTHESIS.value)
             / "output"
-            / f"{design}_Synthesis.v.gz"
+            / f"{design}_synthesis.v.gz"
         )
     return golden or getattr(getattr(workspace, "design", None), "origin_verilog", None), gate
 
@@ -78,7 +78,7 @@ def _post_route_gate(workspace: Workspace) -> Path | None:
 
 
 def inserted_lec_results(workspace: Workspace) -> dict[str, Path]:
-    """The result JSON of every inserted LEC check (``lec@CTS``) the ledger records."""
+    """The result JSON of every inserted LEC check (``lec@cts``) the ledger records."""
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
     flow = getattr(workspace, "flow", None)
     return {
@@ -92,11 +92,11 @@ def inserted_lec_results(workspace: Workspace) -> dict[str, Path]:
 
 
 def requires_post_route_lec(workspace: Workspace) -> bool:
-    """Whether postRouteLec is a required, checkable step for *workspace*."""
+    """Whether post_route_lec is a required, checkable step for *workspace*."""
     flow = getattr(workspace, "flow", None)
     if flow is None or not flow.has_step(StepEnum.LVS):
         return False
-    # A workspace whose ledger has no postRouteLec (skipped at creation)
+    # A workspace whose ledger has no post_route_lec (skipped at creation)
     # never requires it, regardless of the artifacts on disk.
     if not flow.has_step(SkippableStepEnum.POST_ROUTE_LEC):
         return False

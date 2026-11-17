@@ -172,7 +172,7 @@ class TestExplicitEmptyStaysExplicit:
 
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
-        assert "step_input_missing: Synthesis requires design.rtl" in reasons
+        assert "step_input_missing: synthesis requires design.rtl" in reasons
         assert flow_mocks.capture["create_kwargs"] is None
 
     @pytest.mark.parametrize("toml_text,expected", _CASES)
@@ -278,7 +278,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=0,
-            entry_range=("Synth", "Harden"),
+            entry_range=("synthesis", "harden"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
@@ -296,7 +296,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=0,
-            entry_range=("Synth", "Harden"),
+            entry_range=("synthesis", "harden"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -314,7 +314,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=100,
-            entry_range=("Place", "Route"),
+            entry_range=("placement", "routing"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
@@ -332,7 +332,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=100,
-            entry_range=("Place", "Route"),
+            entry_range=("placement", "routing"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -351,7 +351,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=100,
-            entry_range=("Synth", "Harden"),
+            entry_range=("synthesis", "harden"),
         )
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
@@ -367,7 +367,7 @@ class TestLowerLayerDivergence:
             tmp_path,
             monkeypatch,
             base_frequency=100,
-            entry_range=("Synth", "Harden"),
+            entry_range=("synthesis", "harden"),
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -384,7 +384,7 @@ class TestOrderedRtlDivergence:
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "Harden"
+        entry["start_step"], entry["end_step"] = "synthesis", "harden"
         manifest_stubs.write(
             project_dir,
             [entry],
@@ -471,12 +471,12 @@ class TestConfigResolvedManifestLayering:
         assert by_key["flow.start"] == {
             "config": "flow.start",
             "scope": "project",
-            "value": "Synth",
-            "resolved": "Synth",
+            "value": "synthesis",
+            "resolved": "synthesis",
             "source": "project.json",
             "inspect": by_key["flow.start"]["inspect"],
         }
-        assert by_key["flow.end"]["value"] == "Harden"
+        assert by_key["flow.end"]["value"] == "harden"
         assert "flow.preset" not in by_key
 
     def test_hybrid_project_labels_explicit_and_filled_sources(

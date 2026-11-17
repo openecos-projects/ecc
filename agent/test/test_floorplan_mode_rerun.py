@@ -18,31 +18,31 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     home = tmp_path / "home"
     home.mkdir()
     flow_path = home / "flow.json"
-    floorplan_step = "preFloorplan" if split_topology else "Floorplan"
+    floorplan_step = "pre_floorplan" if split_topology else "floorplan"
     floorplan_states = (
         [
-            {"name": "preFloorplan", "tool": "ecc", "state": "Success"},
-            {"name": "macroPlacement", "tool": "ecc", "state": "Success"},
-            {"name": "postFloorplan", "tool": "ecc", "state": "Success"},
+            {"name": "pre_floorplan", "tool": "ecc", "state": "Success"},
+            {"name": "macro_placement", "tool": "ecc", "state": "Success"},
+            {"name": "post_floorplan", "tool": "ecc", "state": "Success"},
         ]
         if split_topology
-        else [{"name": "Floorplan", "tool": "ecc", "state": "Success"}]
+        else [{"name": "floorplan", "tool": "ecc", "state": "Success"}]
     )
     data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Synthesis",
+                "name": "synthesis",
                 "tool": "yosys",
                 "state": "Success",
-                **step_fields("Synthesis", "yosys"),
+                **step_fields("synthesis", "yosys"),
             },
             *floorplan_states,
             {
-                "name": "Harden",
+                "name": "harden",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Harden", "ecc"),
+                **step_fields("harden", "ecc"),
             },
         ],
     }
@@ -79,7 +79,7 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
         (origin / "filelist").write_text("gcd.v\n")
         monkeypatch.setattr(ECCToolsModule, "init_fp", lambda self, config: None)
         monkeypatch.setattr(ECCToolsModule, "run_fp", lambda self: True)
-    netlist = tmp_path / "Synthesis_yosys/output/synth.v"
+    netlist = tmp_path / "synthesis_yosys/output/synth.v"
     netlist.parent.mkdir(parents=True)
     netlist.write_text("module gcd(); endmodule\n")
     workspace = SimpleNamespace(directory=tmp_path, flow=SimpleNamespace(data=data, path=flow_path))
@@ -88,7 +88,7 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     class Api(_EccApi):
         def _load_workspace(self, directory):
             candidate = super()._load_workspace(directory)
-            candidate.config["Floorplan"] = Path(directory) / "config/floorplan_ecc.json"
+            candidate.config["floorplan"] = Path(directory) / "config/floorplan_ecc.json"
             candidate.logger = SimpleNamespace()
             if split_topology:
                 root = Path(directory)
@@ -121,30 +121,30 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
         floorplan_steps = (
             (
                 SimpleNamespace(
-                    name="preFloorplan",
+                    name="pre_floorplan",
                     tool="ecc",
                     input=SimpleNamespace(),
-                    output={"dir": root / "preFloorplan_ecc/output"},
-                    feature={"db": root / "preFloorplan_ecc/feature/db.json"},
+                    output={"dir": root / "pre_floorplan_ecc/output"},
+                    feature={"db": root / "pre_floorplan_ecc/feature/db.json"},
                 ),
                 SimpleNamespace(
-                    name="macroPlacement",
+                    name="macro_placement",
                     tool="ecc",
-                    output={"dir": root / "macroPlacement_ecc/output"},
+                    output={"dir": root / "macro_placement_ecc/output"},
                 ),
                 SimpleNamespace(
-                    name="postFloorplan",
+                    name="post_floorplan",
                     tool="ecc",
-                    output={"dir": root / "postFloorplan_ecc/output"},
+                    output={"dir": root / "post_floorplan_ecc/output"},
                 ),
             )
             if split_topology
             else (
                 SimpleNamespace(
-                    name="Floorplan",
+                    name="floorplan",
                     tool="ecc",
                     input=SimpleNamespace(),
-                    output={"dir": root / "Floorplan_ecc/output"},
+                    output={"dir": root / "floorplan_ecc/output"},
                 ),
             )
         )
@@ -152,26 +152,26 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
             candidate,
             (
                 SimpleNamespace(
-                    name="Synthesis",
+                    name="synthesis",
                     tool="yosys",
-                    output={"verilog": root / "Synthesis_yosys/output/synth.v"},
+                    output={"verilog": root / "synthesis_yosys/output/synth.v"},
                 ),
                 *floorplan_steps,
                 SimpleNamespace(
-                    name="Harden",
+                    name="harden",
                     tool="ecc",
                     output=SimpleNamespace(
-                        dir=root / "Harden_ecc/output",
-                        gds=root / "Harden_ecc/output/gcd_Harden.gds",
-                        lef=root / "Harden_ecc/output/gcd_Harden.lef",
-                        lib=root / "Harden_ecc/output/gcd_Harden.lib",
+                        dir=root / "harden_ecc/output",
+                        gds=root / "harden_ecc/output/gcd_harden.gds",
+                        lef=root / "harden_ecc/output/gcd_harden.lef",
+                        lib=root / "harden_ecc/output/gcd_harden.lib",
                     ),
                 ),
             ),
         )
 
     def rebuild(candidate, _step):
-        path = candidate.config["Floorplan"]
+        path = candidate.config["floorplan"]
         config = json.loads(path.read_text())
         if split_topology:
             candidate.parameters = load_parameter(candidate.parameters.path)
@@ -187,9 +187,9 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
     def native(*, workspace, **_kwargs):
         if split_topology:
             module = ECCToolsModule.__new__(ECCToolsModule)
-            module.init_fp(config=str(workspace.config["Floorplan"]))
+            module.init_fp(config=str(workspace.config["floorplan"]))
             module.run_fp()
-            feature = Path(workspace.directory) / "preFloorplan_ecc" / "feature" / "db.json"
+            feature = Path(workspace.directory) / "pre_floorplan_ecc" / "feature" / "db.json"
             feature.parent.mkdir(parents=True, exist_ok=True)
             feature.write_text(
                 json.dumps(
@@ -197,7 +197,7 @@ def _api(tmp_path, monkeypatch, *, fail_once=False, split_topology=False):
                 )
             )
         consumed.append(
-            json.loads(workspace.config["Floorplan"].read_text())["die_builder"]["mode"]
+            json.loads(workspace.config["floorplan"].read_text())["die_builder"]["mode"]
         )
         return not (fail_once and len(consumed) == 1)
 
@@ -256,7 +256,7 @@ def test_failed_mode_baseline_resumes_without_changing_mode(tmp_path, monkeypatc
         )
     )
     terminal = _wait_for_terminal(api.ecc_api.operations, resumed["operationId"])
-    assert terminal["result"]["resumeStep"] == "Floorplan"
+    assert terminal["result"]["resumeStep"] == "floorplan"
     assert consumed == ["die_util", "die_util"]
 
 

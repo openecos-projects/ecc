@@ -36,15 +36,15 @@ class TestParsers:
         assert format_duration(None) is None
 
     def test_canonicalize_stage_name(self):
-        assert canonicalize_stage_name("Synthesis_yosys") == "Synth"
-        assert canonicalize_stage_name("postFloorplan_ecc") == "PostFloorplan"
+        assert canonicalize_stage_name("synthesis_yosys") == "Synth"
+        assert canonicalize_stage_name("post_floorplan_ecc") == "PostFloorplan"
         assert canonicalize_stage_name("legalization_dreamplace") == "Legal"
         assert canonicalize_stage_name("custom_step") == "custom_step"
 
     def test_canonicalize_stage_name_covers_every_lec_engine_directory(self):
         for directory in (
             "lec_kepler_formal",
-            "postRouteLec_kepler_formal",
+            "post_route_lec_kepler_formal",
         ):
             assert canonicalize_stage_name(directory) == "LEC"
 
@@ -84,7 +84,7 @@ class TestParsers:
 class TestStepMetricStore:
     def test_query_schema3_metrics_array(self):
         store = StepMetricStore()
-        store.add("route_ecc", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
+        store.add("routing_ecc", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
         value, stage, key = store.query(
             "Routing", "Via Count", ["Route"], ["route_dr_total_via_count"]
         )
@@ -93,12 +93,12 @@ class TestStepMetricStore:
 
     def test_query_dotted_path_and_normalized_key(self):
         store = StepMetricStore()
-        store.add("postFloorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
+        store.add("post_floorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
         value, _, _ = store.query(
             "Physical", "Die Area", ["PostFloorplan"], ["Design Layout.die_area"]
         )
         assert value == 1234.5
-        store.add("route_ecc", {"RouteDrTotalViaCount": 7})
+        store.add("routing_ecc", {"RouteDrTotalViaCount": 7})
         assert store.query("Routing", "Via", ["Route"], ["route_dr_total_via_count"])[0] == 7.0
 
     def test_query_miss_returns_none(self):
@@ -113,22 +113,22 @@ class TestExtractDesignReportData:
             "pdk": "ics55",
             "parameters": {"Design": "gcd", "PDK": "ics55", "Frequency max [MHz]": 200.0},
             "flow": {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Synthesis",
+                        "name": "synthesis",
                         "tool": "yosys",
                         "state": "Success",
                         "runtime": "0:00:18",
                         "peak memory (mb)": 512,
-                        **step_fields("Synthesis", "yosys"),
+                        **step_fields("synthesis", "yosys"),
                     },
                     {
-                        "name": "route",
+                        "name": "routing",
                         "tool": "ecc",
                         "state": "Success",
                         "runtime": "0:01:00",
-                        **step_fields("route", "ecc"),
+                        **step_fields("routing", "ecc"),
                     },
                 ],
             },
@@ -144,7 +144,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "Harden_ecc": {
+                    "harden_ecc": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_area", "value": 0.30},
@@ -235,7 +235,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "Harden_ecc": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
+                    "harden_ecc": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
                 }
             )
         )
@@ -251,19 +251,19 @@ class TestFormatTextReport:
                 "pdk": "ics55",
                 "parameters": {"Frequency max [MHz]": 200.0},
                 "flow": {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "Synthesis",
+                            "name": "synthesis",
                             "tool": "yosys",
                             "state": "Success",
                             "runtime": "0:00:18",
-                            **step_fields("Synthesis", "yosys"),
+                            **step_fields("synthesis", "yosys"),
                         }
                     ],
                 },
                 "step_metrics": {
-                    "Harden_ecc": {
+                    "harden_ecc": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_usage", "value": 0.62},
@@ -318,21 +318,21 @@ def _make_workspace(tmp_path, *, full=True):
     _write_json(
         root / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
                     "runtime": "0:00:18",
                     "peak memory (mb)": 256,
-                    **step_fields("Synthesis", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
                 {
                     "name": "drc",
@@ -348,7 +348,7 @@ def _make_workspace(tmp_path, *, full=True):
 
         assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
         _write_json(
-            root / "Harden_ecc" / "analysis" / "qor_metrics.json",
+            root / "harden_ecc" / "analysis" / "qor_metrics.json",
             {
                 "metrics": [
                     {"id": "Design Layout.die_area", "value": 0.42},
@@ -394,26 +394,26 @@ class TestCollectWorkspaceReport:
         _write_json(
             Path(workspace.directory) / "home" / "flow.json",
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Synthesis",
+                        "name": "synthesis",
                         "tool": "yosys",
                         "state": "Success",
-                        **step_fields("Synthesis", "yosys"),
+                        **step_fields("synthesis", "yosys"),
                     },
                     {
-                        "name": "powerAnalysis",
+                        "name": "power_analysis",
                         "tool": "ecc",
                         "state": "Success",
-                        **step_fields("powerAnalysis", "ecc"),
+                        **step_fields("power_analysis", "ecc"),
                     },
                 ],
             },
         )
         report_path = (
             Path(workspace.directory)
-            / "powerAnalysis_ecc"
+            / "power_analysis_ecc"
             / "data"
             / "pw"
             / "power_reporter"
@@ -477,11 +477,11 @@ def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
         }
         for (name, tool), directory in directories.items()
     ]
-    _write_json(root / "home" / "flow.json", {"schema_version": 2, "steps": steps})
+    _write_json(root / "home" / "flow.json", {"schema_version": 3, "steps": steps})
     from chipcompiler.data.workspace_config import save_workspace_config
 
     assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
-    harden = directories[("Harden", "ecc")]
+    harden = directories[("harden", "ecc")]
     drc = directories[("drc", "ecc")]
     _write_json(
         root / harden / "analysis" / "qor_metrics.json",
@@ -494,8 +494,8 @@ def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
 
 
 def test_indexed_step_directories_report_like_the_legacy_layout(tmp_path):
-    names = {("Synthesis", "yosys"): "Synthesis_yosys", ("drc", "ecc"): "drc_ecc"}
-    names[("Harden", "ecc")] = "Harden_ecc"
+    names = {("synthesis", "yosys"): "synthesis_yosys", ("drc", "ecc"): "drc_ecc"}
+    names[("harden", "ecc")] = "harden_ecc"
     indexed = {key: f"{index:02d}_{name}" for index, (key, name) in enumerate(names.items(), 1)}
 
     legacy_data = collect_workspace_report(_make_flow_workspace(tmp_path / "legacy", names))

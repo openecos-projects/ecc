@@ -185,8 +185,8 @@ def test_project_set_prevents_config_layer_divergence(tmp_path, monkeypatch, cap
             "ws1",
             name="project",
             workspace_path=str(project_dir / "ws1"),
-            start_step="Synth",
-            end_step="Harden",
+            start_step="synthesis",
+            end_step="harden",
             status="not_started",
             now="2026-01-01T00:00:00+00:00",
         )

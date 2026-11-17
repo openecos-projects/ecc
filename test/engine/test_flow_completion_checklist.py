@@ -129,7 +129,7 @@ def test_flow_items_ignore_steps_outside_the_ledger_range():
 
     steps = [
         {"name": "filler", "tool": "ecc", "state": "Success"},
-        {"name": "Harden", "tool": "ecc", "state": "Success"},
+        {"name": "harden", "tool": "ecc", "state": "Success"},
     ]
 
     class Flow:
@@ -148,5 +148,5 @@ def test_flow_items_ignore_steps_outside_the_ledger_range():
 
     items = _flow_items(cast(Workspace, workspace))
 
-    assert not any(item["step"] == "route" for item in items)
-    assert any(item["step"] == "Harden" and item["state"] == "pass" for item in items)
+    assert not any(item["step"] == "routing" for item in items)
+    assert any(item["step"] == "harden" and item["state"] == "pass" for item in items)

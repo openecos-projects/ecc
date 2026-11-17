@@ -29,7 +29,7 @@ class TestRun:
         project_dir = create_cli_project()
         workspace = SimpleNamespace(
             directory=os.path.join(project_dir, "ws_0001"),
-            flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
+            flow=SimpleNamespace(data={"schema_version": 3, "steps": []}),
         )
         captured = {}
 
@@ -324,7 +324,7 @@ class TestWorkspaceRun:
         ]
         steps[-1]["state"] = "Unstart"  # something left to resume
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": steps}, f)
+            json.dump({"schema_version": 3, "steps": steps}, f)
         assert save_workspace_config(
             run_dir,
             {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
@@ -345,7 +345,7 @@ class TestWorkspaceRun:
             bounded_through=None,
             event_sinks=[],
             max_parallel_steps=[],
-            result=StepRunResult(ok=True, executed=("place",)),
+            result=StepRunResult(ok=True, executed=("placement",)),
         )
 
         class Flow:
@@ -369,12 +369,12 @@ class TestWorkspaceRun:
             if only is not None:
                 return [] if not force else [only]
             if from_step is not None:
-                return [from_step, "CTS"]
-            return ["place", "CTS"]
+                return [from_step, "cts"]
+            return ["placement", "cts"]
 
         def bounded_resume_names(flow, through):
             seen.bounded_through = through
-            return ["place", "CTS"]
+            return ["placement", "cts"]
 
         def run_only(flow, name, *, force=False, event_sink=None):
             seen.only = (name, force)
@@ -420,7 +420,7 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--only",
-                "place",
+                "placement",
                 "--force",
                 "--plain",
             ]
@@ -429,13 +429,13 @@ class TestWorkspaceRun:
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert workspace_mocks.load_path == workspace_mocks.run_dir
-        assert workspace_mocks.selected == {"from_step": None, "only": "place", "force": True}
-        assert workspace_mocks.executable == {"place"}
-        assert workspace_mocks.only == ("place", True)
+        assert workspace_mocks.selected == {"from_step": None, "only": "placement", "force": True}
+        assert workspace_mocks.executable == {"placement"}
+        assert workspace_mocks.only == ("placement", True)
         assert record["workspace_id"] == "workspace"
         assert record["status"] == "success"
         assert record["workspace"] == workspace_mocks.run_dir
-        assert record["executed_steps"] == "[place]"
+        assert record["executed_steps"] == "[placement]"
         assert record["no_op"] == "False"
 
     def test_default_selector_is_resume(self, workspace_mocks):
@@ -453,8 +453,8 @@ class TestWorkspaceRun:
         assert rc == 0
         assert workspace_mocks.selected == {"from_step": None, "only": None, "force": False}
         # The default resume is bounded to the reconciled target's last step.
-        assert workspace_mocks.bounded_through == "Harden"
-        assert workspace_mocks.executable == {"place", "CTS"}
+        assert workspace_mocks.bounded_through == "harden"
+        assert workspace_mocks.executable == {"placement", "cts"}
         assert workspace_mocks.resume is True
 
     def test_from_step_wiring(self, workspace_mocks):
@@ -466,17 +466,17 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--from",
-                "CTS",
+                "cts",
             ]
         )
 
         assert rc == 0
-        assert workspace_mocks.from_step == "CTS"
-        assert workspace_mocks.executable == {"CTS"}
+        assert workspace_mocks.from_step == "cts"
+        assert workspace_mocks.executable == {"cts"}
 
     @pytest.mark.parametrize(
         "selectors",
-        [["--resume"], ["--from", "CTS"], ["--only", "place", "--force"]],
+        [["--resume"], ["--from", "cts"], ["--only", "placement", "--force"]],
     )
     @pytest.mark.parametrize("declared", [None, 2])
     def test_the_engine_gets_the_projects_max_parallel_steps(
@@ -514,8 +514,8 @@ class TestWorkspaceRun:
         [
             [],
             ["--resume"],
-            ["--from", "CTS"],
-            ["--only", "place", "--force"],
+            ["--from", "cts"],
+            ["--only", "placement", "--force"],
         ],
     )
     def test_tty_run_attaches_step_progress_sink(
@@ -555,7 +555,7 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--only",
-                "place",
+                "placement",
                 "--plain",
             ]
         )
@@ -563,7 +563,7 @@ class TestWorkspaceRun:
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
         assert workspace_mocks.create_calls == 0
-        assert workspace_mocks.only == ("place", False)
+        assert workspace_mocks.only == ("placement", False)
         assert record == {
             "workspace_id": "workspace",
             "status": "success",
@@ -575,7 +575,7 @@ class TestWorkspaceRun:
     def test_failed_run_reports_failed_step_and_resume(
         self, workspace_mocks, capsys, plain_records
     ):
-        workspace_mocks.result = StepRunResult(ok=False, executed=(), failed="place")
+        workspace_mocks.result = StepRunResult(ok=False, executed=(), failed="placement")
 
         rc = cli_main.run(
             [
@@ -585,7 +585,7 @@ class TestWorkspaceRun:
                 "--workspace",
                 "workspace",
                 "--only",
-                "place",
+                "placement",
                 "--plain",
             ]
         )
@@ -598,7 +598,7 @@ class TestWorkspaceRun:
             "workspace": workspace_mocks.run_dir,
             "executed_steps": "[]",
             "no_op": "False",
-            "failed_step": "place",
+            "failed_step": "placement",
             "resume_cmd": "ecc run --workspace workspace --resume",
         }
 
@@ -652,30 +652,48 @@ class TestWorkspaceRun:
     @pytest.mark.parametrize(
         "argv,error",
         [
-            (["--workspace", "w", "--resume", "--only", "place"], "selector_conflict"),
-            (["--workspace", "w", "--from", "place", "--only", "CTS"], "selector_conflict"),
-            (["--workspace", "w", "--from", "place", "--resume"], "selector_conflict"),
+            (["--workspace", "w", "--resume", "--only", "placement"], "selector_conflict"),
+            (["--workspace", "w", "--from", "placement", "--only", "cts"], "selector_conflict"),
+            (["--workspace", "w", "--from", "placement", "--resume"], "selector_conflict"),
             (
-                ["--workspace", "w", "--from", "place", "--to", "route", "--resume"],
+                ["--workspace", "w", "--from", "placement", "--to", "routing", "--resume"],
                 "selector_conflict",
             ),
             (
-                ["--workspace", "w", "--from", "place", "--to", "route", "--only", "place"],
+                [
+                    "--workspace",
+                    "w",
+                    "--from",
+                    "placement",
+                    "--to",
+                    "routing",
+                    "--only",
+                    "placement",
+                ],
                 "selector_conflict",
             ),
             (
-                ["--workspace", "w", "--from", "place", "--to", "route", "--force"],
+                ["--workspace", "w", "--from", "placement", "--to", "routing", "--force"],
                 "selector_conflict",
             ),
             (
-                ["--workspace", "w", "--from", "place", "--to", "route", "--preset", "rtl2gds"],
+                [
+                    "--workspace",
+                    "w",
+                    "--from",
+                    "placement",
+                    "--to",
+                    "routing",
+                    "--preset",
+                    "rtl2gds",
+                ],
                 "selector_conflict",
             ),
-            (["--workspace", "w", "--to", "route"], "flow_range_requires_pair"),
+            (["--workspace", "w", "--to", "routing"], "flow_range_requires_pair"),
             (["--workspace", "w", "--force"], "force_requires_only"),
             (["--resume"], "selector_requires_workspace"),
-            (["--only", "place"], "selector_requires_workspace"),
-            (["--from", "place"], "flow_range_requires_pair"),
+            (["--only", "placement"], "selector_requires_workspace"),
+            (["--from", "placement"], "flow_range_requires_pair"),
         ],
     )
     def test_option_conflicts(
@@ -733,7 +751,7 @@ class TestWorkspaceNoOp:
             for name, tool in chain
         ]
         with open(os.path.join(home, "flow.json"), "w") as f:
-            _json.dump({"schema_version": 2, "steps": steps}, f)
+            _json.dump({"schema_version": 3, "steps": steps}, f)
         assert save_workspace_config(
             workspace,
             {

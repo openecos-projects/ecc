@@ -23,10 +23,10 @@ def test_flow_ledger_round_trip_preserves_every_value(tmp_path):
     workspace.flow.path = flow_path
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             flow.init_flow_step(step, tool, state)
-            for step, tool, state in build_flow_range("Synthesis", "Harden")
+            for step, tool, state in build_flow_range("synthesis", "harden")
         ],
     }
     before_steps = copy.deepcopy(flow.workspace.flow.data.get("steps", []))
@@ -47,14 +47,14 @@ def test_flow_document_round_trip_preserves_unknown_fields(tmp_path):
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
     document = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
                 "category": "PNR",
-                "directory": "12_route_ecc",
+                "directory": "12_routing_ecc",
                 "future_step_field": {"nested": [1, 2]},
             }
         ],
@@ -78,7 +78,7 @@ def test_non_list_steps_are_rejected_without_rewriting_the_document(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
-    document = {"schema_version": 2, "steps": {"name": "route"}}
+    document = {"schema_version": 3, "steps": {"name": "routing"}}
     flow_path.write_text(json.dumps(document), encoding="utf-8")
     workspace.flow.path = flow_path
 
@@ -92,8 +92,8 @@ def test_state_less_entry_is_rejected(tmp_path):
     flow_path = tmp_path / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
     document = {
-        "schema_version": 2,
-        "steps": [{"name": "route", "tool": "ecc", **step_fields("route", "ecc")}],
+        "schema_version": 3,
+        "steps": [{"name": "routing", "tool": "ecc", **step_fields("routing", "ecc")}],
     }
     flow_path.write_text(json.dumps(document), encoding="utf-8")
     workspace.flow.path = flow_path

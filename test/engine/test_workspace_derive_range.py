@@ -11,9 +11,9 @@ from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 from test.flow_fixture import step_fields
 
 _LEDGER = [
-    ("Synthesis", "yosys"),
-    ("CTS", "ecc"),
-    ("lec@CTS", "kepler_formal"),
+    ("synthesis", "yosys"),
+    ("cts", "ecc"),
+    ("lec@cts", "kepler_formal"),
     ("legalization", "dreamplace"),
 ]
 
@@ -21,13 +21,13 @@ _LEDGER = [
 def _derived(tmp_path, monkeypatch) -> tuple[Any, Any]:
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {"name": name, "tool": tool, "state": "Success", **step_fields(name, tool)}
             for name, tool in _LEDGER
         ],
     }
-    workspace.parameters.data["_flow"] = {"preset": "rtl2gds", "insert_steps": ["lec@CTS"]}
+    workspace.parameters.data["_flow"] = {"preset": "rtl2gds", "insert_steps": ["lec@cts"]}
     flow = SimpleNamespace(
         workspace_steps=[], save=lambda: True, create_step_workspaces=lambda **_kwargs: None
     )
@@ -39,22 +39,22 @@ def _derived(tmp_path, monkeypatch) -> tuple[Any, Any]:
 def test_a_range_ending_at_a_step_keeps_its_inserted_check(tmp_path, monkeypatch):
     workspace, flow = _derived(tmp_path, monkeypatch)
 
-    derive_range.bound_derived_flow(workspace, flow, "", "CTS")
+    derive_range.bound_derived_flow(workspace, flow, "", "cts")
 
     assert (
         [step["name"] for step in workspace.flow.data["steps"]],
         workspace.parameters.data["_flow"],
     ) == (
-        ["Synthesis", "CTS", "lec@CTS"],
-        {"start": "Synthesis", "end": "CTS", "insert_steps": ["lec@CTS"]},
+        ["synthesis", "cts", "lec@cts"],
+        {"start": "synthesis", "end": "cts", "insert_steps": ["lec@cts"]},
     )
 
 
 @pytest.mark.parametrize(
-    ("from_step", "through_step"), [("lec@CTS", "legalization"), ("", "lec@CTS")]
+    ("from_step", "through_step"), [("lec@cts", "legalization"), ("", "lec@cts")]
 )
 def test_an_inserted_step_cannot_bound_the_range(tmp_path, monkeypatch, from_step, through_step):
     workspace, flow = _derived(tmp_path, monkeypatch)
 
-    with pytest.raises(WorkspaceLifecycleError, match="lec@CTS is an inserted step"):
+    with pytest.raises(WorkspaceLifecycleError, match="lec@cts is an inserted step"):
         derive_range.bound_derived_flow(workspace, flow, from_step, through_step)

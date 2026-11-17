@@ -47,7 +47,7 @@ def _parameter_flow_step(value: str) -> str:
     if applies.casefold() == "floorplan":
         # Floorplan is a shared configuration section owned by the floorplan
         # steps, not a standalone flow step.
-        return "preFloorplan"
+        return "pre_floorplan"
     return applies
 
 

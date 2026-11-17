@@ -75,7 +75,7 @@ def validate_placements(placements: list[dict]) -> list[str]:
 
 
 def render_macro_location_tcl(placements: list[dict]) -> str:
-    """Render the placeInstance handoff consumed by postFloorplan (iFP)."""
+    """Render the placeInstance handoff consumed by post_floorplan (iFP)."""
     lines = [MACRO_LOCATION_MARKER, ""]
     for entry in placements:
         lines.append(

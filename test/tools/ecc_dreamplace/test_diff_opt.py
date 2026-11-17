@@ -95,7 +95,7 @@ def test_diff_opt_public_fields_are_scoped_to_diff_opt():
 
 
 def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
-    chain = build_flow_range("place", "diff_sizing")
+    chain = build_flow_range("placement", "diff_sizing")
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
         (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),

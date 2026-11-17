@@ -8,7 +8,7 @@ from test.flow_fixture import step_fields
 def evidence():
     return {
         "flow": {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "sta",

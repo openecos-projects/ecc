@@ -35,8 +35,8 @@ def test_write_manifest_if_absent_wins_and_loses_race(tmp_path):
         base_design={"pdk": "ics55", "parameters": {"design": "gcd"}},
         workspace_id="default",
         workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
+        start_step="synthesis",
+        end_step="filler",
     )
     assert write_manifest_if_absent(str(tmp_path), document) is True
     assert write_manifest_if_absent(str(tmp_path), document) is False
@@ -48,8 +48,8 @@ def test_write_manifest_if_absent_wins_and_loses_race(tmp_path):
     assert written["qor_baseline"]["workspace_id"] == "default"
     (entry,) = written["workspaces"]
     assert entry["workspace_id"] == "default"
-    assert entry["start_step"] == "Synth"
-    assert entry["end_step"] == "Filler"
+    assert entry["start_step"] == "synthesis"
+    assert entry["end_step"] == "filler"
     assert entry["status"] == "running"
 
 
@@ -60,8 +60,8 @@ def test_update_manifest_preserves_unrelated_fields(tmp_path):
         base_design={"parameters": {"design": "gcd"}},
         workspace_id="default",
         workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
+        start_step="synthesis",
+        end_step="filler",
     )
     write_manifest_if_absent(str(tmp_path), document)
 
@@ -87,8 +87,8 @@ def test_write_back_workspace_status(tmp_path):
         base_design={"parameters": {"design": "gcd"}},
         workspace_id="default",
         workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
+        start_step="synthesis",
+        end_step="filler",
     )
     write_manifest_if_absent(str(tmp_path), document)
 
@@ -121,7 +121,7 @@ def test_pre_register_workspace_writes_a_manifest_entry_before_workspace_creatio
         pdk_root="/pdk",
         workspace_id="cts-only",
         workspace_path=str(tmp_path / "cts-only"),
-        flow_config={"start_step": "CTS", "end_step": "CTS"},
+        flow_config={"start_step": "cts", "end_step": "cts"},
     )
 
     assert result == "registered"
@@ -129,8 +129,8 @@ def test_pre_register_workspace_writes_a_manifest_entry_before_workspace_creatio
     document = json.loads((tmp_path / "project.json").read_text())
     entry = document["workspaces"][0]
     assert entry["workspace_id"] == "cts-only"
-    assert entry["start_step"] == "CTS"
-    assert entry["end_step"] == "CTS"
+    assert entry["start_step"] == "cts"
+    assert entry["end_step"] == "cts"
     assert entry["status"] == "not_started"
     assert "input_snapshot" not in entry
 
@@ -142,8 +142,8 @@ def test_update_manifest_preserves_interleaved_unrelated_change(tmp_path):
         base_design={"parameters": {"design": "gcd"}},
         workspace_id="default",
         workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
+        start_step="synthesis",
+        end_step="filler",
     )
     write_manifest_if_absent(str(tmp_path), document)
 
@@ -169,8 +169,8 @@ def test_status_write_back_touches_only_target_entry(tmp_path):
         base_design={"parameters": {"design": "gcd"}},
         workspace_id="default",
         workspace_path=str(tmp_path / "default"),
-        start_step="Synth",
-        end_step="Filler",
+        start_step="synthesis",
+        end_step="filler",
     )
     write_manifest_if_absent(str(tmp_path), document)
     before = json.loads((tmp_path / "project.json").read_text())

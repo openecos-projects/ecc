@@ -25,16 +25,16 @@ def power_summary_path(feature_dir: str | Path) -> Path:
 
 def power_step_path(feature_dir: str | Path) -> Path:
     """Return the merged machine-readable power step artifact."""
-    return Path(feature_dir) / "powerAnalysis.step.json"
+    return Path(feature_dir) / f"{StepEnum.POWER_ANALYSIS.value}.step.json"
 
 
 def native_power_report_path(power_step_directory: str | Path) -> Path:
-    """Return the native iPW report of a powerAnalysis step."""
+    """Return the native iPW report of a power_analysis step."""
     return power_report_path(Path(power_step_directory) / "data" / "pw")
 
 
 def published_power_report_path(power_step_directory: str | Path) -> Path:
-    """Return the report a powerAnalysis step publishes."""
+    """Return the report a power_analysis step publishes."""
     return Path(power_step_directory) / "report" / f"{StepEnum.POWER_ANALYSIS.value}.rpt"
 
 
@@ -45,7 +45,7 @@ def power_report_source_path(power_step_directory: str | Path) -> Path:
 
 
 def step_power_summary_path(power_step_directory: str | Path) -> Path:
-    """Return the ECC power summary of a powerAnalysis step."""
+    """Return the ECC power summary of a power_analysis step."""
     return power_summary_path(Path(power_step_directory) / "feature")
 
 

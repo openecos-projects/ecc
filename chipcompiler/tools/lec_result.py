@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """The LEC step mechanics shared beyond the engine package.
 
-Every LEC step (inserted ``lec@<step>`` checks and postRouteLec) shares the
+Every LEC step (inserted ``lec@<step>`` checks and post_route_lec) shares the
 same netlist identity rules, result JSON contract, and step-space layout: a
 ``status`` verdict plus the golden/gate netlist identities (path, sha256,
 size). Freshness re-verifies the recorded identities against the files on
 disk, so a stale proof can never pass as current — shared here by the engine
-and the signoff/analysis consumers. An RTL golden (``lec@Synthesis``,
+and the signoff/analysis consumers. An RTL golden (``lec@synthesis``,
 ``golden_kind`` ``rtl`` or ``rtl_filelist``) is identified by every file
 reading it reads (:func:`input_digest`).
 """
@@ -91,7 +91,7 @@ def write_step_result(step, *, proven: bool, golden_kind: str = "netlist") -> No
     """Write the engine-neutral LEC result JSON for one engine step.
 
     *golden_kind* (:data:`GOLDEN_KINDS`): what the golden is; RTL for
-    ``lec@Synthesis``.
+    ``lec@synthesis``.
     """
     if not step.output.json:
         return

@@ -6,7 +6,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import chipcompiler
-from chipcompiler.data.types import LEC_STEP_TOOLS
+from chipcompiler.data.types import LEC_STEP_TOOLS, StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
@@ -319,7 +319,7 @@ def _candidate_step_range(
         _step_value(step, "name") == target_step for step in steps
     ):
         # Flows running the floorplan phase as sub-steps have no literal
-        # "Floorplan" step; start the range at its first sub-step instead.
+        # "floorplan" step; start the range at its first sub-step instead.
         range_target = FLOORPLAN_TARGET_FLOW_STEP[target_step]
     target_index = next(
         (index for index, step in enumerate(steps) if _step_value(step, "name") == range_target),
@@ -369,8 +369,10 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         validate_candidate_id(request.candidate_id)
     except ValueError as exc:
         raise RuntimeApiError("invalid_request", "candidate rerun candidate_id is invalid") from exc
-    if request.end_step != "Harden":
-        raise RuntimeApiError("invalid_request", "candidate rerun end step must be Harden")
+    if request.end_step != StepEnum.HARDEN.value:
+        raise RuntimeApiError(
+            "invalid_request", f"candidate rerun end step must be {StepEnum.HARDEN.value}"
+        )
     if request.execution_scope != "full_flow":
         raise RuntimeApiError(
             "invalid_request", "candidate rerun execution scope must be full_flow"
@@ -548,14 +550,14 @@ def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | No
         "candidate_flow_sha256": flow_sha256,
         "candidate_state_sha256": state_sha256,
         "terminal_state": "succeeded",
-        "end_step": "Harden",
+        "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
     }
     if not isinstance(manifest, dict) or any(
         manifest.get(key) != value for key, value in expected.items()
     ):
         raise RuntimeApiError(
-            "command_failed", "candidate parent is not a verified successful Harden candidate"
+            "command_failed", "candidate parent is not a verified successful harden candidate"
         )
     return {
         **binding,
@@ -654,7 +656,7 @@ def _candidate_workspace_receipt(
             ("harden_lef", "lef"),
             ("harden_lib", "lib"),
         ):
-            relative = f"Harden_ecc/output/{design_name}_Harden.{suffix}"
+            relative = f"harden_ecc/output/{design_name}_harden.{suffix}"
             artifact = candidate_root / relative
             artifacts[key] = {
                 "ref": relative,
@@ -987,10 +989,10 @@ def _validate_runtime_report_binding(
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
-    # The RPC-level "Floorplan" target binds the post-synthesis netlist: the
-    # floorplan sub-steps consume the Synthesis output as their phase input.
-    if target_step == "Floorplan":
-        return "Synthesis"
+    # The RPC-level "floorplan" target binds the post-synthesis netlist: the
+    # floorplan sub-steps consume the synthesis output as their phase input.
+    if target_step == StepEnum.FLOORPLAN.value:
+        return StepEnum.SYNTHESIS.value
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == target_step and index:

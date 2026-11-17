@@ -23,7 +23,7 @@ def _disable_process_guards(monkeypatch):
     monkeypatch.setattr(step_subprocess.worker, "_start_parent_death_watchdog", lambda: None)
 
 
-def _workspace_step(tmp_path, name="place", tool="ecc"):
+def _workspace_step(tmp_path, name="placement", tool="ecc"):
     log_file = tmp_path / "log" / "step.log"
     log_file.parent.mkdir(parents=True, exist_ok=True)
     return _ns(
@@ -47,7 +47,7 @@ def _workspace(tmp_path):
         directory=str(tmp_path),
         logger=logging.getLogger("ecc-test"),
         parameters=parameters,
-        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 2, "steps": []}),
+        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 3, "steps": []}),
     )
 
 
@@ -230,7 +230,7 @@ def test_worker_main_records_step_failure(monkeypatch, tmp_path):
     ("built", "message"),
     [
         (None, "could not be built"),
-        (_ns(name="place", tool="ecc", directory="/elsewhere/place_ecc"), "builds into"),
+        (_ns(name="placement", tool="ecc", directory="/elsewhere/place_ecc"), "builds into"),
     ],
 )
 def test_worker_main_records_a_step_it_cannot_build(monkeypatch, tmp_path, built, message):

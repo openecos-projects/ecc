@@ -27,20 +27,20 @@ from test.flow_fixture import step_fields
 SUCCESS = "Success"
 
 _FLOW_STEPS = {
-    "Synthesis": SUCCESS,
-    "postFloorplan": SUCCESS,
-    "place": SUCCESS,
-    "CTS": SUCCESS,
-    "route": SUCCESS,
+    "synthesis": SUCCESS,
+    "post_floorplan": SUCCESS,
+    "placement": SUCCESS,
+    "cts": SUCCESS,
+    "routing": SUCCESS,
     "drc": SUCCESS,
     "lvs": SUCCESS,
-    "RCX": SUCCESS,
+    "rcx": SUCCESS,
     "sta": SUCCESS,
-    "Harden": SUCCESS,
+    "harden": SUCCESS,
 }
 
 
-_STEP_TOOLS = {"Synthesis": "yosys", "place": "dreamplace"}
+_STEP_TOOLS = {"synthesis": "yosys", "placement": "dreamplace"}
 
 
 def _write(path, payload):
@@ -80,7 +80,7 @@ def _make_gcd_workspace(tmp_path):
     _write(
         os.path.join(root, "home", "flow.json"),
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": name,
@@ -97,41 +97,41 @@ def _make_gcd_workspace(tmp_path):
     assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
 
     directory_by_step = {
-        "Synthesis": "Synthesis_yosys",
-        "postFloorplan": "postFloorplan_ecc",
-        "place": "place_dreamplace",
-        "CTS": "CTS_ecc",
-        "route": "route_ecc",
+        "synthesis": "synthesis_yosys",
+        "post_floorplan": "post_floorplan_ecc",
+        "placement": "placement_dreamplace",
+        "cts": "cts_ecc",
+        "routing": "routing_ecc",
         "drc": "drc_ecc",
         "lvs": "lvs_ecc",
-        "RCX": "RCX_ecc",
+        "rcx": "rcx_ecc",
         "sta": "sta_ecc",
-        "Harden": "Harden_ecc",
+        "harden": "harden_ecc",
     }
     payloads = {
-        "Synthesis": [_metric("synthesis_cell_area", 800.0, "trend", "um^2")],
-        "postFloorplan": [
+        "synthesis": [_metric("synthesis_cell_area", 800.0, "trend", "um^2")],
+        "post_floorplan": [
             _metric("core_area", 1538.46, "trend", "um^2"),
             _metric("core_utilization", 0.52, "trend"),
         ],
-        "place": [
+        "placement": [
             _metric("place_hpwl", 3143.52, "trend", "um"),
             _metric("place_grwl", 3812.00, "trend", "um"),
             _metric("place_rudy_utilization_max", 0.0, "trend"),
         ],
-        "CTS": [
+        "cts": [
             _metric("cts_buffer_count", 4, "trend"),
             _metric("cts_inverter_count", 0, "trend"),
             _metric("clock_path_max_buffer", 4, "trend"),
             _metric("clock_path_min_buffer", 4, "trend"),
         ],
-        "route": [
+        "routing": [
             _metric("route_wirelength", 4315.53, "final", "um"),
             _metric("route_via_count", 608, "final"),
         ],
         "drc": [_metric("drc_count", 0, "gate")],
         "lvs": [_metric("lvs_count", 0, "gate")],
-        "RCX": [
+        "rcx": [
             _metric("rcx_spef_file_count", 2, "gate"),
             _metric("rcx_expected_corner_count", 2, "trend"),
             _metric("rcx_missing_corner_count", 0, "gate"),
@@ -146,7 +146,7 @@ def _make_gcd_workspace(tmp_path):
             _metric("sta_expected_corner_count", 2, "trend"),
             _metric("sta_missing_corner_count", 0, "gate"),
         ],
-        "Harden": [_metric("harden_artifact_missing_count", 0, "final")],
+        "harden": [_metric("harden_artifact_missing_count", 0, "final")],
     }
     for step_value, metrics in payloads.items():
         _write(

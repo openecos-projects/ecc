@@ -45,7 +45,7 @@
       pythonImportsCheck = [ "rosettakit" ];
     };
 
-    # kepler-formal, the GPL-3.0-only LEC engine for the lec/postRouteLec
+    # kepler-formal, the GPL-3.0-only LEC engine for the lec/post_route_lec
     # steps: nix-eda's packaging with src pointed at the openecos fork.
     # Built from source for local development only: ECOS ships Apache-2.0
     # and does not redistribute kepler-formal binaries, so the derivation

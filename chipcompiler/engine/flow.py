@@ -426,7 +426,7 @@ class EngineFlow:
                     and input_source.name == StepEnum.SYNTHESIS.value
                     and inserted_step_kind(step["name"]) is not None
                 ):
-                    # lec@Synthesis: the synthesized netlist against the RTL
+                    # lec@synthesis: the synthesized netlist against the RTL
                     # Synthesis read (kepler-formal SEC).
                     input_db = synthesis_rtl
                 elif (

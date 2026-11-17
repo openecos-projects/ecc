@@ -115,7 +115,7 @@ Example:
 
 ```text
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
+config=routing_ecc.json scope=step step=routing role=config path=gcd/default/config/routing_ecc.json inspect="ecc config routing"
 ```
 
 Text output and plain output describe the same objects: pretty text is the
@@ -350,9 +350,9 @@ or re-executed in place:
 ```bash
 ecc run --workspace default
 ecc run --workspace default --resume
-ecc run --workspace default --from CTS --to route
-ecc run --workspace default --only place
-ecc run --workspace default --only place --force
+ecc run --workspace default --from cts --to routing
+ecc run --workspace default --only placement
+ecc run --workspace default --only placement --force
 ```
 
 Step names and order come from the workspace's persisted `home/flow.json`.
@@ -508,7 +508,7 @@ Examples:
 ```text
 workspace_id=default status=success workspace=gcd/default inspect_cmd="ecc status" log_cmd="ecc log"
 step=routing tool=ecc status=failed runtime=0:03:42 log_cmd="ecc log routing"
-config=route_ecc.json scope=step step=routing role=config path=gcd/default/config/route_ecc.json inspect="ecc config routing"
+config=routing_ecc.json scope=step step=routing role=config path=gcd/default/config/routing_ecc.json inspect="ecc config routing"
 ```
 
 Rules:
@@ -598,12 +598,12 @@ flow presets are discovered from the `build_*_flow` defs in
 `synthesis_lec`). The `rtl2gds` preset runs synthesis followed by every
 physical-design step through RCX, STA, and Harden; `diff_opt` is skipped by
 default (`[flow] skip_steps` defaults to `["diff_opt"]`; an explicit `[]` runs
-every step). LEC checks other than `postRouteLec` are not chain steps:
-`[flow] insert_steps` (e.g. `["lec@Synthesis"]`) inserts an LEC after any
-step from `Synthesis` to `route`. `lec@Synthesis` checks the RTL against the
+every step). LEC checks other than `post_route_lec` are not chain steps:
+`[flow] insert_steps` (e.g. `["lec@synthesis"]`) inserts an LEC after any
+step from `synthesis` to `routing`. `lec@synthesis` checks the RTL against the
 synthesized netlist with kepler-formal's SEC; a later insertion checks that
 step's netlist against the synthesis netlist. `synthesis_lec` builds
-`Synthesis` + `lec@Synthesis`;
+`synthesis` + `lec@synthesis`;
 `syn_sta` runs synthesis only, with a best-effort netlist-level STA report
 (an STA failure does not fail the step). Switching
 presets on an existing run requires `ecc run --overwrite` to rebuild the
@@ -618,7 +618,7 @@ that lacks required design data is a configuration error for `ecc check`,
 to re-enable; a step that lacks only optional data runs with degraded results
 and warns `flow_step_degraded`. The preset's final step (the flow target) and
 an explicit range start cannot be skipped; the first step can (skipping
-`Synthesis` enters at `preFloorplan` with the declared
+`synthesis` enters at `pre_floorplan` with the declared
 `[design] netlist`). A skipped signoff checker (drc, lvs, sta) leaves its
 `ecc signoff check` gate `unknown`. Existing workspace ledgers are never
 re-filtered. `ecc flow status` checks a selection read-only, and `ecc flow edit`

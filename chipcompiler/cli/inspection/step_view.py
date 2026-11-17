@@ -37,10 +37,10 @@ class _StepEntry:
     aliases: frozenset[str]
 
     def state(self) -> str:
-        from chipcompiler.cli.core.output import normalize_state
+        from chipcompiler.cli.core.output import flow_step_status
 
         if self.flow is not None:
-            return normalize_state(self.flow.get("state", ""))
+            return flow_step_status(self.flow.get("state", ""))
         return "unknown"  # dir-discovered step with no flow record
 
     def runtime(self) -> str | None:
@@ -54,10 +54,9 @@ class _StepEntry:
 def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     """Flow steps in flow order plus dir-discovered extras, dir-associated.
 
-    A flow step links to its step directory on token equality or the
-    underscore alias of its token ("Timing optimization" -> "timing_optimization").
+    A flow step links to its step directory on name equality or the
+    ``<step>_<tool>`` directory prefix.
     """
-    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
         discover_step_dirs,
         read_flow_json,
@@ -72,13 +71,12 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     taken_dirs: set[str] = set()
     for flow_step in flow_steps:
         name = str(flow_step["name"])
-        token = normalize_step_name(name)
-        alias = token.replace(" ", "_")
+        token = name
         matched = None
         for dir_token in dir_tokens:
             if dir_token in taken_dirs:
                 continue
-            if dir_token in (token, alias) or dir_token.startswith(f"{alias}_"):
+            if dir_token == token or dir_token.startswith(f"{token}_"):
                 matched = dir_token
                 taken_dirs.add(dir_token)
                 break
@@ -89,9 +87,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                 tool=str(flow_step.get("tool", "")),
                 directory=dir_tokens.get(matched) if matched else None,
                 flow=flow_step,
-                aliases=frozenset(
-                    {token.lower(), alias.lower(), name.lower(), *({matched} if matched else ())}
-                ),
+                aliases=frozenset({token.lower(), *({matched} if matched else ())}),
             )
         )
     for dir_token, dir_path in sorted(dir_tokens.items()):
@@ -110,8 +106,11 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
 
 
 def _resolve_entry(entries: list[_StepEntry], token: str) -> _StepEntry | None:
-    wanted = token.strip().lower()
-    return next((e for e in entries if wanted in e.aliases), None)
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    # A typed step alias ("timing optimization", "place") resolves to its flow step.
+    wanted = {token.strip().lower(), normalize_flow_step(token).lower()}
+    return next((e for e in entries if wanted & e.aliases), None)
 
 
 # --- feature ---------------------------------------------------------------

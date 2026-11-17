@@ -29,7 +29,7 @@ def test_create_workspace_rejects_invalid_skip_steps_before_any_mutation(
             pdk="ics55",
             parameters=deepcopy(default_ics55_parameters),
             pdk_root=pdk_root,
-            flow_config={"start_step": "Synthesis", "end_step": "Harden", "skip_steps": "lec"},
+            flow_config={"start_step": "synthesis", "end_step": "harden", "skip_steps": "lec"},
         )
 
     assert not workspace_dir.exists()
@@ -38,7 +38,7 @@ def test_create_workspace_rejects_invalid_skip_steps_before_any_mutation(
 def test_create_workspace_without_insertions_chains_pre_floorplan_after_synthesis(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    """No inserted LEC: preFloorplan directly follows synthesis and consumes
+    """No inserted LEC: pre_floorplan directly follows synthesis and consumes
     its outputs."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     def_path = tmp_path / "gcd.def"
@@ -54,20 +54,20 @@ def test_create_workspace_without_insertions_chains_pre_floorplan_after_synthesi
         pdk="ics55",
         parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
-        flow_config={"start_step": "Synthesis", "end_step": "preFloorplan"},
+        flow_config={"start_step": "synthesis", "end_step": "pre_floorplan"},
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
-    assert [step["name"] for step in flow_data["steps"]] == ["Synthesis", "preFloorplan"]
+    assert [step["name"] for step in flow_data["steps"]] == ["synthesis", "pre_floorplan"]
     assert [step["tool"] for step in flow_data["steps"]] == ["yosys", "ecc"]
 
 
 @pytest.mark.parametrize(
     ("policy", "expected"),
     [
-        ({}, ["place", "diff_sizing", "CTS"]),
-        ({"skip_steps": ["diff_opt"]}, ["place", "diff_sizing", "CTS"]),
-        ({"skip_steps": []}, ["place", "diff_opt", "diff_sizing", "CTS"]),
+        ({}, ["placement", "diff_sizing", "cts"]),
+        ({"skip_steps": ["diff_opt"]}, ["placement", "diff_sizing", "cts"]),
+        ({"skip_steps": []}, ["placement", "diff_opt", "diff_sizing", "cts"]),
     ],
 )
 def test_create_workspace_diff_opt_policy_preserves_diff_sizing(
@@ -85,7 +85,7 @@ def test_create_workspace_diff_opt_policy_preserves_diff_sizing(
         pdk="ics55",
         parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
-        flow_config={"start_step": "place", "end_step": "CTS", **policy},
+        flow_config={"start_step": "placement", "end_step": "cts", **policy},
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
@@ -111,15 +111,15 @@ def test_create_workspace_skip_timing_opt_chains_route_after_legalization(
         pdk_root=pdk_root,
         flow_config={
             "start_step": "legalization",
-            "end_step": "route",
-            "skip_steps": ["TimingOpt"],
+            "end_step": "routing",
+            "skip_steps": ["timing_optimization"],
         },
     )
 
     flow_data = json_read(workspace_dir / "home" / "flow.json")
     assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("legalization", "dreamplace"),
-        ("route", "ecc"),
+        ("routing", "ecc"),
     ]
 
 
@@ -141,7 +141,7 @@ def test_create_workspace_skip_post_route_lec_chains_drc_after_lvs(
         flow_config={
             "start_step": "lvs",
             "end_step": "drc",
-            "skip_steps": ["postRouteLec"],
+            "skip_steps": ["post_route_lec"],
         },
     )
 
