@@ -326,7 +326,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/` 骨架（workspace 由首个 `ecc run` 创建）：
+在 `NAME/` 下生成 `ecc.toml`、`project.json` 和 `timing_constraints_template.tcl`。不再创建空的 RTL 或 SDC 目录；workspace 由首个 `ecc run` 创建：
 
 ```console
 $ ecc init gcd
@@ -344,15 +344,13 @@ $ ecc init gcd
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # 一个或多个 Verilog 源文件，也可指向一个 filelist（如 rtl/filelist.f）
+rtl = []                # 运行前指定源文件或 filelist
+sdc = "timing_constraints_template.tcl"
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
@@ -364,6 +362,10 @@ preset = "rtl2gds"
 # Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
 skip_steps = ["lec", "diff_opt"]
 ```
+
+通过 `ecc project set design.rtl /path/to/filelist.f --project gcd` 指定 RTL。
+在时序模板的五组输入中填写时钟与约束，默认主时钟是 `clk`、100 MHz；
+`project.json` 由 ECC 自动维护。
 
 ## 4. check — 校验项目配置
 

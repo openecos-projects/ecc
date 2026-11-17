@@ -269,7 +269,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
+Creates `ecc.toml`, `project.json`, and `timing_constraints_template.tcl` under `NAME/`. No empty RTL or SDC directories are created; the workspace is created by the first `ecc run`:
 
 ```console
 $ ecc init gcd
@@ -287,15 +287,13 @@ The generated `ecc.toml` (edit `design.*` and `pdk.root` as needed):
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple sources (e.g. rtl/filelist.f)
+rtl = []                # set your source files or filelist before running
+sdc = "timing_constraints_template.tcl"
 # Optional entry inputs for non-RTL ranges:
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # ics55 is the currently supported PDK
@@ -307,6 +305,10 @@ preset = "rtl2gds"
 # Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
 skip_steps = ["lec", "diff_opt"]
 ```
+
+Bind your RTL with `ecc project set design.rtl /path/to/filelist.f --project gcd`.
+Edit the timing template's five fields to set clocks and constraints; its default
+primary clock is `clk` at 100 MHz. `project.json` is maintained by ECC.
 
 ## 4. check — validate the project configuration
 

@@ -100,12 +100,12 @@ def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_rec
 
 def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
     project_dir = _manifest_project(tmp_path, monkeypatch)
-    (project_dir / "sdc/fast.tcl").write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
+    (project_dir / "fast.tcl").write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
     pdk = tmp_path / "pdk"
     pdk.mkdir()
 
     _run_project(project_dir, "set", "design.top", "gcd_top")
-    _run_project(project_dir, "set", "design.sdc", "sdc/fast.tcl")
+    _run_project(project_dir, "set", "design.sdc", "fast.tcl")
     _run_project(project_dir, "set", "pdk.root", str(pdk))
 
     base = _manifest(project_dir)["base_design"]
@@ -165,12 +165,12 @@ def test_project_set_prevents_config_layer_divergence(tmp_path, monkeypatch, cap
     project_dir = _manifest_project(tmp_path, monkeypatch)
     pdk = tmp_path / "pdk"
     pdk.mkdir()
-    (project_dir / "rtl" / "demo.v").write_text("module demo(input clk); endmodule\n")
+    (project_dir / "demo.v").write_text("module demo(input clk); endmodule\n")
 
     for key, value in (
         ("pdk.root", str(pdk)),
         ("design.top", "demo_top"),
-        ("design.rtl", "rtl/demo.v"),
+        ("design.rtl", "demo.v"),
     ):
         _run_project(project_dir, "set", key, value)
 

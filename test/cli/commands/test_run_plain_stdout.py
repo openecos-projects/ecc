@@ -42,7 +42,11 @@ def project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     directory = tmp_path / "project"
     assert cli_main.run(["init", str(directory), "--design-name", DESIGN]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    (directory / f"rtl/{DESIGN}.v").write_text(f"module {DESIGN}(input clk); endmodule\n")
+    (directory / f"{DESIGN}.v").write_text(f"module {DESIGN}(input clk); endmodule\n")
+    assert (
+        cli_main.run(["project", "set", "design.rtl", f"{DESIGN}.v", "--project", str(directory)])
+        == 0
+    )
     config = directory / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     yield directory

@@ -7,7 +7,7 @@ import pytest
 import tomli_w
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+from chipcompiler.cli.project.timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
 from chipcompiler.data import load_workspace, refresh_workspace_config
 from chipcompiler.data.workspace import create_workspace
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
@@ -16,7 +16,7 @@ from chipcompiler.data.workspace.timing_constraints import generate_timing_scrip
 def _timing_file(project, **overrides):
     values = tomllib.loads(SDC_INPUT_TEMPLATE)
     values.update(overrides)
-    path = project / "sdc/gcd.tcl"
+    path = project / SDC_INPUT_FILENAME
     path.write_text(tomli_w.dumps(values))
     return path, values
 
@@ -27,7 +27,15 @@ def test_file_inputs_survive_cli_creation_reload_and_source_changes(
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    (project / "rtl/gcd.v").write_text("module gcd(input ref_clk); endmodule\n")
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "gcd.v").write_text("module gcd(input ref_clk); endmodule\n")
+    filelist = sources / "filelist.f"
+    filelist.write_text("gcd.v\n")
+    assert (
+        cli_main.run(["project", "set", "design.rtl", str(filelist), "--project", str(project)])
+        == 0
+    )
     config = project / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     source, values = _timing_file(
@@ -49,7 +57,11 @@ def test_file_inputs_survive_cli_creation_reload_and_source_changes(
     }
     workspace = create_workspace(**{**arguments, "directory": tmp_path / "persisted"})
     assert workspace is not None
-    snapshot = workspace.directory / "origin/gcd.tcl"
+    assert {
+        name: (workspace.directory / "origin" / name).read_bytes()
+        for name in ("filelist.f", "gcd.v")
+    } == {name: (sources / name).read_bytes() for name in ("filelist.f", "gcd.v")}
+    snapshot = workspace.directory / "origin" / SDC_INPUT_FILENAME
     assert snapshot.read_bytes() == original
 
     # Existing workspaces own their snapshot; editing the project source is not live reload.
@@ -82,6 +94,7 @@ def test_external_clock_list_is_the_source_of_primary_flow_metadata(
 ):
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
     if not manifest:
         (project / "project.json").unlink()
     else:
@@ -89,7 +102,7 @@ def test_external_clock_list_is_the_source_of_primary_flow_metadata(
         document = json.loads(manifest_path.read_text())
         document["base_design"]["parameters"]["frequency_max"] = "stale"
         manifest_path.write_text(json.dumps(document))
-    (project / "rtl/gcd.v").write_text("module gcd(input bus_clk, input aux); endmodule\n")
+    (project / "gcd.v").write_text("module gcd(input bus_clk, input aux); endmodule\n")
     config = project / "ecc.toml"
     text = config.read_text().replace('root = ""', f'root = "{tmp_path}"')
     _timing_file(
@@ -124,10 +137,11 @@ def test_invalid_timing_file_fails_before_workspace_creation(
 ):
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
-    (project / "rtl/gcd.v").write_text("module gcd(input clk); endmodule\n")
+    (project / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
     config = project / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{tmp_path}"'))
-    (project / "sdc/gcd.tcl").write_text(contents)
+    (project / SDC_INPUT_FILENAME).write_text(contents)
     capsys.readouterr()
     assert cli_main.run(["run", "--project", str(project)]) == 1
     assert message in capsys.readouterr().out
@@ -143,12 +157,13 @@ def test_existing_workspace_can_resume_after_project_timing_source_is_removed(
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    (project / "rtl/gcd.v").write_text("module gcd(input clk); endmodule\n")
+    (project / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
     config = project / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     assert cli_main.run(["workspace", "create", "default", "--project", str(project)]) == 0
     before = load_workspace(project / "default").parameters.data["sdc"]
-    (project / "sdc/gcd.tcl").unlink()
+    (project / SDC_INPUT_FILENAME).unlink()
     resumed = []
 
     def run_existing(command_input, ctx):

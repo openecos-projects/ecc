@@ -236,9 +236,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.7 用户填写的五组时序输入
 
-`ecc init gcd` 会生成 `sdc/gcd.tcl`，含默认生效的 `clk`/100 MHz 时钟，以及另外四组的注释示例。`ecc.toml` 和 `project.json` 都指向这个文件。虽然后缀是 `.tcl`，输入内容是 **五个 TOML 字符串**，不能直接 `source`；ECC 生成的 pre/post-CTS 文件才是可执行 Tcl。
+`ecc init gcd` 会在项目根目录生成 `timing_constraints_template.tcl`，含默认生效的 `clk`/100 MHz 时钟，以及另外四组的注释示例。`ecc.toml` 和 `project.json` 都指向这个文件。虽然后缀是 `.tcl`，输入内容是 **五个 TOML 字符串**，不能直接 `source`；ECC 生成的 pre/post-CTS 文件才是可执行 Tcl。
 
-直接修改 `sdc/gcd.tcl`，或通过 CLI 指定其他五组输入文件：
+直接修改 `timing_constraints_template.tcl`，或通过 CLI 指定其他五组输入文件：
 
 ```bash
 ecc project set design.sdc /path/to/gcd.tcl --project /path/to/project

@@ -14,6 +14,8 @@ from chipcompiler.cli.core.inputs import InitInput
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from chipcompiler.project.manifest_write import build_project_document
 
+from .timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
+
 _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 _RENAME_EXCHANGE = 2
@@ -169,22 +171,16 @@ def _populate(
     design_name: str,
     mpc: dict | None,
 ) -> None:
-    rtl = staging / "rtl"
-    sdc = staging / "sdc"
-    rtl.mkdir()
-    sdc.mkdir()
-    from .timing_template import SDC_INPUT_TEMPLATE
-
-    _write_file(sdc / f"{design_name}.tcl", SDC_INPUT_TEMPLATE)
+    _write_file(staging / SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE)
     config = _default_toml(design_name)
     _write_file(staging / CONFIG_FILENAME, config)
     base_design = {
         "pdk": "ics55",
         "top_module": design_name,
         "clock": "clk",
-        "rtl_list": [f"rtl/{design_name}.v"],
-        "origin_verilog": f"rtl/{design_name}.v",
-        "sdc": f"sdc/{design_name}.tcl",
+        "rtl_list": [],
+        "origin_verilog": "",
+        "sdc": SDC_INPUT_FILENAME,
         "parameters": {
             "design": design_name,
             "top_module": design_name,
@@ -203,8 +199,6 @@ def _populate(
         staging / MANIFEST_FILENAME,
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
     )
-    _fsync_directory(rtl)
-    _fsync_directory(sdc)
     _fsync_directory(staging)
 
 
@@ -215,8 +209,9 @@ def _default_toml(design_name: str) -> str:
     return f'''[design]
 name = "{design_name}"
 top = "{design_name}"
-rtl = ["rtl/{design_name}.v"]
-sdc = "sdc/{design_name}.tcl"
+# Set your RTL sources or filelist, e.g. rtl = ["/path/to/filelist.f"].
+rtl = []
+sdc = "{SDC_INPUT_FILENAME}"
 
 [pdk]
 name = "ics55"

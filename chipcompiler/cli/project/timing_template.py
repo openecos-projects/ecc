@@ -1,5 +1,7 @@
 """Standalone five-field timing input included in new projects."""
 
+SDC_INPUT_FILENAME = "timing_constraints_template.tcl"
+
 SDC_INPUT_TEMPLATE = r"""
 # ECC timing inputs: five TOML strings, not an executable Tcl script.
 # Edit clock_list; uncomment optional commands inside the quotes as needed.

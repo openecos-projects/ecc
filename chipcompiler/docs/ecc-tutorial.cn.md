@@ -176,10 +176,9 @@ $ cd gcd
 
 ```
 gcd/
-├── ecc.toml       # 项目配置（下一步按需修改）
-├── project.json   # 项目标识和 workspace 登记
-├── rtl/           # 放 Verilog 源码或 filelist
-└── sdc/gcd.tcl    # 五组时序输入模板，见 §3.3
+├── ecc.toml                         # 项目配置
+├── project.json                     # 项目标识和 workspace 登记
+└── timing_constraints_template.tcl  # 五组时序输入模板，见 §3.3
 
 # workspace 由首个 ecc run 创建：缺省为 gcd/default/，并写入 project.json 登记；
 # 可用 ecc run --workspace <名称> 创建其他受管 workspace。旧布局 runs/<id>/ 必须先 ecc migrate。
@@ -191,14 +190,17 @@ gcd/
 
 ```bash
 # 下载仓库自带的 gcd 示例（或任意你自己的 .v 文件）
-curl -fL -o rtl/gcd.v \
+curl -fL -o gcd.v \
   https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
 
 # 已 clone 仓库时直接拷贝也可以：
-# cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+# cp /path/to/ecc/docs/examples/gcd/gcd.v .
+
+# init 的 RTL 列表为空，需要指定下载后的文件：
+ecc project set design.rtl gcd.v
 ```
 
-多文件设计请改用 filelist（`rtl = ["rtl/filelist.f"]`），语法见 [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md)。
+源文件也可以留在项目外：`ecc project set design.rtl /path/to/filelist.f` 直接引用外部 filelist，不会复制到项目根目录；创建 workspace 时才把输入保存到其 `origin/`。语法见 [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) 与 [filelist 语法](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md)。
 
 ### 3.3 认识 ecc.toml
 
@@ -206,8 +208,8 @@ curl -fL -o rtl/gcd.v \
 [design]
 name = "gcd"
 top = "gcd"              # 顶层模块名
-rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向 filelist
-sdc = "sdc/gcd.tcl"      # 五组时序输入；修改该文件设置时钟
+rtl = ["gcd.v"]          # 在 §3.2 中设置；init 默认是 []
+sdc = "timing_constraints_template.tcl" # 修改该文件设置时钟
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
@@ -223,7 +225,7 @@ root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
 preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 ```
 
-对 gcd 示例来说，`init` 生成的默认值恰好全部正确（顶层就叫 `gcd`，时钟端口 `clk`），**一个字都不用改**。换你自己的设计时，需要核对 `top`、`rtl`、`clock_port`、`frequency_mhz` 四项。
+对 gcd 示例，按上一步设置 RTL 路径即可；默认顶层 `gcd` 和时序模板中的 `clk`/100 MHz 已匹配。换成自己的设计时，修改 `ecc.toml` 中的 `top`、`rtl`，并填写时序模板中的 `clock_list`。
 
 除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-user-guide.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug --lang cn`））：
 
@@ -232,14 +234,14 @@ ecc project set design.top my_chip            # 设置一条声明
 ecc project set design.rtl rtl/cpu.v rtl/uart.v   # 整体替换 RTL 列表
 ecc project add design.rtl rtl/sram.v         # 追加一个 RTL 源
 ecc project remove design.rtl rtl/sram.v      # 删除一个 RTL 源
-ecc project set design.clock_port clk_i       # 改时钟端口名
+ecc project set design.sdc /path/to/timing_inputs.tcl  # 指定其他五组时序输入文件
 ecc project set flow.preset syn_sta           # 切换 preset
 ecc project show                              # 查看 ecc.toml 里声明的字段
 ```
 
 两个要点：
 
-- **时序输入**：`ecc init` 在 `sdc/gcd.tcl` 中生成五个 TOML 字符串，默认 `clk`/100 MHz。直接修改这个文件，不在项目 TOML 中填约束。ECC 保存输入副本，再生成 `origin/pre_CTS/` 和 `origin/post_CTS/` 下的可执行 Tcl；完整 SDC 必须先转换。详见[五组时序输入格式](ecc-config-ref.cn.md#17-用户填写的五组时序输入)；
+- **时序输入**：`ecc init` 在 `timing_constraints_template.tcl` 中生成五个 TOML 字符串，默认 `clk`/100 MHz。直接修改这个文件，不在项目 TOML 中填约束。ECC 保存输入副本，再生成 `origin/pre_CTS/` 和 `origin/post_CTS/` 下的可执行 Tcl；完整 SDC 必须先转换。详见[五组时序输入格式](ecc-config-ref.cn.md#17-用户填写的五组时序输入)；
 - **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
 
 ### 3.4 校验
@@ -253,7 +255,7 @@ $ ecc check
   inspect: ecc status
   run: ecc run
   rtl: pass
-    path: rtl/gcd.v
+    path: gcd.v
   inspect: ecc check
 rc=0
 ```
@@ -402,7 +404,7 @@ $ ecc run --preset rtl2gds
 ```
 default/
 ├── home/               # flow.json（步骤状态）+ params.toml + checklist.json
-├── origin/             # 冻结的 gcd.v + gcd.tcl 输入，以及 pre_CTS/、post_CTS/ 脚本
+├── origin/             # 冻结的 RTL + 时序输入，以及 pre_CTS/、post_CTS/ 脚本
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── lec_kepler_formal/   # 综合级 LEC 等价性检查

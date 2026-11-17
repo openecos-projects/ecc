@@ -122,11 +122,12 @@ Create a project and add your RTL:
 
 ```bash
 ecc init gcd
-cp /path/to/gcd.v gcd/rtl/gcd.v  # example design: docs/examples/gcd/gcd.v
+ecc project set design.rtl /path/to/gcd.v --project gcd  # example: docs/examples/gcd/gcd.v
 ```
 
 `ecc init` generates `gcd/ecc.toml` and a five-field timing template at
-`gcd/sdc/gcd.tcl` (default clock: `clk`, 100 MHz). Edit the template for your
+`gcd/timing_constraints_template.tcl` (default clock: `clk`, 100 MHz). No RTL or
+SDC directories are created; source paths are configured explicitly. Edit the template for your
 design; complete SDC files must first be converted to this input format.
 `pdk.root` is required
 unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
@@ -136,8 +137,8 @@ unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]
-sdc = "sdc/gcd.tcl"
+rtl = ["/path/to/gcd.v"]
+sdc = "timing_constraints_template.tcl"
 
 [pdk]
 name = "ics55"

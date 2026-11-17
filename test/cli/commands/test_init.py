@@ -6,7 +6,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project import project_init
-from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+from chipcompiler.cli.project.timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
 
 
 class TestInit:
@@ -29,22 +29,27 @@ class TestInit:
         assert rc == 0
 
         assert (tmp_path / "gcd" / "ecc.toml").exists()
-        assert (tmp_path / "gcd" / "rtl").is_dir()
         assert {entry.name for entry in (tmp_path / "gcd").iterdir()} == {
             "ecc.toml",
             "project.json",
-            "rtl",
-            "sdc",
+            SDC_INPUT_FILENAME,
         }
-        timing = tmp_path / "gcd" / "sdc" / "gcd.tcl"
+        timing = tmp_path / "gcd" / SDC_INPUT_FILENAME
         assert timing.read_text() == SDC_INPUT_TEMPLATE
         config = tomllib.loads((tmp_path / "gcd" / "ecc.toml").read_text())
-        assert config["design"]["sdc"] == "sdc/gcd.tcl"
+        assert config["design"] == {
+            "name": "gcd",
+            "top": "gcd",
+            "rtl": [],
+            "sdc": SDC_INPUT_FILENAME,
+        }
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
         assert manifest["schema_version"] == 1
         assert manifest["workspaces"] == []
         assert manifest["root_path"] == str(tmp_path / "gcd")
         assert manifest["base_design"]["sdc"] == config["design"]["sdc"]
+        assert manifest["base_design"]["rtl_list"] == config["design"]["rtl"]
+        assert manifest["base_design"].get("origin_verilog", "") == ""
         assert not (tmp_path / "gcd" / "runs").exists()
 
     def test_init_output_has_disclosure_commands(self, tmp_path, capsys):
@@ -79,7 +84,7 @@ class TestInit:
         assert rc == 0
         toml = (tmp_path / "subdir" / "mydesign" / "ecc.toml").read_text()
         assert 'name = "mydesign"' in toml
-        assert "rtl/mydesign.v" in toml
+        assert 'top = "mydesign"' in toml
 
     def test_init_replaces_selected_empty_directory_atomically(self, tmp_path):
         project = tmp_path / "selected"

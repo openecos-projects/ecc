@@ -235,9 +235,9 @@ The generated Tcl defines primary clocks from the input file's `clock_list`, tog
 
 ### 1.7 Five user-written timing inputs
 
-`ecc init gcd` creates `sdc/gcd.tcl` with an active `clk`/100 MHz row and commented examples for the four optional fields. Both `ecc.toml` and `project.json` reference this file. Despite its `.tcl` suffix, this input is **five TOML strings**, not an executable Tcl script; do not `source` it. Only the generated pre/post-CTS scripts are executable Tcl.
+`ecc init gcd` creates `timing_constraints_template.tcl` in the project root with an active `clk`/100 MHz row and commented examples for the four optional fields. Both `ecc.toml` and `project.json` reference this file. Despite its `.tcl` suffix, this input is **five TOML strings**, not an executable Tcl script; do not `source` it. Only the generated pre/post-CTS scripts are executable Tcl.
 
-Edit `sdc/gcd.tcl` directly, or select another five-field file with:
+Edit `timing_constraints_template.tcl` directly, or select another five-field file with:
 
 ```bash
 ecc project set design.sdc /path/to/gcd.tcl --project /path/to/project

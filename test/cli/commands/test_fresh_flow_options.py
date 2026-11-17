@@ -42,7 +42,8 @@ def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    (project / "rtl/gcd.v").write_text("module gcd(input clk); endmodule\n")
+    (project / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
     config = project / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     return project
