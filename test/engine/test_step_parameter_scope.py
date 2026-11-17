@@ -199,3 +199,39 @@ def test_the_configuration_projection_carries_each_step_value(
         key: parameters.get(key)
         for key in ("place.target_density", "placement:place.target_density")
     } == {"place.target_density": baseline, "placement:place.target_density": 0.71}
+
+
+@pytest.mark.parametrize(
+    ("sets", "unsets", "step_id", "code"),
+    [
+        # A step prefix on a workspace-wide parameter.
+        ({"macro_placement:macro.placements": []}, (), None, "parameter_not_applicable"),
+        # A qualified key outside the selected step.
+        (
+            {"diff_opt:place.diff_optimization_mode": "sizing"},
+            (),
+            "placement",
+            "parameter_not_applicable",
+        ),
+        # Two spellings of one stored value.
+        (
+            {"placement:place.target_density": 0.71},
+            ("place.target_density",),
+            "placement",
+            "conflicting_parameter_patch",
+        ),
+    ],
+)
+def test_a_batch_rejects_edits_its_scope_does_not_allow(
+    tmp_path, minimal_ics55_pdk_factory, sets, unsets, step_id, code
+) -> None:
+    workspace, _bindings = _workspace(tmp_path, minimal_ics55_pdk_factory, diff_opt=True)
+    before = read_engineering_snapshot(workspace)
+
+    with pytest.raises(WorkspaceLifecycleError) as error:
+        apply_workspace_parameters(
+            workspace.directory, before["workspaceRevision"], sets, unsets, step_id=step_id
+        )
+
+    assert error.value.code == code
+    assert read_engineering_snapshot(workspace) == before
