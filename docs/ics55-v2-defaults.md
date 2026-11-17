@@ -105,6 +105,14 @@ which produces GDS, LEF, Liberty and PNG. TYP setup/hold WNS is 2.188/0.206 ns;
 the four MIN reports also have positive setup/hold slack. EMIR provenance
 correctly identifies the synthetic model as not_for_signoff.
 
+The AES rerun with 0.30 um rails has zero signal/PG opens or shorts and one
+remaining independent MET1 spacing violation. The router already reports that
+violation before filler insertion: the input access via on BUFX10_9TLVT at
+(134.500, 170.233) um has 0.088 um clearance to the cell's internal OBS, versus
+the technology LEF's 0.090 um requirement. This is a remaining native pin-access
+repair issue, not evidence that the rail should be narrowed or filler roles
+expanded. Preserve the DRC gate; AES is not physically clean.
+
 The matching local native runtime passes 4484 unit tests (3 skipped, 2 integration
 tests deselected, 4 expected failures) and 272 Agent tests. Ruff and the
 basedpyright gate pass. The local PyInstaller CLI builds successfully; it is
