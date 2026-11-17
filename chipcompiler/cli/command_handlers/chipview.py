@@ -81,15 +81,9 @@ def _read_flow_steps(workspace_dir: Path) -> list[dict]:
 
 
 def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
-    requested_lower = requested.strip().lower()
-    if not requested_lower:
-        return False
-    # The step name or its directory selects the step.
-    return requested_lower in {
-        name.lower(),
-        directory.lower(),
-        f"{name}_{tool}".lower(),
-    }
+    """The step's flow name or its directory (``<step>_<tool>``, as recorded) selects it."""
+    requested = requested.strip()
+    return bool(requested) and requested in {name, directory, f"{name}_{tool}"}
 
 
 def _resolve_step_geometry(workspace_dir: Path, requested: str) -> dict:
