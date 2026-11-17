@@ -5674,6 +5674,6 @@ def test_workspace_config_path_is_params_toml(tmp_path: Path):
     ws = tmp_path / "ws"
     home = ws / "home"
     home.mkdir(parents=True)
-    (home / "params.toml").write_text('schema_version = 3\n[params]\ndesign = "gcd"\n')
+    (home / "params.toml").write_text('schema_version = 4\n[params]\ndesign = "gcd"\n')
 
     assert FoundationExtractor(ws)._workspace_config_path() == home / "params.toml"

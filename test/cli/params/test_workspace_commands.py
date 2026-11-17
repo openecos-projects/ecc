@@ -173,7 +173,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
         [
             "param",
             "set",
-            "place.target_density",
+            "placement:place.target_density",
             "0.65",
             "--workspace",
             "baseline",
@@ -188,7 +188,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
     assert record["value"] == "0.65"
     assert record["from_step"] == "placement"
     assert record["invalidated_steps"] == "['placement', 'routing']"
-    assert workspace.parameters.data["config_overrides"] == {"dreamplace": {"target_density": 0.65}}
+    assert workspace.parameters.data["step_params"] == {"placement": {"place.target_density": 0.65}}
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",
         "Unstart",
@@ -200,7 +200,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
         [
             "param",
             "unset",
-            "place.target_density",
+            "placement:place.target_density",
             "--workspace",
             "baseline",
             "--project",
@@ -211,8 +211,8 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
 
     assert rc == 0
     assert plain_records(capsys.readouterr().out)[0]["value"] == "0.2"
-    # Unset re-applies the recorded baseline through the same direct patch.
-    assert workspace.parameters.data["config_overrides"] == {"dreamplace": {"target_density": 0.2}}
+    # Unset drops the step value again: the step had none before the set.
+    assert "step_params" not in workspace.parameters.data
 
 
 def test_workspace_param_refresh_failure_rolls_back_params(
@@ -237,7 +237,7 @@ def test_workspace_param_refresh_failure_rolls_back_params(
         [
             "param",
             "set",
-            "place.target_density",
+            "placement:place.target_density",
             "0.65",
             "--workspace",
             "baseline",

@@ -266,7 +266,7 @@ def test_macro_set_snapshot_workspace_passes_placements_to_engine(
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
     captured = {}
 
-    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status, scope):
         captured["value"] = requested_value
         captured["status"] = status
         return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
@@ -322,7 +322,7 @@ def test_macro_remove_snapshot_workspace_passes_remaining_to_engine(
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
     captured = {}
 
-    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status, scope):
         captured["value"] = requested_value
         captured["status"] = status
         return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])

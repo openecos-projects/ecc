@@ -65,3 +65,28 @@ def test_an_inner_legalization_owner_resolves_its_own_config(
     assert path.is_file()
     assert workspace.config["dreamplace"].read_bytes() == baseline
     assert builder.effective_config_path(workspace, owner) == path
+
+
+def test_a_step_value_reaches_only_its_own_step_config(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    workspace.parameters.data["step_params"] = {"placement": {"place.target_density": 0.71}}
+    baseline = json_read(workspace.config["dreamplace"])
+    monkeypatch.setattr(builder.ecc_builder, "build_step_config", lambda *_: None)
+    steps = [
+        _step(workspace, tmp_path, name)
+        for name in (StepEnum.PLACEMENT.value, StepEnum.MACRO_PLACEMENT.value)
+    ]
+
+    for step in steps:
+        builder.build_step_config(workspace, step)
+
+    assert {
+        step.name: json_read(builder.step_config_path(workspace, step))["target_density"]
+        for step in steps
+    } == {
+        StepEnum.PLACEMENT.value: 0.71,
+        StepEnum.MACRO_PLACEMENT.value: baseline["target_density"],
+    }
+    assert json_read(workspace.config["dreamplace"]) == baseline

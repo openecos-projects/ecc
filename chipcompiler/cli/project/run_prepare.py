@@ -377,6 +377,14 @@ def execute_fresh_run(
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
         pdk_cli_overrides = build_pdk_overrides(resolved)
         param_sources = {item.param: item.source for item in resolved if item.is_explicit}
+        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY, resolve_step_parameters
+
+        step_values, step_sources = resolve_step_parameters(
+            (cli_overrides or {}, "cli"), (cfg.params_overrides or {}, "ecc.toml")
+        )
+        if step_values:
+            parameters[STEP_PARAMS_KEY] = step_values
+        param_sources.update(step_sources)
     else:
         pdk_cli_overrides = {}
         param_sources = {}

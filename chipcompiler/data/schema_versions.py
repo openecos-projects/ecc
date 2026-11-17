@@ -18,7 +18,7 @@ FLOW_JSON: Final = "flow.json"
 ENGINEERING_SNAPSHOT: Final = "engineering-snapshot.json"
 
 SUPPORTED_SCHEMA_VERSIONS: Final[dict[str, int]] = {
-    PARAMS_TOML: 3,
+    PARAMS_TOML: 4,
     # Steps record indexed directory names; legacy <step>_<tool> layouts are not
     # read by this ECC.
     FLOW_JSON: 3,
