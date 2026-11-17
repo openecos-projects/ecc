@@ -55,14 +55,22 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 Workspace Spec 只描述结构（设计、输入、PDK、flow），不再携带参数。新建
 workspace 从 PDK 模板与 schema 默认值起步，之后通过 `ecc param set --workspace`
 或 `apply_workspace_parameters` 设置参数。经 `update_workspace_from_spec`
-重建 workspace 时，已存储的参数、直接 config 补丁和基线 journal 会被带入新
-workspace；journal 中的值会按新 PDK 家族重新校验。
+重建 workspace 时，已存储的参数、直接 config 补丁、按步骤取值和基线 journal
+会被带入新 workspace；带入的值会按新 PDK 家族重新校验。
+
+DreamPlace 参数按步骤记录。workspace 的 `config/dreamplace_ecc.json` 只是基线；
+macro_placement、placement、diff_opt、diff_sizing、legalization 以及
+timing_optimization 的内部合法化，各自由基线加 `[params.step_params.<step>]`
+中该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`。DreamPlace 参数
+总是带步骤设置（`<step>:<param>` 键、`param apply` 的 `--step`、`ecc.toml` 的
+`[params.step.<step>]`），只能设置在 schema 声明的步骤上，修改只从该步骤开始失效。
 
 每个步骤目录在 `req.json`/`rsp.json` 旁还有 `params.json`，由步骤 worker 在
 工具确定最终 config 之后写入。它列出适用于该步骤的每个参数的 `value`、
 `default` 与 `source`（`default`、`ecc.toml`、`cli`、`project.json` 或
 `workspace`），以及这些参数当前在工具 config 中的取值（按 config 文件与 JSON
-路径索引）。它只作为开发者与 agent 追溯步骤输入的证据，不会被回读。每个显式
+路径索引）；DreamPlace 参数报告该步骤自己的取值与 config。它只作为开发者与
+agent 追溯步骤输入的证据，不会被回读。每个显式
 参数创建时所属的层记录在 `home/params.toml` 的 `[params._param_sources]` 下。
 
 ## CLI 与 GUI 差异
@@ -85,9 +93,9 @@ workspace；journal 中的值会按新 PDK 家族重新校验。
 
 | 文件 | 字段 | 必需版本 |
 | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 3 |
-| `home/flow.json` | `schema_version` | 2 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 6 |
+| `home/params.toml` | `schema_version` | 4 |
+| `home/flow.json` | `schema_version` | 3 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 7 |
 
 `chipcompiler/data/schema_versions.py` 在加载前检查声明版本。旧版本会提示重建
 workspace，更新版本则 fail-closed，不会继续解析。非法快照抛出

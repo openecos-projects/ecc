@@ -69,15 +69,24 @@ no parameters. A new workspace starts from the PDK template and schema
 defaults, and parameters are set afterwards with `ecc param set --workspace`
 or `apply_workspace_parameters`. Rebuilding a workspace through
 `update_workspace_from_spec` carries the stored parameters, the direct config
-patch and the baseline journal over; journaled values are revalidated against
-the new PDK family.
+patch, the per-step values and the baseline journal over; carried values are
+revalidated against the new PDK family.
+
+DreamPlace parameters are recorded per step. The workspace
+`config/dreamplace_ecc.json` is only the baseline; macro_placement, placement,
+diff_opt, diff_sizing, legalization and timing_optimization's inner
+legalization each resolve `<step dir>/config/dreamplace_ecc.json` from it plus
+that step's values in `[params.step_params.<step>]`. A DreamPlace parameter is
+always set with a step (`<step>:<param>` keys, `--step` on `param apply`,
+`[params.step.<step>]` in `ecc.toml`), only on the steps its schema declares,
+and a change invalidates from that step only.
 
 Each step directory also gets a `params.json` beside `req.json`/`rsp.json`,
 written by the step worker after the tool has finalized its config. It lists
 every parameter applicable to the step with its `value`, `default` and
 `source` (`default`, `ecc.toml`, `cli`, `project.json` or `workspace`) and the
 tool-config values those parameters currently hold, keyed by config file and
-JSON path. It is evidence for developers and agents to trace a step's inputs;
+JSON path; DreamPlace parameters report the step's own value and config. It is evidence for developers and agents to trace a step's inputs;
 nothing reads it back. The creation-time layer of each explicit parameter is
 persisted in `home/params.toml` under `[params._param_sources]`.
 
@@ -102,9 +111,9 @@ recreate the workspace with this ECC.
 
 | File | Field | Required version |
 | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 3 |
-| `home/flow.json` | `schema_version` | 2 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 6 |
+| `home/params.toml` | `schema_version` | 4 |
+| `home/flow.json` | `schema_version` | 3 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 7 |
 
 `chipcompiler/data/schema_versions.py` checks the declared version before a
 file is loaded. An older version fails with a recreate-workspace error, and a
