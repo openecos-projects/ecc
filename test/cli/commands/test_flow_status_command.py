@@ -138,7 +138,9 @@ def test_overrides_are_checked_without_writing_the_project(capsys, create_cli_pr
     with open(toml_path) as f:
         before = f.read()
 
-    rc, records = _plan(capsys, project_dir, "--disable", "legalization", "--disable", "TimingOpt")
+    rc, records = _plan(
+        capsys, project_dir, "--disable", "legalization", "--disable", "timing_optimization"
+    )
 
     assert rc == 1
     assert records[0]["status"] == "error"
@@ -157,7 +159,7 @@ def test_overrides_are_checked_without_writing_the_project(capsys, create_cli_pr
 
 
 def test_unchecked_synthesis_needs_a_declared_netlist(capsys, create_cli_project):
-    rc, records = _plan(capsys, create_cli_project(), "--disable", "synth")
+    rc, records = _plan(capsys, create_cli_project(), "--disable", "synthesis")
 
     assert rc == 1
     assert records[0]["skip_steps"] == ["synthesis", *DEFAULT_SKIP_STEPS]

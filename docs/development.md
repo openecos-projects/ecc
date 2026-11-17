@@ -599,7 +599,7 @@ not accept a second path override.
 Project preset sequences are defined in `chipcompiler/rtl2gds/builder.py`
 (`build_*_flow()` / `get_flow_builders()`), not in the CLI layer.
 `build_flow_range()` slices the canonical `build_rtl2gds_flow()` result, so
-step aliases and ordering have one source of truth. Keep a sequence change
+step names and ordering have one source of truth. Keep a sequence change
 coordinated with the engine's default flow, `StepEnum`, and manifest range
 mappings; the CLI only handles argument parsing, input contracts,
 progress-renderer selection, and result mapping. Interactive TTY
@@ -827,8 +827,8 @@ When both surfaces declare the policy with different effective values,
 winning source.
 
 An explicit `skip_steps = []` runs every step, `diff_opt` included.
-Entries accept the same aliases as flow ranges (e.g. `postlec`, `synth`,
-`cts`, `TimingOpt`) and are validated against the steps of the chain;
+Entries are canonical step names (e.g. `post_route_lec`, `synthesis`,
+`cts`, `timing_optimization`) validated against the steps of the chain;
 unknown names are rejected. `lec` is no chain step any more: `resolve_skip_steps`
 drops it, so existing files that list it keep loading. A project.json skip
 policy may still name `lec`: `manifest_flow.manifest_synthesis_lec` turns a
@@ -1183,8 +1183,8 @@ workspace=default
 
 `--resume`, `--only`, and a range are mutually exclusive, and `--force` is
 only valid with `--only`. `--workspace` can be combined with `--project`;
-new ranges cannot be combined with `--overwrite`. Step names use the canonical
-flow aliases.
+new ranges cannot be combined with `--overwrite`. Step names are the canonical
+flow step names (`StepEnum` values).
 
 Workspace mode mutates the workspace in place: each executed step's `output/`
 is replaced, and steps downstream of a re-executed step are marked `Unstart`

@@ -14,7 +14,6 @@ from chipcompiler.cli.core.inputs import ParamApplyInput, ParamEditInput
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.data.step_parameters import is_step_scoped, split_step_key, step_key
-from chipcompiler.rtl2gds import normalize_flow_step
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -71,7 +70,7 @@ def edit_and_apply(
     if isinstance(rows, CommandResult):
         return rows
     if group:
-        identity = normalize_flow_step(group)
+        identity = str(group)
         rows = [row for row in rows if _row_applies_to(row, identity)]
         if not rows:
             return CommandResult.err([error_record("unknown_step", step=group)])
@@ -136,12 +135,10 @@ def workspace_rows(
     workspace = load_workspace(ctx.run_dir)
     if workspace is None:
         return CommandResult.err([error_record("workspace_invalid", workspace=ctx.run_id)])
-    in_flow = {
-        normalize_flow_step(str(step.get("name", ""))).casefold() for step in workspace.flow.steps()
-    }
+    in_flow = {str(step.get("name", "")) for step in workspace.flow.steps()}
     kept = in_flow
     if steps is not None:
-        kept = in_flow & {normalize_flow_step(step).casefold() for step in steps}
+        kept = in_flow & {str(step) for step in steps}
     overrides = {
         (record["key"], record.get("step")): record for record in workspace_param_diff(workspace)
     }
@@ -158,7 +155,7 @@ def workspace_rows(
                 value = workspace_param_value(workspace, schema, step=scope)
             except ValueError:
                 continue
-            if step is not None and normalize_flow_step(step).casefold() not in kept:
+            if step is not None and str(step) not in kept:
                 continue
             override = overrides.get((schema.param, scope))
             base = override["baseline"] if override is not None else value
@@ -187,11 +184,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
             [error_record("invalid_param_config", reason=error) for error in errors]
         )
     builder = get_flow_builders().get(getattr(ctx.config, "flow_preset", ""))
-    in_flow = (
-        {normalize_flow_step(step) for step, _tool, _state in builder()}
-        if builder is not None
-        else set()
-    )
+    in_flow = {str(step) for step, _tool, _state in builder()} if builder is not None else set()
     pdk = _project_pdk(ctx)
     resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
     rows = []

@@ -216,9 +216,9 @@ def test_create_workspace_persists_dynamic_flow_steps(
         pdk_root=pdk_root,
         flow_config={
             "schema_version": 3,
-            "start_step": "Placement",
+            "start_step": "placement",
             "end_step": "drc",
-            "steps": ["Placement", "cts", "legal", "routing", "drc"],
+            "steps": ["placement", "cts", "legalization", "routing", "drc"],
         },
     )
     assert workspace is not None
@@ -273,7 +273,7 @@ def test_create_workspace_copies_external_lec_and_sta_inputs(
         pdk="ics55",
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
-        flow_config={"start_step": "postlec", "end_step": "postlec"},
+        flow_config={"start_step": "post_route_lec", "end_step": "post_route_lec"},
     )
     assert workspace is not None
 
@@ -400,7 +400,7 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "Placement",
+            "start_step": "placement",
             "end_step": "harden",
         },
     )
@@ -426,19 +426,10 @@ def test_create_workspace_derives_dynamic_flow_from_boundaries(
     ]
 
 
-POST_ROUTE_LEC_STEP_ALIAS_CASES = (
-    ["lvs", "drc", "post_route_lec"],
-    ["lvs", "drc", "postlec"],
-    ["lvs", "drc", "postroutelec"],
-    ["lvs", "drc", "post_route_lec"],
-    ["lvs", "drc", "Post-Route-LEC"],
-)
-
-
-@pytest.mark.parametrize("steps", POST_ROUTE_LEC_STEP_ALIAS_CASES)
-def test_create_workspace_normalizes_post_route_lec_step_aliases(
-    steps, tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+def test_create_workspace_selects_post_route_lec_with_its_formal_tool(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
+    steps = ["lvs", "drc", "post_route_lec"]
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     def_path = tmp_path / "gcd.def"
     def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
@@ -466,35 +457,6 @@ def test_create_workspace_normalizes_post_route_lec_step_aliases(
         ("lvs", "ecc"),
         ("drc", "ecc"),
         ("antenna_check", "ecc"),
-        ("post_route_lec", "kepler_formal"),
-    ]
-
-
-def test_create_workspace_normalizes_post_route_lec_boundary_aliases(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    def_path = tmp_path / "gcd.def"
-    def_path.write_text("VERSION 5.8 ;\nDESIGN gcd ;\nEND DESIGN\n")
-    netlist_path = tmp_path / "gcd.v"
-    netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    create_workspace(
-        directory=workspace_dir,
-        origin_def=def_path,
-        origin_verilog=netlist_path,
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=pdk_root,
-        flow_config={
-            "start_step": "postlec",
-            "end_step": "post route lec",
-        },
-    )
-
-    flow_data = json_read(workspace_dir / "home" / "flow.json")
-    assert [(step["name"], step["tool"]) for step in flow_data["steps"]] == [
         ("post_route_lec", "kepler_formal"),
     ]
 
@@ -529,7 +491,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
         parameters=default_ics55_parameters,
         pdk_root=pdk_root,
         flow_config={
-            "start_step": "Placement",
+            "start_step": "placement",
             "end_step": "legalization",
         },
     )

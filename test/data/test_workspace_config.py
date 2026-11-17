@@ -322,16 +322,6 @@ def test_flow_validation_rejects_unknown_preset():
         validate_flow_config({"preset": "does_not_exist"})
 
 
-def test_flow_section_skip_steps_normalize():
-    assert validate_flow_config({"skip_steps": ["DIFF-OPT", "postlec"]}) == {
-        "skip_steps": ["diff_opt", "post_route_lec"]
-    }
-    # Idempotent on already-normalized input.
-    assert validate_flow_config({"skip_steps": ["diff_opt", "post_route_lec"]}) == {
-        "skip_steps": ["diff_opt", "post_route_lec"]
-    }
-
-
 def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
     from chipcompiler.data.workspace_config import load_workspace_config
 
@@ -350,7 +340,7 @@ def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
         "end": "harden",
         "skip_steps": [],
     }
-    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["DIFF-OPT"]}) == {
+    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["diff_opt"]}) == {
         "preset": "rtl2gds",
         "skip_steps": ["diff_opt"],
     }
@@ -513,7 +503,7 @@ def test_flow_section_rejects_skipped_step_as_range_boundary():
         validate_flow_config({"start": "synthesis", "end": "diff_opt", "skip_steps": ["diff_opt"]})
     # Same rule when the boundary step is the start.
     with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
-        validate_flow_config({"start": "diff_opt", "end": "harden", "skip_steps": ["DIFF-OPT"]})
+        validate_flow_config({"start": "diff_opt", "end": "harden", "skip_steps": ["diff_opt"]})
     # A skipped step INSIDE the range is fine.
     assert validate_flow_config(
         {"start": "synthesis", "end": "cts", "skip_steps": ["diff_opt"]}
@@ -522,22 +512,6 @@ def test_flow_section_rejects_skipped_step_as_range_boundary():
         "end": "cts",
         "skip_steps": ["diff_opt"],
     }
-
-
-def test_save_persists_normalized_skip_steps(tmp_path):
-    """save_workspace_config renders the validated [flow] section, so the
-    persisted policy is canonical regardless of the declared spelling."""
-    from chipcompiler.data.workspace_config import load_workspace_config
-
-    payload = {"design": "gcd", "top_module": "gcd", "clock": "clk"}
-    assert save_workspace_config(
-        tmp_path, payload, {"start": "synthesis", "end": "harden", "skip_steps": ["TimingOpt"]}
-    )
-
-    raw = (tmp_path / "home" / "params.toml").read_text()
-    assert "timing_optimization" in raw
-    assert "TimingOpt" not in raw
-    assert load_workspace_config(tmp_path)["_flow"]["skip_steps"] == ["timing_optimization"]
 
 
 def test_parameter_sources_round_trip_with_dotted_parameter_ids(tmp_path):

@@ -54,7 +54,7 @@ def completed_source(tmp_path, minimal_ics55_pdk_factory):
     return project, source, flow.workspace_steps
 
 
-@pytest.mark.parametrize("continuation", ["pre_floorplan", "floorplan"])
+@pytest.mark.parametrize("continuation", ["pre_floorplan"])
 # ECOS Studio's pinned runtime integration still runs the former name.
 @pytest.mark.parametrize("name", ["fork", "derive"])
 def test_cli_fork_can_open_preserves_outputs_and_retries(completed_source, continuation, name):
@@ -173,17 +173,15 @@ def test_cli_fork_rejects_unknown_continuation_without_registering(completed_sou
 @pytest.mark.parametrize(
     ("start", "end", "expected"),
     [
-        ("floorplan", "macro_placement", ["pre_floorplan", "macro_placement"]),
+        ("pre_floorplan", "macro_placement", ["pre_floorplan", "macro_placement"]),
         ("placement", "cts", ["placement", "diff_sizing", "cts"]),
         ("placement", "placement", ["placement"]),
     ],
 )
 def test_cli_fork_bounds_flow_and_freezes_entry_inputs(completed_source, start, end, expected):
-    from chipcompiler.rtl2gds import normalize_flow_step
-
     project, source, steps = completed_source
     source_snapshot = read_engineering_snapshot_from_directory(source)
-    source_entry = next(step for step in steps if step.name == normalize_flow_step(start))
+    source_entry = next(step for step in steps if step.name == start)
     command = [
         "workspace",
         "fork",
@@ -223,8 +221,8 @@ def test_cli_fork_bounds_flow_and_freezes_entry_inputs(completed_source, start, 
     )
     manifest = load_project_manifest(project)
     branch = manifest["workspaces"][-1]
-    assert normalize_flow_step(branch["start_step"]) == expected[0]
-    assert normalize_flow_step(branch["end_step"]) == expected[-1]
+    assert branch["start_step"] == expected[0]
+    assert branch["end_step"] == expected[-1]
     assert cli_main.run(command) == 0
     assert read_engineering_snapshot_from_directory(target) == snapshot
     changed_range = command.copy()
@@ -274,7 +272,7 @@ def test_cli_fork_endpoint_without_start_uses_first_source_step(completed_source
                 "--project",
                 str(project),
                 "--to",
-                "floorplan",
+                "pre_floorplan",
                 "--plain",
             ]
         )

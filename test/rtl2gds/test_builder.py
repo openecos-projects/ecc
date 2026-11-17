@@ -93,22 +93,23 @@ def test_build_flow_range_slices_the_canonical_chain():
 
 
 def test_build_flow_range_accepts_emir_after_power_analysis():
-    assert builder_module.build_flow_range("power_analysis", "EMIR") == [
+    assert builder_module.build_flow_range("power_analysis", "emir") == [
         (StepEnum.POWER_ANALYSIS, "ecc", StateEnum.Unstart),
         (StepEnum.EMIR, "ecc", StateEnum.Unstart),
     ]
 
 
-@pytest.mark.parametrize("spelling", ["antennaCheck", "antenna_check", "antenna"])
-def test_build_flow_range_accepts_antenna_after_drc(spelling):
-    assert builder_module.build_flow_range("DRC", spelling) == [
+def test_build_flow_range_accepts_antenna_after_drc():
+    assert builder_module.build_flow_range("drc", "antenna_check") == [
         (StepEnum.DRC, "ecc", StateEnum.Unstart),
         (StepEnum.ANTENNA_CHECK, "ecc", StateEnum.Unstart),
     ]
 
 
-def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
-    assert [step for step, _tool, _state in builder_module.build_flow_range("place", "CTS")] == [
+def test_build_flow_range_spans_inclusive_bounds_and_rejects_reverse_ranges():
+    assert [
+        step for step, _tool, _state in builder_module.build_flow_range("placement", "cts")
+    ] == [
         StepEnum.PLACEMENT,
         SkippableStepEnum.DIFF_OPT,
         StepEnum.DIFF_SIZING,
@@ -135,23 +136,6 @@ def test_build_flow_range_exposes_split_floorplan_steps():
         (StepEnum.MACRO_PLACEMENT, "dreamplace"),
         (StepEnum.POST_FLOORPLAN, "ecc"),
     ]
-
-
-@pytest.mark.parametrize("selector", ["floorplan", "floor-plan"])
-def test_floorplan_selector_alias_targets_pre_floorplan(selector):
-    assert builder_module.normalize_flow_step(selector) == StepEnum.PRE_FLOORPLAN.value
-
-
-@pytest.mark.parametrize(
-    ("selector", "expected"),
-    [
-        ("LEC@CTS", "lec@cts"),
-        ("lec@cts", "lec@cts"),
-        ("lec@timing optimization", "lec@timing_optimization"),
-    ],
-)
-def test_inserted_step_selector_resolves_both_sides(selector, expected):
-    assert builder_module.normalize_flow_step(selector) == expected
 
 
 def test_a_chain_built_check_is_filtered_with_its_step():
@@ -220,17 +204,17 @@ def test_resolve_skip_steps_explicit_empty_list_runs_everything():
     "raw,expected",
     [
         (["diff_opt"], ("diff_opt",)),
-        (["DIFF-OPT", "diff_optimization"], ("diff_opt",)),
-        (["postlec", "TimingOpt"], ("timing_optimization", "post_route_lec")),
+        (["diff_opt", "diff_opt"], ("diff_opt",)),
+        (["post_route_lec", "timing_optimization"], ("timing_optimization", "post_route_lec")),
         # lec is no chain step: existing files still list it, and it is dropped.
-        (["lec", "LEC", "diff_opt"], ("diff_opt",)),
+        (["lec", "diff_opt"], ("diff_opt",)),
         # Any chain step may be named; plan_flow decides whether the rest runs.
-        (["route", "Synth", "CTS"], ("synthesis", "cts", "routing")),
+        (["routing", "synthesis", "cts"], ("synthesis", "cts", "routing")),
     ],
 )
-def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected):
+def test_resolve_skip_steps_dedupes_in_canonical_order(raw, expected):
     assert builder_module.resolve_skip_steps({"skip_steps": raw}) == expected
-    # Normalization is idempotent: feeding the normalized tuple back is a no-op.
+    # Resolution is idempotent: feeding the resolved tuple back is a no-op.
     assert builder_module.resolve_skip_steps({"skip_steps": list(expected)}) == expected
 
 
@@ -352,8 +336,8 @@ def test_resolve_insert_steps_absent_key_inserts_nothing():
     assert builder_module.resolve_insert_steps({}) == ()
 
 
-def test_resolve_insert_steps_normalizes_aliases_order_and_duplicates():
-    insert = ["lec@route", "LEC@timing_opt", "lec@cts", "lec@CTS"]
+def test_resolve_insert_steps_orders_and_dedupes():
+    insert = ["lec@routing", "lec@timing_optimization", "lec@cts", "lec@cts"]
 
     assert builder_module.resolve_insert_steps({"insert_steps": insert}) == (
         "lec@cts",

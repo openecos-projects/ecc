@@ -360,9 +360,9 @@ class TestRunPreflight:
         _preflight_environment("rtl2gds", None, None)
         assert seen["tools"] == ("ecc", "sizer", "yosys")
 
-        # Skipping TimingOpt removes the sizer probe.
+        # Skipping timing_optimization removes the sizer probe.
         seen.clear()
-        _preflight_environment("rtl2gds", None, {"skip_steps": ["TimingOpt"]})
+        _preflight_environment("rtl2gds", None, {"skip_steps": ["timing_optimization"]})
         assert "sizer" not in seen["tools"]
 
     def test_workspace_run_preflights_selected_steps(

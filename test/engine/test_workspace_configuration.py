@@ -755,12 +755,12 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         workspace_revision=initial["workspaceRevision"],
     )
 
-    configuration = read_step_configuration(workspace, "floor-plan")
+    configuration = read_step_configuration(workspace, "pre_floorplan")
     synthesis = read_step_configuration(workspace, "synthesis")
     updated = update_workspace_step_configuration(
         workspace.directory,
         configuration["workspaceRevision"],
-        "floorplan",
+        "pre_floorplan",
         {"floorplan.core_util": 0.55},
         "step-configuration-1",
     )
@@ -790,7 +790,7 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         update_workspace_step_configuration(
             workspace.directory,
             2,
-            "floorplan",
+            "pre_floorplan",
             {"place.target_density": 0.6},
             "step-configuration-2",
         )
@@ -805,7 +805,7 @@ def test_manual_macro_placement_is_editable_with_floorplan_configuration(
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
 
-    configuration = read_step_configuration(workspace, "floorplan")
+    configuration = read_step_configuration(workspace, "pre_floorplan")
     record = next(
         item for item in configuration["parameters"] if item["param"] == "macro.manual_placement"
     )
@@ -815,7 +815,7 @@ def test_manual_macro_placement_is_editable_with_floorplan_configuration(
     updated = update_workspace_step_configuration(
         workspace.directory,
         configuration["workspaceRevision"],
-        "floorplan",
+        "pre_floorplan",
         {"macro.manual_placement": True},
         "step-configuration-manual-macro",
     )

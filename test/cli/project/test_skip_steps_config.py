@@ -50,14 +50,16 @@ class TestManifestSkipSteps:
 
         assert entry.skip_steps is None
 
-    def test_declared_spelling_is_kept_verbatim(self, tmp_path):
-        _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=["lec", "lec", "postlec"])])
+    def test_declared_list_is_kept_verbatim(self, tmp_path):
+        _write_manifest(
+            tmp_path, [_workspace(tmp_path, skip_steps=["lec", "lec", "post_route_lec"])]
+        )
 
         (entry,) = load_manifest(str(tmp_path)).workspaces
 
-        # One normalizer exists (the resolver); the manifest stores the
-        # declared spelling and only checks its validity.
-        assert entry.skip_steps == ("lec", "lec", "postlec")
+        # The resolver dedupes and orders; the manifest stores the declared
+        # list and only checks its validity.
+        assert entry.skip_steps == ("lec", "lec", "post_route_lec")
 
     def test_explicit_empty_list_is_distinct_from_absent(self, tmp_path):
         _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=[])])

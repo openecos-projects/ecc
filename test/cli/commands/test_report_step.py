@@ -606,16 +606,6 @@ class TestStepDetail:
             "run.state",
         ]
 
-    def test_detail_accepts_flow_token_with_spaces(self, tmp_path, capsys, plain_records):
-        create_step_workspace(tmp_path, with_drc=False)
-
-        rc, records = run_step(
-            step_args(tmp_path, "timing optimization", "--plain"), capsys, plain_records
-        )
-
-        assert rc == 0
-        assert records[0]["step"] == "timing_optimization"
-
     def test_detail_text(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)
 

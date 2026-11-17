@@ -610,8 +610,8 @@ presets on an existing run requires `ecc run --overwrite` to rebuild the
 workspace. An explicit `ecc.toml` `[flow] skip_steps` takes precedence over
 the `project.json` workspace entry; when the two declare different effective
 values, the run warns `skip_steps_shadowed`.
-`skip_steps` may name any step of the rtl2gds chain (aliases accepted, unknown
-names rejected). Step capabilities (required design data, optional design
+`skip_steps` may name any step of the rtl2gds chain by its canonical name
+(unknown names rejected). Step capabilities (required design data, optional design
 data, provided design data) decide whether a selection can run: an enabled step
 that lacks required design data is a configuration error for `ecc check`,
 `ecc run`, and workspace creation, with a fix hint naming the disabled steps

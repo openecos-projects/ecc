@@ -17,7 +17,6 @@ from chipcompiler.params import (
     workspace_param_step,
     workspace_param_value,
 )
-from chipcompiler.rtl2gds import normalize_flow_step
 
 
 @command_handler
@@ -67,8 +66,8 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
 @command_handler
 def param_list(args, ctx: CommandContext) -> CommandResult:
     workspace = _load_workspace(ctx)
-    selected_step = normalize_flow_step(args.step or "").casefold()
-    canonical_step = normalize_flow_step(args.step or "")
+    selected_step = str(args.step or "")
+    canonical_step = str(args.step or "")
     overrides = {
         record["key"]
         for record in workspace_param_diff(workspace)
@@ -86,13 +85,13 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         else []
     )
     flow_step_names = {
-        normalize_flow_step(step.get("name", "")).casefold()
+        str(step.get("name", ""))
         for step in flow_steps
         if isinstance(step, dict) and step.get("name")
     }
     if selected_step and selected_step not in flow_step_names:
         return CommandResult.err([error_record("unknown_step", step=args.step)], exit_code=1)
-    first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
+    first_step = str(flow_steps[0]["name"]) if flow_steps else ""
     pdk = str(workspace.parameters.data.get("pdk") or "") or None
     records = []
     for schema in list_schemas():
@@ -361,12 +360,12 @@ def _mutate_via_engine(
     invalidated = []
     if step is not None:
         updated_steps = updated.flow.steps()
-        target = normalize_flow_step(step).casefold()
+        target = str(step)
         start = next(
             (
                 index
                 for index, item in enumerate(updated_steps)
-                if normalize_flow_step(item.get("name", "")).casefold() == target
+                if str(item.get("name", "")) == target
             ),
             len(updated_steps),
         )

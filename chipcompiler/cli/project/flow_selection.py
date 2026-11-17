@@ -53,7 +53,7 @@ def changed_insert_steps(
 ) -> tuple[str, ...]:
     """*insert_steps* with *insert* added and *remove* removed, canonical.
 
-    Entries are ``STEP@AFTER`` and accept the selector aliases. Raises
+    Entries are ``STEP@AFTER`` with canonical step names. Raises
     ``ValueError`` for an invalid entry, an entry both inserted and removed,
     or removing a step that is not inserted.
     """
@@ -73,13 +73,13 @@ def toggled_skip_steps(
 ) -> tuple[str, ...]:
     """*skip_steps* with *enable* removed and *disable* added, canonical.
 
-    Step spellings accept the selector aliases. Raises ``ValueError`` for an
+    Steps are canonical step names. Raises ``ValueError`` for an
     unknown step or a step both enabled and disabled.
     """
     from chipcompiler.data import StepEnum
-    from chipcompiler.rtl2gds import normalize_flow_step, resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_skip_steps
 
-    if any(normalize_flow_step(name) == StepEnum.LEC.value for name in (*enable, *disable)):
+    if any(str(name) == StepEnum.LEC.value for name in (*enable, *disable)):
         raise ValueError(
             "lec is not a flow step to enable or disable; insert it after a step with "
             "--insert lec@STEP (lec@synthesis checks synthesis)"
@@ -118,8 +118,8 @@ def project_flow_plan(
             preset_chain("rtl2gds", lec_engine=lec_engine),
             skip_steps=skip,
             inserted=inserted,
-            start=rtl2gds_api.normalize_flow_step(start),
-            end=rtl2gds_api.normalize_flow_step(end) if end is not None else None,
+            start=str(start),
+            end=str(end) if end is not None else None,
         )
     if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
         return None
@@ -138,7 +138,7 @@ def entry_step(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> str | No
     from chipcompiler import rtl2gds as rtl2gds_api
 
     if (start := _flow_option(flow_config, "start_step")) is not None:
-        return rtl2gds_api.normalize_flow_step(start)
+        return str(start)
     if cfg.flow_preset not in rtl2gds_api.get_flow_builders():
         return None
     names = [name for name, _tool in preset_chain(cfg.flow_preset)]

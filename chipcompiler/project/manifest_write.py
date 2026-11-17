@@ -330,9 +330,7 @@ def remove_workspace_registration(project_dir: str, workspace_id: str) -> bool:
 
 def manifest_range_for_steps(start: str, end: str) -> tuple[str, str]:
     """The GUI manifest range for a pair of flow step spellings."""
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    steps = (normalize_flow_step(start), normalize_flow_step(end))
+    steps = (str(start), str(end))
     for step in steps:
         if not is_manifest_flow_step(step):
             raise ManifestError(f"unknown workspace flow step: {step!r}")
