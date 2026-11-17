@@ -34,7 +34,7 @@ class _StepEntry:
     tool: str
     directory: str | None
     flow: dict | None  # raw home/flow.json step record
-    aliases: frozenset[str]
+    selectors: frozenset[str]  # the flow name and step directory token
 
     def state(self) -> str:
         from chipcompiler.cli.core.output import flow_step_status
@@ -87,7 +87,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                 tool=str(flow_step.get("tool", "")),
                 directory=dir_tokens.get(matched) if matched else None,
                 flow=flow_step,
-                aliases=frozenset({token.lower(), *({matched} if matched else ())}),
+                selectors=frozenset({token, *({matched} if matched else ())}),
             )
         )
     for dir_token, dir_path in sorted(dir_tokens.items()):
@@ -99,15 +99,15 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                     tool=os.path.basename(dir_path).rpartition("_")[2],
                     directory=dir_path,
                     flow=None,
-                    aliases=frozenset({dir_token.lower()}),
+                    selectors=frozenset({dir_token}),
                 )
             )
     return entries
 
 
 def _resolve_entry(entries: list[_StepEntry], token: str) -> _StepEntry | None:
-    wanted = {token.strip().lower(), token.strip()}
-    return next((e for e in entries if wanted & e.aliases), None)
+    wanted = token.strip()
+    return next((e for e in entries if wanted in e.selectors), None)
 
 
 # --- feature ---------------------------------------------------------------
@@ -268,11 +268,11 @@ def _checklist_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
         data, source = step_data, "step"
     else:
         home = json_read(os.path.join(workspace_dir, *_HOME_CHECKLIST_PATH))
-        names = set(entry.aliases) | {entry.display.lower()}
+        names = entry.selectors | {entry.display}
         items = [
             item
             for item in (home.get("checklist", []) if isinstance(home, dict) else [])
-            if isinstance(item, dict) and str(item.get("step", "")).lower() in names
+            if isinstance(item, dict) and str(item.get("step", "")) in names
         ]
         if not items:
             return []
