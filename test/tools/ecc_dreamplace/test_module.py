@@ -7,7 +7,6 @@ from chipcompiler.data import (
     EccData,
     EccStep,
     OriginDesign,
-    SkippableStepEnum,
     StepEnum,
     Workspace,
 )
@@ -200,11 +199,8 @@ def test_build_params_diff_sizing_uses_standalone_s50_profile(tmp_path, dreampla
     )
     result_dir = tmp_path / "data" / "diff_sizing"
     step = EccStep(
-        name=SkippableStepEnum.DIFF_SIZING.value,
-        data=EccData(
-            dir=tmp_path / "data",
-            steps={SkippableStepEnum.DIFF_SIZING.value: result_dir},
-        ),
+        name=StepEnum.DIFF_SIZING.value,
+        data=EccData(dir=tmp_path / "data", steps={StepEnum.DIFF_SIZING.value: result_dir}),
     )
     module = DreamplaceModule(
         workspace=workspace,

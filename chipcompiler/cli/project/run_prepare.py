@@ -500,10 +500,10 @@ def execute_fresh_run(
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
                     from chipcompiler.data.workspace_config import (
-                            flow_section_from_flow_config,
+                        flow_section_from_flow_config,
                     )
 
-                    preset_config: dict = { "preset": cfg.flow_preset }
+                    preset_config: dict = {"preset": cfg.flow_preset}
                     policies: dict = {}
                     if isinstance(flow_config, dict) and "skip_steps" in flow_config:
                         policies["skip_steps"] = flow_config["skip_steps"]
@@ -517,11 +517,6 @@ def execute_fresh_run(
                     )
                     if projected:
                         workspace_parameters.data["_flow"] = projected
-                    if policies:
-                        from chipcompiler.data.workspace_config import validate_flow_config
-
-                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
-                    workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
         except Exception as exc:

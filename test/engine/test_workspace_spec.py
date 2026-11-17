@@ -63,11 +63,8 @@ def test_workspace_spec_discovery_and_validation_are_canonical_and_side_effect_f
     assert set(rtl2gds["skippableStepIds"]) == {
         "lec",
         "diff_opt",
-        "preplace",
-        "diff_sizing",
         "postRouteLec",
         "Timing optimization",
-        "CTS",
     }
     assert set(rtl2gds["skippableStepIds"]) <= set(rtl2gds["stepIds"])
     assert rtl2gds["defaultSkippedStepIds"] == ["lec", "diff_opt"]

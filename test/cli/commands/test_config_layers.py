@@ -120,6 +120,11 @@ class TestExplicitEmptyStaysExplicit:
             id="empty-top",
         ),
         pytest.param(
+            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
+            "design.clock_port is required",
+            id="empty-clock",
+        ),
+        pytest.param(
             _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
             "pdk.name is required",
             id="empty-pdk-name",
@@ -147,19 +152,6 @@ class TestExplicitEmptyStaysExplicit:
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
-
-    def test_check_empty_clock_infers_no_clock(self, manifest_stubs, tmp_path, capsys, monkeypatch):
-        project_dir = self._hybrid(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
-        )
-
-        rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert manifest_stubs.records()[0]["status"] == "checked"
 
     def test_check_explicit_empty_rtl_allowed_until_run(
         self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
@@ -198,33 +190,6 @@ class TestExplicitEmptyStaysExplicit:
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
         assert flow_mocks.capture["create_kwargs"] is None
-
-    def test_run_empty_clock_infers_no_clock(
-        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
-    ):
-        from chipcompiler import rtl2gds as rtl2gds_api
-
-        resolved_calls = []
-        real_resolve_skip_steps = rtl2gds_api.resolve_skip_steps
-
-        def spy_resolve_skip_steps(flow_config, *, materials=None):
-            resolved_calls.append((flow_config, materials))
-            return real_resolve_skip_steps(flow_config, materials=materials)
-
-        monkeypatch.setattr(rtl2gds_api, "resolve_skip_steps", spy_resolve_skip_steps)
-
-        project_dir = self._hybrid(
-            manifest_stubs,
-            tmp_path,
-            monkeypatch,
-            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
-        )
-
-        rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
-
-        assert rc == 0
-        assert flow_mocks.capture["create_kwargs"] is not None
-        assert any(materials == {"clock_port": ""} for _, materials in resolved_calls)
 
     def test_check_explicit_empty_pdk_root_matches_env_base_quietly(
         self, manifest_stubs, tmp_path, capsys, monkeypatch
