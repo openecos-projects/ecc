@@ -8,7 +8,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_loaded_workspace, workspace_display
-from chipcompiler.engine.signoff_export import SignoffExportError
+from chipcompiler.engine.signoff_export import SignoffAdditionalFileError, SignoffExportError
 
 _MAX_ADDITIONAL_TOTAL = 64 * 1024 * 1024
 _MAX_ADDITIONAL_FILE = 16 * 1024 * 1024
@@ -104,6 +104,10 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
             )
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+    except SignoffAdditionalFileError as exc:
+        # The stream itself was well-formed, but one of its files cannot go
+        # into the collected package (for example its path is already taken).
+        return CommandResult.err([error_record("invalid_additional_files", reason=str(exc))])
     except SignoffExportError as exc:
         return CommandResult.err(
             [

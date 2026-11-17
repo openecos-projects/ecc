@@ -1383,7 +1383,9 @@ ecc signoff export -o <path>.tar.gz [--include-debug] [--additional-files -] [--
 `--additional-files -` reads a tar stream from stdin and embeds its regular files into the
 archive next to the collected deliverables (relative POSIX paths only; at most 256 entries,
 16 MiB per file, 64 MiB total — this is the channel ECOS Studio uses for user-selected extra
-files). The command also accepts the automation flags `--expected-revision` and `--no-wait`
+files). A path that the collected package already uses — a deliverable, `manifest.json`, or
+any other packaged file — is refused with `invalid_additional_files`: additional files are
+added to the package and never replace its contents. The command also accepts the automation flags `--expected-revision` and `--no-wait`
 (§5.1).
 
 For an existing workspace, for example:
