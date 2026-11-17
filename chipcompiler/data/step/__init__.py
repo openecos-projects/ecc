@@ -11,7 +11,6 @@ from chipcompiler.data.step.directories import (
     recorded_step_directory,
     step_directory_for_tool,
     step_directory_index,
-    step_storage_name,
     unindexed_step_directory,
 )
 from chipcompiler.data.step.metrics import StepMetrics, load_metrics, save_metrics
@@ -30,6 +29,5 @@ __all__ = [
     "save_metrics",
     "step_directory_for_tool",
     "step_directory_index",
-    "step_storage_name",
     "unindexed_step_directory",
 ]

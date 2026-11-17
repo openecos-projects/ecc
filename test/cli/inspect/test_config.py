@@ -132,7 +132,7 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Timing optimization",
+                    "name": "timing_optimization",
                     "tool": "sizer",
                     "state": "Unstart",
                 }
@@ -161,7 +161,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -194,7 +194,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -230,7 +230,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
@@ -255,7 +255,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
@@ -313,14 +313,14 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Timing optimization",
+                    "name": "timing_optimization",
                     "tool": "sizer",
                     "state": "Success",
                     "runtime": "0:00:04",
                 },
             ],
         )
-        create_step_dir(run_dir, "Timing optimization", "sizer", subdirs=["output"])
+        create_step_dir(run_dir, "timing_optimization", "sizer", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -351,8 +351,8 @@ class TestConfigStepResolved:
         plain_records,
     ):
         cases = [
-            ("place", "placement", None),
-            ("route", "routing", "route_ecc.json"),
+            ("placement", "placement", None),
+            ("routing", "routing", "routing_ecc.json"),
         ]
         for step_name, step_token, step_config in cases:
             project_dir = create_cli_project(name=f"gcd_{step_token}")
@@ -441,14 +441,14 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
                     "runtime": "0:00:05",
                 },
             ],
         )
-        create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
+        create_step_dir(run_dir, "synthesis", "yosys", subdirs=["output"])
         create_workspace_config(run_dir, {"db_ecc.json": "{}"})
 
         rc = cli_main.run(["config", "synthesis", "--plain", "--project", project_dir])
@@ -467,7 +467,7 @@ class TestEmptyStepConfigSentinel:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
@@ -489,7 +489,7 @@ class TestEmptyStepConfigSentinel:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
@@ -515,10 +515,10 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
             ],
         )
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
@@ -543,18 +543,18 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
             ],
         )
-        create_step_dir(run_dir, "route", "ecc", subdirs=["output"])
-        create_ecc_workspace_config(run_dir, "route_ecc.json")
+        create_step_dir(run_dir, "routing", "ecc", subdirs=["output"])
+        create_ecc_workspace_config(run_dir, "routing_ecc.json")
 
         rc = cli_main.run(["config", "routing", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
-            "default/config/route_ecc.json",
+            "default/config/routing_ecc.json",
         ]
 
 

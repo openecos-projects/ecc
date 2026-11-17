@@ -248,7 +248,7 @@ def config_cmd(
 
     Without STEP: resolved project-level configuration. With STEP: the
     configuration files actually in effect for that step. Inserted LEC
-    checks (`lec@<step>`), `lvs`, `postroutelec`, and `harden` have no
+    checks (`lec@<step>`), `lvs`, `post_route_lec`, and `harden` have no
     step-specific configuration (Tcl-driven, tool-default, or reusing
     `db_ecc.json`).
 

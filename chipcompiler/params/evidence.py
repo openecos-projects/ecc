@@ -28,9 +28,8 @@ EVIDENCE_FILE = "params.json"
 # ``ParamSchema.applies`` groups that span several flow steps.
 _APPLIES_ALIASES = {
     "synthesis": {"synthesis"},
-    "floorplan": {"prefloorplan", "macroplacement", "postfloorplan"},
-    "placement": {"placement", "place", "macroplacement"},
-    "routing": {"routing", "route"},
+    "floorplan": {"pre_floorplan", "macro_placement", "post_floorplan"},
+    "placement": {"placement", "macro_placement"},
     "fixfanout": {"fixfanout"},
 }
 

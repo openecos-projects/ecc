@@ -67,7 +67,7 @@ def test_no_step_starts_after_a_blocking_failure(workers):
     steps = _Steps(lvs=lvs, drc=drc)
 
     outcomes = run_wave(
-        ["lvs", "drc", "antennaCheck", "RCX"], steps, workers=workers, stops_flow=_stops
+        ["lvs", "drc", "antenna_check", "rcx"], steps, workers=workers, stops_flow=_stops
     )
 
     started = ["lvs", "drc"] if workers == 2 else ["lvs"]
@@ -75,8 +75,8 @@ def test_no_step_starts_after_a_blocking_failure(workers):
         [
             ("lvs", "failed"),
             ("drc", "ok" if workers == 2 else None),
-            ("antennaCheck", None),
-            ("RCX", None),
+            ("antenna_check", None),
+            ("rcx", None),
         ],
         started,
     )
@@ -101,7 +101,7 @@ def test_an_exception_stops_the_queue_and_is_raised_after_running_steps_return(w
     steps = _Steps(lvs=lvs, drc=drc)
 
     with pytest.raises(PermissionError, match="lvs/output"):
-        run_wave(["lvs", "drc", "antennaCheck"], steps, workers=workers, stops_flow=_stops)
+        run_wave(["lvs", "drc", "antenna_check"], steps, workers=workers, stops_flow=_stops)
 
     assert (steps.started, drc_returned.is_set()) == (
         (["lvs", "drc"], True) if workers == 2 else (["lvs"], False)

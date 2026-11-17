@@ -26,7 +26,7 @@ def _process(root, pid, parent=0, *, start="100", pages=10, children=""):
 def _observer(root, monkeypatch, *, isolated=True):
     monkeypatch.setattr(resources, "_PROC", root)
     observation = ResourceObservation(
-        100, attempt_id="test-attempt", isolated=isolated, step="place", tool="ecc"
+        100, attempt_id="test-attempt", isolated=isolated, step="placement", tool="ecc"
     )
     observation.start_id = "100"
     return observation
@@ -93,7 +93,7 @@ def test_shared_process_scope_never_claims_step_attribution(tmp_path, monkeypatc
 def test_unavailable_proc_is_not_reported_as_zero(tmp_path, monkeypatch):
     monkeypatch.setattr(resources, "_PROC", tmp_path)
     observation = start_observation(
-        100, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+        100, attempt_id="test-attempt", isolated=True, step="routing", tool="ecc"
     )
 
     result = observation.finish()
@@ -139,7 +139,7 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
             time.sleep(0.01)
         assert ready.is_file()
         observation = start_observation(
-            process.pid, attempt_id="test-attempt", isolated=True, step="route", tool="ecc"
+            process.pid, attempt_id="test-attempt", isolated=True, step="routing", tool="ecc"
         )
         assert observation is not None
         time.sleep(0.3)
@@ -159,7 +159,7 @@ def test_real_worker_tree_is_sampled_and_sampler_stops(tmp_path):
 def test_frozen_execution_is_explicitly_shared(monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     observation = start_observation(
-        os.getpid(), attempt_id="test-attempt", isolated=False, step="place", tool="ecc"
+        os.getpid(), attempt_id="test-attempt", isolated=False, step="placement", tool="ecc"
     )
 
     result = observation.finish()
@@ -176,13 +176,13 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
@@ -190,7 +190,7 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
 
@@ -213,14 +213,14 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Success",
                 "resource_observation": {"attempt_id": "previous-execution"},
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
@@ -229,7 +229,7 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     monkeypatch.setattr(
         "chipcompiler.engine.flow.execute_tool_step",
@@ -249,15 +249,15 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
                 "info": {},
                 "resource_observation": {"attempt_id": "previous-execution"},
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
@@ -266,7 +266,7 @@ def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp
     workspace.flow.path.write_text(json.dumps(workspace.flow.data))
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     before = json.loads(json.dumps(workspace.flow.data))
     monkeypatch.setattr(flow, "save", lambda: False)

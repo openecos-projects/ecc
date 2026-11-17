@@ -2,7 +2,7 @@ import json
 import math
 from pathlib import Path
 
-from chipcompiler.cli.core.output import normalize_state
+from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.discovery import get_run_status
 
 
@@ -43,12 +43,12 @@ def flow_status(flow: dict) -> str:
             }
         )
     status = flow.get("status", flow.get("state", "unknown"))
-    return normalize_state(status) if isinstance(status, str) else "unknown"
+    return flow_step_status(status) if isinstance(status, str) else "unknown"
 
 
 def step_status(step: dict) -> str:
     status = step.get("state", step.get("status", "unknown"))
-    return normalize_state(status) if isinstance(status, str) else "unknown"
+    return flow_step_status(status) if isinstance(status, str) else "unknown"
 
 
 def checklist_items(checklist: dict) -> list[dict]:

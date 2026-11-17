@@ -76,7 +76,7 @@ class EngineDB:
         update data after step finished,
         update data by read the def or verilog, parsing nessary infomation,
         for example,
-        if step is "place", read instances data from step output def file and update to db egine.
+        if step is "placement", read instances from the step output def and update the db engine.
         """
         _ = step.output.def_
         if self.ecc_module is None:

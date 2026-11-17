@@ -168,7 +168,7 @@ def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatc
         config_path.write_text(json.dumps({"max_parallel_corners": value}))
         with pytest.raises(ValueError, match="positive integer"):
             sta.sta_workers(workspace, step)
-    step.name = "Harden"
+    step.name = "harden"
     assert sta.sta_workers(workspace, step) == 1
 
 

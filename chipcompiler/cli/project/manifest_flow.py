@@ -2,10 +2,10 @@
 
 """Inserted steps on a run's flow config, and project.json's synthesis LEC.
 
-ecc.toml declares inserted steps (``[flow] insert_steps``). project.json and
-the GUI do not know inserted steps: they still list the synthesis LEC as a
-chain step, ``LEC``, which is now the inserted ``lec@Synthesis``. These
-helpers carry both onto the flow config :mod:`effective_config` resolves.
+ecc.toml declares inserted steps (``[flow] insert_steps``); a project.json
+range may end at one (``lec@synthesis``), and a project.json skip policy that
+keeps ``lec`` runs the synthesis LEC. These helpers carry both onto the flow
+config :mod:`effective_config` resolves.
 
 Imported lazily by the command handlers, so module-level imports must stay
 cheap (no chipcompiler.data imports here).
@@ -32,8 +32,8 @@ def attach_insert_steps(flow_config: dict | None, insert_steps: list | None) -> 
 def manifest_synthesis_lec(entry, cfg) -> list | None:
     """The synthesis LEC a project.json workspace entry keeps, as an insertion.
 
-    A declared entry policy that does not skip ``LEC`` runs it, now as
-    ``lec@Synthesis``; an undeclared policy skipped it by default, and an
+    A declared entry policy that does not skip ``lec`` runs it as
+    ``lec@synthesis``; an undeclared policy skipped it by default, and an
     ecc.toml ``skip_steps`` replaces the entry's policy. None: no insertion.
     """
     from chipcompiler.data import StepEnum
@@ -52,17 +52,18 @@ def manifest_synthesis_lec(entry, cfg) -> list | None:
 def entry_flow_config(entry) -> dict:
     """The run flow config of a project.json workspace range.
 
-    A range bounded by ``LEC`` is bounded by Synthesis and inserts
-    ``lec@Synthesis``.
+    A range bounded by an inserted LEC (``lec@synthesis``) is bounded by the
+    step it checks and inserts that LEC.
     """
-    from chipcompiler.data import StepEnum
-    from chipcompiler.rtl2gds import inserted_step_name, normalize_flow_step
+    from chipcompiler.rtl2gds import parse_inserted_step
 
     config: dict = {"start_step": entry.start_step, "end_step": entry.end_step}
     for key in ("start_step", "end_step"):
-        if normalize_flow_step(config[key]) == StepEnum.LEC.value:
-            config[key] = StepEnum.SYNTHESIS.value
-            config["insert_steps"] = [
-                inserted_step_name(StepEnum.LEC.value, StepEnum.SYNTHESIS.value)
-            ]
+        parsed = parse_inserted_step(config[key])
+        if parsed is None:
+            continue
+        inserted = config[key]
+        config[key] = parsed[1]
+        if inserted not in config.setdefault("insert_steps", []):
+            config["insert_steps"].append(inserted)
     return config

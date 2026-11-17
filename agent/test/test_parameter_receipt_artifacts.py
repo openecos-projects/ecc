@@ -78,12 +78,12 @@ def _materialized_workspace(
         pdk=SimpleNamespace(tech=tech, site_core="core7"),
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     }
                 ],
             }
@@ -91,7 +91,7 @@ def _materialized_workspace(
     )
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": knob_id, "value": written}],
         candidate_id,
     )
@@ -114,7 +114,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     )
     request = SimpleNamespace(
         candidate_id="candidate-1",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -136,7 +136,7 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert receipt["tool"] == TOOL
     assert receipt["context"]["parameter_card_sha256"] == HASH
     materialization_ref = receipt["materialization"]
-    assert materialization_ref["target_step"] == "place"
+    assert materialization_ref["target_step"] == "placement"
     assert materialization_ref["config_ref"] == "config/dreamplace.json"
     assert materialization_ref["before_snapshot_ref"].endswith("dreamplace.before.json")
     assert materialization_ref["after_snapshot_ref"].endswith("dreamplace.after.json")
@@ -157,7 +157,7 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
     (origin / "filelist").write_text("top.v\nworker.v\n", encoding="utf-8")
     request = SimpleNamespace(
         candidate_id="candidate-multifile",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         seed=17,
     )
@@ -192,7 +192,7 @@ def test_parameter_receipt_context_uses_loaded_pdk_tech(
     )
     request = SimpleNamespace(
         candidate_id="candidate-canonical-config",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         seed=17,
     )
@@ -213,7 +213,7 @@ def test_cell_padding_receipt_preserves_surface_site_value(tmp_path: Path, monke
     )
     request = SimpleNamespace(
         candidate_id="candidate-padding",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.cell_padding_x", "value": 1}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -250,7 +250,7 @@ def test_candidate_parameter_receipt_rejects_incomplete_materialization(tmp_path
     )
     request = SimpleNamespace(
         candidate_id="candidate-1",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -301,7 +301,7 @@ def test_candidate_receipt_preserves_minimal_runtime_observation(
     )
     request = SimpleNamespace(
         candidate_id="candidate-floor",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.2}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -337,7 +337,7 @@ def test_candidate_parameter_receipt_rejects_runtime_report_for_another_knob(
     )
     request = SimpleNamespace(
         candidate_id="candidate-density",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -371,7 +371,7 @@ def test_candidate_parameter_receipt_requires_parent_flow_sha256(
     )
     request = SimpleNamespace(
         candidate_id="candidate-no-parent",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -405,7 +405,7 @@ def test_candidate_parameter_receipt_rejects_stripped_unknown_ecc_revision(
     )
     request = SimpleNamespace(
         candidate_id="candidate-unknown-revision",
-        target_step="place",
+        target_step="placement",
         patch=[{"knob_id": "place.target_density", "value": 0.85}],
         context_sha256=HASH,
         parameter_card_sha256=HASH,
@@ -428,7 +428,7 @@ def test_parameter_receipt_rejects_unbound_tool_metadata() -> None:
         build_parameter_application_receipt(
             receipt_id="parameter-receipt-1",
             tool={"name": "DREAMPlace", "revision": "bound"},
-            context={"stage": "place"},
+            context={"stage": "placement"},
             requested={"knob_id": "place.target_density", "value": 0.85, "unit": "ratio"},
             materialization={},
             runtime_report={

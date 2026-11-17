@@ -43,7 +43,7 @@ def test_qor_summary_issues_reads_v4_failed_gates(tmp_path):
     issues = SignoffPackageCollector(workspace)._qor_summary_issues(
         tmp_path,
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "sta",

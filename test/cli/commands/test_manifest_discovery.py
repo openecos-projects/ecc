@@ -13,7 +13,7 @@ class TestManifestRunDiscovery:
         manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
         run_dir = project_dir / "ws_0001"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 3, "steps": []}')
 
         rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 
@@ -32,7 +32,7 @@ class TestManifestRunDiscovery:
         )
         run_dir = project_dir / "ws_0002"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 3, "steps": []}')
 
         rc = cli_main.run(
             ["status", "--project", str(project_dir), "--workspace", "ws_0002", "--plain"]
@@ -119,7 +119,7 @@ class TestManifestRunDiscovery:
         )
         run_dir = project_dir / "ws_0002"
         (run_dir / "home").mkdir(parents=True)
-        (run_dir / "home" / "flow.json").write_text('{"schema_version": 2, "steps": []}')
+        (run_dir / "home" / "flow.json").write_text('{"schema_version": 3, "steps": []}')
 
         rc = cli_main.run(["status", "--project", str(project_dir), "--plain"])
 

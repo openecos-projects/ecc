@@ -10,32 +10,6 @@ def disclosure_cmd(command: str, project: str | None = None, workspace: str | No
     return " ".join(parts)
 
 
-def normalize_step_name(internal: str) -> str:
-    mapping = {
-        "Synthesis": "synthesis",
-        "preFloorplan": "pre_floorplan",
-        "macroPlacement": "macro_placement",
-        "postFloorplan": "post_floorplan",
-        "place": "placement",
-        "CTS": "cts",
-        "legalization": "legalization",
-        "Timing optimization": "timing_optimization",
-        "timing optimization": "timing_optimization",
-        "route": "routing",
-        "drc": "drc",
-        "filler": "filler",
-        "postRouteLec": "postroutelec",
-    }
-    return mapping.get(internal, internal.lower())
-
-
-def normalize_state(internal: str) -> str:
-    mapping = {
-        "Success": "success",
-        "Incomplete": "incomplete",
-        "Unstart": "unstart",
-        "Ongoing": "ongoing",
-        "Pending": "pending",
-        "Invalid": "invalid",
-    }
-    return mapping.get(internal, internal.lower())
+def flow_step_status(state: str) -> str:
+    """The CLI status of a flow step run state, e.g. ``Success`` -> ``success``."""
+    return state.lower()

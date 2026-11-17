@@ -386,7 +386,7 @@ def _sta_corner_reports(
         power_payload = dataclasses.asdict(power_rpt)
 
     if not corners:
-        # syn_sta-style workspace: post-synthesis STA lives in Synthesis_yosys.
+        # syn_sta-style workspace: post-synthesis STA lives in synthesis_yosys.
         synth_report = directories.path(StepEnum.SYNTHESIS.value) / "report"
         rpt = parse_qor_summary_rpt(_read_text(synth_report / "qor_summary.rpt"))
         power_rpt = parse_power_rpt(_read_text(synth_report / "power.rpt"))

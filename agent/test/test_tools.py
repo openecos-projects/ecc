@@ -40,21 +40,21 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
         logger=_ns(),
         flow=_ns(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     }
                 ],
             }
         ),
     )
-    step = _ns(name="place", tool="dreamplace")
+    step = _ns(name="placement", tool="dreamplace")
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.65}],
         candidate_id="place-rerun-001",
     )
@@ -83,18 +83,18 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
         logger=_ns(),
         flow=_ns(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Timing optimization",
+                        "name": "timing_optimization",
                         "tool": "sizer",
-                        **step_fields("Timing optimization", "sizer"),
+                        **step_fields("timing_optimization", "sizer"),
                     }
                 ],
             }
         ),
     )
-    step = _ns(name="Timing optimization", tool="sizer")
+    step = _ns(name="timing_optimization", tool="sizer")
     runtime_root = tmp_path / "sizer"
     executable = runtime_root / "bin" / "Sizer"
     executable.parent.mkdir(parents=True)
@@ -134,21 +134,21 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
         logger=_ns(exception=lambda *_args, **_kwargs: None),
         flow=_ns(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     }
                 ],
             }
         ),
     )
-    step = _ns(name="place", tool="dreamplace")
+    step = _ns(name="placement", tool="dreamplace")
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.65}],
         candidate_id="place-rerun-observed",
     )
@@ -194,7 +194,7 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
         logger=_ns(),
         flow=_ns(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": "legalization",
@@ -232,7 +232,7 @@ def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_
 
 def test_tool_runner_without_receipts_uses_the_shared_tool_contract(monkeypatch, tmp_path):
     workspace = _ns(directory=tmp_path, config={}, logger=None)
-    step = _ns(name="route", tool="ecc")
+    step = _ns(name="routing", tool="ecc")
     calls = []
     tool = _ns(
         build_step_config=lambda *_args: calls.append("build"),

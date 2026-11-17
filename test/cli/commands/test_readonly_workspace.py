@@ -85,7 +85,7 @@ class TestWorkspaceViews:
 
         ws = _make_workspace(tmp_path)
         create_flow_json(ws, profile="inspect")
-        create_step_dir(ws, "CTS", "ecc")
+        create_step_dir(ws, "cts", "ecc")
 
         rc = cli_main.run(["status", "--project", str(tmp_path), "--workspace", "ws", "--plain"])
 
@@ -102,7 +102,7 @@ class TestWorkspaceViews:
         create_flow_json(ws, profile="inspect")
         create_step_dir(
             ws,
-            "Synthesis",
+            "synthesis",
             "yosys",
             subdirs=["log"],
             files={"log/synthesis.log": "Error: bad thing\n"},
@@ -140,7 +140,7 @@ class TestReadOnly:
         create_flow_json(ws, profile="inspect")
         create_step_dir(
             ws,
-            "Synthesis",
+            "synthesis",
             "yosys",
             subdirs=["log"],
             files={"log/synthesis.log": "ok\n"},

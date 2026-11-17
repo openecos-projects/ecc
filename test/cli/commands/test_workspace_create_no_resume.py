@@ -39,8 +39,8 @@ def test_repeated_workspace_create_does_not_resume_flow(
         json.dumps(
             {
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "Floorplan", "tool": "ecc", "state": "Pending"},
+                    {"name": "synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "floorplan", "tool": "ecc", "state": "Pending"},
                 ]
             }
         )

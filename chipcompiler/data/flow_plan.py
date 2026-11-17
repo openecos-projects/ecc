@@ -143,10 +143,10 @@ def plan_flow(
     """Plan *chain* from *start* to *end* (inclusive) without *skip_steps*.
 
     Names are canonical step names. *inserted* are canonical inserted steps
-    (``lec@CTS``) with their tools; each follows its step, the range's last
+    (``lec@cts``) with their tools; each follows its step, the range's last
     step included, and one whose step is outside the range is left out. A
     chain may build an inserted step itself (``synthesis_lec``:
-    ``lec@Synthesis``); it is planned the same way. *start* and *end* default
+    ``lec@synthesis``); it is planned the same way. *start* and *end* default
     to the ends of the chain; skip names outside the planned range are
     ignored. The flow target (:func:`flow_target`) and an explicit *start*,
     where the flow was asked to begin, may not be skipped; the first step of
@@ -214,7 +214,7 @@ def _with_inserted(
     result: list[PlannedStep] = []
     for step in steps:
         result.append(step)
-        # A preset may build the inserted step itself (synthesis_lec: lec@Synthesis).
+        # A preset may build the inserted step itself (synthesis_lec: lec@synthesis).
         if step.name in following and following[step.name][0] not in names:
             name, tool = following[step.name]
             result.append(PlannedStep(name, tool, step.enabled, optional=True, inserted=True))

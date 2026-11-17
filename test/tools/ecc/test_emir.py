@@ -78,8 +78,8 @@ def emir_case(tmp_path, monkeypatch):
     step = builder.build_step(
         workspace,
         StepEnum.EMIR.value,
-        input_def=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.def.gz",
-        input_verilog=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.v.gz",
+        input_def=tmp_path / "power_analysis_ecc" / "output" / "gcd_power_analysis.def.gz",
+        input_verilog=tmp_path / "power_analysis_ecc" / "output" / "gcd_power_analysis.v.gz",
     )
     builder.build_step_space(step)
     write_request(_emir_request(tmp_path, power=True))
@@ -93,13 +93,13 @@ def emir_case(tmp_path, monkeypatch):
 
 
 def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
-    """EMIR's req.json: the grid from postFloorplan and power from powerAnalysis."""
+    """EMIR's req.json: the grid from post_floorplan and power from power_analysis."""
     upstream: dict[DesignData, UpstreamResponse] = {
         DesignState.FILLED: UpstreamResponse("filler_ecc", None),
-        DesignState.PDN: UpstreamResponse("postFloorplan_ecc", None),
+        DesignState.PDN: UpstreamResponse("post_floorplan_ecc", None),
     }
     if power:
-        upstream[AnalysisData.POWER] = UpstreamResponse("powerAnalysis_ecc", None)
+        upstream[AnalysisData.POWER] = UpstreamResponse("power_analysis_ecc", None)
     return StepRequest(
         workspace_directory=workspace_dir,
         step=StepEnum.EMIR.value,
@@ -107,7 +107,7 @@ def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
         step_directory="emir_ecc",
         attempt_id="attempt-emir",
         inputs=StepInputs(),
-        design_source=UpstreamResponse("powerAnalysis_ecc", None),
+        design_source=UpstreamResponse("power_analysis_ecc", None),
         upstream=upstream,
         final_step=False,
         layout_image=False,
@@ -134,7 +134,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
             output_dir=workspace.directory / "emir_ecc" / "data" / "emir",
             instance_power_file_path=(
                 workspace.directory
-                / "powerAnalysis_ecc"
+                / "power_analysis_ecc"
                 / "data"
                 / "pw"
                 / "power_reporter"
@@ -143,7 +143,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
             technology_file_path=str(workspace.directory / "process.tech"),
             ploc_file_path=(
                 workspace.directory
-                / "postFloorplan_ecc"
+                / "post_floorplan_ecc"
                 / "data"
                 / "fp"
                 / "pdn_generator"

@@ -231,12 +231,12 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"schema_version": 2, "steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"schema_version": 2, "steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 3, "steps": steps}),
         logger=Logger(),
     )
 

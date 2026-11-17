@@ -22,13 +22,13 @@ _NAMES = [
     "filler",
     "lvs",
     "drc",
-    "antennaCheck",
-    "postRouteLec",
-    "RCX",
+    "antenna_check",
+    "post_route_lec",
+    "rcx",
     "sta",
-    "powerAnalysis",
+    "power_analysis",
     "emir",
-    "Harden",
+    "harden",
 ]
 _WAIT = 5.0
 
@@ -117,7 +117,7 @@ def _resumed_workspace(tmp_path, monkeypatch, flow_class=EngineFlow):
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     flow: Any = flow_class(workspace)
     flow.workspace.flow.data = build_dynamic_flow_data(
-        {"start_step": "filler", "end_step": "Harden", "skip_steps": []}
+        {"start_step": "filler", "end_step": "harden", "skip_steps": []}
     )
     for record in flow.workspace.flow.steps():
         record["state"] = "Success" if record["name"] in ("filler", "lvs") else "Unstart"
@@ -159,35 +159,44 @@ def resumed(tmp_path, monkeypatch):
     return _resumed_workspace(tmp_path, monkeypatch)
 
 
-_RESUMED = ["drc", "antennaCheck", "postRouteLec", "RCX", "sta", "powerAnalysis", "emir", "Harden"]
+_RESUMED = [
+    "drc",
+    "antenna_check",
+    "post_route_lec",
+    "rcx",
+    "sta",
+    "power_analysis",
+    "emir",
+    "harden",
+]
 
 
 def test_resume_starting_mid_wave_runs_the_rest_of_it_and_the_next_wave_in_parallel(resumed):
     run = resumed.run
-    run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    run.group(["sta", "powerAnalysis"])
+    run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    run.group(["sta", "power_analysis"])
 
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     assert result == rerun.StepRunResult(ok=True, executed=tuple(_RESUMED), failed=None)
     assert run.peak == 4
     # a wave starts only after the one before it ended
-    wave_one = {"drc", "antennaCheck", "postRouteLec", "RCX"}
+    wave_one = {"drc", "antenna_check", "post_route_lec", "rcx"}
     ends = [i for i, (what, name) in enumerate(run.log) if what == "end" and name in wave_one]
     starts = [i for i, (what, name) in enumerate(run.log) if what == "start" and name == "sta"]
     assert max(ends) < min(starts)
     assert run.log[-4:] == [
         ("start", "emir"),
         ("end", "emir"),
-        ("start", "Harden"),
-        ("end", "Harden"),
+        ("start", "harden"),
+        ("end", "harden"),
     ]
     assert resumed.sink.events == [("started", "rerun", tuple(_RESUMED)), ("finished", "Success")]
 
 
 def test_each_step_output_is_reset_right_before_it_runs(resumed):
-    resumed.run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    resumed.run.group(["sta", "powerAnalysis"])
+    resumed.run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    resumed.run.group(["sta", "power_analysis"])
 
     assert rerun.run_resume(resumed.flow, event_sink=resumed.sink).ok
 
@@ -195,35 +204,35 @@ def test_each_step_output_is_reset_right_before_it_runs(resumed):
         name: True for name in _RESUMED
     }
     # Steps later in the selection keep their old output until their turn.
-    assert resumed.run.at_start["emir"]["stale_outputs"] == ["Harden", "filler", "lvs"]
-    assert resumed.run.at_start["Harden"]["stale_outputs"] == ["filler", "lvs"]
+    assert resumed.run.at_start["emir"]["stale_outputs"] == ["filler", "harden", "lvs"]
+    assert resumed.run.at_start["harden"]["stale_outputs"] == ["filler", "lvs"]
 
 
 def test_wave_steps_skip_the_step_sections_and_sequential_steps_keep_them(resumed):
-    resumed.run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    resumed.run.group(["sta", "powerAnalysis"])
+    resumed.run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    resumed.run.group(["sta", "power_analysis"])
 
     assert rerun.run_resume(resumed.flow, event_sink=resumed.sink).ok
 
     assert resumed.sections == [
         "ecc - begin step - emir",
         "ecc - end step - emir",
-        "ecc - begin step - Harden",
-        "ecc - end step - Harden",
+        "ecc - begin step - harden",
+        "ecc - end step - harden",
     ]
     # the flow log is refreshed after each sequential step and once per wave
-    waves = [["drc", "antennaCheck", "postRouteLec", "RCX"], ["sta", "powerAnalysis"]]
-    assert len(resumed.flushed) == len(waves) + len(["emir", "Harden"])
+    waves = [["drc", "antenna_check", "post_route_lec", "rcx"], ["sta", "power_analysis"]]
+    assert len(resumed.flushed) == len(waves) + len(["emir", "harden"])
 
 
 def test_wave_steps_share_one_wave_observer(resumed):
-    resumed.run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    resumed.run.group(["sta", "powerAnalysis"])
+    resumed.run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    resumed.run.group(["sta", "power_analysis"])
 
     assert rerun.run_resume(resumed.flow, event_sink=resumed.sink).ok
 
     observers = resumed.run.observers
-    wave = ["drc", "antennaCheck", "postRouteLec", "RCX", "sta", "powerAnalysis"]
+    wave = ["drc", "antenna_check", "post_route_lec", "rcx", "sta", "power_analysis"]
     assert [isinstance(observers[name], WaveObserver) for name in _RESUMED] == [
         name in wave for name in _RESUMED
     ]
@@ -231,19 +240,19 @@ def test_wave_steps_share_one_wave_observer(resumed):
 
 def test_a_failing_wave_step_stops_the_following_steps(resumed):
     run = resumed.run
-    run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    run.states["postRouteLec"] = StateEnum.Imcomplete
+    run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    run.states["post_route_lec"] = StateEnum.Imcomplete
 
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     assert result == rerun.StepRunResult(
-        ok=False, executed=("drc", "antennaCheck", "RCX"), failed="postRouteLec"
+        ok=False, executed=("drc", "antenna_check", "rcx"), failed="post_route_lec"
     )
     assert {name for what, name in run.log if what == "start"} == {
         "drc",
-        "antennaCheck",
-        "postRouteLec",
-        "RCX",
+        "antenna_check",
+        "post_route_lec",
+        "rcx",
     }
     assert resumed.sink.events == [
         ("started", "rerun", tuple(_RESUMED)),
@@ -253,32 +262,32 @@ def test_a_failing_wave_step_stops_the_following_steps(resumed):
 
 def test_the_first_failed_step_in_selection_order_is_reported(resumed):
     run = resumed.run
-    run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    run.states.update({"drc": StateEnum.Invalid, "RCX": StateEnum.Imcomplete})
+    run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    run.states.update({"drc": StateEnum.Invalid, "rcx": StateEnum.Imcomplete})
     rcx_reported = threading.Event()
-    run.after_barrier["RCX"] = rcx_reported.set
+    run.after_barrier["rcx"] = rcx_reported.set
     run.before_complete["drc"] = lambda: rcx_reported.wait(_WAIT)
 
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     # RCX failed first in time; drc is first in the flow.
     assert result == rerun.StepRunResult(
-        ok=False, executed=("antennaCheck", "postRouteLec"), failed="drc"
+        ok=False, executed=("antenna_check", "post_route_lec"), failed="drc"
     )
 
 
 def test_an_incomplete_advisory_step_does_not_stop_the_run(resumed):
     run = resumed.run
-    run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    run.group(["sta", "powerAnalysis"])
-    run.states["antennaCheck"] = StateEnum.Imcomplete
+    run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    run.group(["sta", "power_analysis"])
+    run.states["antenna_check"] = StateEnum.Imcomplete
 
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     assert result == rerun.StepRunResult(
-        ok=True, executed=tuple(name for name in _RESUMED if name != "antennaCheck"), failed=None
+        ok=True, executed=tuple(name for name in _RESUMED if name != "antenna_check"), failed=None
     )
-    assert run.log[-2:] == [("start", "Harden"), ("end", "Harden")]
+    assert run.log[-2:] == [("start", "harden"), ("end", "harden")]
 
 
 @pytest.mark.parametrize(
@@ -288,7 +297,7 @@ def test_an_incomplete_advisory_step_does_not_stop_the_run(resumed):
             StateEnum.Invalid,
             rerun.StepRunResult(
                 ok=False,
-                executed=("drc", "antennaCheck", "postRouteLec", "RCX", "sta", "powerAnalysis"),
+                executed=("drc", "antenna_check", "post_route_lec", "rcx", "sta", "power_analysis"),
                 failed="emir",
             ),
         ),
@@ -310,7 +319,7 @@ def test_a_sequential_step_after_a_wave_stops_the_run_unless_it_is_advisory(
 
     assert rerun.run_resume(resumed.flow, event_sink=resumed.sink) == expected
     assert [name for what, name in resumed.run.log if what == "start"][-1] == (
-        "emir" if not expected.ok else "Harden"
+        "emir" if not expected.ok else "harden"
     )
 
 
@@ -332,20 +341,20 @@ def test_a_cap_of_one_runs_the_selection_one_step_at_a_time_in_order(resumed):
 
 def test_run_from_with_a_range_groups_the_selected_part_of_a_wave(resumed):
     run = resumed.run
-    run.group(["antennaCheck", "postRouteLec", "RCX"])
+    run.group(["antenna_check", "post_route_lec", "rcx"])
 
-    result = rerun.run_from(resumed.flow, "antennaCheck", through="RCX", event_sink=resumed.sink)
+    result = rerun.run_from(resumed.flow, "antenna_check", through="rcx", event_sink=resumed.sink)
 
     assert result == rerun.StepRunResult(
-        ok=True, executed=("antennaCheck", "postRouteLec", "RCX"), failed=None
+        ok=True, executed=("antenna_check", "post_route_lec", "rcx"), failed=None
     )
     assert run.peak == 3
 
 
 def test_a_selection_skipping_wave_members_still_runs_the_rest_in_parallel(resumed):
     run = resumed.run
-    run.group(["lvs", "RCX"])
-    steps = [step for step in resumed.flow.workspace_steps if step.name in ("lvs", "RCX")]
+    run.group(["lvs", "rcx"])
+    steps = [step for step in resumed.flow.workspace_steps if step.name in ("lvs", "rcx")]
 
     assert resumed.flow.run_steps(rerun=True, observer=resumed.sink, steps=steps) is True
 
@@ -370,41 +379,41 @@ def test_only_runs_the_single_step_sequentially_even_inside_a_wave(resumed):
 def test_cancel_during_a_wave_keeps_queued_steps_from_starting(resumed):
     resumed.flow.max_parallel_steps = 2
     run = resumed.run
-    run.group(["drc", "antennaCheck"])
+    run.group(["drc", "antenna_check"])
     # the user cancels while both workers hold a step, before either finishes
     run.before_complete["drc"] = resumed.sink.cancelled.set
-    run.before_complete["antennaCheck"] = resumed.sink.cancelled.set
+    run.before_complete["antenna_check"] = resumed.sink.cancelled.set
 
     with pytest.raises(RuntimeError, match="cancelled"):
         rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     # The two running steps finish; nothing queued behind them starts.
-    assert sorted(name for what, name in run.log if what == "start") == ["antennaCheck", "drc"]
+    assert sorted(name for what, name in run.log if what == "start") == ["antenna_check", "drc"]
     # A queued step's output was never reset.
-    assert (run.outputs["postRouteLec"] / "stale").exists()
+    assert (run.outputs["post_route_lec"] / "stale").exists()
     assert resumed.sink.events[-1] == ("finished", "interrupted")
 
 
 def test_cancel_between_waves_keeps_the_next_wave_from_starting(resumed):
     run = resumed.run
-    run.group(["drc", "antennaCheck", "postRouteLec", "RCX"])
-    run.after_barrier["RCX"] = resumed.sink.cancelled.set
+    run.group(["drc", "antenna_check", "post_route_lec", "rcx"])
+    run.after_barrier["rcx"] = resumed.sink.cancelled.set
 
     with pytest.raises(RuntimeError, match="cancelled"):
         rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     assert {name for what, name in run.log if what == "start"} == {
         "drc",
-        "antennaCheck",
-        "postRouteLec",
-        "RCX",
+        "antenna_check",
+        "post_route_lec",
+        "rcx",
     }
     assert resumed.sink.events[-1] == ("finished", "interrupted")
 
 
 def test_cancel_is_checked_before_every_sequential_step(resumed):
     resumed.flow.max_parallel_steps = 1
-    resumed.run.after_barrier["antennaCheck"] = resumed.sink.cancelled.set
+    resumed.run.after_barrier["antenna_check"] = resumed.sink.cancelled.set
 
     with pytest.raises(RuntimeError, match="cancelled"):
         rerun.run_resume(resumed.flow, event_sink=resumed.sink)

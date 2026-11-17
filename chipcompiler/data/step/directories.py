@@ -2,7 +2,7 @@
 
 Workspace creation names each step directory ``<step>_<tool>``, prefixed with
 the step's position in the flow for ledgers that record it
-(``07_place_dreamplace``). Checklists, signoff packages, QoR scoring and the
+(``07_placement_dreamplace``). Checklists, signoff packages, QoR scoring and the
 design reports resolve per-step artifacts through this module instead of
 spelling directory names themselves.
 """
@@ -13,33 +13,33 @@ from pathlib import Path, PurePath
 from types import MappingProxyType
 from typing import Protocol, cast, runtime_checkable
 
-from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
+from chipcompiler.data.types import SkippableStepEnum, StepEnum
 
 # Base step-directory names along the canonical rtl2gds chain. They identify
 # inherited directories and steps absent from a bounded derived ledger. Timing
 # optimization owns no artifact directory any consumer reads through these tables.
 STEP_DIRECTORIES = {
-    StepEnum.SYNTHESIS.value: "Synthesis_yosys",
-    StepEnum.PRE_FLOORPLAN.value: "preFloorplan_ecc",
-    StepEnum.MACRO_PLACEMENT.value: "macroPlacement_dreamplace",
-    StepEnum.POST_FLOORPLAN.value: "postFloorplan_ecc",
+    StepEnum.SYNTHESIS.value: "synthesis_yosys",
+    StepEnum.PRE_FLOORPLAN.value: "pre_floorplan_ecc",
+    StepEnum.MACRO_PLACEMENT.value: "macro_placement_dreamplace",
+    StepEnum.POST_FLOORPLAN.value: "post_floorplan_ecc",
     StepEnum.PREPLACE.value: "preplace_sizer",
-    StepEnum.PLACEMENT.value: "place_dreamplace",
+    StepEnum.PLACEMENT.value: "placement_dreamplace",
     SkippableStepEnum.DIFF_OPT.value: "diff_opt_dreamplace",
     StepEnum.DIFF_SIZING.value: "diff_sizing_dreamplace",
-    StepEnum.CTS.value: "CTS_ecc",
+    StepEnum.CTS.value: "cts_ecc",
     StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-    StepEnum.ROUTING.value: "route_ecc",
+    StepEnum.ROUTING.value: "routing_ecc",
     StepEnum.FILLER.value: "filler_ecc",
-    StepEnum.RCX.value: "RCX_ecc",
+    StepEnum.RCX.value: "rcx_ecc",
     StepEnum.STA.value: "sta_ecc",
-    StepEnum.POWER_ANALYSIS.value: "powerAnalysis_ecc",
+    StepEnum.POWER_ANALYSIS.value: "power_analysis_ecc",
     StepEnum.EMIR.value: "emir_ecc",
     StepEnum.LVS.value: "lvs_ecc",
-    SkippableStepEnum.POST_ROUTE_LEC.value: "postRouteLec_kepler_formal",
+    SkippableStepEnum.POST_ROUTE_LEC.value: "post_route_lec_kepler_formal",
     StepEnum.DRC.value: "drc_ecc",
-    StepEnum.ANTENNA_CHECK.value: "antennaCheck_ecc",
-    StepEnum.HARDEN.value: "Harden_ecc",
+    StepEnum.ANTENNA_CHECK.value: "antenna_check_ecc",
+    StepEnum.HARDEN.value: "harden_ecc",
     StepEnum.DEFVIEW.value: "defview_ecc",
 }
 
@@ -49,8 +49,7 @@ def step_directory_for_tool(step_name: str, tool: str | None) -> str:
     directory = STEP_DIRECTORIES.get(step_name)
     if directory is not None:
         return directory
-    # Tools with their own storage spelling (Sizer Timing Opt) own the stem.
-    return f"{step_storage_name(step_name, tool or '')}_{tool}"
+    return f"{step_name}_{tool}"
 
 
 def all_step_directories() -> list[str]:
@@ -69,30 +68,19 @@ def flow_step_directory(steps: Sequence[Mapping[str, object]] | None, step_name:
     return STEP_DIRECTORIES.get(step_name, step_name)
 
 
-def step_storage_name(step_name: str, tool_name: str) -> str:
-    """Directory stem for ``{stem}_{tool}`` workspace step folders.
-
-    Sizer stores Timing Opt as ``timing_optimization_sizer`` instead of
-    ``Timing optimization_sizer``. Other tools keep the flow step name.
-    """
-    if tool_name.lower() == ToolName.SIZER:
-        return "_".join(step_name.split()).lower()
-    return step_name
-
-
 def new_step_directory(step_name: str, tool: str, *, index: int | None = None) -> str:
     """The directory name a step gets when it is added to a flow.
 
-    ``<step>_<tool>`` (``Synthesis_yosys``), prefixed with the step's
+    ``<step>_<tool>`` (``synthesis_yosys``), prefixed with the step's
     two-digit position in the flow when *index* is given
-    (``01_Synthesis_yosys``).
+    (``01_synthesis_yosys``).
     """
-    stem = f"{step_storage_name(step_name, tool)}_{tool}"
+    stem = f"{step_name}_{tool}"
     return stem if index is None else f"{index:02d}_{stem}"
 
 
 def step_directory_index(name: str) -> int | None:
-    """The index prefix of a step directory name (7 for ``07_place_dreamplace``)."""
+    """The index prefix of a step directory name (7 for ``07_placement_dreamplace``)."""
     prefix, separator, stem = name.partition("_")
     if separator and len(prefix) >= 2 and prefix.isdigit() and stem:
         return int(prefix)
@@ -100,7 +88,7 @@ def step_directory_index(name: str) -> int | None:
 
 
 def unindexed_step_directory(name: str) -> str:
-    """*name* without its index prefix (``07_place_dreamplace`` -> ``place_dreamplace``)."""
+    """*name* without its index prefix (``07_placement_dreamplace`` -> ``placement_dreamplace``)."""
     if step_directory_index(name) is None:
         return name
     return name.partition("_")[2]

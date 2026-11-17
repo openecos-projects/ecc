@@ -27,8 +27,8 @@ def test_skippable_step_enum_members_are_marked_skippable():
     assert all(member.is_skippable() is True for member in SkippableStepEnum)
     assert {member.value for member in SkippableStepEnum} == {
         "diff_opt",
-        "postRouteLec",
-        "Timing optimization",
+        "post_route_lec",
+        "timing_optimization",
     }
 
 

@@ -14,7 +14,7 @@ def test_an_upstream_step_that_was_asked_to_run_but_never_answered_carries_nothi
     (tmp_path / "legalization_dreamplace" / "req.json").write_text("{}", encoding="utf-8")
     request = _route_request(tmp_path, None)
 
-    missing = missing_design_data(request, EccStep(name="route"), declared_spef=None)
+    missing = missing_design_data(request, EccStep(name="routing"), declared_spef=None)
 
     assert missing == frozenset({DesignState.LEGAL})
 
@@ -24,7 +24,7 @@ def test_routing_after_cts_without_legalization_is_missing_a_legal_placement(tmp
     _publish(tmp_path, "legalization_dreamplace", clock_tree)
     request = _route_request(tmp_path, "attempt-legal")
 
-    missing = missing_design_data(request, EccStep(name="route"), declared_spef=None)
+    missing = missing_design_data(request, EccStep(name="routing"), declared_spef=None)
 
     assert missing == frozenset({DesignState.LEGAL})
 
@@ -35,7 +35,7 @@ def test_parasitics_come_from_rcx_or_a_declared_spef(tmp_path):
     with_rcx = _request(
         tmp_path,
         StepEnum.STA.value,
-        {**filled, AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+        {**filled, AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
     )
     step = EccStep(name="sta")
 

@@ -19,17 +19,17 @@ def _schema(param: str):
 
 
 def test_a_flow_wide_parameter_invalidates_from_the_first_flow_step() -> None:
-    workspace = _workspace("Synthesis", "place", "route")
+    workspace = _workspace("synthesis", "placement", "routing")
 
-    assert workspace_param_step(_schema("sdc.clk_group_txt"), workspace) == "Synthesis"
+    assert workspace_param_step(_schema("sdc.clk_group_txt"), workspace) == "synthesis"
 
 
 def test_a_multi_step_parameter_picks_the_earliest_matching_flow_step() -> None:
     schema = _schema("place.timing_sizing_action")
 
     assert schema.applies == "placement,diff_opt"
-    assert workspace_param_step(schema, _workspace("diff_opt", "place")) == "diff_opt"
-    assert workspace_param_step(schema, _workspace("place", "diff_opt")) == "place"
+    assert workspace_param_step(schema, _workspace("diff_opt", "placement")) == "diff_opt"
+    assert workspace_param_step(schema, _workspace("placement", "diff_opt")) == "placement"
 
 
 def test_a_flow_wide_parameter_is_settable_without_a_workspace() -> None:

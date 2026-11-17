@@ -19,7 +19,7 @@ import logging
 from copy import deepcopy
 from pathlib import Path
 
-from chipcompiler.project.manifest import manifest_step_name
+from chipcompiler.project.manifest import PRESET_MANIFEST_RANGE
 from chipcompiler.project.manifest_write import now_iso, update_manifest
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ DERIVED_FIELDS = ("start_step", "end_step", "status")
 
 
 def flow_range_from_ledger(flow_data: object) -> tuple[str, str] | None:
-    """(start, end) manifest step names from a parsed flow.json ledger."""
+    """(start, end) step names of a parsed flow.json ledger."""
     if not isinstance(flow_data, dict):
         return None
     names: list[str] = []
@@ -37,7 +37,7 @@ def flow_range_from_ledger(flow_data: object) -> tuple[str, str] | None:
             names.append(name)
     if not names:
         return None
-    return manifest_step_name(names[0]), manifest_step_name(names[-1])
+    return names[0], names[-1]
 
 
 _LEDGER_TO_MANIFEST_STATUS = {
@@ -75,7 +75,7 @@ def derive_workspace_fields(workspace_dir: str | Path) -> dict:
     from chipcompiler.cli.inspection.discovery import read_flow_json
 
     flow_data = read_flow_json(str(workspace_dir))
-    start_step, end_step = flow_range_from_ledger(flow_data) or ("Synth", "Harden")
+    start_step, end_step = flow_range_from_ledger(flow_data) or PRESET_MANIFEST_RANGE["rtl2gds"]
     return {
         "start_step": start_step,
         "end_step": end_step,

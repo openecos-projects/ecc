@@ -22,7 +22,7 @@ def test_stale_checklist_cannot_make_incomplete_flow_ready(tmp_path):
     )
     workspace = SimpleNamespace(
         directory=Path(tmp_path),
-        flow=SimpleNamespace(steps=lambda: [{"name": "Synthesis", "state": "Unstart"}]),
+        flow=SimpleNamespace(steps=lambda: [{"name": "synthesis", "state": "Unstart"}]),
     )
 
     result = build_signoff_assessment(workspace)
@@ -35,8 +35,8 @@ def test_advisory_failures_leave_signoff_available_for_attention_review(tmp_path
         directory=tmp_path,
         flow=SimpleNamespace(
             steps=lambda: [
-                {"name": "Harden", "state": "Success"},
-                {"name": "antennaCheck", "state": "Incomplete"},
+                {"name": "harden", "state": "Success"},
+                {"name": "antenna_check", "state": "Incomplete"},
                 {"name": "emir", "state": "Incomplete"},
             ]
         ),
@@ -49,7 +49,7 @@ def test_advisory_failures_leave_signoff_available_for_attention_review(tmp_path
             "status": "attention",
             "checklist": [
                 {"step": name, "state": "warning", "blocked": False}
-                for name in ("antennaCheck", "emir")
+                for name in ("antenna_check", "emir")
             ],
         },
     )

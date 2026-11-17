@@ -16,9 +16,9 @@ def _declare_lec_engine(project_dir, value):
 
 def _lec_chain(monkeypatch):
     chain = [
-        ("Synthesis", "yosys", "Unstart"),
-        ("postRouteLec", "kepler_formal", "Unstart"),
-        ("Harden", "ecc", "Unstart"),
+        ("synthesis", "yosys", "Unstart"),
+        ("post_route_lec", "kepler_formal", "Unstart"),
+        ("harden", "ecc", "Unstart"),
     ]
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
@@ -38,7 +38,7 @@ def test_run_threads_declared_lec_engine_into_the_ledger(
 
     assert rc == 0
     added = flow_mocks.flow.instances[0].added_steps
-    assert [tool for step, tool, _state in added if step == "postRouteLec"] == ["kepler_formal"]
+    assert [tool for step, tool, _state in added if step == "post_route_lec"] == ["kepler_formal"]
     flow_config = flow_mocks.capture["create_kwargs"]["flow_config"]
     assert flow_config["lec_engine"] == "kepler_formal"
 
@@ -67,7 +67,7 @@ def test_preset_override_preserves_the_declared_lec_engine(
     flow_config = flow_mocks.capture["create_kwargs"]["flow_config"]
     assert flow_config["lec_engine"] == "kepler_formal"
     added = flow_mocks.flow.instances[0].added_steps
-    assert [tool for step, tool, _state in added if step == "postRouteLec"] == ["kepler_formal"]
+    assert [tool for step, tool, _state in added if step == "post_route_lec"] == ["kepler_formal"]
 
 
 def test_range_override_preserves_the_declared_lec_engine(
@@ -77,13 +77,13 @@ def test_range_override_preserves_the_declared_lec_engine(
     _declare_lec_engine(project_dir, "kepler_formal")
     _lec_chain(monkeypatch)
 
-    rc = cli_main.run(["run", "--project", project_dir, "--from", "Synthesis", "--to", "Harden"])
+    rc = cli_main.run(["run", "--project", project_dir, "--from", "synthesis", "--to", "harden"])
 
     assert rc == 0
     flow_config = flow_mocks.capture["create_kwargs"]["flow_config"]
     assert flow_config["lec_engine"] == "kepler_formal"
     added = flow_mocks.flow.instances[0].added_steps
-    assert [tool for step, tool, _state in added if step == "postRouteLec"] == ["kepler_formal"]
+    assert [tool for step, tool, _state in added if step == "post_route_lec"] == ["kepler_formal"]
 
 
 def test_preflight_applies_the_configured_engine(monkeypatch):
@@ -101,6 +101,6 @@ def test_preflight_applies_the_configured_engine(monkeypatch):
 def test_probe_components_for_steps_includes_kepler_formal():
     from chipcompiler.cli.inspection import env_probe
 
-    assert env_probe.probe_components_for_steps([("postRouteLec", "kepler_formal", "Unstart")]) == (
-        "kepler-formal",
-    )
+    assert env_probe.probe_components_for_steps(
+        [("post_route_lec", "kepler_formal", "Unstart")]
+    ) == ("kepler-formal",)

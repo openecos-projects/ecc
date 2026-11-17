@@ -15,7 +15,7 @@ def prune_macro_location_after_write(workspace, written: set[str]) -> None:
 
 
 def verify_published_macro_location(workspace) -> None:
-    """Ensure the committed parameters and the postFloorplan handoff agree."""
+    """Ensure the committed parameters and the post_floorplan handoff agree."""
     from chipcompiler.data.workspace.macro_location import (
         macro_placements,
         parse_macro_location_tcl,

@@ -52,12 +52,12 @@ def test_run_diff_opt_is_optional_and_keeps_diff_sizing(
     assert cli_main.run(["run", "--project", project_dir]) == 0
 
     names = [str(step) for step, _tool, _state in flow_mocks.flow.instances[0].added_steps]
-    place_index = names.index("place")
-    cts_index = names.index("CTS")
+    place_index = names.index("placement")
+    cts_index = names.index("cts")
     expected = (
-        ["place", "diff_opt", "diff_sizing", "CTS"]
+        ["placement", "diff_opt", "diff_sizing", "cts"]
         if skip_steps == []
-        else ["place", "diff_sizing", "CTS"]
+        else ["placement", "diff_sizing", "cts"]
     )
     assert names[place_index : cts_index + 1] == expected
 
@@ -76,7 +76,7 @@ def test_run_skipping_synthesis_enters_with_the_declared_netlist(
     with open(toml_path) as f:
         toml = f.read()
     toml = toml.replace("[design]\n", '[design]\nnetlist = "gcd_netlist.v"\n')
-    toml += '\nskip_steps = ["Synthesis"]\n'
+    toml += '\nskip_steps = ["synthesis"]\n'
     with open(toml_path, "w") as f:
         f.write(toml)
 
@@ -88,7 +88,7 @@ def test_run_skipping_synthesis_enters_with_the_declared_netlist(
         "postSynthesis",
     )
     names = [str(step) for step, _tool, _state in flow_mocks.flow.instances[0].added_steps]
-    assert names[0] == "preFloorplan"
+    assert names[0] == "pre_floorplan"
     # project.json ranges the workspace from its entry step, so it reloads.
     (entry,) = load_manifest(project_dir).workspaces
-    assert (entry.start_step, entry.end_step) == ("PreFloorplan", "Harden")
+    assert (entry.start_step, entry.end_step) == ("pre_floorplan", "harden")

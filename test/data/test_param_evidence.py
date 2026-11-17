@@ -50,7 +50,7 @@ def test_record_reports_value_default_and_source_per_layer(
     assert save_parameter(workspace.parameters)
     refresh_workspace_config(workspace)
 
-    record = build_step_parameter_record(workspace, "place", "dreamplace")
+    record = build_step_parameter_record(workspace, "placement", "dreamplace")
 
     assert _record(record, "place.target_density") == {
         "param": "place.target_density",
@@ -68,12 +68,12 @@ def test_record_covers_only_parameters_applicable_to_the_step(
 ) -> None:
     workspace = _workspace(tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters)
 
-    record = build_step_parameter_record(workspace, "CTS", "ecc")
+    record = build_step_parameter_record(workspace, "cts", "ecc")
 
     params = {item["param"] for item in record["parameters"]}
     assert "cts.max_fanout" in params
     assert "place.target_density" not in params
-    assert record["config"]["CTS"]["max_fanout"] == 32
+    assert record["config"]["cts"]["max_fanout"] == 32
 
 
 def test_evidence_file_is_written_beside_the_step_files(
@@ -82,16 +82,16 @@ def test_evidence_file_is_written_beside_the_step_files(
     workspace = _workspace(tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters)
     step_directory = tmp_path / "step"
     step_directory.mkdir()
-    step = type("Step", (), {"name": "CTS", "tool": "ecc"})()
+    step = type("Step", (), {"name": "cts", "tool": "ecc"})()
 
     assert write_step_parameter_evidence(workspace, step, step_directory)
 
     written = json.loads((step_directory / EVIDENCE_FILE).read_text(encoding="utf-8"))
-    assert (written["step"], written["tool"]) == ("CTS", "ecc")
+    assert (written["step"], written["tool"]) == ("cts", "ecc")
 
 
 def test_evidence_failure_never_raises(tmp_path) -> None:
-    step = type("Step", (), {"name": "CTS", "tool": "ecc"})()
+    step = type("Step", (), {"name": "cts", "tool": "ecc"})()
 
     assert write_step_parameter_evidence(object(), step, tmp_path) is False
 
@@ -101,7 +101,7 @@ def test_record_lists_only_configs_the_step_consumes(
 ) -> None:
     workspace = _workspace(tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters)
 
-    record = build_step_parameter_record(workspace, "route", "ecc")
+    record = build_step_parameter_record(workspace, "routing", "ecc")
 
-    assert set(record["config"]) == {"route", "db"}
-    assert record["config"]["route"]["RT.-bottom_routing_layer"] == "MET2"
+    assert set(record["config"]) == {"routing", "db"}
+    assert record["config"]["routing"]["RT.-bottom_routing_layer"] == "MET2"

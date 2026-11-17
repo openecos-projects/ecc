@@ -42,39 +42,39 @@ def test_skipping_any_skippable_steps_keeps_the_chain_runnable(skipped):
 
 
 def test_flow_without_clock_tree_runs_on_ideal_clocks():
-    violations = check_flow(_chain(without=("CTS",)), available=_FROM_RTL)
+    violations = check_flow(_chain(without=("cts",)), available=_FROM_RTL)
 
     assert violations == (
-        _warning("route", DesignState.CLOCK_TREE),
+        _warning("routing", DesignState.CLOCK_TREE),
         _warning("sta", DesignState.CLOCK_TREE),
-        _warning("powerAnalysis", DesignState.CLOCK_TREE),
-        _warning("Harden", DesignState.CLOCK_TREE),
+        _warning("power_analysis", DesignState.CLOCK_TREE),
+        _warning("harden", DesignState.CLOCK_TREE),
     )
 
 
 @pytest.mark.parametrize(
     ("without", "expected"),
     [
-        # Timing optimization legalizes its own sizing, so it covers CTS too.
+        # timing_optimization legalizes its own sizing, so it covers CTS too.
         (("legalization",), ()),
-        (("legalization", "Timing optimization"), (_error("route", DesignState.LEGAL),)),
+        (("legalization", "timing_optimization"), (_error("routing", DesignState.LEGAL),)),
         # Placement is legal; nothing between it and routing needs legalizing.
         (
-            ("CTS", "legalization", "Timing optimization"),
-            (_warning("route", DesignState.CLOCK_TREE),),
+            ("cts", "legalization", "timing_optimization"),
+            (_warning("routing", DesignState.CLOCK_TREE),),
         ),
     ],
 )
 def test_routing_needs_a_legal_placement(without, expected):
     violations = check_flow(_chain(without=without), available=_FROM_RTL)
 
-    assert [violation for violation in violations if violation.step == "route"] == list(expected)
+    assert [violation for violation in violations if violation.step == "routing"] == list(expected)
 
 
 def test_analysis_before_its_source_is_an_error():
     names = _chain()
     names.remove("sta")
-    names.insert(names.index("RCX"), "sta")
+    names.insert(names.index("rcx"), "sta")
 
     assert check_flow(names, available=_FROM_RTL) == (_error("sta", AnalysisData.PARASITICS),)
 

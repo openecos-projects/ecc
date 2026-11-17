@@ -1,6 +1,6 @@
-# ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
+# ECC CLI 入门教程：从零跑通 RTL → harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB；
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等）；
@@ -261,22 +261,22 @@ rc=0
 
 `ecc check` 校验配置必填项与 PDK 内容（tech LEF / LEF / liberty）；RTL 源文件的存在性由 `ecc run` 在创建 workspace 时按入口步骤校验。**先 check 再 run**——配置错误在这里就能发现，不必等到 flow 中途失败。
 
-## 4. 运行 RTL → Harden 全流程
+## 4. 运行 RTL → harden 全流程
 
 ### 4.1 启动
 
-`rtl2gds` preset 一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。placement 后的 `diff_opt` **默认被跳过**（`[flow] skip_steps` 默认为 `["diff_opt"]`）。综合级等价性检查不在链路中，而是一个**插入步骤** `lec@Synthesis`：用 kepler-formal 的时序等价性检查（SEC）比对 RTL 与综合网表。本教程保留 `diff_opt` 的关闭状态，并插入该检查：
+`rtl2gds` preset 一步到位跑到 Harden（产出 GDS + 抽象 LEF + 时序 LIB）。placement 后的 `diff_opt` **默认被跳过**（`[flow] skip_steps` 默认为 `["diff_opt"]`）。综合级等价性检查不在链路中，而是一个**插入步骤** `lec@synthesis`：用 kepler-formal 的时序等价性检查（SEC）比对 RTL 与综合网表。本教程保留 `diff_opt` 的关闭状态，并插入该检查：
 
 ```bash
-# 插入综合级检查（向 ecc.toml 的 [flow] 写入 insert_steps = ["lec@Synthesis"]）
-ecc flow edit --insert lec@Synthesis --yes
+# 插入综合级检查（向 ecc.toml 的 [flow] 写入 insert_steps = ["lec@synthesis"]）
+ecc flow edit --insert lec@synthesis --yes
 
 ecc run --preset rtl2gds
 ```
 
 （生成的 `ecc.toml` 已选择 `rtl2gds`；`--preset` 只对本次运行生效，不写回配置。）
 
-交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。跳过 `diff_opt` 并插入 `lec@Synthesis` 后，本次运行共 22 步：
+交互终端下会实时渲染各步骤进度与日志尾部；输出重定向到文件时则静默执行，结束时打印汇总。跳过 `diff_opt` 并插入 `lec@synthesis` 后，本次运行共 22 步：
 
 | # | 步骤 | 工具 | 作用 |
 |---|------|------|------|
@@ -295,22 +295,22 @@ ecc run --preset rtl2gds
 | 13 | filler | ecc | 填充单元插入 |
 | 14 | lvs | ecc | 版图与原理图一致性检查 |
 | 15 | drc | ecc | 物理规则检查 |
-| 16 | antennacheck | ecc | 天线规则分析（advisory，不会单独中断 flow） |
-| 17 | postroutelec | kepler_formal | 逻辑等价性检查：综合网表 vs 布线后网表 |
+| 16 | antenna_check | ecc | 天线规则分析（advisory，不会单独中断 flow） |
+| 17 | post_route_lec | kepler_formal | 逻辑等价性检查：综合网表 vs 布线后网表 |
 | 18 | rcx | ecc | 寄生参数提取（多 corner SPEF） |
 | 19 | sta | ecc | 多 corner 静态时序分析 |
-| 20 | poweranalysis | ecc | 使用提取的寄生参数进行功耗分析 |
+| 20 | power_analysis | ecc | 使用提取的寄生参数进行功耗分析 |
 | 21 | emir | ecc | IR drop 与电迁移分析（advisory） |
 | 22 | harden | ecc | 硬化交付：GDS + 抽象 LEF + 时序 LIB |
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>yosys] --> Q[lec@Synthesis<br/>kepler_formal, inserted] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> PP[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
+    A[Synthesis<br/>yosys] --> Q[lec@synthesis<br/>kepler_formal, inserted] --> B[Pre Floorplan] --> C[Macro Placement<br/>dreamplace] --> P[Post Floorplan] --> PP[Preplace<br/>sizer] --> D[Placement<br/>dreamplace]
     D --> DS[Diff Sizing<br/>dreamplace] --> E[CTS] --> F[Legalization<br/>dreamplace] --> T[Timing Opt<br/>sizer] --> G[Routing]
     G --> J[Filler] --> I[LVS] --> H[DRC] --> AN[Antenna Check] --> N[Post-route LEC<br/>kepler_formal] --> K[RCX] --> L[STA] --> W[Power Analysis] --> EM[EMIR] --> M[Harden<br/>GDS/LEF/LIB]
 ```
 
-对新建或 `--overwrite` 的目标，`ecc run` 启动前会按目标 flow 实际步骤的工具映射预检组件：捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace、Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）。flow 含 LEC 步骤（`postRouteLec` 或插入的 `lec@…`）时预检 kepler-formal。缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
+对新建或 `--overwrite` 的目标，`ecc run` 启动前会按目标 flow 实际步骤的工具映射预检组件：捆绑的 ecc-tools，以及 preset 选中的 Yosys、DreamPlace、Sizer（仅含 Timing optimization 的 flow，如 `rtl2gds`）。flow 含 LEC 步骤（`post_route_lec` 或插入的 `lec@…`）时预检 kepler-formal。缺失则以 `env_not_ready` fail-fast 并提示 `ecc doctor`。已有 workspace 或 `--workspace` 重跑不做预检，缺 Sizer 时仍可能在 Timing optimization 步骤失败。
 
 ### 4.2 观察进度（另开一个终端）
 
@@ -376,7 +376,7 @@ $ ecc status
     rcx (ecc) success 0:0:0
     sta (ecc) success 0:2:35
     lvs (ecc) success 0:0:1
-    postroutelec (kepler_formal) success 0:0:1
+    post_route_lec (kepler_formal) success 0:0:1
     drc (ecc) success 0:0:2
     harden (ecc) success 0:0:11
 rc=0
@@ -405,18 +405,18 @@ default/
 ├── home/               # flow.json（步骤状态）+ params.toml + checklist.json
 ├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
-├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
-├── lec@Synthesis_kepler_formal/   # 插入的 RTL vs 网表 SEC 检查
-├── preFloorplan_ecc/
-├── macroPlacement_dreamplace/
-├── postFloorplan_ecc/
+├── synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
+├── lec@synthesis_kepler_formal/   # 插入的 RTL vs 网表 SEC 检查
+├── pre_floorplan_ecc/
+├── macro_placement_dreamplace/
+├── post_floorplan_ecc/
 ├── ...
-├── postRouteLec_kepler_formal/   # LEC 等价性检查（output/<design>_postRouteLec_result.json）
-├── Harden_ecc/
+├── post_route_lec_kepler_formal/   # LEC 等价性检查（output/<design>_post_route_lec_result.json）
+├── harden_ecc/
 │   └── output/
-│       ├── gcd_Harden.gds     # 最终版图
-│       ├── gcd_Harden.lef     # 抽象 LEF（供上层集成做布线阻挡）
-│       └── gcd_Harden.lib     # 时序 LIB（供上层集成做 STA）
+│       ├── gcd_harden.gds     # 最终版图
+│       ├── gcd_harden.lef     # 抽象 LEF（供上层集成做布线阻挡）
+│       └── gcd_harden.lib     # 时序 LIB（供上层集成做 STA）
 ├── log/                # 全局日志
 └── signoff/            # §5 生成的报告落在这里
 ```
@@ -424,10 +424,10 @@ default/
 Harden 交付物（真实产物）：
 
 ```console
-$ ls -la default/Harden_ecc/output/
-gcd_Harden.gds    7.3 KB   # GDSII 版图
-gcd_Harden.lef     14 KB   # 抽象 LEF
-gcd_Harden.lib    7.7 KB   # 时序 LIB
+$ ls -la default/harden_ecc/output/
+gcd_harden.gds    7.3 KB   # GDSII 版图
+gcd_harden.lef     14 KB   # 抽象 LEF
+gcd_harden.lib    7.7 KB   # 时序 LIB
 ```
 
 ## 5. 产出签核包与报告
@@ -467,7 +467,7 @@ $ ecc signoff inspect
               Advisory analysis completed; review its report and coverage. Execution success is not a signoff verdict.
 ```
 
-剩余的 `attention` 来自 warn 策略项：advisory 步骤 `antennaCheck` 与 `emir` 即使运行成功也总是报告 attention，因为分析跑完并不等于签核结论，需要人工审阅其报告；缺失的可选签核包文件也以同样方式显示。warn 策略项不阻断导出；只有 `blocked`（必需项缺失或未通过）才会在 export 时被拒绝。签核包会收集 `config/` 下的全部文件，但导出只要求 `db_ecc.json`、`rcx_ecc.json` 与 `sta_ecc.json`。
+剩余的 `attention` 来自 warn 策略项：advisory 步骤 `antenna_check` 与 `emir` 即使运行成功也总是报告 attention，因为分析跑完并不等于签核结论，需要人工审阅其报告；缺失的可选签核包文件也以同样方式显示。warn 策略项不阻断导出；只有 `blocked`（必需项缺失或未通过）才会在 export 时被拒绝。签核包会收集 `config/` 下的全部文件，但导出只要求 `db_ecc.json`、`rcx_ecc.json` 与 `sta_ecc.json`。
 
 ### 5.2 导出签核包：ecc signoff export
 
@@ -493,7 +493,7 @@ gcd_signoff_package/
 └── final/
     ├── design/       # 最终 DEF、GDS、网表、版图快照
     ├── timing/       # STA 各 corner 报告 + spef/（多 corner 寄生参数）
-    └── reports/      # 各步骤 QoR 指标 + lec@Synthesis/、postRouteLec/（两次 LEC 证明）
+    └── reports/      # 各步骤 QoR 指标 + lec@synthesis/、post_route_lec/（两次 LEC 证明）
 ```
 
 ### 5.3 设计总结报告：ecc report summary
@@ -588,7 +588,7 @@ $ ecc report checklist
   status: written
 ```
 
-所有必需清单项均 PASS（映射网表、DRC clean、LVS clean、**LEC 等价性 proven**、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……）。ATTENTION 项均为 warn 策略项：总是要求审阅报告的 advisory 步骤 `antennaCheck` 与 `emir`，以及缺失的可选签核包文件。它们不会阻断导出。
+所有必需清单项均 PASS（映射网表、DRC clean、LVS clean、**LEC 等价性 proven**、SPEF 完整性、setup/hold 收敛、Harden GDS/LEF/LIB……）。ATTENTION 项均为 warn 策略项：总是要求审阅报告的 advisory 步骤 `antenna_check` 与 `emir`，以及缺失的可选签核包文件。它们不会阻断导出。
 
 ### 5.6 在 KLayout 中打开 step 的 GDS（可选）：ecc gdsview
 
@@ -596,7 +596,7 @@ $ ecc report checklist
 KLayout 交互式查看器中打开指定 step 生成的唯一 GDS：
 
 ```bash
-ecc gdsview --workspace default --step Harden
+ecc gdsview --workspace default --step harden
 ```
 
 命令会打开 GDS 并保持 KLayout 窗口直到用户关闭，不会保存 PNG。指定 step
@@ -690,52 +690,52 @@ refresh 会把受管 JSON 配置和 `macro_location.tcl` 与 `home/config-derive
 **③ 原地重跑一段/一步**（调试某步工具行为时用）：被重跑步骤的 `output/` 会被替换，其下游步骤标记为待重跑（输出保留）。
 
 ```bash
-ecc run --workspace default --from CTS --to route  # 重跑 CTS→route 这一段（含两端）
-ecc run --workspace default --from CTS             # 从 CTS 重跑到底
-ecc run --workspace default --only place           # 只跑 place 一步（已成功则 no_op）
-ecc run --workspace default --only place --force   # 已成功也强制重跑这一步
+ecc run --workspace default --from cts --to routing  # 重跑 cts→routing 这一段（含两端）
+ecc run --workspace default --from cts             # 从 CTS 重跑到底
+ecc run --workspace default --only placement           # 只跑 place 一步（已成功则 no_op）
+ecc run --workspace default --only placement --force   # 已成功也强制重跑这一步
 ```
 
-**④ 从中间步骤新建范围 workspace**（手上已有现成网表/DEF 时）：新建时必须同时传 `--from` 与 `--to`，两端的步骤名这时写小写别名也可以（如 `cts`、`route`）：
+**④ 从中间步骤新建范围 workspace**（手上已有现成网表/DEF 时）：新建时必须同时传 `--from` 与 `--to`，两端的步骤名这时写小写别名也可以（如 `cts`、`routing`）：
 
 ```bash
 ecc run --workspace cts-only --from cts --to cts     # 只跑 CTS 一步的 workspace
-ecc run --workspace pnr --from prefloorplan --to route  # 从 pre-floorplan 到布线
+ecc run --workspace pnr --from prefloorplan --to routing  # 从 pre-floorplan 到布线
 ```
 
 **复用已有 post-floorplan 输出的完整示例**：从已有 workspace `2` 的 post-floorplan 输出创建一个新的 placement 到 routing workspace 时，不能把 DEF 直接传给 `ecc run`。placement 入口要求匹配的 `design.def` 和 `design.netlist`；先用 `ecc project` 写入项目配置，再创建新范围：
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/postFloorplan_ecc/output"
+SOURCE="$PROJECT/2/post_floorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_post_floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_post_floorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
 这会将 DEF/网表复制到新 workspace 的 `origin/`，从 placement 运行至 routing，不会重新运行 post-floorplan；`placement`、`routing` 是新建范围时可用的别名。`ecc project set` 修改的是项目级 `ecc.toml`，也会影响之后新建的 workspace。若这两个字段原来没有设置，在新 workspace 创建后执行 `ecc project unset design.def --project "$PROJECT"` 和 `ecc project unset design.netlist --project "$PROJECT"` 可恢复原先的项目入口。
 
-入口文件按首步要求校验：Synthesis 要 `rtl`；postRouteLec 要 `netlist` 和 `golden_netlist`；preFloorplan 要 `netlist`；macroPlacement、postFloorplan、preplace、place、diff_sizing、CTS、legalization、timing optimization、route、filler、RCX、DRC、LVS 和 Harden 要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。antennaCheck、powerAnalysis 与 emir 没有入口输入契约，依赖上游链式产物，因此这类范围应从更早的有效检查点开始。缺什么会明确报错：
+入口文件按首步要求校验：Synthesis 要 `rtl`；post_route_lec 要 `netlist` 和 `golden_netlist`；pre_floorplan 要 `netlist`；macro_placement、post_floorplan、preplace、place、diff_sizing、CTS、legalization、timing optimization、route、filler、RCX、DRC、LVS 和 Harden 要 `def` 和 `netlist`；STA 要 `def`、`netlist`、`spef`；`sdc` 可选。antenna_check、power_analysis 与 emir 没有入口输入契约，依赖上游链式产物，因此这类范围应从更早的有效检查点开始。缺什么会明确报错：
 
 ```console
-$ ecc run --from cts --to route
+$ ecc run --from cts --to routing
 [error]
   step_input_missing step_input_missing: cts requires design.def
   step_input_missing step_input_missing: cts requires design.netlist
 rc=1
 ```
 
-> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）。对已有 workspace，`--from`/`--only`/`--to` 必须使用 `home/flow.json` 里的精确持久化名（如 `place`、`CTS`、`Timing optimization`）；只有在同时给出 `--from` 和 `--to` 新建范围 workspace 时，才会归一化 `placement`、`routing` 等小写别名。不匹配时报 `unknown_step` 并列出当前操作的可用名，照抄即可：
+> **步骤名怎么写**：`ecc status`/`ecc log` 展示的是小写展示名（如 `placement`、`timing_optimization`）。对已有 workspace，`--from`/`--only`/`--to` 必须使用 `home/flow.json` 里的精确持久化名（如 `placement`、`cts`、`timing_optimization`）；只有在同时给出 `--from` 和 `--to` 新建范围 workspace 时，才会归一化 `placement`、`routing` 等小写别名。不匹配时报 `unknown_step` 并列出当前操作的可用名，照抄即可：
 >
 > ```console
 > $ ecc run --workspace default --only placemen   # 拼错了：不是持久化步骤名
 > [error]
->   unknown_step unknown step 'placemen'; available steps: Synthesis, lec@Synthesis, preFloorplan,
->   macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization,
->   Timing optimization, route, filler, lvs, drc, antennaCheck, postRouteLec, RCX, sta,
->   powerAnalysis, emir, Harden
+>   unknown_step unknown step 'placemen'; available steps: Synthesis, lec@synthesis, pre_floorplan,
+>   macro_placement, post_floorplan, preplace, place, diff_sizing, CTS, legalization,
+>   Timing optimization, route, filler, lvs, drc, antenna_check, post_route_lec, RCX, sta,
+>   power_analysis, emir, Harden
 > ```
 
 ### 6.4 查看某步实际生效的配置
@@ -759,7 +759,7 @@ ecc macro remove u_ram0                             # 删除一条；删空后�
 按用途选一种方式：
 
 - **开跑前定好位置**（项目级）：直接 `ecc macro set ...`——写入 `ecc.toml` 的 `[params.macro]`，之后新建的 workspace（`ecc run` / `--overwrite` / `ecc workspace refresh`）都会按它渲染 `config/macro_location.tcl`；
-- **在已有 workspace 上调整**：加 `--workspace default`——Tcl 立即重生成，`macroPlacement` 及其后缀标记为待重跑；随后 `ecc run --workspace default` 从 `macroPlacement` 续跑：DreamPlace 摆放被跳过，`post_floorplan` 按文件把宏以 `fixed` 提交，place 及之后的步骤全部重跑。
+- **在已有 workspace 上调整**：加 `--workspace default`——Tcl 立即重生成，`macro_placement` 及其后缀标记为待重跑；随后 `ecc run --workspace default` 从 `macro_placement` 续跑：DreamPlace 摆放被跳过，`post_floorplan` 按文件把宏以 `fixed` 提交，place 及之后的步骤全部重跑。
 
 ```bash
 ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
@@ -902,7 +902,7 @@ ecc explore rank --name density         # passed 优先、QoR 降序排名
 ## 9. 下一步
 
 - 换你自己的设计：改 `ecc.toml` 的 `top`/`rtl`/`clock_port`/`frequency_mhz`，多文件用 [filelist](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist)；
-- 了解 preset 差异：`rtl2gds`（完整 22 步综合到 Harden 链；综合级 LEC 不在链路中——用 `insert_steps = ["lec@Synthesis"]` 插入）、`syn_sta`（仅综合）、`synthesis_lec`（Synthesis + 插入的 `lec@Synthesis` SEC 检查，两步）；
+- 了解 preset 差异：`rtl2gds`（完整 22 步综合到 Harden 链；综合级 LEC 不在链路中——用 `insert_steps = ["lec@synthesis"]` 插入）、`syn_sta`（仅综合）、`synthesis_lec`（Synthesis + 插入的 `lec@synthesis` SEC 检查，两步）；
 - PPA 优化循环与批量扫描见 §7，深入阅读 [QoR 参考手册](ecc-qor-ref.cn.md)与 [Sweep 参考手册](ecc-sweep-ref.cn.md)；
 - 全部命令细节见 **[ECC CLI 用户指南](ecc-user-guide.cn.md)**（终端：`ecc doc ug --lang cn`）；CLI 扩展开发见 [development.cn.md](https://github.com/openecos-projects/ecc/blob/main/docs/development.cn.md#扩展-cli)；
 - 用 Python API 直接编排 flow（`EngineFlow`）见 [examples/gcd/ics55flow.py](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/ics55flow.py)。

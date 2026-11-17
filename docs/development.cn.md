@@ -507,7 +507,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 22 步；除 `postRouteLec` 外的 LEC 检查通过 `[flow] insert_steps` 插入，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 22 步；除 `post_route_lec` 外的 LEC 检查通过 `[flow] insert_steps` 插入，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
@@ -515,34 +515,34 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### 可跳过的 Flow Step
 
-默认布线后流程为 `route → filler → lvs → drc → antennaCheck → postRouteLec
-→ RCX → sta → powerAnalysis → emir → Harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
-等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antennaCheck 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
+默认布线后流程为 `routing → filler → lvs → drc → antenna_check → post_route_lec
+→ rcx → sta → power_analysis → emir → harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
+等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antenna_check 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
 Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少物理输入。
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
 
-这条流程中除 `postRouteLec` 外，LVS、DRC、`antennaCheck`、RCX、STA、
-`powerAnalysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
+这条流程中除 `post_route_lec` 外，LVS、DRC、`antenna_check`、RCX、STA、
+`power_analysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
 作为物理设计输入。各 checker 自己生成的 DEF、Verilog 和数据库只是证据或
-报告快照，不会成为后续物理设计源。`postRouteLec` 是例外：它比较综合 golden
+报告快照，不会成为后续物理设计源。`post_route_lec` 是例外：它比较综合 golden
 网表和 filler gate 网表。
 
-`antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
+`antenna_check` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
 不插入二极管、不自动修复。原生报告为
-`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
-`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
-调用失败仍保留 `Incomplete` 执行状态。antennaCheck 和 emir 在首页及步骤 checklist 中
+`antenna_check_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
+`antenna_check_ecc/report/antenna_check.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
+调用失败仍保留 `Incomplete` 执行状态。antenna_check 和 emir 在首页及步骤 checklist 中
 均作为非阻断的 attention 项，执行成功后仍提示人工审阅报告和检查覆盖。步骤 `Success` 只表示执行和报告输出完成，不表示
 天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 
-EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
+EMIR 使用 `power_analysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
 物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
 或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
 `config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
 默认空值只是占位，未填写时该步骤会停止。
-电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
+电源激励使用 iFP 输出的 `post_floorplan_ecc/data/fp/pdn_generator/power.ploc`，
 通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
 交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`；
 保存成功后，`data/emir/emir_reporter/` 下的全部报告会发布到 `emir_ecc/report/`，
@@ -552,7 +552,7 @@ CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM �
 模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
 用于签核。普通项目不会自动使用这个文件。
 
-rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不限于三个可选 step：placement 寄生优化（`diff_opt`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
+rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不限于三个可选 step：placement 寄生优化（`diff_opt`）、布线后 LEC（`post_route_lec`）、时序优化（`timing_optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
 策略在两个配置面声明，优先级与其他键一致（ecc.toml 显式声明覆盖 project.json 基准层）：
 
@@ -562,15 +562,15 @@ rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不�
 
 两个配置面声明的策略实际值不同时，`ecc run`/`ecc check` 会发出 `skip_steps_shadowed` 警告并指明生效来源。
 
-显式 `skip_steps = []` 表示全部执行，包括 `diff_opt`。条目接受与 flow 范围相同的别名（如 `postlec`、`synth`、`cts`、`TimingOpt`），并按链中的 step 校验，未知名称会被拒绝。`lec` 已不是链中的 step：`resolve_skip_steps` 会丢弃它，列出它的旧文件仍可加载。project.json 与 GUI 仍把 `LEC` 视为可跳过的范围 step，因此 `manifest_flow.manifest_synthesis_lec` 把声明策略保留 `LEC` 的 workspace 条目转成插入步骤 `lec@Synthesis`，以 `LEC` 为边界的范围改以 Synthesis 加该插入步骤为边界（`manifest_flow.entry_flow_config`；`manifest.manifest_step_name` 把 `lec@Synthesis` 映射回 `LEC`）。
+显式 `skip_steps = []` 表示全部执行，包括 `diff_opt`。条目接受与 flow 范围相同的别名（如 `postlec`、`synth`、`cts`、`TimingOpt`），并按链中的 step 校验，未知名称会被拒绝。`lec` 已不是链中的 step：`resolve_skip_steps` 会丢弃它，列出它的旧文件仍可加载。project.json 的 skip 策略仍可写 `lec`：`manifest_flow.manifest_synthesis_lec` 把声明策略保留 `lec` 的 workspace 条目转成插入步骤 `lec@synthesis`。project.json 的范围使用 flow 步骤名，也可以以插入步骤为边界；以 `lec@synthesis` 为边界的范围改以 `synthesis` 加该插入步骤为边界（`manifest_flow.entry_flow_config`）。
 
-`[flow] insert_steps`（如 `["lec@CTS"]`）在一个构建设计的 step 之后插入 LEC，锚点可为 `rtl2gds.lec_insert_anchors()` 中任一 step（`Synthesis` .. `route`）。LEC 是 `data.types.INSERTABLE_FLOW_STEPS` 的唯一条目：它不修改也不提供设计数据，`FlowInputResolver` 本就跳过 LEC 记录，因此其后的链不变。插入步骤的 ledger 名为 `lec@<step>`（空格换成下划线；`rtl2gds.inserted_step_name` / `parse_inserted_step`），每个锚点唯一，各按名称索引的层（ledger、`req.json` 上游链接、`--from/--only`、snapshot）照常工作；`flow_step_policy` 把它解析为 `lec` 策略。插入在 skip 过滤与范围切片之后进行（`rtl2gds.insert_flow_steps`），覆盖所有构建 ledger 的路径（`build_dynamic_flow_data`、`run_prepare.py` 的新建 run、reconcile 目标、`workspace_reset`），因此插入步骤当且仅当其锚点存在时存在。`EngineFlow.create_step_workspaces` 连接 golden：`lec@Synthesis` 取 Synthesis 读入的 RTL（`tools.yosys.builder.synthesis_rtl`：filelist，否则 RTL 文件），其余插入的 LEC 取 `postRouteLec` 的 golden。`tools.kepler_formal.builder.checks_rtl` 为 `lec@Synthesis` 选择 kepler-formal 的 SEC 配置（`format: sv2v`、`verification: sec`）。RTL 经生成的 `data/rtl.f`（`sec_rtl_filelist_text`）以 `sv_design1_flist` 传入：先 `+define+SYNTHESIS`（与 Synthesis 读取方式一致），再是 RTL 文件或 `-F <filelist>`，使 filelist 的相对路径源文件与 `+incdir+` 相对其自身目录、而非 kepler-formal 运行的 step 目录解析。runner 原样读入 RTL，并接受 SEC 的双轨证明措辞（`No binary-defined difference was found.`）。`synthesis_lec` preset 构建 `Synthesis` + `lec@Synthesis`。`insert_steps` 与 `skip_steps`、`lec_engine` 同属 `workspace_config.FLOW_POLICY_KEYS`，是持久化 flow 目标（`home/params.toml` `_flow`）与 mismatch 检查的一部分。ECOS Studio 尚不认识插入步骤名（`flowStepRegistry.ts` 把未知 step 归一为 `Synth`）。`ecc flow edit` 的交互列表中按 `i` 插入 LEC，或用 `--insert`/`--remove`；有插入时一并写出 `insert_steps`。
+`[flow] insert_steps`（如 `["lec@cts"]`）在一个构建设计的 step 之后插入 LEC，锚点可为 `rtl2gds.lec_insert_anchors()` 中任一 step（`synthesis` .. `routing`）。LEC 是 `data.types.INSERTABLE_FLOW_STEPS` 的唯一条目：它不修改也不提供设计数据，`FlowInputResolver` 本就跳过 LEC 记录，因此其后的链不变。插入步骤的 ledger 名为 `lec@<step>`（`rtl2gds.inserted_step_name` / `parse_inserted_step`），每个锚点唯一，各按名称索引的层（ledger、`req.json` 上游链接、`--from/--only`、snapshot）照常工作；`flow_step_policy` 把它解析为 `lec` 策略。插入在 skip 过滤与范围切片之后进行（`rtl2gds.insert_flow_steps`），覆盖所有构建 ledger 的路径（`build_dynamic_flow_data`、`run_prepare.py` 的新建 run、reconcile 目标、`workspace_reset`），因此插入步骤当且仅当其锚点存在时存在。`EngineFlow.create_step_workspaces` 连接 golden：`lec@synthesis` 取 Synthesis 读入的 RTL（`tools.yosys.builder.synthesis_rtl`：filelist，否则 RTL 文件），其余插入的 LEC 取 `post_route_lec` 的 golden。`tools.kepler_formal.builder.checks_rtl` 为 `lec@synthesis` 选择 kepler-formal 的 SEC 配置（`format: sv2v`、`verification: sec`）。RTL 经生成的 `data/rtl.f`（`sec_rtl_filelist_text`）以 `sv_design1_flist` 传入：先 `+define+SYNTHESIS`（与 Synthesis 读取方式一致），再是 RTL 文件或 `-F <filelist>`，使 filelist 的相对路径源文件与 `+incdir+` 相对其自身目录、而非 kepler-formal 运行的 step 目录解析。runner 原样读入 RTL，并接受 SEC 的双轨证明措辞（`No binary-defined difference was found.`）。`synthesis_lec` preset 构建 `synthesis` + `lec@synthesis`。`insert_steps` 与 `skip_steps`、`lec_engine` 同属 `workspace_config.FLOW_POLICY_KEYS`，是持久化 flow 目标（`home/params.toml` `_flow`）与 mismatch 检查的一部分。ECOS Studio 尚不认识插入步骤名（`flowStepRegistry.ts` 把未知 step 归一为 `Synth`）。`ecc flow edit` 的交互列表中按 `i` 插入 LEC，或用 `--insert`/`--remove`；有插入时一并写出 `insert_steps`。
 
 ```toml
 [flow]
 preset = "rtl2gds"
 skip_steps = ["diff_opt"]
-insert_steps = ["lec@Synthesis"]
+insert_steps = ["lec@synthesis"]
 ```
 
 ### 报告
@@ -723,11 +723,11 @@ workspace=default
 .venv/bin/ecc run --project "$project" --workspace "$workspace" --resume
 
 # 重跑持久化 flow 中包含式的 CTS 到 route 范围。
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --from CTS --to route
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --from cts --to routing
 
 # 只跑一个步骤；已成功过则加 --force。
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place --force
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement --force
 ```
 
 `--resume`、`--only` 与范围三者互斥，`--force` 只能与 `--only` 组合。`--workspace` 可与 `--project` 组合；新范围不能与 `--overwrite` 组合。步骤名使用规范的 flow 别名。
@@ -739,7 +739,7 @@ Python 层调试可直接调同一 CLI 模块：
 ```bash
 .venv/bin/python -m chipcompiler.cli.main run \
   --workspace "$workspace" \
-  --only place \
+  --only placement \
   --force
 ```
 

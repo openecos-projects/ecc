@@ -56,7 +56,7 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
             origin_verilog=tmp_path / "origin.v",
         ),
     )
-    ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
+    ledger = build_dynamic_flow_data({"start_step": "routing", "end_step": "harden"})
     for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
     workspace.flow.data = ledger
@@ -89,18 +89,18 @@ def test_refresh_workspace_analysis_chains_the_previous_step(tmp_path):
         for step in collector.refreshed
     }
 
-    # postRouteLec is skipped by the LEC branch and is never refreshed.
+    # post_route_lec is skipped by the LEC branch and is never refreshed.
     assert sources == {
-        "route": "origin",
-        "filler": "route",
+        "routing": "origin",
+        "filler": "routing",
         "lvs": "filler",
         "drc": "filler",
-        "antennaCheck": "filler",
-        "RCX": "filler",
+        "antenna_check": "filler",
+        "rcx": "filler",
         "sta": "filler",
-        "powerAnalysis": "filler",
+        "power_analysis": "filler",
         "emir": "filler",
-        "Harden": "filler",
+        "harden": "filler",
     }
 
 
@@ -114,10 +114,10 @@ def test_invalid_explicit_input_is_reported_as_an_issue(tmp_path):
             origin_verilog=tmp_path / "origin.v",
         ),
     )
-    ledger = build_dynamic_flow_data({"start_step": "route", "end_step": "Harden"})
+    ledger = build_dynamic_flow_data({"start_step": "routing", "end_step": "harden"})
     for step in ledger.get("steps", []):
         step["state"] = StateEnum.Success.value
-    next(step for step in ledger.get("steps", []) if step["name"] == "RCX")["input_step"] = (
+    next(step for step in ledger.get("steps", []) if step["name"] == "rcx")["input_step"] = (
         "does_not_exist"
     )
     workspace.flow.data = ledger
@@ -127,6 +127,6 @@ def test_invalid_explicit_input_is_reported_as_an_issue(tmp_path):
     collector._refresh_workspace_analysis(tmp_path)
 
     assert any(
-        step_name == "RCX" and "Could not construct" in reason
+        step_name == "rcx" and "Could not construct" in reason
         for step_name, _kind, reason in collector.issues
     )

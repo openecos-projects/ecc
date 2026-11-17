@@ -8,7 +8,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "hold_margin"),
         0.04,
-        applies="timing_opt",
+        applies="timing_optimization",
         description="Additional hold slack margin in ns for the Sizer hold-only pass.",
     ),
     config_param(
@@ -16,7 +16,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "rc_mode"),
         "global_routing",
-        applies="timing_opt",
+        applies="timing_optimization",
         choices=("global_routing", "placement"),
         description="Parasitic model used by the Sizer hold-only pass.",
     ),
@@ -56,7 +56,7 @@ SCHEMAS = (
                 "VIA4": {"resistance_ohm": 2.0},
             },
         },
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Per-layer and via RC written to the hold-stage setRCFile. Values "
             "use ohm/um, pF/um and ohm. Default wire capacitances are scaled "
@@ -69,7 +69,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "corner"),
         "MIN_m40/Cbest",
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Source corner label for the configured placement unit wire RC; "
             "the CX55 default is MIN_m40/Cbest."
@@ -80,7 +80,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "resistance_ohm_per_um"),
         1.053236741,
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Placement wire resistance in ohm/um for the CX55 MIN_m40/Cbest "
             "hold-pass parasitic model."
@@ -91,7 +91,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "capacitance_pf_per_um"),
         0.00011035,
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Placement wire capacitance in pF/um for the CX55 MIN_m40/Cbest "
             "hold-pass parasitic model, scaled by 0.5 from the source table."

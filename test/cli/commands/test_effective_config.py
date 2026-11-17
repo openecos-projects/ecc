@@ -29,13 +29,13 @@ class TestHybridManifestFallbacks:
         (run_dir / "home" / "flow.json").write_text(
             json.dumps(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "Synthesis",
+                            "name": "synthesis",
                             "tool": "yosys",
                             "state": "Success",
-                            **step_fields("Synthesis", "yosys"),
+                            **step_fields("synthesis", "yosys"),
                         },
                     ],
                 }
@@ -52,7 +52,7 @@ class TestHybridManifestFallbacks:
                 "top_module": "gcd",
                 "clock": "clk",
             },
-            {"start": "Synthesis", "end": "Synthesis"},
+            {"start": "synthesis", "end": "synthesis"},
         )
 
         rc = cli_main.run(["run", "--project", str(project_dir), "--plain"])
@@ -308,7 +308,7 @@ class TestEffectiveConfigValidation:
         # The entry declares the same range rtl2gds maps to, isolating the
         # path-spelling comparison.
         entry = manifest_stubs.entry(project_dir, "ws_0001")
-        entry["start_step"], entry["end_step"] = "Synth", "Harden"
+        entry["start_step"], entry["end_step"] = "synthesis", "harden"
         manifest_stubs.write(project_dir, [entry])
         (project_dir / "ecc.toml").write_text(
             '[design]\nname = "gcd"\ntop = "gcd"\n'
@@ -615,7 +615,7 @@ class TestManifestParameterValidation:
             (
                 "route.RT.-enable_timing",
                 "1",
-                {"route": {"RT": {"-enable_timing": "1"}}},
+                {"routing": {"RT": {"-enable_timing": "1"}}},
             ),
         ],
     )
@@ -636,9 +636,9 @@ class TestManifestParameterValidation:
                 "--project",
                 str(project_dir),
                 "--from",
-                "Synth",
+                "synthesis",
                 "--to",
-                "Synth",
+                "synthesis",
                 "--set",
                 f"{param}={value}",
             ]
@@ -665,9 +665,9 @@ class TestManifestParameterValidation:
                 "--project",
                 str(project_dir),
                 "--from",
-                "Synth",
+                "synthesis",
                 "--to",
-                "Synth",
+                "synthesis",
                 "--set",
                 "place.random_seed=3001",
                 "--plain",

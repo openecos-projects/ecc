@@ -67,7 +67,7 @@ def test_direct_config_overrides_win_without_aliasing_inputs(dreamplace_default_
         "dreamplace": {"target_density": 0.55},
         "config_overrides": {
             "dreamplace": {"target_density": 0.75, "global_place_stages": stages},
-            "route": {"RT": {"-thread_number": 64}},
+            "routing": {"RT": {"-thread_number": 64}},
         },
     }
     original_parameters = deepcopy(parameter_data)

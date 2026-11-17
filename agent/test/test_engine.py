@@ -29,17 +29,17 @@ def test_agent_engine_requires_successful_tool_result(
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
@@ -52,7 +52,7 @@ def test_agent_engine_requires_successful_tool_result(
     monkeypatch.setattr("agent.tools.run_step", run_step)
 
     assert flow.run_step(step) is expected_state
-    assert flow.check_state("route", "ecc", expected_state)
+    assert flow.check_state("routing", "ecc", expected_state)
 
 
 def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, monkeypatch):
@@ -61,14 +61,14 @@ def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, mon
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "category": "PNR",
                 "state": "Success",
-                **step_directory("route", "ecc"),
+                **step_directory("routing", "ecc"),
             },
             {
                 "name": "filler",
@@ -87,7 +87,7 @@ def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, mon
     sync_step_checklist(
         flow,
         EccStep(
-            name="route",
+            name="routing",
             tool="ecc",
             directory=tmp_path,
             checklist=ChecklistState(path=checklist_path),
@@ -107,7 +107,7 @@ def test_agent_engine_blocks_the_step_after_a_blocked_prerequisite(tmp_path, mon
         "checklist_status": {
             "status": "blocked",
             "blocked": True,
-            "failed_items": ["prerequisite:route"],
+            "failed_items": ["prerequisite:routing"],
             "source": "home/flow.json",
         },
     }
@@ -121,14 +121,14 @@ def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, m
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "category": "PNR",
                 "state": "Success",
-                **step_directory("route", "ecc"),
+                **step_directory("routing", "ecc"),
             },
             {
                 "name": "filler",
@@ -143,7 +143,7 @@ def test_agent_engine_runs_the_step_after_a_non_blocked_prerequisite(tmp_path, m
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     if status is not None:
-        route = flow.get_step("route", "ecc")
+        route = flow.get_step("routing", "ecc")
         assert route is not None
         route["checklist_status"] = {"status": status, "blocked": False}
         flow.save()
@@ -170,17 +170,17 @@ def test_agent_incomplete_step_normalized_on_resume(tmp_path, monkeypatch):
             "info": {},
             **step_fields(name, "ecc"),
         }
-        for name, state in (("Synthesis", "Success"), ("Floorplan", "Incomplete"))
+        for name, state in (("synthesis", "Success"), ("floorplan", "Incomplete"))
     ]
     workspace = Workspace(
         directory=tmp_path,
         flow=Flow(path=home / "flow.json"),
     )
     flow = AgentEngineFlow(workspace)
-    workspace.flow.data = {"schema_version": 2, "steps": persisted_steps}
+    workspace.flow.data = {"schema_version": 3, "steps": persisted_steps}
     flow.save()
     flow.workspace_steps = []
-    for name in ("Synthesis", "Floorplan"):
+    for name in ("synthesis", "floorplan"):
         directory = tmp_path / f"{name}_ecc"
         directory.mkdir()
         flow.workspace_steps.append(
@@ -212,17 +212,17 @@ def test_agent_engine_selects_worker_and_layout_policy_per_workspace(
     workspace = Workspace(directory=root, flow=Flow(path=root / "home" / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
-    step = EccStep(name="route", directory=root, tool="ecc")
+    step = EccStep(name="routing", directory=root, tool="ecc")
     flow.workspace_steps = [step]
     selected = {}
 
@@ -246,17 +246,17 @@ def test_agent_render_gate_runs_after_completion_without_rewriting_success(tmp_p
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr("agent.tools.run_step", lambda **_kwargs: True)
@@ -269,24 +269,24 @@ def test_agent_render_gate_runs_after_completion_without_rewriting_success(tmp_p
 
     assert flow.run_step(step, observer=observer) is StateEnum.Invalid
     assert calls == ["completed", "render"]
-    assert flow.check_state("route", "ecc", StateEnum.Success)
+    assert flow.check_state("routing", "ecc", StateEnum.Success)
 
 
 def test_agent_render_gate_fails_open_on_observer_errors(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr("agent.tools.run_step", lambda **_kwargs: True)
@@ -304,17 +304,17 @@ def test_agent_render_gate_is_not_called_for_failed_steps(tmp_path, monkeypatch)
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     vars(flow)["engine_db"] = SimpleNamespace(engine=None)
     monkeypatch.setattr("agent.tools.run_step", lambda **_kwargs: False)
@@ -331,14 +331,14 @@ def test_agent_rerun_persists_ready_checklist_before_gating_successor(tmp_path, 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
                 "checklist_status": {"status": "blocked", "blocked": True},
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             },
             {
                 "name": "filler",
@@ -351,7 +351,7 @@ def test_agent_rerun_persists_ready_checklist_before_gating_successor(tmp_path, 
     flow.save()
     checklist = tmp_path / "route_checklist.json"
     route = EccStep(
-        name="route",
+        name="routing",
         directory=tmp_path,
         tool="ecc",
         checklist=ChecklistState(path=checklist),

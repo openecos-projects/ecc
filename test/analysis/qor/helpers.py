@@ -46,16 +46,16 @@ def _all_success():
     return {
         step: SUCCESS
         for step in (
-            "Synthesis",
-            "postFloorplan",
-            "place",
-            "CTS",
-            "route",
+            "synthesis",
+            "post_floorplan",
+            "placement",
+            "cts",
+            "routing",
             "drc",
             "lvs",
-            "RCX",
+            "rcx",
             "sta",
-            "Harden",
+            "harden",
         )
     }
 
@@ -63,26 +63,26 @@ def _all_success():
 def gcd_metrics() -> dict:
     """Reference GCD fixture inputs (spec §12.1)."""
     records = [
-        make_metric("synthesis_cell_area", 800.0, step="Synthesis"),
-        make_metric("core_area", 1538.46, step="postFloorplan"),
-        make_metric("core_utilization", 0.52, step="postFloorplan"),
-        make_metric("place_hpwl", 3143.52, step="place"),
-        make_metric("place_grwl", 3812.00, step="place"),
-        make_metric("place_rudy_utilization_max", 0.0, step="place"),
-        make_metric("cts_buffer_count", 4, step="CTS"),
-        make_metric("cts_inverter_count", 0, step="CTS"),
-        make_metric("clock_path_max_buffer", 4, step="CTS"),
-        make_metric("clock_path_min_buffer", 4, step="CTS"),
-        make_metric("clock_wirelength", 610.0, step="CTS"),
-        make_metric("route_wirelength", 4315.53, step="route"),
-        make_metric("route_via_count", 608, step="route"),
+        make_metric("synthesis_cell_area", 800.0, step="synthesis"),
+        make_metric("core_area", 1538.46, step="post_floorplan"),
+        make_metric("core_utilization", 0.52, step="post_floorplan"),
+        make_metric("place_hpwl", 3143.52, step="placement"),
+        make_metric("place_grwl", 3812.00, step="placement"),
+        make_metric("place_rudy_utilization_max", 0.0, step="placement"),
+        make_metric("cts_buffer_count", 4, step="cts"),
+        make_metric("cts_inverter_count", 0, step="cts"),
+        make_metric("clock_path_max_buffer", 4, step="cts"),
+        make_metric("clock_path_min_buffer", 4, step="cts"),
+        make_metric("clock_wirelength", 610.0, step="cts"),
+        make_metric("route_wirelength", 4315.53, step="routing"),
+        make_metric("route_via_count", 608, step="routing"),
         make_metric("drc_count", 0, step="drc"),
         make_metric("lvs_count", 0, step="lvs"),
-        make_metric("rcx_spef_file_count", 2, step="RCX"),
-        make_metric("rcx_expected_corner_count", 2, step="RCX"),
-        make_metric("rcx_missing_corner_count", 0, step="RCX"),
-        make_metric("rcx_worst_total_capacitance_ff", 120.0, step="RCX"),
-        make_metric("rcx_worst_coupling_capacitance_ff", 30.0, step="RCX"),
+        make_metric("rcx_spef_file_count", 2, step="rcx"),
+        make_metric("rcx_expected_corner_count", 2, step="rcx"),
+        make_metric("rcx_missing_corner_count", 0, step="rcx"),
+        make_metric("rcx_worst_total_capacitance_ff", 120.0, step="rcx"),
+        make_metric("rcx_worst_coupling_capacitance_ff", 30.0, step="rcx"),
         make_metric("sta_setup_wns", 16.622, step="sta"),
         make_metric("sta_setup_tns", 0.0, step="sta"),
         make_metric("sta_hold_wns", 0.1, step="sta"),
@@ -92,7 +92,7 @@ def gcd_metrics() -> dict:
         make_metric("sta_expected_corner_count", 2, step="sta"),
         make_metric("sta_missing_corner_count", 0, step="sta"),
         make_metric("sta_worst_setup_corner", "MAX_125", step="sta"),
-        make_metric("harden_artifact_missing_count", 0, step="Harden"),
+        make_metric("harden_artifact_missing_count", 0, step="harden"),
     ]
     return {record.metric_id: record for record in records}
 

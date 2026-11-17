@@ -344,7 +344,7 @@ def test_create_db_engine_accepts_path_inputs_for_first_ecc_step(tmp_path, monke
         },
     )
     step = EccStep(
-        name="Floorplan",
+        name="floorplan",
         input=StepInput(
             def_=design_def,
             verilog=tmp_path / "origin" / "gcd.v",
@@ -560,7 +560,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     )
     build_step_space(step)
     assert step.feature.step is not None
-    step.feature.step.write_text(json.dumps({"CTS": {"buffer_num": 3}}))
+    step.feature.step.write_text(json.dumps({"cts": {"buffer_num": 3}}))
     timing_quality = {
         "schema_version": 1,
         "analysis_stage": "cts_fast_sta_post_optimization",
@@ -591,7 +591,7 @@ def test_run_cts_merges_structured_timing_into_step_feature(tmp_path, monkeypatc
     assert ecc_runner.run_cts(workspace, step, module) is True
 
     feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
-    assert feature["CTS"] == {
+    assert feature["cts"] == {
         "buffer_num": 3,
         "timing_quality": timing_quality,
     }
@@ -709,9 +709,9 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
     step = EccStep(
         output=EccOutput(verilog=netlist),
         name=StepEnum.SYNTHESIS.value,
-        data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
-        feature=EccFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
-        report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
+        data=EccData(dir=tmp_path / "synthesis_yosys" / "data"),
+        feature=EccFeature(dir=tmp_path / "synthesis_yosys" / "feature"),
+        report=EccReport(dir=tmp_path / "synthesis_yosys" / "report"),
     )
     assert step.data.dir is not None
     module = FakeSynthesisStaModule()
@@ -767,8 +767,8 @@ def test_run_sta_without_spef_warns_when_sdc_is_missing(tmp_path):
     )
     step = EccStep(
         output=EccOutput(verilog=netlist),
-        data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
-        report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
+        data=EccData(dir=tmp_path / "synthesis_yosys" / "data"),
+        report=EccReport(dir=tmp_path / "synthesis_yosys" / "report"),
     )
 
     assert ecc_runner.run_sta_without_spef(workspace, step) is False
@@ -779,8 +779,8 @@ def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
     netlist = tmp_path / "output" / "gcd.v"
     liberty = tmp_path / "pdk" / "std.lib"
     stale_reports = [
-        tmp_path / "Synthesis_yosys" / "feature" / "post_synthesis" / "power_summary.json",
-        tmp_path / "Synthesis_yosys" / "report" / "post_synthesis" / "power.rpt",
+        tmp_path / "synthesis_yosys" / "feature" / "post_synthesis" / "power_summary.json",
+        tmp_path / "synthesis_yosys" / "report" / "post_synthesis" / "power.rpt",
     ]
     for path in (netlist, liberty, *stale_reports):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -795,9 +795,9 @@ def test_run_sta_without_spef_removes_stale_power_report_on_failure(tmp_path):
     )
     step = EccStep(
         output=EccOutput(verilog=netlist),
-        data=EccData(dir=tmp_path / "Synthesis_yosys" / "data"),
-        feature=EccFeature(dir=tmp_path / "Synthesis_yosys" / "feature"),
-        report=EccReport(dir=tmp_path / "Synthesis_yosys" / "report"),
+        data=EccData(dir=tmp_path / "synthesis_yosys" / "data"),
+        feature=EccFeature(dir=tmp_path / "synthesis_yosys" / "feature"),
+        report=EccReport(dir=tmp_path / "synthesis_yosys" / "report"),
     )
 
     assert ecc_runner.run_sta_without_spef(workspace, step) is False
@@ -817,17 +817,17 @@ def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
             }
         )
     )
-    rcx_config.write_text(json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}))
+    rcx_config.write_text(json.dumps({"output": str(tmp_path / "rcx_ecc" / "data")}))
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="project_gcd_ws_0002", top_module="gcd"),
-        config={"sta": sta_config, "RCX": rcx_config},
+        config={"sta": sta_config, "rcx": rcx_config},
     )
-    step = _sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"})
+    step = _sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "rcx_ecc"})
 
     items = ecc_runner.collect_sta_signoff_items(workspace, step)
 
-    assert items[0]["spef_file"] == str(tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef")
+    assert items[0]["spef_file"] == str(tmp_path / "rcx_ecc" / "output" / "gcd_Cworst_125C.spef")
 
 
 def test_sta_entry_workspace_uses_declared_spef(tmp_path):
@@ -877,14 +877,14 @@ def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
         )
     )
     # Derived with --from sta: the ledger dropped RCX, the copy kept its outputs.
-    spef = tmp_path / "19_RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
+    spef = tmp_path / "19_rcx_ecc" / "output" / "gcd_Cworst_125C.spef"
     spef.parent.mkdir(parents=True)
     spef.write_text("*SPEF\n", encoding="utf-8")
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": "sta",
@@ -963,8 +963,8 @@ def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
 def _make_rcx_step(tmp_path):
     return EccStep(
         name=StepEnum.RCX.value,
-        data=EccData(dir=tmp_path / "RCX_ecc" / "data"),
-        output=EccOutput(dir=tmp_path / "RCX_ecc" / "output"),
+        data=EccData(dir=tmp_path / "rcx_ecc" / "data"),
+        output=EccOutput(dir=tmp_path / "rcx_ecc" / "output"),
     )
 
 
@@ -1009,7 +1009,7 @@ def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
 def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
-    spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
+    spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
     module: Any = FakeRcxModule()
 
@@ -1027,7 +1027,7 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
 
     assert ecc_runner.run_rcx(workspace, step, module) is True
 
-    published = tmp_path / "RCX_ecc" / "output" / "gcd_Cworst_125C.spef"
+    published = tmp_path / "rcx_ecc" / "output" / "gcd_Cworst_125C.spef"
     assert published.read_text(encoding="utf-8") == "*SPEF\n"
     assert step.output.spef == [published]
     call_names = [call[0] for call in module.calls]
@@ -1041,7 +1041,7 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
 def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
     step = _make_rcx_step(tmp_path)
-    spef_writer = tmp_path / "RCX_ecc" / "data" / "spef_writer"
+    spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
     stale_spef = spef_writer / "stale.spef"
     stale_spef.write_text("*SPEF\nstale\n", encoding="utf-8")
@@ -1052,7 +1052,7 @@ def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp
     assert ecc_runner.run_rcx(workspace, step, module) is False
 
     assert not stale_spef.exists()
-    assert not (tmp_path / "RCX_ecc" / "output" / "stale.spef").exists()
+    assert not (tmp_path / "rcx_ecc" / "output" / "stale.spef").exists()
     assert {
         "step_name": EccSubFlowEnum.run_rcx.value,
         "state": StateEnum.Imcomplete,
@@ -1084,7 +1084,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     max_lib = tmp_path / "pdk" / "max.lib"
     min_lib = tmp_path / "pdk" / "min.lib"
     sdc = tmp_path / "pdk" / "gcd.sdc"
-    spef_root = tmp_path / "RCX_ecc" / "output"
+    spef_root = tmp_path / "rcx_ecc" / "output"
     for path in (
         max_lib,
         min_lib,
@@ -1109,7 +1109,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     )
     rcx_config = config_dir / "rcx_ecc.json"
     rcx_config.write_text(
-        json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
+        json.dumps({"output": str(tmp_path / "rcx_ecc" / "data")}),
         encoding="utf-8",
     )
     incorrect_sta_config = tmp_path / "shared-config" / "sta_ecc.json"
@@ -1126,7 +1126,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     )
     step = EccStep(
         name=StepEnum.STA.value,
-        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"}).directory,
+        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "rcx_ecc"}).directory,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
         feature=EccFeature(
@@ -1255,7 +1255,7 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     max_lib = tmp_path / "pdk" / "max.lib"
-    spef = tmp_path / "RCX_ecc" / "output" / "gcd_RCworst_125C.spef"
+    spef = tmp_path / "rcx_ecc" / "output" / "gcd_RCworst_125C.spef"
     for path in (max_lib, spef):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
@@ -1271,7 +1271,7 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     )
     rcx_config = config_dir / "rcx_ecc.json"
     rcx_config.write_text(
-        json.dumps({"output": str(tmp_path / "RCX_ecc" / "data")}),
+        json.dumps({"output": str(tmp_path / "rcx_ecc" / "data")}),
         encoding="utf-8",
     )
     logger: Any = FakeLogger()
@@ -1284,7 +1284,7 @@ def test_run_sta_returns_false_when_sdc_is_missing(tmp_path, monkeypatch):
     )
     step = EccStep(
         name=StepEnum.STA.value,
-        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "RCX_ecc"}).directory,
+        directory=_sta_step_with_request(tmp_path, {AnalysisData.PARASITICS: "rcx_ecc"}).directory,
         data=EccData(steps={StepEnum.STA.value: tmp_path / "sta_ecc" / "data" / "sta"}),
         report=EccReport(dir=tmp_path / "sta_ecc" / "report"),
         feature=EccFeature(dir=tmp_path / "sta_ecc" / "feature"),
@@ -1512,7 +1512,7 @@ def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
         )
         is True
     )
-    assert module.clock_tree_stage == "CTS"
+    assert module.clock_tree_stage == "cts"
     assert module.clock_tree_graph is graph
 
 

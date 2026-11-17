@@ -17,7 +17,7 @@ def snapshot_file(tmp_path):
         "schemaVersion": SNAPSHOT_SCHEMA_VERSION,
         "workspaceId": "archived-gcd",
         "workspaceRevision": 1,
-        "flow": {"schema_version": 2, "steps": []},
+        "flow": {"schema_version": 3, "steps": []},
         "parameters": {},
         "checklist": {},
         "signoffAssessment": {},
@@ -29,7 +29,7 @@ def snapshot_file(tmp_path):
         "hotspotPreview": {},
         "workspaceSpec": {},
         "workspaceBindings": {},
-        "stepOutputs": {"schema_version": 2, "directory": ".", "design": "gcd", "steps": []},
+        "stepOutputs": {"schema_version": 3, "directory": ".", "design": "gcd", "steps": []},
         "artifacts": [],
     }
     path = tmp_path / "archive" / "saved.json"

@@ -1,6 +1,7 @@
 """Workspace-local parameter persistence shared by Engine and CLI."""
 
 from copy import deepcopy
+from typing import Final
 
 from chipcompiler.data.config_params.common import ConfigTarget
 from chipcompiler.data.parameter import update_parameters
@@ -9,27 +10,31 @@ from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
 )
+from chipcompiler.data.types import SkippableStepEnum, StepEnum
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
 WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
 # Layer (``ecc.toml`` / ``cli``) that supplied each explicit parameter at creation.
 PARAM_SOURCES_KEY = "_param_sources"
-_APPLIES_TO_STEP = {
-    "synthesis": "Synthesis",
-    "floorplan": "Floorplan",
-    "placement": "place",
-    "macro": "macroPlacement",
-    "cts": "CTS",
-    "routing": "route",
-    "filler": "filler",
-    "rcx": "RCX",
-    "sta": "sta",
-    "emir": "emir",
-    "timing_opt": "Timing optimization",
-    "diff_opt": "diff_opt",
-    "diff_sizing": "diff_sizing",
-}
+# Steps a parameter's ``applies`` may name and still be set on an existing workspace.
+_SETTABLE_APPLIES: Final = frozenset(
+    {
+        StepEnum.SYNTHESIS.value,
+        StepEnum.FLOORPLAN.value,
+        StepEnum.PLACEMENT.value,
+        StepEnum.MACRO_PLACEMENT.value,
+        StepEnum.CTS.value,
+        StepEnum.ROUTING.value,
+        StepEnum.FILLER.value,
+        StepEnum.RCX.value,
+        StepEnum.STA.value,
+        StepEnum.EMIR.value,
+        SkippableStepEnum.TIMING_OPT.value,
+        SkippableStepEnum.DIFF_OPT.value,
+        StepEnum.DIFF_SIZING.value,
+    }
+)
 _MISSING = object()
 
 
@@ -50,12 +55,11 @@ def workspace_param_step(schema, workspace=None) -> str | None:
         if applies == "all":
             # Without a Workspace the caller only asks whether the parameter is settable.
             candidates.extend(flow_names[:1] or ["all"])
-        elif (step := _APPLIES_TO_STEP.get(applies)) is not None:
-            candidates.append(step)
+        elif applies in _SETTABLE_APPLIES:
+            candidates.append(applies)
     if not candidates:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
-    wanted = {step.casefold() for step in candidates}
-    return next((name for name in flow_names if name.casefold() in wanted), candidates[0])
+    return next((name for name in flow_names if name in candidates), candidates[0])
 
 
 def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:

@@ -4,6 +4,8 @@ import math
 import re
 from pathlib import Path
 
+from chipcompiler.data.types import StepEnum
+
 from .data.candidate_artifacts import (
     canonical_json_bytes,
     read_json_object,
@@ -20,9 +22,9 @@ _MODES = ("die_util", "die_size")
 
 def validate_floorplan_mode_request(request) -> None:
     mode = request.floorplan_mode
-    if mode is not None and (mode not in _MODES or request.target_step != "Floorplan"):
+    if mode is not None and (mode not in _MODES or request.target_step != StepEnum.FLOORPLAN.value):
         raise RuntimeApiError(
-            "invalid_request", "floorplan_mode must be die_util or die_size at Floorplan"
+            "invalid_request", "floorplan_mode must be die_util or die_size at floorplan"
         )
 
 
@@ -93,7 +95,7 @@ def prepare_floorplan_mode(workspace, request) -> None:
     root = _isolated_root(workspace)
     if root.name != request.candidate_id:
         raise ValueError("floorplan mode candidate identity is invalid")
-    config_path = _local_path(workspace, workspace.config["Floorplan"])
+    config_path = _local_path(workspace, workspace.config[StepEnum.FLOORPLAN.value])
     config = read_json_object(config_path, "floorplan config")
     builder = config.get("die_builder")
     if not isinstance(builder, dict) or builder.get("mode") not in _MODES:
@@ -128,7 +130,7 @@ def prepare_floorplan_mode(workspace, request) -> None:
     }
     receipt["receipt_sha256"] = sha256_bytes(canonical_json_bytes(receipt))
     write_json_atomic(root / FLOORPLAN_MODE_REF, receipt)
-    apply_floorplan_mode(workspace, "Floorplan")
+    apply_floorplan_mode(workspace, StepEnum.FLOORPLAN.value)
 
 
 def drop_pinned_die_size(workspace) -> None:
@@ -155,12 +157,12 @@ def drop_pinned_die_size(workspace) -> None:
 
 
 def apply_floorplan_mode(workspace, step_name: str) -> None:
-    if step_name != "Floorplan":
+    if step_name != StepEnum.FLOORPLAN.value:
         return
     receipt = read_floorplan_mode(workspace)
     if receipt is None:
         return
-    path = _local_path(workspace, workspace.config["Floorplan"])
+    path = _local_path(workspace, workspace.config[StepEnum.FLOORPLAN.value])
     config = read_json_object(path, "floorplan config")
     builder = config.get("die_builder")
     if not isinstance(builder, dict):
@@ -175,7 +177,7 @@ def validate_floorplan_mode_result(workspace, terminal_state: str) -> None:
     receipt = read_floorplan_mode(workspace)
     if receipt is None or terminal_state != "succeeded":
         return
-    path = _local_path(workspace, workspace.config["Floorplan"])
+    path = _local_path(workspace, workspace.config[StepEnum.FLOORPLAN.value])
     builder = read_json_object(path, "floorplan config").get("die_builder", {})
     if builder.get("mode") != receipt["mode"] or (
         receipt["mode"] == "die_size" and builder.get("die_size") != receipt["die_size"]

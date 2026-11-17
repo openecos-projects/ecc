@@ -9,7 +9,7 @@ def test_step_analysis_artifacts_declare_required_evidence(tmp_path):
         directory=tmp_path,
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": "sta",

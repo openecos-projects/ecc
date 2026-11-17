@@ -19,11 +19,11 @@ def _ns(**kwargs: object) -> Any:
 
 
 def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
-    netlist = tmp_path / "Synthesis_yosys" / "output" / "top_Synthesis.v.gz"
+    netlist = tmp_path / "synthesis_yosys" / "output" / "top_synthesis.v.gz"
     netlist.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(netlist, "wt", encoding="utf-8") as file:
         file.write("module top(); endmodule\n")
-    checklist_path = tmp_path / "Synthesis_yosys" / "checklist.json"
+    checklist_path = tmp_path / "synthesis_yosys" / "checklist.json"
     step = _ns(
         name=StepEnum.SYNTHESIS.value,
         checklist=ChecklistState(path=checklist_path),
@@ -40,7 +40,7 @@ def test_synthesis_checklist_records_current_mapped_netlist(tmp_path):
     assert data["checklist"] == [
         {
             "id": "artifact.synthesis.netlist",
-            "step": "Synthesis",
+            "step": "synthesis",
             "category": "artifact",
             "owner": "checklist",
             "policy": "block",

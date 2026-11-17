@@ -11,18 +11,18 @@ def test_engine_flow_passes_worker_module_and_layout_policy(monkeypatch, tmp_pat
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Unstart",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             }
         ],
     }
     flow = EngineFlow(workspace)
-    step = EccStep(name="route", directory=tmp_path, tool="ecc")
+    step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     selected = {}
 

@@ -44,32 +44,32 @@ def _row(lines: list[str], step: str) -> str:
 def test_the_post_filler_stage_is_bracketed_and_lettered():
     lines = _render(_view())
 
-    assert [_row(lines, step).split()[1:3] for step in ("lvs", "drc", "RCX")] == [
+    assert [_row(lines, step).split()[1:3] for step in ("lvs", "drc", "rcx")] == [
         ["13a", "┐"],
         ["13b", "│"],
         ["13e", "┘"],
     ]
     assert _row(lines, "sta").split()[1:3] == ["14a", "┐"]
-    assert _row(lines, "powerAnalysis").split()[1:3] == ["14b", "┘"]
+    assert _row(lines, "power_analysis").split()[1:3] == ["14b", "┘"]
     assert _LEGEND in lines
 
 
 def test_a_step_alone_in_its_stage_has_a_bare_number_and_no_bracket():
-    assert _row(_render(_view()), "route").split()[:4] == ["[✔]", "11", "route", "ecc"]
+    assert _row(_render(_view()), "routing").split()[:4] == ["[✔]", "11", "routing", "ecc"]
 
 
 def test_the_table_lists_producers_and_the_check_tag():
     lines = _render(_view())
 
-    assert "Timing optimization, CTS" in _row(lines, "route")
-    assert _row(lines, "sta").split()[4:] == ["ecc", "RCX,", "CTS", "check"]
-    assert "(rtl)" in _row(lines, "Synthesis")
+    assert "timing_optimization, cts" in _row(lines, "routing")
+    assert _row(lines, "sta").split()[4:] == ["ecc", "rcx,", "cts", "check"]
+    assert "(rtl)" in _row(lines, "synthesis")
 
 
 def test_the_label_and_bracket_share_one_column_aligned_to_the_widest_label():
     lines = _render(_view())
 
-    assert [_row(lines, step)[5:10].rstrip() for step in ("filler", "lvs", "drc", "RCX")] == [
+    assert [_row(lines, step)[5:10].rstrip() for step in ("filler", "lvs", "drc", "rcx")] == [
         "12",
         "13a ┐",
         "13b │",
@@ -78,17 +78,17 @@ def test_the_label_and_bracket_share_one_column_aligned_to_the_widest_label():
 
 
 def test_a_disabled_step_has_an_empty_number_and_the_stages_renumber():
-    lines = _render(_view(skip=[*DEFAULT_SKIP_STEPS, "CTS"]))
+    lines = _render(_view(skip=[*DEFAULT_SKIP_STEPS, "cts"]))
 
-    assert _row(lines, "CTS").split()[:4] == ["[", "]", "CTS", "ecc"]
+    assert _row(lines, "cts").split()[:4] == ["[", "]", "cts", "ecc"]
     assert _row(lines, "legalization").split()[1] == "8"
-    assert _row(lines, "Harden").split()[1] == "15"
+    assert _row(lines, "harden").split()[1] == "15"
 
 
 def test_a_disabled_step_inside_a_parallel_stage_keeps_the_bracket_continuous():
     lines = _render(_view(skip=[*DEFAULT_SKIP_STEPS, "drc"]))
 
-    assert [_row(lines, step).split()[:3] for step in ("lvs", "drc", "antennaCheck")] == [
+    assert [_row(lines, step).split()[:3] for step in ("lvs", "drc", "antenna_check")] == [
         ["[✔]", "13a", "┐"],
         ["[", "]", "│"],
         ["[✔]", "13b", "│"],
@@ -99,7 +99,7 @@ def test_a_disabled_step_inside_a_parallel_stage_keeps_the_bracket_continuous():
 def test_a_disabled_step_before_a_parallel_stage_is_outside_the_bracket():
     lines = _render(_view(skip=[*DEFAULT_SKIP_STEPS, "lvs"]))
 
-    assert [_row(lines, step).split()[:3] for step in ("lvs", "drc", "RCX")] == [
+    assert [_row(lines, step).split()[:3] for step in ("lvs", "drc", "rcx")] == [
         ["[", "]", "lvs"],
         ["[✔]", "13a", "┐"],
         ["[✔]", "13d", "┘"],
@@ -107,7 +107,7 @@ def test_a_disabled_step_before_a_parallel_stage_is_outside_the_bracket():
 
 
 def test_no_legend_without_a_parallel_stage():
-    lines = _render(_view(start="Synthesis", end="preFloorplan"))
+    lines = _render(_view(start="synthesis", end="pre_floorplan"))
 
     assert _LEGEND not in lines
     assert not any(char in line for line in lines for char in "┐│┘")
@@ -130,7 +130,7 @@ def test_the_legend_states_how_many_steps_of_a_stage_run_at_once(max_parallel_st
 
 
 def test_no_legend_for_one_at_a_time_without_a_parallel_stage():
-    lines = _render(_view(max_parallel_steps=1, start="Synthesis", end="preFloorplan"))
+    lines = _render(_view(max_parallel_steps=1, start="synthesis", end="pre_floorplan"))
 
     assert not any("┐…┘" in line for line in lines)
 
@@ -166,11 +166,11 @@ def test_the_edit_summary_shows_max_parallel_steps(written, heading):
         "path": "ecc.toml",
         "preset": "rtl2gds",
         "lec_engine": "kepler_formal",
-        "skip_steps": ["diff_opt", "CTS"],
+        "skip_steps": ["diff_opt", "cts"],
         "insert_steps": [],
         "max_parallel_steps": 2,
         "enabled": [],
-        "disabled": ["CTS"],
+        "disabled": ["cts"],
         "inserted": [],
         "removed": [],
     }
@@ -182,9 +182,9 @@ def test_the_edit_summary_shows_max_parallel_steps(written, heading):
     assert out.getvalue().splitlines() == [
         heading,
         "  preset = rtl2gds · lec_engine = kepler_formal",
-        "  skip_steps = diff_opt, CTS",
+        "  skip_steps = diff_opt, cts",
         "  max_parallel_steps = 2",
-        "  disabled: CTS",
+        "  disabled: cts",
     ]
 
 
@@ -229,7 +229,9 @@ def _expected_rows(view: StatusView) -> list[list[str]]:
     "view",
     [
         pytest.param(_view(), id="default"),
-        pytest.param(_view(start="Synthesis", end="postRouteLec"), id="synthesis-to-postRouteLec"),
+        pytest.param(
+            _view(start="synthesis", end="post_route_lec"), id="synthesis-to-post_route_lec"
+        ),
     ],
 )
 def test_a_narrow_terminal_wraps_every_cell_without_cutting_a_word(view):
@@ -256,8 +258,8 @@ def test_piped_output_is_as_wide_as_the_table_needs():
 
     lines = out.getvalue().splitlines()
     assert not any("…" in line for line in lines if line != _LEGEND)
-    assert "Timing optimization, CTS" in _row(lines, "route")
-    assert "check · optional" in _row(lines, "postRouteLec")
+    assert "timing_optimization, cts" in _row(lines, "routing")
+    assert "check · optional" in _row(lines, "post_route_lec")
 
 
 class _ColorlessTty(io.StringIO):
@@ -280,24 +282,24 @@ def test_a_colorless_terminal_wraps_instead_of_taking_the_piped_branch(monkeypat
 
 
 def test_an_inserted_lec_row_follows_its_step_and_is_tagged_inserted():
-    lines = _render(_view(insert=("lec@CTS",)))
+    lines = _render(_view(insert=("lec@cts",)))
 
-    assert _row(lines, "lec@CTS").split() == [
+    assert _row(lines, "lec@cts").split() == [
         "[✔]",
         "9",
-        "lec@CTS",
+        "lec@cts",
         "kepler_formal",
-        "CTS,",
-        "Synthesis",
+        "cts,",
+        "synthesis",
         "inserted",
     ]
-    assert lines.index(_row(lines, "lec@CTS")) == lines.index(_row(lines, "CTS")) + 1
+    assert lines.index(_row(lines, "lec@cts")) == lines.index(_row(lines, "cts")) + 1
 
 
 def test_a_range_ending_at_an_inserted_steps_step_keeps_the_target_on_that_step():
-    view = _view(skip=(), insert=("lec@route",), start="CTS", end="route")
+    view = _view(skip=(), insert=("lec@routing",), start="cts", end="routing")
 
     assert [(step.step, step.target) for step in view.steps[-2:]] == [
-        ("route", True),
-        ("lec@route", False),
+        ("routing", True),
+        ("lec@routing", False),
     ]

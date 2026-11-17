@@ -302,15 +302,15 @@ class TestRunPreflight:
     def test_preflight_components_mapping(self, monkeypatch):
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_syn_sta_flow",
-            lambda: [("Synthesis", "yosys", "Unstart")],
+            lambda: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
             lambda *, skip=(), lec_engine=None: [
-                ("Synthesis", "yosys", "Unstart"),
-                ("Floorplan", "ecc", "Unstart"),
-                ("place", "dreamplace", "Unstart"),
-                ("Timing optimization", "sizer", "Unstart"),
+                ("synthesis", "yosys", "Unstart"),
+                ("floorplan", "ecc", "Unstart"),
+                ("placement", "dreamplace", "Unstart"),
+                ("timing_optimization", "sizer", "Unstart"),
             ],
         )
 
@@ -335,10 +335,10 @@ class TestRunPreflight:
             lambda *, skip=(), lec_engine=None: [
                 (step, tool, "Unstart")
                 for step, tool, _state in [
-                    ("Synthesis", "yosys", "Unstart"),
+                    ("synthesis", "yosys", "Unstart"),
                     ("diff_opt", "dreamplace", "Unstart"),
-                    ("Floorplan", "ecc", "Unstart"),
-                    ("Timing optimization", "sizer", "Unstart"),
+                    ("floorplan", "ecc", "Unstart"),
+                    ("timing_optimization", "sizer", "Unstart"),
                 ]
                 if step not in set(skip)
             ],
@@ -400,7 +400,7 @@ class TestRunPreflight:
                 self.workspace = workspace
                 self.workspace_steps = [
                     SimpleNamespace(
-                        name="place",
+                        name="placement",
                         tool="ecc",
                         input=StepInput(),
                         output=OutputPaths(),
@@ -416,7 +416,7 @@ class TestRunPreflight:
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
         reconcile_probe = SimpleNamespace(outcome="resume")
         reconcile_result = SimpleNamespace(
-            ok=True, outcome="resume", persisted=True, target=["place"], appended=()
+            ok=True, outcome="resume", persisted=True, target=["placement"], appended=()
         )
         monkeypatch.setattr(
             "chipcompiler.engine.reconcile.classify_workspace",
@@ -428,15 +428,15 @@ class TestRunPreflight:
         )
         monkeypatch.setattr(
             "chipcompiler.engine.rerun.selected_step_names",
-            lambda flow, **kwargs: ["place"],
+            lambda flow, **kwargs: ["placement"],
         )
         monkeypatch.setattr(
             "chipcompiler.engine.rerun.bounded_resume_names",
-            lambda flow, through: ["place"],
+            lambda flow, through: ["placement"],
         )
         monkeypatch.setattr(
             "chipcompiler.engine.rerun.run_resume",
-            lambda flow, **kwargs: StepRunResult(ok=True, executed=("place",)),
+            lambda flow, **kwargs: StepRunResult(ok=True, executed=("placement",)),
         )
         monkeypatch.setattr(
             "chipcompiler.data.create_workspace",

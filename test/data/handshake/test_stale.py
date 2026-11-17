@@ -4,7 +4,7 @@ from chipcompiler.data.handshake import ChangedInput, ResponseStatus, StaleStep,
 from chipcompiler.data.types import DesignState
 from test.data.handshake.helpers import answer
 
-_CHAIN = ("09_CTS_ecc", "10_legalization_dreamplace", "12_route_ecc", "13_filler_ecc")
+_CHAIN = ("09_cts_ecc", "10_legalization_dreamplace", "12_routing_ecc", "13_filler_ecc")
 
 
 def _run_chain(workspace) -> None:
@@ -33,7 +33,7 @@ def test_rerunning_a_step_makes_every_step_built_on_it_stale(tmp_path):
 
     assert stale_steps(tmp_path, _CHAIN) == (
         StaleStep("legalization", _CHAIN[1], (ChangedInput(_CHAIN[0], "cts-1", "cts-2"),), ()),
-        StaleStep("route", _CHAIN[2], (ChangedInput(_CHAIN[0], "cts-1", "cts-2"),), (_CHAIN[1],)),
+        StaleStep("routing", _CHAIN[2], (ChangedInput(_CHAIN[0], "cts-1", "cts-2"),), (_CHAIN[1],)),
         StaleStep("filler", _CHAIN[3], (), (_CHAIN[2],)),
     )
 
@@ -71,7 +71,7 @@ def test_saving_the_ledger_resets_steps_built_on_a_changed_run(tmp_path):
     flow = Flow(
         path=tmp_path / "home" / "flow.json",
         data={
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": directory.split("_")[1],

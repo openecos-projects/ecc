@@ -178,7 +178,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
     "macro_location": "macro_location.tcl",
-    StepEnum.ROUTING.value: "route_ecc.json",
+    StepEnum.ROUTING.value: "routing_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",

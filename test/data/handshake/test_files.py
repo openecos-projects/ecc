@@ -38,12 +38,12 @@ def _request(workspace: Path) -> StepRequest:
                 verilog=workspace / "filler_ecc/output/gcd_filler.v.gz",
                 db=workspace / "filler_ecc/output/db",
             ),
-            spef=(workspace / "RCX_ecc/output/gcd_rcworst_25C.spef",),
+            spef=(workspace / "rcx_ecc/output/gcd_rcworst_25C.spef",),
         ),
         design_source=UpstreamResponse("filler_ecc", "attempt-filler"),
         upstream={
             DesignState.FILLED: UpstreamResponse("filler_ecc", "attempt-filler"),
-            AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", "attempt-rcx"),
+            AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", "attempt-rcx"),
         },
         final_step=False,
         layout_image=True,
@@ -52,13 +52,13 @@ def _request(workspace: Path) -> StepRequest:
 
 def _response(workspace: Path) -> StepResponse:
     return StepResponse(
-        step="RCX",
+        step="rcx",
         tool="ecc",
         attempt_id="attempt-rcx",
         status=ResponseStatus.SUCCESS,
-        design=DesignFiles(def_=workspace / "RCX_ecc/output/gcd_RCX.def.gz"),
+        design=DesignFiles(def_=workspace / "rcx_ecc/output/gcd_rcx.def.gz"),
         design_states=frozenset({DesignState.ROUTED, DesignState.FILLED}),
-        outputs={AnalysisData.PARASITICS: (workspace / "RCX_ecc/output/gcd_rcworst_25C.spef",)},
+        outputs={AnalysisData.PARASITICS: (workspace / "rcx_ecc/output/gcd_rcworst_25C.spef",)},
         design_source=UpstreamResponse("filler_ecc", "attempt-filler"),
         upstream={DesignState.FILLED: UpstreamResponse("filler_ecc", "attempt-filler")},
         warnings=frozenset({DesignState.CLOCK_TREE}),

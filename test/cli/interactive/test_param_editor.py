@@ -14,8 +14,8 @@ _CLEAR = "\x15"
 
 _ROWS = [
     ParamRow("design.frequency_mhz", "design", "100.0", "100.0", overridden=False, kind="float"),
-    ParamRow("place.target_density", "place", "0.7", "0.6", overridden=True, kind="float"),
-    ParamRow("place.routability_opt", "place", "false", "false", overridden=False, kind="bool"),
+    ParamRow("place.target_density", "placement", "0.7", "0.6", overridden=True, kind="float"),
+    ParamRow("place.routability_opt", "placement", "false", "false", overridden=False, kind="bool"),
 ]
 
 
@@ -97,7 +97,7 @@ def test_pending_changes_are_discarded_only_on_a_second_cancel():
 
 
 def test_one_group_opens_its_values_and_the_filter_narrows_them():
-    place = [row for row in _ROWS if row.group == "place"]
+    place = [row for row in _ROWS if row.group == "placement"]
     # The filter leaves place.routability_opt as the only row: enter edits it.
     keys = ["/", "rout", _ENTER, _ENTER, _CLEAR, "true", _ENTER, "s"]
 

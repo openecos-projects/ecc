@@ -41,7 +41,7 @@ class ProjectConfig:
     # Declared [flow] lec_engine spelling; None when the key is absent (the
     # code default engine then applies).
     flow_lec_engine: str | None = None
-    # Declared [flow] insert_steps spelling (``["lec@CTS"]``); None when the
+    # Declared [flow] insert_steps spelling (``["lec@cts"]``); None when the
     # key is absent (nothing is inserted).
     flow_insert_steps: list[str] | None = None
     # Declared [flow] max_parallel_steps; None when the key is absent (the code

@@ -647,7 +647,7 @@ def _make_ws(directory="/tmp"):
                     "log_separator": lambda *a, **k: None,
                 },
             )(),
-            "flow": type("F", (), {"data": {"schema_version": 2, "steps": []}, "path": ""})(),
+            "flow": type("F", (), {"data": {"schema_version": 3, "steps": []}, "path": ""})(),
             "directory": directory,
         },
     )()
@@ -698,7 +698,7 @@ class TestFreshRunProgress:
     def test_success_summary_format(self, tmp_path):
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            [_make_step("synthesis", "yosys", str(tmp_path / "synth.log"))],
             lambda self, s: StateEnum.Success,
         )
 
@@ -712,7 +712,7 @@ class TestFreshRunProgress:
     def test_summary_includes_inspect_detail_line(self):
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys", "/tmp/synth.log")],
+            [_make_step("synthesis", "yosys", "/tmp/synth.log")],
             lambda self, s: StateEnum.Success,
         )
 
@@ -727,7 +727,7 @@ class TestFreshRunProgress:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             lambda self, s: StateEnum.Success,
         )
 
@@ -740,7 +740,7 @@ class TestFreshRunProgress:
         run_dir = tmp_path / "sweeps" / "s1" / "r4"
         flow = _make_flow(
             _make_ws(str(run_dir)),
-            [_make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))],
+            [_make_step("synthesis", "yosys", str(tmp_path / "synth.log"))],
             lambda self, s: StateEnum.Success,
         )
 
@@ -754,7 +754,7 @@ class TestFreshRunProgress:
     def test_inspect_detail_carries_run_id(self):
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys", "/tmp/synth.log")],
+            [_make_step("synthesis", "yosys", "/tmp/synth.log")],
             lambda self, s: StateEnum.Success,
         )
 
@@ -767,8 +767,8 @@ class TestFreshRunProgress:
         flow = _make_flow(
             _make_ws(),
             [
-                _make_step("Synthesis", "yosys"),
-                _make_step("Floorplan", "ecc"),
+                _make_step("synthesis", "yosys"),
+                _make_step("floorplan", "ecc"),
             ],
             lambda self, s: StateEnum.Success,
         )
@@ -783,7 +783,7 @@ class TestFreshRunProgress:
     def test_run_header_emitted(self, tmp_path):
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys")],
+            [_make_step("synthesis", "yosys")],
             lambda self, s: StateEnum.Success,
         )
 
@@ -797,8 +797,8 @@ class TestFreshRunProgress:
         flow = _make_flow(
             _make_ws(),
             [
-                _make_step("Synthesis", "yosys"),
-                _make_step("Floorplan", "ecc"),
+                _make_step("synthesis", "yosys"),
+                _make_step("floorplan", "ecc"),
             ],
             lambda self, s: StateEnum.Success,
         )
@@ -814,13 +814,13 @@ class TestFreshRunProgress:
 
     def test_failure_summary_includes_status(self):
         def fake_run_step(self, s):
-            if s.name == "Synthesis":
+            if s.name == "synthesis":
                 return StateEnum.Success
             return StateEnum.Imcomplete
 
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
+            [_make_step("synthesis", "yosys"), _make_step("floorplan", "ecc")],
             fake_run_step,
         )
 
@@ -841,7 +841,7 @@ class TestFreshRunProgress:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             fake_run_step,
         )
 
@@ -864,7 +864,7 @@ class TestFreshRunProgress:
 
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys", "/tmp/nonexistent_synth.log")],
+            [_make_step("synthesis", "yosys", "/tmp/nonexistent_synth.log")],
             fake_run_step,
         )
 
@@ -875,7 +875,7 @@ class TestFreshRunProgress:
         assert "  log: running synthesis, waiting for step log" in plain
 
     def test_restores_progress_output_after_run_step_redirects_stdio(self, tmp_path, capfd):
-        log_file = tmp_path / "place.log"
+        log_file = tmp_path / "placement.log"
 
         def fake_run_step(self, s):
             redirected = redirect_stdio_to_file(str(log_file))
@@ -920,7 +920,7 @@ class TestFreshRunProgress:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys")],
+            [_make_step("synthesis", "yosys")],
             raising_run_step,
         )
 
@@ -937,7 +937,7 @@ class TestFreshRunProgress:
 
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys")],
+            [_make_step("synthesis", "yosys")],
             lambda self, s: StateEnum.Success,
         )
 
@@ -949,7 +949,7 @@ class TestFreshRunProgress:
     def test_color_disabled_for_non_tty(self):
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys")],
+            [_make_step("synthesis", "yosys")],
             lambda self, s: StateEnum.Success,
         )
 
@@ -971,8 +971,8 @@ class TestFreshRunProgress:
         flow = _make_flow(
             _make_ws(str(tmp_path)),
             [
-                _make_step("Synthesis", "yosys"),
-                _make_step("Floorplan", "ecc"),
+                _make_step("synthesis", "yosys"),
+                _make_step("floorplan", "ecc"),
             ],
             lambda self, step: StateEnum.Success,
         )
@@ -982,8 +982,8 @@ class TestFreshRunProgress:
 
         assert result is True
         assert committed == [
-            ("Synthesis", StateEnum.Success, None),
-            ("Floorplan", StateEnum.Success, None),
+            ("synthesis", StateEnum.Success, None),
+            ("floorplan", StateEnum.Success, None),
         ]
 
     def test_progress_run_commits_snapshot_for_failed_step(self, monkeypatch):
@@ -994,11 +994,11 @@ class TestFreshRunProgress:
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: sink)
 
         def fake_run_step(self, step):
-            return StateEnum.Success if step.name == "Synthesis" else StateEnum.Imcomplete
+            return StateEnum.Success if step.name == "synthesis" else StateEnum.Imcomplete
 
         flow = _make_flow(
             _make_ws(),
-            [_make_step("Synthesis", "yosys"), _make_step("Floorplan", "ecc")],
+            [_make_step("synthesis", "yosys"), _make_step("floorplan", "ecc")],
             fake_run_step,
         )
 
@@ -1007,8 +1007,8 @@ class TestFreshRunProgress:
 
         assert result is False
         assert committed == [
-            ("Synthesis", StateEnum.Success),
-            ("Floorplan", StateEnum.Imcomplete),
+            ("synthesis", StateEnum.Success),
+            ("floorplan", StateEnum.Imcomplete),
         ]
 
 
@@ -1118,7 +1118,7 @@ class TestFailureContextIntegration:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             fail_step,
         )
 
@@ -1136,7 +1136,7 @@ class TestFailureContextIntegration:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             lambda self, s: StateEnum.Success,
         )
 
@@ -1150,7 +1150,7 @@ class TestFailureContextIntegration:
     def test_missing_log_no_context_block(self, tmp_path):
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", "/nonexistent/synth.log")],
+            [_make_step("synthesis", "yosys", "/nonexistent/synth.log")],
             lambda self, s: StateEnum.Imcomplete,
         )
 
@@ -1169,7 +1169,7 @@ class TestFailureContextIntegration:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             lambda self, s: StateEnum.Imcomplete,
         )
 
@@ -1185,7 +1185,7 @@ class TestFailureContextIntegration:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             lambda self, s: StateEnum.Imcomplete,
         )
 
@@ -1202,7 +1202,7 @@ class TestFailureContextIntegration:
 
         flow = _make_flow(
             _make_ws(str(tmp_path)),
-            [_make_step("Synthesis", "yosys", str(log_file))],
+            [_make_step("synthesis", "yosys", str(log_file))],
             lambda self, s: StateEnum.Imcomplete,
         )
 
@@ -1232,15 +1232,15 @@ class TestRunWithStepProgress:
     def _flow(self, tmp_path):
         workspace: Any = _make_ws(str(tmp_path))
         workspace.flow.data = {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "runtime": "0:00:03",
                 }
             ],
         }
-        step = _make_step("Synthesis", "yosys", str(tmp_path / "synth.log"))
+        step = _make_step("synthesis", "yosys", str(tmp_path / "synth.log"))
         return _make_flow(workspace, [step], lambda self, s: StateEnum.Success), step
 
     def test_rerun_events_render_step_start_and_success(self, tmp_path, monkeypatch):
@@ -1251,7 +1251,7 @@ class TestRunWithStepProgress:
 
         def runner(engine_flow, *, event_sink: Any = None):
             seen.append(event_sink)
-            event_sink.on_execution_started("rerun", ("Synthesis",))
+            event_sink.on_execution_started("rerun", ("synthesis",))
             event_sink.on_step_started(step)
             event_sink.on_step_completed(step, StateEnum.Success)
             event_sink.on_execution_finished("Success", None)
@@ -1275,9 +1275,9 @@ class TestRunWithStepProgress:
         assert "✓ synthesis (yosys) 0:00:03" in plain
         assert "  inspect: ecc log synthesis --project myproj --workspace test1" in plain
         assert delegate.calls == [
-            ("execution_started", "rerun", ("Synthesis",)),
-            ("step_started", "Synthesis"),
-            ("step_completed", "Synthesis", "Success", None),
+            ("execution_started", "rerun", ("synthesis",)),
+            ("step_started", "synthesis"),
+            ("step_completed", "synthesis", "Success", None),
             ("execution_finished", "Success", None),
         ]
 
@@ -1286,7 +1286,7 @@ class TestRunWithStepProgress:
         monkeypatch.setattr(progress, "event_sink_for_workspace", lambda workspace: None)
 
         def runner(engine_flow, *, event_sink: Any = None):
-            event_sink.on_execution_started("rerun", ("Synthesis",))
+            event_sink.on_execution_started("rerun", ("synthesis",))
             event_sink.on_step_started(step)
             event_sink.on_step_completed(step, StateEnum.Imcomplete)
             event_sink.on_execution_finished("Incomplete", None)

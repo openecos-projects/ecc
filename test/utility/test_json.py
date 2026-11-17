@@ -251,7 +251,7 @@ class TestFlowSetStatePersistence:
         flow_path.write_text(
             json.dumps(
                 {
-                    "schema_version": 2,
+                    "schema_version": 3,
                     "steps": [
                         {
                             "name": "SYNTHESIS",
@@ -302,7 +302,7 @@ class TestFlowSetStatePersistence:
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "SYNTHESIS",
@@ -350,7 +350,7 @@ class TestFlowSetStatePersistence:
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
                     "name": "SYNTHESIS",

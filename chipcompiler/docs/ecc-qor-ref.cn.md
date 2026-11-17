@@ -10,7 +10,7 @@
 
 ```mermaid
 graph LR
-    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>powerAnalysis.step.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
+    A["各步骤产物<br/>qor_metrics.json / qor_summary.json<br/>power_analysis.step.json"] --> B["ECC QoR V3 引擎<br/>（唯一计算方）"]
     B --> C["home/qor_report.json<br/>每步成功后自动刷新"]
     C --> D["ECOS Studio<br/>（渲染方：五维分解/门禁/诊断）"]
     B --> E["ecc report qor<br/>文本报告 → signoff/*.txt"]
@@ -141,9 +141,9 @@ $$
 - `I_route`（详细布线膨胀）：引脚接入、换层过孔、DRC 避让；
 - 分母为 0/缺失时比值严格为 UNKNOWN，**禁止 ε 填充**（会破坏恒等式）。
 
-**跨阶段兼容性（当前实现的降级路径）**：`I_route`/`I_total` 的分子分母来自不同阶段（place → route），CTS 会在两阶段之间插入时钟树网络。当前工具链没有输出网络级映射，因此：
+**跨阶段兼容性（当前实现的降级路径）**：`I_route`/`I_total` 的分子分母来自不同阶段（placement → routing），CTS 会在两阶段之间插入时钟树网络。当前工具链没有输出网络级映射，因此：
 
-- CTS 插入了缓冲（或计数未知）→ place→route 判 `INCOMPATIBLE`，`I_route`/`I_total` 严格 UNKNOWN；
+- CTS 插入了缓冲（或计数未知）→ placement→routing 判 `INCOMPATIBLE`，`I_route`/`I_total` 严格 UNKNOWN；
 - Q_I 退化为按 `I_place`（place 阶段内部，同一网表，`EXACT_COMPATIBLE`）评分，报告中如实标注 `INCOMPATIBLE route side`；
 - 待工具链输出网络映射后启用完整 `I_total` 路径（届时同一设计 Q_I 会变化，见 §4.4 示例）。
 
@@ -189,7 +189,7 @@ $$
 | P_total ≥ P_budget | 0.0（钳位） |
 | 未申报预算 | null（UNKNOWN，排除出总分） |
 
-- P_total 取独立 `powerAnalysis` 步骤中 iPW 的总签核功耗（dynamic + leakage，单位 µW）；该结果不可得时回退综合后 post-synthesis STA 功耗估计（报告 `power.source_kind` 标明 `signoff` / `synthesis`）。
+- P_total 取独立 `power_analysis` 步骤中 iPW 的总签核功耗（dynamic + leakage，单位 µW）；该结果不可得时回退综合后 post-synthesis STA 功耗估计（报告 `power.source_kind` 标明 `signoff` / `synthesis`）。
 - 预算单位是**瓦**：`qor_power_budget_w = 0.5` 即 0.5 W（§8）。
 
 ### 3.5 Q_R 鲁棒性质量
@@ -310,7 +310,7 @@ I_E = 100 × E_integrity × E_coverage × E_consistency（乘性合成，故意�
 2. **Tier 2（质量瓶颈）**：按瓶颈严重度降序，先于优化机会；
 3. **Tier 3（优化机会）**：过约束裕量的降驱动/缩尺寸建议。
 
-示例干预与公开参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.bottom_layer` / `route.top_layer` 或 `place.routability_opt_flag`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → CTS 平衡与多 corner skew 目标。这些仍是待验证假设；`route.dr_search_depth` 不是公开的 `ecc param` 键。
+示例干预与公开参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.bottom_layer` / `route.top_layer` 或 `place.routability_opt_flag`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → cts 平衡与多 corner skew 目标。这些仍是待验证假设；`route.dr_search_depth` 不是公开的 `ecc param` 键。
 
 ## 8. 用户可配置参数
 
@@ -343,7 +343,7 @@ qor_power_budget_w = 0.5
 |---|---|---|
 | 逐步指标 | `<step_dir>/analysis/qor_metrics.json`（schema_version 3，由各步骤产出，**保持不变**） | 指标值与溯源 |
 | 逐 corner 时序 | `sta_ecc/feature/<corner>/Cworst/qor_summary.json` | 有符号 setup/hold WS、TNS、NVP；PVT 离散度 |
-| 功耗 | `powerAnalysis_ecc/feature/powerAnalysis.step.json`（读取 `power_summary`；兼容回退 `power_summary.json`，再回退 `Synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
+| 功耗 | `power_analysis_ecc/feature/power_analysis.step.json`（读取 `power_summary`；兼容回退 `power_summary.json`，再回退 `synthesis_yosys/feature/post_synthesis/power_summary.json`） | P_total |
 | 步骤状态 | `home/flow.json` | 只有状态为 `Success` 的步骤参与分析（invalidation 后的陈旧产物不计分） |
 | 参数 | `home/params.toml` | profile / 预算 / 频率 |
 
@@ -366,7 +366,7 @@ STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup
 | 特征 | 公式 | 认识论分类 |
 |---|---|---|
 | F_SYN_LEAK_FRAC | P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
-| F_PWR_LEAK_FRAC | powerAnalysis 的 P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
+| F_PWR_LEAK_FRAC | power_analysis 的 P_leak / (P_dyn + P_leak) | EXACT_TRANSFORMATION |
 | F_PLAN_DENSITY | synthesis_cell_area / core_area | DERIVED_ENGINEERING |
 | F_PL_I_PLACE | GRWL / HPWL | DERIVED_ENGINEERING |
 | F_PL_CONG_CONC | EGR_max / EGR_total | DERIVED_ENGINEERING |
@@ -449,10 +449,10 @@ Engineering Snapshot v6 的 artifact index 为每个分析文件携带 `required
                 "congestion_severity": 0.0, "compatibility_status": "INCOMPATIBLE"},
   "power": {"total_uw": null, "budget_uw": null, "source_path": null,
             "source_kind": null, "corner": null},
-  "flow_steps": {"Synthesis": "Success", "postFloorplan": "Success", "place": "Success",
-                 "CTS": "Success", "route": "Success", "drc": "Success",
-                 "lvs": "Success", "RCX": "Success", "sta": "Success",
-                 "Harden": "Success"},
+  "flow_steps": {"synthesis": "Success", "post_floorplan": "Success", "placement": "Success",
+                 "cts": "Success", "routing": "Success", "drc": "Success",
+                 "lvs": "Success", "rcx": "Success", "sta": "Success",
+                 "harden": "Success"},
   "config_warnings": []
 }
 ```
@@ -497,7 +497,7 @@ Engineering Snapshot v6 的 artifact index 为每个分析文件携带 `required
 没有申报功耗预算。在 `home/params.toml` 的 `[params]` 加 `qor_power_budget_w = <瓦>` 并重跑。
 
 **Q：Q_I 显示 "I_place …（INCOMPATIBLE route side）" 是什么意思？**
-当前工具链在 CTS 后没有网络级映射，place→route 线长比值按规范判不兼容、严格 UNKNOWN；Q_I 退化为 place 阶段内部的 I_place 评分（§3.2）。这不是错误，是保守降级。
+当前工具链在 CTS 后没有网络级映射，placement→routing 线长比值按规范判不兼容、严格 UNKNOWN；Q_I 退化为 place 阶段内部的 I_place 评分（§3.2）。这不是错误，是保守降级。
 
 **Q：时序 100 分但状态是 OPPORTUNITY，需要处理吗？**
 WS 超过 0.20·T_clk 的过约束提示：设计可能过度缓冲，可尝试缩驱动强度回收面积/漏功（见干预假设 Tier 3）。是否行动取决于项目余量策略。

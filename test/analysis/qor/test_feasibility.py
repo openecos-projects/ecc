@@ -4,16 +4,16 @@ from test.analysis.qor.helpers import gcd_metrics, make_inputs
 ALL_SUCCESS = {
     step: "Success"
     for step in (
-        "Synthesis",
-        "postFloorplan",
-        "place",
-        "CTS",
-        "route",
+        "synthesis",
+        "post_floorplan",
+        "placement",
+        "cts",
+        "routing",
         "drc",
         "lvs",
-        "RCX",
+        "rcx",
         "sta",
-        "Harden",
+        "harden",
     )
 }
 

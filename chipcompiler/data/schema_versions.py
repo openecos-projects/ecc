@@ -21,8 +21,8 @@ SUPPORTED_SCHEMA_VERSIONS: Final[dict[str, int]] = {
     PARAMS_TOML: 3,
     # Steps record indexed directory names; legacy <step>_<tool> layouts are not
     # read by this ECC.
-    FLOW_JSON: 2,
-    ENGINEERING_SNAPSHOT: 6,
+    FLOW_JSON: 3,
+    ENGINEERING_SNAPSHOT: 7,
 }
 
 

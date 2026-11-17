@@ -69,16 +69,16 @@ preset = "rtl2gds"
 
 FLOW_JSON_DEFAULTS = {
     "main": [
-        {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
-        {"name": "Floorplan", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
+        {"name": "floorplan", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
     ],
     "inspect": [
-        {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
-        {"name": "Floorplan", "tool": "ecc", "state": "Success", "runtime": "0:00:03"},
-        {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+        {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+        {"name": "floorplan", "tool": "ecc", "state": "Success", "runtime": "0:00:03"},
+        {"name": "cts", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
     ],
     "pretty": [
-        {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+        {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
     ],
 }
 

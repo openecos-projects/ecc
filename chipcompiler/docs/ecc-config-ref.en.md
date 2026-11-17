@@ -31,7 +31,7 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── db_ecc.json        # database build (loads LEF/DEF/netlist/LIB/SDC; shared by every ecc step)
 │   ├── floorplan_ecc.json # floorplanning
 │   ├── cts_ecc.json       # clock tree synthesis
-│   ├── route_ecc.json     # routing
+│   ├── routing_ecc.json     # routing
 │   ├── drc_ecc.json       # DRC (empty config; rules come from the tech LEF)
 │   ├── filler_ecc.json    # filler cells
 │   ├── rcx_ecc.json       # parasitic extraction
@@ -39,14 +39,14 @@ Each run's workspace has a shared `config/` directory where the JSON configurati
 │   ├── sizer_ecc.json     # ECC Sizer hold-pass options
 │   ├── dreamplace_ecc.json# DreamPlace placement/legalization (shared by placement and legalization)
 │   ├── emir_ecc.json      # iEMIR technology-file selection
-│   ├── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macroPlacement or the macro.placements parameter)
+│   ├── macro_location.tcl # macro-placement Tcl handoff (see §1.5; written by macro_placement or the macro.placements parameter)
 │   └── ics55_synthetic.tech # packaged default technology file copied for EMIR
-├── Synthesis_yosys/
+├── synthesis_yosys/
 │   └── data/global_var.tcl  # the synthesis step's "config" (Tcl variables, not JSON)
-├── lec@Synthesis_kepler_formal/  # inserted RTL-vs-netlist SEC check (data/lec_config.yaml, data/rtl.f)
+├── lec@synthesis_kepler_formal/  # inserted RTL-vs-netlist SEC check (data/lec_config.yaml, data/rtl.f)
 ├── timing_optimization_sizer/
 │   └── script/<design>.{env_file,cmd_file}  # generated Sizer configuration
-└── postRouteLec_kepler_formal/  # post-route LEC step (default engine; YAML config)
+└── post_route_lec_kepler_formal/  # post-route LEC step (default engine; YAML config)
 ```
 
 > History: the old `flow_ecc.json` (configuration-path aggregator) and `fixfanout_ecc.json` (high-fanout fixing, a standalone step) were removed along with an ecc-tools update. `cts.max_fanout` now feeds both the auto-generated SDC `set_max_fanout` constraint and CTS's `max_fanout` field.
@@ -67,7 +67,7 @@ graph LR
 | Source | What it determines | Example |
 |---|---|---|
 | Template defaults | Factory values of algorithm parameters | CTS `skew_bound=0.08` |
-| User parameters | Legacy-semantic params + all reviewed static tool fields | `floorplan.core_util` → `die_util.utilization`; `cts.skew_bound` → CTS JSON |
+| User parameters | Legacy-semantic params + all reviewed static tool fields | `floorplan.core_util` → `die_util.utilization`; `cts.skew_bound` → cts JSON |
 | PDK | Process-specific cells and libraries | `buffer_type` ← PDK buffers list; STA liberty corners |
 | Step scheduling | Input/output paths (chained between steps) | `db_ecc.json`'s `def_path` points to the previous step's output at every step |
 
@@ -80,25 +80,25 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
 | synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
-| lec@&lt;step&gt; | — | engine-generated config | Inserted LEC check (`[flow] insert_steps`); `lec@Synthesis` compares the RTL with the synthesized netlist, any other compares the step's netlist with the synthesis one; kepler-formal (YAML); an unproven result fails the step and stops the flow, see §11 |
-| preFloorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
-| macroPlacement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
-| postFloorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
+| lec@&lt;step&gt; | — | engine-generated config | Inserted LEC check (`[flow] insert_steps`); `lec@synthesis` compares the RTL with the synthesized netlist, any other compares the step's netlist with the synthesis one; kepler-formal (YAML); an unproven result fails the step and stops the flow, see §11 |
+| pre_floorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
+| macro_placement | — | `dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
+| post_floorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
 | preplace | ✓ | none | Sizer's pre-placement preparation reads `db_ecc.json` |
 | placement | — | `dreamplace_ecc.json` | shares one file with legalization |
 | diff_sizing | — | `dreamplace_ecc.json` | standalone differentiable sizing shares the DreamPlace config |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | `dreamplace_ecc.json` | `def_input`/`result_dir` etc. rewritten per step |
 | timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization; see §6 |
-| routing | ✓ | `route_ecc.json` | |
+| routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | none | tool default behavior |
 | drc | ✓ | `drc_ecc.json` (empty) | rules come from the tech LEF |
-| antennaCheck | ✓ | none | reads `db_ecc.json`; advisory step, so an incomplete analysis does not by itself stop the flow |
-| postroutelec | — | engine-generated config | Post-route LEC on the `filler` netlist (kepler-formal), see §11 |
+| antenna_check | ✓ | none | reads `db_ecc.json`; advisory step, so an incomplete analysis does not by itself stop the flow |
+| post_route_lec | — | engine-generated config | Post-route LEC on the `filler` netlist (kepler-formal), see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
-| powerAnalysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not present in `_STEP_CONFIG_KEYS` |
+| power_analysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not present in `_STEP_CONFIG_KEYS` |
 | emir | ✓ | `emir_ecc.json` | iEMIR technology file; advisory step, see §13.5 |
 | harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden` explicitly reports that the step has no configuration |
 
@@ -211,7 +211,7 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 
 ### 1.5 Manual macro placement (`ecc macro`)
 
-`macro.placements` holds manual hard-macro placements as a JSON array of `{instance, x, y, orientation}` entries (micron coordinates; instances are committed `fixed`). It is a semantic parameter like the §1.1 set — it is not written to any `config/*.json` field but rendered into `config/macro_location.tcl` whenever the workspace configuration is created or refreshed. While it is non-empty, `macroPlacement` keeps its load/save flow but skips DreamPlace macro placement and leaves the generated handoff untouched; `postFloorplan` then commits the macros from the file. Clearing the parameter restores automatic DreamPlace placement.
+`macro.placements` holds manual hard-macro placements as a JSON array of `{instance, x, y, orientation}` entries (micron coordinates; instances are committed `fixed`). It is a semantic parameter like the §1.1 set — it is not written to any `config/*.json` field but rendered into `config/macro_location.tcl` whenever the workspace configuration is created or refreshed. While it is non-empty, `macro_placement` keeps its load/save flow but skips DreamPlace macro placement and leaves the generated handoff untouched; `post_floorplan` then commits the macros from the file. Clearing the parameter restores automatic DreamPlace placement.
 
 | Command | What it does |
 |---|---|
@@ -220,11 +220,11 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 | `ecc macro import PATH` | Parse a `placeInstance` handoff file (microns, R-notation; comments and `setInstancePlacementStatus` lines are skipped) and replace the parameter wholesale; an empty file clears the parameter and a malformed statement fails without writing |
 | `ecc macro show` | List the placements and the generated Tcl path; workspace scope additionally parses the current Tcl and reports `file_placements` plus `diverged` (whether the file disagrees with the parameter) |
 
-Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macroPlacement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
+Both `ecc param` scopes apply: project scope (default) stores the list in `ecc.toml` `[params.macro]` and takes effect on the next fresh run or `ecc workspace refresh`; `--workspace NAME` writes `home/params.toml`, regenerates the Tcl immediately, and marks `macro_placement` and its suffix pending. The list is also accepted as a plain JSON parameter, e.g. `ecc param set macro.placements '[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]'`.
 
-Set `macro.manual_placement true` (parameter id `macro.manual_placement`, exposed under Floorplan in Studio; for example `ecc param set macro.manual_placement true --workspace default`) to make `macroPlacement` a hard manual-placement gate. With the flag enabled, the step stops as incomplete unless `macro.placements` is non-empty and the generated `config/macro_location.tcl` contains parseable placements. Complete the layout in Chip Viewer or run an `ecc macro` command, then rerun the step. The gate applies even to a design without hard macros, so leave it off unless hand placement is required.
+Set `macro.manual_placement true` (parameter id `macro.manual_placement`, exposed under Floorplan in Studio; for example `ecc param set macro.manual_placement true --workspace default`) to make `macro_placement` a hard manual-placement gate. With the flag enabled, the step stops as incomplete unless `macro.placements` is non-empty and the generated `config/macro_location.tcl` contains parseable placements. Complete the layout in Chip Viewer or run an `ecc macro` command, then rerun the step. The gate applies even to a design without hard macros, so leave it off unless hand placement is required.
 
-The file must cover every hard macro in the design — `postFloorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
+The file must cover every hard macro in the design — `post_floorplan` fails with the missing instance names otherwise. See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format.
 
 ### 1.6 Auto-generated SDC
 
@@ -293,7 +293,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
 | `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | Default timing entry (generated Tcl or user-provided full constraints) |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
-| `OUTPUT.output_dir_path` | `Harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
+| `OUTPUT.output_dir_path` | `harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
 | `LayerSettings.routing_layer_1st` | `MET2` | parameter `route.bottom_layer` | First usable routing layer (affects database layer settings) |
 
 ## 3. synthesis (Yosys)
@@ -306,8 +306,8 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `clk_freq_mhz` | `100` | parameter `design.frequency_mhz` | Target frequency (converted to `clk_period_ps` for timing-driven synthesis) |
 | `use_slang` | `false` | runtime detection | Whether to use the slang front end to read SystemVerilog (default is Verilog mode) |
 | `rtl_file` | `[origin/gcd.v]` | `ecc.toml design.rtl` / filelist | RTL source file list |
-| `final_netlist_file` | `output/gcd_Synthesis.v.gz` | step scheduling | Output gate-level netlist (consumed by floorplan) |
-| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Copy of the mapped netlist written after the last netlist transform; no LEC step reads it (`lec@Synthesis` reads the RTL, the others the synthesis netlist) |
+| `final_netlist_file` | `output/gcd_synthesis.v.gz` | step scheduling | Output gate-level netlist (consumed by floorplan) |
+| `golden_netlist_file` | `output/gcd_Synthesis_golden.v` | step scheduling | Copy of the mapped netlist written after the last netlist transform; no LEC step reads it (`lec@synthesis` reads the RTL, the others the synthesis netlist) |
 | `final_netlist_sim_file` | `…_sim.v.gz` | step scheduling | Netlist for simulation (contains SDF-related information) |
 | `synth_stat_json` / `synth_check_rpt` etc. | under `report/`, `feature/` | step scheduling | Statistics and check report outputs |
 | `keep_hierarchy` | `false` | template | Whether to preserve module hierarchy |
@@ -318,7 +318,7 @@ No JSON configuration. Yosys is driven by two Tcl pieces: `script/yosys_synthesi
 | `abc_load` | `0.015` | PDK | Load capacitance for ABC mapping (pF) |
 | `lib_stdcell_list` | H7CR/H7CL | PDK (excluding H7CH) | Libraries passed to ABC, DFF and clockgate mapping; IO libraries configured in `pdk.libs` are passed through without an additional filter |
 | `lib_list` | H7CR/H7CL | PDK / workspace DB | Models loaded by `read_liberty -lib`; configured IO libraries describe existing IO instances, while H7CH remains excluded |
-| `tmp_dir` | `Synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
+| `tmp_dir` | `synthesis_yosys/data/tmp` | step scheduling | Intermediate file directory |
 
 The built-in ICS55 PDK does not load IO cell LEFs or Liberty files by
 default. Designs that use IO cells add
@@ -341,13 +341,13 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `postFloorplan` steps. `preFloorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macroPlacement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `postFloorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
+Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `post_floorplan` steps. `pre_floorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macro_placement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `post_floorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → placement IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
 
 ### ifp (the iFP floorplan engine)
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `temp_directory_path` | generated per step → `preFloorplan_ecc/data/fp` or `postFloorplan_ecc/data/fp` | iFP intermediate data directory |
+| `temp_directory_path` | generated per step → `pre_floorplan_ecc/data/fp` or `post_floorplan_ecc/data/fp` | iFP intermediate data directory |
 | `thread_number` | 16 | Number of parallel threads |
 
 ### macro_placer (macro placement)
@@ -400,7 +400,7 @@ Configuration file `floorplan_ecc.json` is shared by the `preFloorplan` and `pos
 
 ## 5. macro placement / placement / diff_sizing / legalization (DreamPlace)
 
-These steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macroPlacement` uses `macroPlacement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `place_dreamplace/data/pl`, `diff_sizing` reuses the placement configuration, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
+These steps share `config/dreamplace_ecc.json`; before each step runs, `def_input`, `verilog_input`, and `result_dir` are rewritten. `macro_placement` uses `macro_placement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `placement_dreamplace/data/pl`, `diff_sizing` reuses the placement configuration, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
 
 ### Inputs and outputs
 
@@ -424,7 +424,7 @@ These steps share `config/dreamplace_ecc.json`; before each step runs, `def_inpu
 | `enable_fillers` | 0 | Do not insert fillers during standalone placement |
 | `routability_opt_flag` | 1 `*place.routability_opt_flag` | Routing-congestion-driven placement optimization |
 | `timing_opt_flag` / `timing_eval_flag` | 0 / 1 | Legacy timing optimization is off; timing evaluation is enabled |
-| `macro_place_flag` | 0 | Enabled for the dedicated `macroPlacement` step |
+| `macro_place_flag` | 0 | Enabled for the dedicated `macro_placement` step |
 | `plot_flag` / `get_congestion_map` / `evaluate_pl` | 1 / 0 / 0 | Plotting / congestion-map export / placement evaluation |
 | `dump_global_place_solution_flag` / `dump_legalize_solution_flag` | 0 | Export intermediate solutions |
 
@@ -503,7 +503,7 @@ Existing workspaces resume their saved ledgers; use a new workspace or
 
 `skip_steps` (in `ecc.toml`, `home/params.toml`, and `project.json`
 `workspaces[].skip_steps`) may name any step of the rtl2gds chain, not only
-`diff_opt`, `postRouteLec`, and `Timing optimization`; aliases such as
+`diff_opt`, `post_route_lec`, and `timing_optimization`; aliases such as
 `synth`, `cts`, and `TimingOpt` are accepted and unknown names are rejected.
 `lec` is no chain step (an LEC is inserted with `insert_steps`); a listed `lec`
 is ignored, so existing files keep working. An absent key means the code
@@ -514,31 +514,31 @@ provides:
 - An enabled step that lacks required design data is a configuration error:
   `ecc check`, `ecc run`, and workspace creation reject it, with a fix hint
   naming the disabled steps to re-enable (skipping `legalization` and
-  `Timing optimization` gives
-  `route requires legal; enable Timing optimization or legalization`).
+  `timing_optimization` gives
+  `routing requires legal; enable timing_optimization or legalization`).
 - A step that lacks only optional data runs with degraded results and is
-  reported as a `flow_step_degraded` warning. Skipping `CTS` warns
+  reported as a `flow_step_degraded` warning. Skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS` (likewise
-  for `sta`, `powerAnalysis`, and `Harden`); routing and STA after a skipped
+  for `sta`, `power_analysis`, and `harden`); routing and STA after a skipped
   CTS use the pre-CTS (ideal clock) timing constraints.
-- The preset's final step is the flow target and cannot be skipped (`Harden`
-  for `rtl2gds`, `Synthesis` for `syn_sta`), and neither can an explicit range
+- The preset's final step is the flow target and cannot be skipped (`harden`
+  for `rtl2gds`, `synthesis` for `syn_sta`), and neither can an explicit range
   start (`home/params.toml` `[flow] start`, `ecc run --from`, `project.json`
-  `start_step`). A preset's first step may be skipped: skipping `Synthesis`
-  enters the run at `preFloorplan` with the declared
+  `start_step`). A preset's first step may be skipped: skipping `synthesis`
+  enters the run at `pre_floorplan` with the declared
   `[design] netlist` (postSynthesis input mode); the entry step's inputs are
   checked as before.
 - Skipping a signoff checker (`drc`, `lvs`, `sta`) leaves no signoff evidence:
   `ecc signoff check` reports that gate as `unknown`, never pass.
 
 `[flow] insert_steps` inserts an LEC check after a design-building step:
-`insert_steps = ["lec@Synthesis", "lec@CTS"]`. It may follow any step from
-`Synthesis` to `route` (`filler` has `postRouteLec`); LEC is the only
+`insert_steps = ["lec@synthesis", "lec@cts"]`. It may follow any step from
+`synthesis` to `routing` (`filler` has `post_route_lec`); LEC is the only
 insertable step, because it changes nothing. The inserted step is named
-`lec@<step>` (spaces as underscores: `lec@Timing_optimization`) and runs
-exactly when its step runs. `lec@Synthesis` compares the RTL with the
+`lec@<step>` (for example `lec@timing_optimization`) and runs
+exactly when its step runs. `lec@synthesis` compares the RTL with the
 synthesized netlist (kepler-formal SEC); any other compares that step's netlist
-with the `postRouteLec` golden netlist (see §11). It is part of a workspace's flow target (`home/params.toml`), so
+with the `post_route_lec` golden netlist (see §11). It is part of a workspace's flow target (`home/params.toml`), so
 adding or removing one needs `--overwrite` or a new workspace; it is declared
 in `ecc.toml` only. See the user guide §8.6.
 
@@ -884,7 +884,7 @@ The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOM
 
 ## 7. cts (ecc-tools)
 
-Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save data → analysis.
+Configuration file `cts_ecc.json`. Sub-phases: load data → run cts → save data → analysis.
 
 | Parameter | Template default | Example (gcd) | Meaning |
 |---|---|---|---|
@@ -899,7 +899,7 @@ Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save da
 
 ## 8. routing (ecc-tools)
 
-Configuration file `route_ecc.json`; the `RT` group holds the router parameters. Sub-phases: load data → run routing → save data → analysis.
+Configuration file `routing_ecc.json`; the `RT` group holds the router parameters. Sub-phases: load data → run routing → save data → analysis.
 
 | Parameter | Template default | Example (gcd) | Meaning |
 |---|---|---|---|
@@ -908,22 +908,22 @@ Configuration file `route_ecc.json`; the `RT` group holds the router parameters.
 | `RT.-thread_number` | `"50"` | 50 | Router parallel thread count |
 | `RT.-enable_timing` | `"0"` | 0 | Timing-driven routing (off by default) |
 | `RT.-output_csv` / `-output_inter_result` | `"0"` | 0 | Export CSV / intermediate results |
-| `RT.-temp_directory_path` | generated per step → `route_ecc/data/rt` | Router intermediate data directory |
+| `RT.-temp_directory_path` | generated per step → `routing_ecc/data/rt` | Router intermediate data directory |
 
 ## 9. drc / lvs (ecc-tools)
 
 - **drc**: `drc_ecc.json` is an empty object `{}` — the check rules come from the tech LEF's layer definitions and rules; there is nothing to tune.
 - **lvs**: no configuration file; the tool compares layout against netlist with its default flow (inputs/outputs are chained via `db_ecc.json`).
-- **antennaCheck**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report, copies it to `antennaCheck_ecc/report/antennaCheck.rpt`, and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antennaCheck.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antennaCheck`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file; the signoff checklist checks the canonical report as a non-blocking report item.
+- **antenna_check**: uses the same post-route physical database input as DRC. ECC writes the native `antenna_check.rpt` report, copies it to `antenna_check_ecc/report/antenna_check.rpt`, and passes the feature path to ecc-tools through `-step_json`; ecc-tools writes the structured `feature/antenna_check.step.json` file. The JSON uses `schema_version: 1`, identifies the step as `antenna_check`, records `antenna_check.violation_count` and diagnostic counters, and includes detailed entries in `violations`. A successful ECC step requires both the native report and the structured JSON file; the signoff checklist checks the canonical report as a non-blocking report item.
 
 The native interfaces accept the output path as follows:
 
 ```python
-ecc.check_antenna(config_dict={"-step_json": "/path/to/antennaCheck.step.json"})
+ecc.check_antenna(config_dict={"-step_json": "/path/to/antenna_check.step.json"})
 ```
 
 ```tcl
-check_antenna -step_json /path/to/antennaCheck.step.json
+check_antenna -step_json /path/to/antenna_check.step.json
 ```
 
 Both steps' sub-phases are: load data → run DRC/LVS → save data → analysis.
@@ -946,18 +946,18 @@ whose ledger records one of them is a `flow_mismatch` and must be recreated
 
 | Step | Step directory | Generated configuration | Reports |
 |---|---|---|---|
-| `lec@<step>`, `postRouteLec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`, `script/run_lec.yaml` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, `report/miter_log.txt` |
+| `lec@<step>`, `post_route_lec` | `<NN>_<step>_kepler_formal/` | `data/lec_config.yaml`, `script/run_lec.yaml` | `report/equiv_status.rpt`, `report/run_lec_status.rpt`, `report/miter_log.txt` |
 
 Every LEC step uses the result contract `output/<design>_<step>_result.json`: `status` is `proven` or `incomplete`, and the file records the golden and gate files' path, SHA-256, and size plus the report paths. A proof is accepted only while those identities still match the current files; an unproven or stale result fails the step.
 
 | Item | Content |
 |---|---|
-| `lec@Synthesis` input | The golden side is the RTL Synthesis read: its filelist, else its RTL file; the gate is the synthesized netlist. kepler-formal reads RTL only for sequential equivalence, so the config is `format: sv2v`, `verification: sec`, with no reset sequence. The RTL is passed as `sv_design1_flist` through a generated `data/rtl.f` that defines `SYNTHESIS` as Synthesis does and nests a filelist with `-F`, so its relative sources and `+incdir+` resolve against its own directory. The result records the identity of every file reading the RTL reads: the RTL file, or the filelist with its sources, the files under its include directories and each filelist it nests with `-F`, plus every file they `` `include `` (every file of that name in the including file's directory or an include directory, whichever the front end picks). Paths resolve as the operating system opens them, symbolic links followed. Editing any of them makes the proof stale; When the files the RTL reads cannot be identified (a filelist option other than `-F`, `+incdir+`, `-I`/`--include-directory`/`--isystem` and `+define+`, such as `-f`, `-v`, `-y` or `--libmap`; a path with an environment variable; an `` `include `` of a macro), the step fails before kepler-formal runs and names the entry. |
-| `postRouteLec` input | Golden priority: explicit step override → `design.golden_netlist` → synthesis-mapped netlist → original input. The `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antennaCheck` and before `RCX`; post-route LEC is the only exception to checker-result chaining. |
-| Other `lec@<step>` input | Golden as for `postRouteLec`; the gate is the output netlist of the step it follows (any step from `preFloorplan` to `route`). The steps after it keep reading that step. Netlist checks are combinational (`format: verilog`, `verification: lec`). |
-| Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/postRouteLec/`. Inserted LEC results stay in their step checklists. |
+| `lec@synthesis` input | The golden side is the RTL Synthesis read: its filelist, else its RTL file; the gate is the synthesized netlist. kepler-formal reads RTL only for sequential equivalence, so the config is `format: sv2v`, `verification: sec`, with no reset sequence. The RTL is passed as `sv_design1_flist` through a generated `data/rtl.f` that defines `SYNTHESIS` as Synthesis does and nests a filelist with `-F`, so its relative sources and `+incdir+` resolve against its own directory. The result records the identity of every file reading the RTL reads: the RTL file, or the filelist with its sources, the files under its include directories and each filelist it nests with `-F`, plus every file they `` `include `` (every file of that name in the including file's directory or an include directory, whichever the front end picks). Paths resolve as the operating system opens them, symbolic links followed. Editing any of them makes the proof stale; When the files the RTL reads cannot be identified (a filelist option other than `-F`, `+incdir+`, `-I`/`--include-directory`/`--isystem` and `+define+`, such as `-f`, `-v`, `-y` or `--libmap`; a path with an environment variable; an `` `include `` of a macro), the step fails before kepler-formal runs and names the entry. |
+| `post_route_lec` input | Golden priority: explicit step override → `design.golden_netlist` → synthesis-mapped netlist → original input. The `filler` output netlist is the gate (`filler_ecc/output/<design>_filler.v.gz`). It sits after `antenna_check` and before `rcx`; post-route LEC is the only exception to checker-result chaining. |
+| Other `lec@<step>` input | Golden as for `post_route_lec`; the gate is the output netlist of the step it follows (any step from `pre_floorplan` to `routing`). The steps after it keep reading that step. Netlist checks are combinational (`format: verilog`, `verification: lec`). |
+| Signoff | A current `status=proven` counts toward the signoff checklist; post-route LEC results go into the signoff package under `final/reports/post_route_lec/`. Inserted LEC results stay in their step checklists. |
 
-How strong `lec@Synthesis` is: in our tests kepler-formal's SEC caught mutations
+How strong `lec@synthesis` is: in our tests kepler-formal's SEC caught mutations
 of a small registered design, but proved three hand-made RTL mutations of `gcd`
 (one inverted the 16-bit `resp_msg` output) equivalent to the netlist of the
 correct RTL, while it caught the same inversion made in the netlist. Treat a
@@ -968,10 +968,10 @@ Check synthesis against the RTL with:
 ```toml
 [flow]
 preset = "rtl2gds"
-insert_steps = ["lec@Synthesis"]
+insert_steps = ["lec@synthesis"]
 ```
 
-The `synthesis_lec` preset runs Synthesis and `lec@Synthesis` alone.
+The `synthesis_lec` preset runs Synthesis and `lec@synthesis` alone.
 
 ## 12. rcx (ecc-tools)
 
@@ -980,7 +980,7 @@ The `rcx_ecc.json` configuration contains only runtime parameters; **the corner 
 | Parameter | Template default | Example (gcd) | Meaning |
 |---|---|---|---|
 | `thread_num` | 64 | 64 | Extraction parallel thread count |
-| `output` | `/RCX_ecc/output` | `RCX_ecc/data` | Output directory for extraction results (SPEF) |
+| `output` | `/rcx_ecc/output` | `rcx_ecc/data` | Output directory for extraction results (SPEF) |
 
 Output SPEFs are named `<design>_<RCcorner>_<temp>C.spef` (e.g. `gcd_Cworst_125C.spef`); the corner set aligns with STA's `signoff` (the STA step validates SPEF completeness against sta_ecc.json).
 
@@ -999,7 +999,7 @@ Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
 (FF, 1.32 V, -40°C). The `liberty` catalog retains MAX/WCL/ML for explicit
 `sta.signoff` overrides; retaining these groups does not enable their analysis
 or change the libraries used by synthesis, CTS, Sizer, or other earlier stages.
-Harden and powerAnalysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
+Harden and power_analysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
 SDC; `signoff` list order does not change that selection. If a `sta.signoff`
 override omits TYP/TYPICAL, these steps fail instead of silently using another corner.
 
@@ -1025,15 +1025,15 @@ For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib
 | `timing_max_{in2out,in2reg,reg2out,reg2reg}.rpt` | Setup reports (by path type: input-to-output / input-to-register / register-to-output / register-to-register); **signoff requires all 4** |
 | `timing_min_{in2out,in2reg,reg2out,reg2reg}.rpt` | Hold reports (same split; not required for signoff) |
 
-Power is produced by the separate `powerAnalysis` iPW step, not by each STA
+Power is produced by the separate `power_analysis` iPW step, not by each STA
 corner. It uses the TYP/TYPICAL signoff item's Liberty and SPEF. Its native outputs are
-`powerAnalysis_ecc/data/pw/power_reporter/power.rpt` and
-`powerAnalysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
-copies the report to `powerAnalysis_ecc/report/powerAnalysis.rpt`, derives
-`powerAnalysis_ecc/feature/powerAnalysis.step.json` from the report for QoR, and
+`power_analysis_ecc/data/pw/power_reporter/power.rpt` and
+`power_analysis_ecc/data/pw/power_reporter/instance_power.bin`; ECC atomically
+copies the report to `power_analysis_ecc/report/power_analysis.rpt`, derives
+`power_analysis_ecc/feature/power_analysis.step.json` from the report for QoR, and
 stores the payload under its `power_summary` key. The signoff checklist also
 checks the canonical report. The legacy
-`powerAnalysis_ecc/feature/power_summary.json` is retained as a compatibility
+`power_analysis_ecc/feature/power_summary.json` is retained as a compatibility
 fallback. The step artifact has no
 duplicate top-level `metrics` object. When
 present, the signoff package includes the report once at
@@ -1053,8 +1053,8 @@ ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 ```
 
 iEMIR consumes the routed database from the preceding flow, the post-floorplan
-PDN location file (`postFloorplan_ecc/data/fp/pdn_generator/power.ploc`), and
-the per-instance power from `powerAnalysis`. Sub-phases are load data → run
+PDN location file (`post_floorplan_ecc/data/fp/pdn_generator/power.ploc`), and
+the per-instance power from `power_analysis`. Sub-phases are load data → run
 EMIR → save data. Native reports under
 `emir_ecc/data/emir/emir_reporter/` are copied into `emir_ecc/report/`.
 `emir` is an advisory flow step: an incomplete analysis is recorded, but does
@@ -1062,7 +1062,7 @@ not by itself stop the remaining flow.
 
 ## 14. harden (ecc-tools)
 
-No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`Harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_Harden.gds`, `<design>_Harden.lef`, and `<design>_Harden.lib` (layout / abstract LEF / timing LIB). Harden writes the timing LIB from the TYP/TYPICAL signoff item's Liberty and SPEF. Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_Harden.png` when one exists in an older workspace.
+No step-specific configuration file: it reuses `db_ecc.json` to locate its inputs (the DEF/netlist output by `filler`) and its output (`harden_ecc/output`). Sub-phases are just load data → run harden. Current artifacts are `<design>_harden.gds`, `<design>_harden.lef`, and `<design>_harden.lib` (layout / abstract LEF / timing LIB). Harden writes the timing LIB from the TYP/TYPICAL signoff item's Liberty and SPEF. Harden does not publish a geometry snapshot or generate a PNG; a signoff package may still include a historical `<design>_harden.png` when one exists in an older workspace.
 
 ## 15. ECC CLI configuration commands by step
 
@@ -1138,18 +1138,18 @@ ecc param set route.top_layer VALUE
 ecc param set route.RT.-thread_number VALUE
 ```
 
-The temporary directory in `route_ecc.json` is generated by step scheduling and cannot be set through the CLI.
+The temporary directory in `routing_ecc.json` is generated by step scheduling and cannot be set through the CLI.
 
-### 15.7 Inserted LEC checks, drc, lvs, postroutelec, and powerAnalysis
+### 15.7 Inserted LEC checks, drc, lvs, post_route_lec, and power_analysis
 
-These steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, LEC steps use the kepler-formal configuration they generate (see §11), LVS follows the tool default flow, and `powerAnalysis` has no explicit step config (the runner reuses `db_ecc.json` internally). Use these commands to confirm their actual configuration files:
+These steps have no step configuration that `ecc param` can modify: `drc_ecc.json` is empty, LEC steps use the kepler-formal configuration they generate (see §11), LVS follows the tool default flow, and `power_analysis` has no explicit step config (the runner reuses `db_ecc.json` internally). Use these commands to confirm their actual configuration files:
 
 ```bash
 ecc config lec@synthesis   # an inserted LEC check, by its step name
 ecc config drc
 ecc config lvs
-ecc config postroutelec
-ecc config poweranalysis
+ecc config post_route_lec
+ecc config power_analysis
 ```
 
 ### 15.8 filler

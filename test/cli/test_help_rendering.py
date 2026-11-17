@@ -132,7 +132,7 @@ def test_config_help_names_steps_without_step_specific_config(capsys):
 
     out = capsys.readouterr().out
     assert rc == 0
-    for step in ("lec@<step>", "lvs", "postroutelec", "harden"):
+    for step in ("lec@<step>", "lvs", "post_route_lec", "harden"):
         assert step in out
 
 

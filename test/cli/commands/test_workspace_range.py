@@ -30,7 +30,7 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_after_execution(
     design_def, netlist = _set_design_inputs(project_dir)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("CTS", "ecc", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("cts", "ecc", "Unstart")],
     )
 
     rc = cli_main.run(
@@ -41,9 +41,9 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_after_execution(
             "--workspace",
             "cts-only",
             "--from",
-            "CTS",
+            "cts",
             "--to",
-            "CTS",
+            "cts",
             "--plain",
         ]
     )
@@ -54,7 +54,7 @@ def test_new_workspace_range_uses_ecc_toml_inputs_and_registers_after_execution(
     assert create_kwargs["origin_def"] == str(design_def)
     assert create_kwargs["origin_verilog"] == str(netlist)
     assert create_kwargs["parameters"]["_input_mode"] == "postSynthesis"
-    assert create_kwargs["flow_config"] == {"start_step": "CTS", "end_step": "CTS"}
+    assert create_kwargs["flow_config"] == {"start_step": "cts", "end_step": "cts"}
     manifest = json.loads((Path(project_dir) / "project.json").read_text())
     entry = manifest["workspaces"][0]
     assert entry["workspace_id"] == "cts-only"
@@ -73,7 +73,7 @@ def test_fresh_workspace_requires_a_complete_flow_range(
     project_dir = create_cli_project()
 
     rc = cli_main.run(
-        ["run", "--project", project_dir, "--workspace", "cts-only", "--from", "CTS", "--plain"]
+        ["run", "--project", project_dir, "--workspace", "cts-only", "--from", "cts", "--plain"]
     )
 
     assert rc == 1
@@ -94,9 +94,9 @@ def test_flow_range_rejects_overwrite(tmp_path, capsys, create_cli_project, plai
             "--workspace",
             "cts-only",
             "--from",
-            "CTS",
+            "cts",
             "--to",
-            "CTS",
+            "cts",
             "--overwrite",
             "--plain",
         ]
