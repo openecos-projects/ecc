@@ -23,8 +23,8 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 ```
 <workspace>/                 # 新项目/manifest 项目为 <project>/<id>；legacy 项目为 runs/<id>
 ├── home/
-│   ├── params.toml        # schema_version 2；参数中枢（见 §1）
-│   ├── flow.json          # schema_version 1；步骤状态
+│   ├── params.toml        # schema_version 4；参数中枢（见 §1）
+│   ├── flow.json          # schema_version 3；步骤状态
 │   └── config-derived-manifest.json # 上次配置派生后的文件哈希
 ├── config/                # ← 本文档的主角：11 个 JSON + Tcl 交接文件 + 打包的 EMIR 工艺文件
 │   ├── db_ecc.json        # 数据库构建（读入 LEF/DEF/网表/LIB/SDC，每个 ecc 步骤共用）
@@ -36,7 +36,7 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 │   ├── rcx_ecc.json       # 寄生提取
 │   ├── sta_ecc.json       # 静态时序分析（多 corner）
 │   ├── sizer_ecc.json     # ECC Sizer hold pass 选项
-│   ├── dreamplace_ecc.json# DreamPlace 布局/合法化（placement 与 legalization 共用）
+│   ├── dreamplace_ecc.json# DreamPlace 基线；每个 DreamPlace 步骤解析出自己的副本（见下）
 │   ├── emir_ecc.json      # iEMIR 工艺文件选择
 │   ├── macro_location.tcl # 宏摆放 Tcl 交接文件（见 §1.5；由 macro_placement 或 macro.placements 参数写出）
 │   └── ics55_synthetic.tech # 为 EMIR 复制的打包默认工艺文件
@@ -58,7 +58,9 @@ runtime 将其作为最大并行 corner 数，内存余量不足时减少并行�
 graph LR
     A["ecc.toml [params]<br/>/ ecc run --set"] -->|"规范参数 + 每步骤直配 schema"| B["home/params.toml<br/>(params + config_overrides)"]
     C["PDK 描述<br/>(data/pdk.py)"] -->|"buffers / tap / endcap<br/>site / liberty corners"| B
-    B -->|"参数→字段映射<br/>PARAMETER_CONFIG_FIELD_MAPPINGS"| D["config/*.json"]
+    B -->|"参数→字段目标<br/>derive_parameter_configs"| D["config/*.json"]
+    B -->|"该步骤的 step_params"| G["&lt;step dir&gt;/config/dreamplace_ecc.json"]
+    D -->|"DreamPlace 基线"| G
     E["模板 tools/ecc/configs/*"] -->|复制缺失的缺省文件| D
     F["步骤调度（每步运行前）"] -->|"重写输入输出路径<br/>等 step 相关字段"| D
 ```
@@ -81,14 +83,14 @@ graph LR
 | synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
 | lec@&lt;step&gt; | — | 引擎生成配置 | 插入的 LEC 检查（`[flow] insert_steps`）；`lec@synthesis` 比较 RTL 与综合后网表，其他插入检查比较该步骤网表与综合网表；kepler-formal（YAML）；未证明时步骤失败并终止后续流程，见 §11 |
 | pre_floorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
-| macro_placement | — | `dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
+| macro_placement | — | 步骤 `config/dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
 | post_floorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
 | preplace | ✓ | 无 | Sizer 的布局前准备读取 `db_ecc.json` |
-| placement | — | `dreamplace_ecc.json` | 与 legalization 共用一个文件 |
-| diff_sizing | — | `dreamplace_ecc.json` | 独立可微 sizing 与 DreamPlace 布局共用该配置 |
+| placement | — | 步骤 `config/dreamplace_ecc.json` | 由 workspace 基线加该步骤自己的值解析而来 |
+| diff_sizing | — | 步骤 `config/dreamplace_ecc.json` | 独立可微 sizing，使用自己的 DreamPlace 取值 |
 | cts | ✓ | `cts_ecc.json` | |
-| legalization | — | `dreamplace_ecc.json` | 每步重写 `def_input`/`result_dir` 等 |
-| timing optimization | ✓ | `sizer_ecc.json` + `dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后做内部 DreamPlace 合法化；见 §6 |
+| legalization | — | 步骤 `config/dreamplace_ecc.json` | 基线加合法化强制项；无可设置参数 |
+| timing optimization | ✓ | `sizer_ecc.json` + 步骤 `config/dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后用自己的步骤配置做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | 无 | 工具默认行为 |
@@ -103,7 +105,7 @@ graph LR
 
 ## 1. 参数传递链（用户可调参数）
 
-### 1.1 旧语义参数（13 个）
+### 1.1 旧语义参数（12 个）
 
 来源：[chipcompiler/data/parameter_schema.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/parameter_schema.py) 的 `_LEGACY_PARAM_REGISTRY`（`PARAM_REGISTRY` 的兼容段；直配参数见 §1.2 的 `config_params/` schema）；`chipcompiler/cli/project/params.py` 现在仅是 CLI 兼容 facade。这些参数保持兼容；优先级：`--set` > `ecc.toml [params]` > 默认值。「写入位置」列为该参数最终落到的工具配置字段。
 
@@ -121,6 +123,8 @@ graph LR
 | `route.bottom_layer` | MET1–MET5 | MET2 | route `RT.-bottom_routing_layer` + db `LayerSettings.routing_layer_1st` | 绕线最低层 |
 | `route.top_layer` | MET2–MET6 | MET5 | route `RT.-top_routing_layer` | 绕线最高层 |
 | `sta.max_paths` | int [1, 100000] | 1000 | STA 引擎参数（不落 JSON，运行时传入） | 每份 STA 时序报告的最大路径数 |
+
+`place.*` 各行为按步骤的 DreamPlace 参数（§1.6）：设置时需带步骤，如 `placement:place.target_density`。
 
 ### 1.2 每步骤直配 schema 与 PDK 路径
 
@@ -153,7 +157,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.3 参数中枢 params.toml
 
-`home/params.toml` 是带 schema 版本的文档。当前文件在顶层写入 `schema_version = 2`。旧版本（包括无版本文件和 `home/parameters.json`）会被拒绝，并提示创建新 workspace。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
+`home/params.toml` 是带 schema 版本的文档。当前文件在顶层写入 `schema_version = 4`。旧版本（包括无版本文件和 `home/parameters.json`）会被拒绝，并提示创建新 workspace。如文件声明的版本高于当前 ECC 支持上限，则返回 `unsupported_schema_version`，不会静默解析。
 
 该文件保存规范化的 workspace 参数、`config_overrides` 以及 **flow 运行后回填的结果值**（如实际 die/core 尺寸、利用率）。`config_overrides` 是 CLI 从审核 schema 生成的嵌套 TOML 补丁；每次 workspace 刷新都会在 PDK 和语义参数映射之后重新应用。
 
@@ -164,9 +168,9 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 | `[design]` | `name` / `top` / `clock_port` / `frequency_mhz`，与项目级 `ecc.toml [design]` 同词汇 |
 | `[pdk]` | `name` / `root` / `config`；`config` 以 workspace 相对路径存储，加载时还原为绝对路径 |
 | `[flow]` | `preset = "rtl2gds"`，或 `start` + `end` 成对出现（只接受持久化规范步骤名），另可声明 `skip_steps`、`lec_engine` 与 `insert_steps`；目标缺省时由 `home/flow.json` 的首末步骤推导 |
-| `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`） |
+| `[params]` | 规范扁平参数（snake_case）；嵌套值渲染为子表（如 `[params.die]`、`[params.floorplan.phy_placer.well_tap]`）；`[params.step_params.<step>]` 保存按步骤的 DreamPlace 取值（§1.6） |
 
-**身份参数在运行时仍使用规范扁平键，但 v2 不在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
+**身份参数在运行时仍使用规范扁平键，但 v4 不在文件中保存两份**：`design`、`top_module`、`clock`、`frequency_max`、`pdk`、`pdk_root`、`pdk_config` 以 `[design]`/`[pdk]` 的人读词汇持久化；加载时重建为程序消费的 `[params]` 扁平键。这样 `[design]`/`[pdk]`/`[flow]` 保持与 `ecc.toml` 同词汇，步骤参数、`config_overrides` 与回填结果仍由运行时扁平参数中枢提供。
 
 保存时身份字段只渲染到 `[design]`/`[pdk]`。写入采用临时文件 + 原子 rename，不穿透 symlink。
 
@@ -209,6 +213,26 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 一次性覆盖用 `ecc run --set KEY=VALUE`：仅在**新建**（含 `--overwrite`）workspace 时生效并记录到 `home/cli-param-overrides.json`；对已有 workspace 使用会报 `set_requires_fresh_run`，此时应改用 `ecc param set KEY VALUE --workspace NAME` 或 `--overwrite` 重建。
 
 完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-user-guide.cn.md)（终端：`ecc doc ug --lang cn`）。
+
+### 1.6 按步骤的 DreamPlace 参数
+
+主目标为 DreamPlace 配置的参数（`place.*`、diff_opt 与 diff_sizing 参数）**每个流程步骤各有一个取值**：macro_placement、placement、diff_opt、diff_sizing、legalization 以及 timing_optimization 的内部合法化，各自由 workspace 基线 `config/dreamplace_ecc.json` 加该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`，步骤之间不会互相改写。参数只能设置在其 `applies` 声明的步骤上（见 `ecc param show KEY`）；legalization 没有可设置参数；不带步骤设置按步骤参数会返回 `parameter_step_required`。
+
+步骤写在键里，形如 `<step>:<param>`：
+
+```bash
+ecc param set placement:place.target_density 0.7                  # ecc.toml [params.step.placement.place]
+ecc param set --workspace NAME diff_opt:place.timing_sizing_action resize
+ecc param apply --workspace NAME --step placement --set place.target_density=0.7
+ecc run --set placement:place.num_threads=12
+```
+
+```toml
+[params.step.placement.place]
+target_density = 0.7
+```
+
+在 workspace 中，取值保存在 `params.toml` 的 `[params.step_params.<step>]` 下，journal 记录带有 `step`，修改只从该步骤开始失效。`route.bottom_layer`/`route.top_layer` 仍为 workspace 级：它们写入 routing 配置并镜像到 DreamPlace 基线，因此修改会从 placement 开始失效。
 
 ### 1.5 手工宏摆放（`ecc macro`）
 
@@ -396,7 +420,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 5. macro placement / placement / diff_sizing / legalization（DreamPlace）
 
-这些步骤共用 `config/dreamplace_ecc.json`；每次步骤运行前重写 `def_input`、`verilog_input`、`result_dir`。`macro_placement` 使用 `macro_placement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `placement_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
+每个步骤由 workspace 基线 `config/dreamplace_ecc.json` 和自己的取值（§1.6）解析出 `<step dir>/config/dreamplace_ecc.json`，再设置 `def_input`、`verilog_input`、`result_dir`。`macro_placement` 使用 `macro_placement_dreamplace/data/macro`；placement 读取 post-floorplan 输出并使用 `placement_dreamplace/data/pl`；`diff_sizing` 复用 placement 配置；legalization 读取 CTS 输出并使用 `legalization_dreamplace/data/pl`。参数即上游 DreamPlace 的 JSON 参数集，分组解释如下（默认值 = 模板值；`*` = 用户参数映射点）。
 
 ### 输入输出
 
@@ -1024,7 +1048,7 @@ ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
 
 ### 15.4 placement / legalization
 
-placement 与 legalization 共用 `dreamplace_ecc.json`，因此使用同一组 `place.*` 参数。`aux_input`、LEF/DEF/网表输入、结果目录和设计名由流程管理，不提供 CLI 参数。
+每个 DreamPlace 步骤解析出自己的 `<step dir>/config/dreamplace_ecc.json`，因此 `place.*` 按步骤设置（§1.6）。`aux_input`、LEF/DEF/网表输入、结果目录和设计名由流程管理，不提供 CLI 参数。
 
 ```bash
 ecc param list --step placement
