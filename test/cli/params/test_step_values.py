@@ -1,5 +1,7 @@
 """Project-scope commands on per-step (DreamPlace) parameter values."""
 
+import shlex
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -89,4 +91,36 @@ def test_project_configuration_shows_explicit_step_values(
     ) == [
         ("diff_opt:place.timing_sizing_action", "quad", "ecc.toml"),
         ("placement:place.timing_sizing_action", "up", "ecc.toml"),
+    ]
+
+
+def test_step_list_inspects_step_scoped_parameters_at_the_step(
+    ready_project, capsys, plain_records
+) -> None:
+    project = str(ready_project)
+    assert (
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.65", "--project", project]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        cli_main.run(["param", "list", "--step", "placement", "--project", project, "--plain"]) == 0
+    )
+    records = {record["param"]: record for record in plain_records(capsys.readouterr().out)}
+    listed = [records["place.target_density"], records["place.random_seed"]]
+    shown = []
+    for record in listed:
+        assert cli_main.run([*shlex.split(record["inspect"])[1:], "--plain"]) == 0
+        shown.append(plain_records(capsys.readouterr().out)[0])
+
+    assert [record["inspect"] for record in listed] == [
+        f"ecc param show placement:place.target_density --project {project}",
+        f"ecc param show placement:place.random_seed --project {project}",
+    ]
+    assert [(record["param"], record["value"], record["source"]) for record in shown] == [
+        ("placement:place.target_density", "0.65", "ecc.toml"),
+        ("placement:place.random_seed", records["place.random_seed"]["value"], "default"),
     ]

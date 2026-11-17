@@ -30,8 +30,8 @@ from agent.workspace_api import (
 from chipcompiler.data import StateEnum
 from chipcompiler.data.parameter import load_parameter, save_parameter
 from chipcompiler.data.step import new_step_directory
-from chipcompiler.data.step_parameters import set_step_value, step_config_patch
-from chipcompiler.data.workspace.layout import EccOutput
+from chipcompiler.data.step_parameters import set_step_value
+from chipcompiler.data.workspace.layout import EccData, EccOutput, StepInput
 from chipcompiler.data.workspace_config import save_workspace_config
 from test.flow_fixture import step_fields
 
@@ -460,13 +460,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             candidate_workspace,
             (
                 SimpleNamespace(name="floorplan", tool="ecc", output={}),
-                SimpleNamespace(
-                    name="placement",
-                    tool="dreamplace",
-                    directory=root / "placement_dreamplace",
-                    output=EccOutput(dir=root / "placement_dreamplace" / "output"),
-                    analysis={"dir": root / "placement_dreamplace" / "analysis"},
-                ),
+                _placement_step(root),
                 SimpleNamespace(
                     name="cts",
                     tool="ecc",
@@ -579,11 +573,12 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert _stored_step_values(candidate_root) == {
         "placement": {"place.random_seed": 17, "place.target_density": 0.6}
     }
-    assert json.loads(
+    step_config = json.loads(
         (candidate_root / "placement_dreamplace" / "config" / "dreamplace_ecc.json").read_text(
             encoding="utf-8"
         )
-    ) == {"random_seed": 17, "target_density": 0.6}
+    )
+    assert (step_config["random_seed"], step_config["target_density"]) == (17, 0.6)
     assert candidate_flow.observed_random_seeds == [17]
     assert not list((candidate_root / "placement_dreamplace" / "output").iterdir())
     assert not list((candidate_root / "placement_dreamplace" / "analysis").iterdir())
@@ -654,11 +649,16 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
             "place.target_density": 0.6,
         }
     }
-    assert json.loads(
+    second_config = json.loads(
         (second_root / "placement_dreamplace" / "config" / "dreamplace_ecc.json").read_text(
             encoding="utf-8"
         )
-    ) == {"random_seed": 17, "routability_opt_flag": 1, "target_density": 0.6}
+    )
+    assert {key: second_config[key] for key in _CANDIDATE_KNOB_KEYS} == {
+        "random_seed": 17,
+        "routability_opt_flag": 1,
+        "target_density": 0.6,
+    }
     second_manifest = json.loads(
         (
             tmp_path
@@ -1292,7 +1292,7 @@ class _Flow:
     def run_step(self, step, *, rerun, observer=None) -> StateEnum:
         self.run_calls.append((step.name, rerun))
         if step.name == "placement":
-            config = _build_fake_step_config(self.workspace, step)
+            config = _build_step_config(self.workspace, step)
             self.observed_random_seeds.append(config.get("random_seed"))
         if step.name == "harden":
             for artifact in (step.output.gds, step.output.lef, step.output.lib):
@@ -1303,15 +1303,28 @@ class _Flow:
         return StateEnum.Success
 
 
-def _build_fake_step_config(workspace, step) -> dict:
-    """The DreamPlace step build: the baseline plus the step's stored values."""
-    stored = load_parameter(workspace.parameters.path).data
-    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
-    config |= step_config_patch(stored, step.name).get("dreamplace", {})
-    path = Path(step.directory) / "config" / "dreamplace_ecc.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(config), encoding="utf-8")
-    return config
+#: The step-config keys the candidate seed and knobs set.
+_CANDIDATE_KNOB_KEYS = ("random_seed", "routability_opt_flag", "target_density")
+
+
+def _placement_step(root: Path) -> SimpleNamespace:
+    directory = root / "placement_dreamplace"
+    return SimpleNamespace(
+        name="placement",
+        tool="dreamplace",
+        directory=directory,
+        input=StepInput(),
+        data=EccData(dir=directory / "data"),
+        output=EccOutput(dir=directory / "output"),
+        analysis={"dir": directory / "analysis"},
+    )
+
+
+def _build_step_config(workspace, step) -> dict:
+    """The production DreamPlace step config build: the baseline plus the step's stored values."""
+    from chipcompiler.tools.ecc_dreamplace.builder import write_step_config
+
+    return json.loads(write_step_config(workspace, step).read_text(encoding="utf-8"))
 
 
 def _store_candidate_knob(candidate_workspace, patch) -> None:
@@ -1402,13 +1415,7 @@ def _fake_candidate_flow_factory(flows: list):
             candidate_workspace,
             (
                 SimpleNamespace(name="floorplan", tool="ecc", output={}),
-                SimpleNamespace(
-                    name="placement",
-                    tool="dreamplace",
-                    directory=root / "placement_dreamplace",
-                    output=EccOutput(dir=root / "placement_dreamplace" / "output"),
-                    analysis={"dir": root / "placement_dreamplace" / "analysis"},
-                ),
+                _placement_step(root),
                 SimpleNamespace(
                     name="cts",
                     tool="ecc",
@@ -1466,7 +1473,7 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
 
     def run_candidate_step(flow, step, *, observer):
         if step.name == "placement":
-            _build_fake_step_config(flow.workspace, step)
+            _build_step_config(flow.workspace, step)
         if step.name == "harden":
             # Both candidates must be inside step execution at the same
             # moment; a serialized backend times the barrier out and fails

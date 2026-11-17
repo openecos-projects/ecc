@@ -154,26 +154,6 @@ def _merge(target: dict, patch: Mapping) -> None:
             target[key] = deepcopy(value)
 
 
-def resolve_step_parameters(
-    *layers: tuple[Mapping[str, object], str],
-) -> tuple[dict[str, dict[str, object]], dict[str, str]]:
-    """Step values and their sources from ``<step>:<param>`` keys of override *layers*.
-
-    *layers* are ``(overrides, source)`` pairs, highest precedence first, as
-    produced by ``parse_toml_params`` / ``parse_cli_overrides``.
-    """
-    values: dict[str, dict[str, object]] = {}
-    sources: dict[str, str] = {}
-    for overrides, source in reversed(layers):
-        for key, value in overrides.items():
-            step, param = split_step_key(key)
-            if step is None:
-                continue
-            values.setdefault(step, {})[param] = deepcopy(value)
-            sources[key] = source
-    return values, sources
-
-
 def parse_step_key(key: str) -> tuple[str | None, ParamSchema | None, str | None]:
     """``(step, schema, error)`` for a possibly step-qualified parameter *key*."""
     from chipcompiler.data.parameter_schema import lookup_schema

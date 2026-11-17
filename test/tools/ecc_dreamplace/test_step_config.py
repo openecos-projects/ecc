@@ -1,6 +1,7 @@
 """Each DreamPlace step resolves its own config into its step directory."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from chipcompiler.data import PDK, OriginDesign, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.workspace import init_workspace_config
@@ -166,29 +167,44 @@ def _forced_keys(mode: DreamplaceRunMode) -> set[str]:
     return {*GEOMETRY_ONLY_CONFIG, *MODE_FLAGS[mode]}
 
 
-def test_an_inner_legalization_runs_on_its_owner_step_file(tmp_path, make_ics55_parameters) -> None:
+def test_an_inner_legalization_runs_on_its_owner_step_file(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    from chipcompiler.tools.ecc_dreamplace import runner
+
     workspace = _workspace(tmp_path, make_ics55_parameters)
     owner = _step(workspace, tmp_path, SkippableStepEnum.TIMING_OPT.value)
     workspace.parameters.data["step_params"] = {"placement": {"place.target_density": 0.71}}
-    path = builder.write_step_config(workspace, owner)
-    module = DreamplaceModule(
-        workspace=workspace,
-        step=owner,
-        ecc_module=None,
-        input_def=tmp_path / "input.def",
-        input_verilog=tmp_path / "input.v",
-        output_def=None,
-        output_verilog=None,
+    engine = SimpleNamespace(close=lambda: None)
+    loaded = []
+
+    def record_legalization(module: DreamplaceModule) -> bool:
+        params = module._build_params(_Params, mode=DreamplaceRunMode.LEGALIZATION)
+        loaded.append(
+            (
+                module.param_path,
+                params.target_density,
+                params.global_place_flag,
+                params.detailed_place_flag,
+            )
+        )
+        return True
+
+    monkeypatch.setattr(runner, "is_eda_exist", lambda: True)
+    monkeypatch.setattr(runner.ecc_runner, "create_db_engine", lambda *_args: engine)
+    monkeypatch.setattr(DreamplaceModule, "run_legalization", record_legalization)
+
+    path = owner.directory / "config" / "dreamplace_ecc.json"
+    assert not path.exists()
+
+    result = runner.legalize_layout(
+        workspace, owner, tmp_path / "sizer.def.gz", tmp_path / "sizer.v.gz"
     )
 
-    params = module._build_params(_Params, mode=DreamplaceRunMode.LEGALIZATION)
-
-    assert module.param_path == path
-    assert (params.target_density, params.global_place_flag, params.detailed_place_flag) == (
-        json_read(workspace.config["dreamplace"])["target_density"],
-        0,
-        0,
-    )
+    baseline_density = json_read(workspace.config["dreamplace"])["target_density"]
+    assert result is engine
+    assert loaded == [(path, baseline_density, 0, 0)]
+    assert json_read(path)["result_dir"] == str(owner.data.workdir_for(owner.name))
 
 
 class _Params:

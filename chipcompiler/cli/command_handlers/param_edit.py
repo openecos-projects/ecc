@@ -173,6 +173,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         _manifest_mode_error,
         _project_pdk,
     )
+    from chipcompiler.cli.command_handlers.param_step_values import record_at_step
     from chipcompiler.params import resolve_parameters
     from chipcompiler.rtl2gds import get_flow_builders
 
@@ -188,9 +189,12 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     in_flow = {str(step) for step, _tool, _state in builder()} if builder is not None else set()
     pdk = _project_pdk(ctx)
     resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
+    by_key = {item.key: item for item in resolved}
     rows = []
     for item in resolved:
         schema = item.schema
+        if item.step is not None:
+            continue
         if in_flow and not schema.workspace_wide and not in_flow.intersection(schema.steps):
             continue
         if not is_step_scoped(schema):
@@ -201,14 +205,13 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         for step in schema.steps:
             if in_flow and step not in in_flow:
                 continue
-            key = step_key(step, schema.param)
-            value = toml_overrides.get(key, item.default)
+            at_step = record_at_step(by_key, item, step)
             rows.append(
                 _row(
                     schema,
-                    value,
+                    at_step.value,
                     item.default,
-                    overridden=key in toml_overrides,
+                    overridden=at_step.is_explicit,
                     pdk=pdk,
                     step=step,
                 )

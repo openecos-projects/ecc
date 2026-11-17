@@ -6,8 +6,7 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import EccData, EccStep, OriginDesign, SkippableStepEnum, StepEnum, Workspace
-from chipcompiler.data.step_parameters import resolve_step_parameters
-from chipcompiler.params import parse_cli_overrides
+from chipcompiler.params import build_step_params, parse_cli_overrides, resolve_parameters
 from chipcompiler.rtl2gds.builder import build_flow_range
 from chipcompiler.tools.ecc_dreamplace.diff_opt import apply_diff_opt_defaults
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
@@ -88,7 +87,7 @@ def test_diff_opt_public_fields_are_scoped_to_diff_opt():
         ]
     )
     assert errors == []
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_opt": payload}
 
 
