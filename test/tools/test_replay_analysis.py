@@ -2,6 +2,7 @@ import json
 import os
 from types import SimpleNamespace
 
+from chipcompiler.data import EccOutput, EccStep
 from chipcompiler.tools.replay_analysis import collect_analysis
 
 
@@ -75,7 +76,7 @@ def test_sizer_output_cleanup_preserves_live_replay(tmp_path, monkeypatch):
     capture.mkdir(parents=True)
     (geometry / "replay/manifest.json").write_text('{"status":"recording"}')
     (geometry / "old_shapes.bin").write_bytes(b"stale")
-    step = SimpleNamespace(output=SimpleNamespace(geometry=str(geometry)))
+    step = EccStep(name="timingOpt", tool="sizer", output=EccOutput(geometry=geometry))
     monkeypatch.setattr(runner, "_published_paths", lambda _: [geometry])
     runner._delete_published_outputs(step)
     assert capture.is_dir()

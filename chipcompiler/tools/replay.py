@@ -139,6 +139,7 @@ def capture_step_database(workspace, step, *, final: bool = False) -> None:
         if final
         else step
     )
+    module = None
     try:
         module = runner.create_db_engine(workspace, source)
         if module is None:
@@ -151,7 +152,7 @@ def capture_step_database(workspace, step, *, final: bool = False) -> None:
         except OSError:
             logger.warning("Cannot write Replay failure marker", exc_info=True)
     finally:
-        if "module" in locals() and module is not None:
+        if module is not None:
             try:
                 module.close()
             except Exception as error:
@@ -182,6 +183,7 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
     started = time.monotonic_ns()
     started_unix_ns = time.time_ns()
     attempt = attempt_id
+    capture_started_fs_ns = None
     enabled = False
     log_capture = None
     try:
@@ -191,7 +193,7 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
             if attempt is None:
                 attempt = prepare(workspace, step)
             enabled = attempt is not None and root is not None
-            if enabled:
+            if attempt is not None and root is not None:
                 if read_pointer(root).get("attempt_id") != attempt:
                     raise ValueError("Replay attempt was superseded before capture")
                 capture = root / "attempts" / attempt / "capture"
@@ -244,7 +246,12 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
             previous_value = previous[key]
             if previous_value is not None:
                 os.environ[key] = previous_value
-        if enabled and root is not None:
+        if (
+            enabled
+            and root is not None
+            and attempt is not None
+            and capture_started_fs_ns is not None
+        ):
             try:
                 from chipcompiler.tools.replay_results import collect_results
 
