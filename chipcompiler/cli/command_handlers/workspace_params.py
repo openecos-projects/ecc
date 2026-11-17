@@ -4,6 +4,7 @@ from pathlib import Path
 
 from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.line_records import json_literal
+from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.params import list_schemas, lookup_schema, parse_value, validate_value
@@ -27,8 +28,15 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
     errors = validate_value(value, schema)
     if errors:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=errors[0])])
-    return _mutate(
-        ctx, schema, lambda workspace: set_workspace_param(workspace, schema, value), value, "set"
+    return _with_manifest_projection(
+        ctx,
+        _mutate(
+            ctx,
+            schema,
+            lambda workspace: set_workspace_param(workspace, schema, value),
+            value,
+            "set",
+        ),
     )
 
 
@@ -39,7 +47,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
     def unset(workspace):
         return unset_workspace_param(workspace, schema)
 
-    return _mutate(ctx, schema, unset, None, "unset")
+    return _with_manifest_projection(ctx, _mutate(ctx, schema, unset, None, "unset"))
 
 
 @command_handler
@@ -133,6 +141,41 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
         for record in workspace_param_diff(workspace)
     ]
     return CommandResult.ok(records or [{"diff_status": "clean", "workspace": ctx.run_id}])
+
+
+def refresh_manifest_projection(ctx: CommandContext) -> dict | None:
+    """Re-derive the workspace's parameter patch after a parameter write.
+
+    The workspace directory is the truth and project.json its projection, so a
+    committed parameter change re-converges the entry's patch — and only the
+    patch: range and status keep their own writers. Returns a
+    ``manifest_write_back_failed`` record when the manifest cannot be written;
+    the Workspace mutation itself stands, so the caller keeps its result.
+    """
+    if ctx.project_state != "manifest" or not ctx.run_id:
+        return None
+    from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
+
+    if refresh_workspace_derived_fields(ctx.project_dir, ctx.run_id, fields=("parameter_patch",)):
+        return None
+    return error_record(
+        "manifest_write_back_failed",
+        workspace_id=ctx.run_id,
+        reason="Workspace parameters were applied but project.json metadata could not be updated",
+        repair=disclosure_cmd(
+            f"ecc workspace import {ctx.run_id} --path {ctx.run_dir}", ctx.project
+        ),
+    )
+
+
+def _with_manifest_projection(ctx: CommandContext, result: CommandResult) -> CommandResult:
+    """Append the projection write-back failure to a successful mutation's records."""
+    if result.exit_code != 0:
+        return result
+    problem = refresh_manifest_projection(ctx)
+    if problem is None:
+        return result
+    return CommandResult(records=(*result.records, problem), exit_code=result.exit_code)
 
 
 def _snapshot_transaction(workspace) -> dict:

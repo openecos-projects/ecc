@@ -627,6 +627,30 @@ def execute_fresh_run(
                     )
                 workspace_registered = True
 
+            # Registration precedes the directory (a concurrent reader must
+            # never see an unregistered Workspace), so the Workspace's
+            # parameter projection converges here, once creation is
+            # committed. Range and status keep their own writers.
+            from chipcompiler.cli.core.records import error_record
+            from chipcompiler.project.manifest import MANIFEST_FILENAME
+            from chipcompiler.project.manifest_refresh import refresh_workspace_derived_fields
+
+            if os.path.lexists(
+                os.path.join(project_dir, MANIFEST_FILENAME)
+            ) and not refresh_workspace_derived_fields(
+                project_dir, run_name, fields=("parameter_patch",)
+            ):
+                warning_records.append(
+                    error_record(
+                        "manifest_write_back_failed",
+                        workspace_id=run_name,
+                        reason="project.json workspace metadata could not be updated",
+                        repair=disclosure_cmd(
+                            f"ecc workspace import {run_name} --path {run_dir}", project
+                        ),
+                    )
+                )
+
             if not execute_flow:
                 return CommandResult.ok(
                     warning_records

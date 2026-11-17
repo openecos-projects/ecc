@@ -2,6 +2,8 @@ import os
 
 from chipcompiler.cli.core.output import disclosure_cmd
 
+_ABSENT = object()
+
 
 def build_project_config_items(
     project_dir: str,
@@ -10,6 +12,7 @@ def build_project_config_items(
     run_id: str | None = None,
     *,
     resolved: tuple | None = None,
+    workspace_id: str | None = None,
 ) -> tuple[list[dict], int]:
     from chipcompiler.cli.project.config import (
         _resolve_path,
@@ -182,6 +185,9 @@ def build_project_config_items(
     cli_provenance, prov_error = _load_cli_provenance(run_dir)
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
+    workspace_parameters, workspace_error = _workspace_parameters(run_dir, workspace_id)
+    if workspace_error:
+        return [{"kind": "error", "status": "invalid_config", "reason": workspace_error}], 1
     toml_overrides = dict(cfg.params_overrides)
     if "design.frequency_mhz" not in toml_overrides and "design.frequency_mhz" in getattr(
         cfg, "_explicit_keys", frozenset()
@@ -193,26 +199,57 @@ def build_project_config_items(
         toml_overrides["design.frequency_mhz"] = cfg.design_frequency_mhz
     resolved_params, resolve_errors = resolve_parameters(
         toml_overrides=toml_overrides,
-        cli_overrides=cli_provenance,
+        # An existing workspace ignores create-time --set: its params.toml is
+        # authoritative, so the provenance is history, never the value.
+        cli_overrides={} if workspace_parameters is not None else cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
     )
     from chipcompiler.cli.command_handlers.param import _maps_to_str
 
+    def param_item(rp, *, scope: str, value: object, source: str, workspace: str | None):
+        return {
+            "kind": "param",
+            "scope": scope,
+            "key": rp.param,
+            "value": value,
+            "default": rp.default,
+            "source": source,
+            "maps_to": _maps_to_str(rp.schema.maps_to),
+            "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project, workspace),
+        }
+
     for rp in resolved_params:
-        if rp.schema.has_direct_target and not rp.is_explicit:
+        workspace_items = []
+        current = _ABSENT
+        if workspace_parameters is not None:
+            current = workspace_parameters.get(rp.param, _ABSENT)
+            if current is not _ABSENT and current != rp.value:
+                workspace_items.append(
+                    param_item(
+                        rp, scope="workspace", value=current, source="workspace", workspace=run_id
+                    )
+                )
+            provenance = cli_provenance.get(rp.param, _ABSENT)
+            if provenance is not _ABSENT and provenance != current:
+                workspace_items.append(
+                    param_item(
+                        rp,
+                        scope="workspace",
+                        value=provenance,
+                        source="cli (create-time)",
+                        workspace=run_id,
+                    )
+                )
+        # Direct-config parameters stay hidden unless an explicit layer sets
+        # them; a workspace-layer value is such a layer.
+        hidden_direct = rp.schema.has_direct_target and not rp.is_explicit
+        if hidden_direct and not workspace_items:
             continue
-        items.append(
-            {
-                "kind": "param",
-                "scope": "project",
-                "key": rp.param,
-                "value": rp.value,
-                "default": rp.default,
-                "source": rp.source,
-                "maps_to": _maps_to_str(rp.schema.maps_to),
-                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
-            }
-        )
+        if not hidden_direct:
+            items.append(
+                param_item(rp, scope="project", value=rp.value, source=rp.source, workspace=None)
+            )
+        items.extend(workspace_items)
 
     # Parameter resolution errors (including ecc.toml [params] parse errors)
     # must not be swallowed: a view that silently shows defaults hides that
@@ -248,6 +285,34 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
     if errors:
         return {}, f"invalid CLI parameter provenance: {errors[0]}"
     return validated, None
+
+
+def _workspace_parameters(
+    run_dir: str, workspace_id: str | None
+) -> tuple[dict[str, object] | None, str | None]:
+    """A selected workspace's current parameter projection.
+
+    An existing workspace's params.toml is authoritative, so it is presented
+    as the workspace layer. A declared entry whose directory has no
+    params.toml yet has no layer to show (that is a lifecycle problem for
+    doctor, not a configuration value).
+    """
+    if workspace_id is None or not os.path.isfile(os.path.join(run_dir, "home", "params.toml")):
+        return None, None
+    from chipcompiler.data import load_workspace
+    from chipcompiler.engine.workspace_configuration import (
+        build_workspace_configuration_projection,
+    )
+    from chipcompiler.utility import JsonReadError
+
+    try:
+        workspace = load_workspace(run_dir, read_only=True)
+        if workspace is None:
+            return None, None
+        projection = build_workspace_configuration_projection(workspace)
+    except (OSError, ValueError, JsonReadError) as exc:
+        return None, f"unreadable workspace parameters: {exc}"
+    return dict(projection["workspaceSpec"]["parameters"]), None
 
 
 def build_step_config_items(

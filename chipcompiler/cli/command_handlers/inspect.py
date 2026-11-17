@@ -294,6 +294,9 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
             project,
             ctx.run_id,
             resolved=resolved,
+            # Only a manifest-selected workspace has a params.toml layer to
+            # present beside the project layers.
+            workspace_id=ctx.run_id if resolved is not None else None,
         )
 
     if rc != 0:
@@ -355,7 +358,7 @@ def config(command_input: ConfigInput, ctx: CommandContext) -> CommandResult:
                     "kind": "param",
                     "config": item["key"],
                     "key": item["key"],
-                    "scope": "project",
+                    "scope": item.get("scope", "project"),
                     "value": item["value"],
                     "default": item.get("default"),
                     "source": item["source"],

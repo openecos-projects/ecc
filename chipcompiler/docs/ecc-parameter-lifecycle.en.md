@@ -59,6 +59,17 @@ surfaces declare different policies, `ecc run`/`ecc check` emit a
   a CLI session converge on the same `config/*.json` for the same
   `home/params.toml`.
 
+The manifest projection follows the directory: a workspace entry's
+`parameter_patch` is the workspace's `home/params.toml` diffed against
+`base_design.parameters`, and it is re-derived when the workspace is created
+or derived and after every workspace-scoped `ecc param apply/set/unset`. Only
+the patch converges there; `start_step`/`end_step`/`status` keep their own
+writers. `ecc config --workspace NAME` presents the workspace's current
+values as `scope=workspace` (`source=workspace`) beside the project layers,
+and labels create-time `--set` values from `home/cli-param-overrides.json` as
+`source="cli (create-time)"`: for an existing workspace they are history, not
+the value in effect.
+
 ## CLI vs GUI
 
 | Concern | CLI (`ecc`) | GUI (ECOS Studio) |
