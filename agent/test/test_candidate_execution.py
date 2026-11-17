@@ -129,6 +129,21 @@ def _wait_for_terminal(operations, operation_id, expected_state):
     raise AssertionError(f"operation {operation_id} did not reach a terminal state")
 
 
+def _build_dreamplace_step_config(workspace, step):
+    """Stand-in for the DreamPlace build: baseline plus the step's stored values."""
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.step_parameters import step_config_patch
+
+    if step.tool != "dreamplace":
+        return
+    stored = load_parameter(workspace.parameters.path).data
+    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+    config.update(step_config_patch(stored, step.name).get("dreamplace", {}))
+    path = step.directory / "config" / "dreamplace_ecc.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+
 def _write_success_outputs(step):
     paths = [step.output.def_, step.output.verilog]
     if step.name == "harden":
@@ -194,7 +209,8 @@ def test_candidate_rerun_parent_has_no_native_db_or_stdio(monkeypatch, tmp_path)
     monkeypatch.setattr(EngineDB, "create_db_engine", fail_native_init)
     monkeypatch.setattr(ECCToolsModule, "__init__", fail_native_init)
 
-    def fake_worker(_workspace, step, _engine_db, **_kwargs):
+    def fake_worker(workspace, step, _engine_db, **_kwargs):
+        _build_dreamplace_step_config(workspace, step)
         _write_success_outputs(step)
         return StepExecutionResult(
             error=None, elapsed_seconds=0.0, peak_memory_mb=0.0, runtime="0:0:0"
@@ -385,8 +401,23 @@ def run_step(workspace, step, ecc_module=None):
     write_outputs(step)
     return True
 
+def build_step_config(workspace, step):
+    # Stand-in for the DreamPlace build: baseline plus the step's stored values.
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.step_parameters import step_config_patch
+
+    if step.tool != "dreamplace":
+        return
+    stored = load_parameter(workspace.parameters.path).data
+    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+    config.update(step_config_patch(stored, step.name).get("dreamplace", {}))
+    path = Path(step.directory) / "config" / "dreamplace_ecc.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config), encoding="utf-8")
+
+
 agent_tools.load_eda_module = lambda *_args, **_kwargs: SimpleNamespace(
-    build_step_config=lambda *_args: None,
+    build_step_config=build_step_config,
     run_step=run_step,
 )
 agent_tools.log_workspace_step = lambda *_args, **_kwargs: None

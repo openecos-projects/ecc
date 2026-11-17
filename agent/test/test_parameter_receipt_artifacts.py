@@ -75,6 +75,7 @@ def _materialized_workspace(
     workspace = SimpleNamespace(
         directory=tmp_path,
         config={"dreamplace": config},
+        parameters=SimpleNamespace(path=home / "params.toml"),
         pdk=SimpleNamespace(tech=tech, site_core="core7"),
         flow=SimpleNamespace(
             data={
@@ -137,9 +138,9 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert receipt["context"]["parameter_card_sha256"] == HASH
     materialization_ref = receipt["materialization"]
     assert materialization_ref["target_step"] == "placement"
-    assert materialization_ref["config_ref"] == "config/dreamplace.json"
-    assert materialization_ref["before_snapshot_ref"].endswith("dreamplace.before.json")
-    assert materialization_ref["after_snapshot_ref"].endswith("dreamplace.after.json")
+    assert materialization_ref["config_ref"] == "home/params.toml"
+    assert materialization_ref["before_snapshot_ref"].endswith("parameters.before.json")
+    assert materialization_ref["after_snapshot_ref"].endswith("parameters.after.json")
     assert materialization_ref["receipt_sha256"] != materialization_ref["registry_sha256"]
 
 

@@ -224,24 +224,62 @@ def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_pa
     ]
 
 
-def test_materialization_preserves_complete_before_and_after_config_snapshots(tmp_path):
+def _read_params(path: Path) -> dict:
+    import tomllib
+
+    return tomllib.loads(path.read_text(encoding="utf-8"))["params"]
+
+
+def test_dreamplace_knob_materializes_as_a_target_step_value(tmp_path):
     workspace = _workspace(tmp_path)
+    baseline = workspace.config["dreamplace"].read_bytes()
 
     receipt = materialize_candidate_config(
         workspace,
         "placement",
-        [{"knob_id": "place.target_density", "value": 0.7}],
+        [{"knob_id": "place.target_overflow", "value": 0.07}],
         candidate_id="place-candidate",
     )
 
     snapshot = receipt["snapshots"][0]
-    before = _read_json(tmp_path / snapshot["before_ref"])
-    after = _read_json(tmp_path / snapshot["after_ref"])
+    params_path = tmp_path / "home" / "params.toml"
+    core = {"utilitization": 0.6, "aspect_ratio": 1.0, "margin": [2, 2]}
+    assert workspace.config["dreamplace"].read_bytes() == baseline
+    assert _read_params(params_path) == {
+        "core": core,
+        "step_params": {"placement": {"place.stop_overflow": 0.07}},
+    }
+    assert receipt["configs"] == [
+        {
+            "config_key": "parameters",
+            "ref": "home/params.toml",
+            "before_sha256": snapshot["before_sha256"],
+            "after_sha256": _sha256(params_path),
+        }
+    ]
+    assert _read_params(tmp_path / snapshot["before_ref"]) == {"core": core}
+    assert (tmp_path / snapshot["after_ref"]).read_bytes() == params_path.read_bytes()
 
-    assert snapshot["config_key"] == "dreamplace"
-    assert before["target_density"] == 0.8
-    assert after["target_density"] == 0.7
-    assert snapshot["after_sha256"] == _sha256(workspace.config["dreamplace"])
+
+def test_reapply_restores_the_dreamplace_step_value(tmp_path):
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    workspace = _workspace(tmp_path)
+    receipt = materialize_candidate_config(
+        workspace,
+        "placement",
+        [{"knob_id": "place.routability_opt", "value": True}],
+        candidate_id="place-candidate",
+    )
+    params_path = tmp_path / "home" / "params.toml"
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
+
+    assert reapply_materialized_candidate_config(workspace, "placement") == receipt
+    assert workspace.parameters.data == load_parameter(params_path).data
+    assert workspace.parameters.data["step_params"] == {
+        "placement": {"place.routability_opt_flag": 1}
+    }
 
 
 def test_materialize_rejects_multiple_knobs_without_writing_artifacts(tmp_path):
@@ -264,8 +302,14 @@ def test_materialize_rejects_multiple_knobs_without_writing_artifacts(tmp_path):
 
 
 def test_materialize_rejects_noop_without_writing_artifacts(tmp_path):
+    from chipcompiler.data.workspace_config import save_workspace_config
+
     workspace = _workspace(tmp_path)
-    before = workspace.config["dreamplace"].read_bytes()
+    assert save_workspace_config(
+        tmp_path, {"step_params": {"placement": {"place.target_density": 0.8}}}
+    )
+    params_path = tmp_path / "home" / "params.toml"
+    before = params_path.read_bytes()
 
     with pytest.raises(CandidateMaterializationError, match="did not change config"):
         materialize_candidate_config(
@@ -275,7 +319,7 @@ def test_materialize_rejects_noop_without_writing_artifacts(tmp_path):
             candidate_id="noop-candidate",
         )
 
-    assert workspace.config["dreamplace"].read_bytes() == before
+    assert params_path.read_bytes() == before
     assert not (tmp_path / "analysis" / "candidate_materialization.v1.json").exists()
     assert not (tmp_path / "analysis" / "candidate_config_snapshots.v1").exists()
 
@@ -290,7 +334,9 @@ def test_materialize_converts_padding_sites_to_written_dbu(tmp_path):
         candidate_id="padding-candidate",
     )
 
-    assert _read_json(workspace.config["dreamplace"])["cell_padding_x"] == 400
+    assert _read_params(tmp_path / "home" / "params.toml")["step_params"] == {
+        "placement": {"place.cell_padding_x": 400}
+    }
     assert receipt["patch"] == [{"knob_id": "place.cell_padding_x", "value": 400}]
 
 
