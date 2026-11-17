@@ -207,6 +207,10 @@ def _manifest_only_config(ctx, assembled, entry):
     cfg.manifest_driven = True
     cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
 
+    from .timing_inputs import resolve_timing_input_metadata
+
+    resolve_timing_input_metadata(cfg)
+
     flow_config = None
     if entry is not None:
         flow_config = {"start_step": entry.start_step, "end_step": entry.end_step}
@@ -284,9 +288,9 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     # origin_def exists only in the manifest layer (no ecc.toml key), so it
     # always comes from the base — resolved against the project root.
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
-    from chipcompiler.cli.project.config import resolve_clock_list_metadata
+    from .timing_inputs import resolve_timing_input_metadata
 
-    resolve_clock_list_metadata(cfg)
+    resolve_timing_input_metadata(cfg)
 
 
 def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
@@ -301,15 +305,15 @@ def effective_override_keys(cfg, cli_overrides=None) -> frozenset:
     keys = set(cfg.params_overrides or {})
     keys.update(cli_overrides or {})
     if "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset()) or (
-        "sdc.clock_list" in cfg.params_overrides
-        and not cfg.design_sdc
-        and not cfg._timing_input_error
+        cfg.design_sdc and not cfg._timing_input_error
     ):
         keys.add("design.frequency_mhz")
     return frozenset(keys)
 
 
-def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
+def validate_effective(
+    ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None, validate_timing_input: bool = True
+) -> list[str]:
     """Validate the effective config for a manifest-backed project.
 
     Relaxations vs legacy projects: [flow] is optional when a target can be
@@ -321,10 +325,13 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     and --set values whenever they are EFFECTIVE: a value overridden by an
     explicit ecc.toml/--set key is inert and surfaces as a divergence
     warning instead of an error.
+
+    Existing runs disable project timing-input validation because they use
+    frozen workspace inputs. Inspection and fresh creation still validate it.
     """
     from chipcompiler.cli.project.config import validate_project_config
 
-    errors = validate_project_config(cfg)
+    errors = validate_project_config(cfg, validate_timing_input=validate_timing_input)
     if fresh:
         from chipcompiler.cli.project.design_inputs import validate_entry_inputs
 

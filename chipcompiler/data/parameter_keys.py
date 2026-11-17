@@ -25,7 +25,7 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 # "-thread_number" -> "thread_number") and rewrite JSON values such as
 # sta.signoff corner names, so their subtrees round-trip untouched.
 _RESERVED_PAYLOAD_KEYS = frozenset(
-    {"config_overrides", "workspace_param_overrides", "pdk_overrides"}
+    {"config_overrides", "workspace_param_overrides", "pdk_overrides", "sdc"}
 )
 
 # Internal workspace controls are canonical identifiers too. They are kept
@@ -98,8 +98,8 @@ def _registered_top_level_keys() -> set:
     """Top-level key each registered parameter is stored under.
 
     ``maps_to`` is either a top-level key or a one-entry ``{subtree: key}``
-    mapping, so subtrees the PDK templates do not spell out (``sdc``,
-    ``dreamplace``, ...) are part of the vocabulary as well.
+    mapping, so subtrees the PDK templates do not spell out (``dreamplace``,
+    ...) are part of the vocabulary as well.
     """
     from .parameter_schema import list_schemas
 

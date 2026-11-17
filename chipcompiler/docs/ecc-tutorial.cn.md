@@ -177,8 +177,9 @@ $ cd gcd
 ```
 gcd/
 ├── ecc.toml       # 项目配置（下一步按需修改）
+├── project.json   # 项目标识和 workspace 登记
 ├── rtl/           # 放 Verilog 源码或 filelist
-└── constraints/   # 约束预留目录（本教程无需手写约束，见 §3.3）
+└── sdc/gcd.tcl    # 五组时序输入模板，见 §3.3
 
 # workspace 由首个 ecc run 创建：缺省为 gcd/default/，并写入 project.json 登记；
 # 可用 ecc run --workspace <名称> 创建其他受管 workspace。旧布局 runs/<id>/ 必须先 ecc migrate。
@@ -206,14 +207,12 @@ curl -fL -o rtl/gcd.v \
 name = "gcd"
 top = "gcd"              # 顶层模块名
 rtl = ["rtl/gcd.v"]      # 单个 Verilog 文件，或多源时指向 filelist
+sdc = "sdc/gcd.tcl"      # 五组时序输入；修改该文件设置时钟
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"       # 时钟端口名
-frequency_mhz = 100.0    # 目标频率（MHz）
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
@@ -240,7 +239,7 @@ ecc project show                              # 查看 ecc.toml 里声明的字�
 
 两个要点：
 
-- **无需手写 SDC**：flow 会根据 `clock_port` 与 `frequency_mhz` 自动生成 `origin/gcd.sdc`，其中输入/输出 delay 为 0，并包含独立的 setup/hold uncertainty、transition、最大扇出约束，以及 PDK 配置的输出负载；如提供 `design.sdc` 则原样复制，不重新生成；
+- **时序输入**：`ecc init` 在 `sdc/gcd.tcl` 中生成五个 TOML 字符串，默认 `clk`/100 MHz。直接修改这个文件，不在项目 TOML 中填约束。ECC 保存输入副本，再生成 `origin/pre_CTS/` 和 `origin/post_CTS/` 下的可执行 Tcl；完整 SDC 必须先转换。详见[五组时序输入格式](ecc-config-ref.cn.md#17-用户填写的五组时序输入)；
 - **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
 
 ### 3.4 校验
@@ -403,7 +402,7 @@ $ ecc run --preset rtl2gds
 ```
 default/
 ├── home/               # flow.json（步骤状态）+ params.toml + checklist.json
-├── origin/             # 冻结的输入：gcd.v + 自动生成的 gcd.sdc
+├── origin/             # 冻结的 gcd.v + gcd.tcl 输入，以及 pre_CTS/、post_CTS/ 脚本
 ├── config/             # 各步骤实际生效的配置（ecc config <step> 查看）
 ├── Synthesis_yosys/    # 每步子目录内含 log/ script/ output/ report/ 等分类
 ├── lec_kepler_formal/   # 综合级 LEC 等价性检查

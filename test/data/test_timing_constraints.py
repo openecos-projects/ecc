@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import create_workspace, load_workspace, refresh_workspace_config
 from chipcompiler.data.parameter import save_parameter
 from chipcompiler.data.workspace.timing_constraints import scenario_tcl_path, timing_scenarios
@@ -62,11 +63,11 @@ def test_workspace_initialization_generates_both_sets_and_refreshes_parameters(
 
 
 @pytest.mark.parametrize("suffix", [".sdc", ".tcl"])
-def test_workspace_with_custom_full_constraints_generates_only_phase_wrappers(
+def test_workspace_with_external_inputs_generates_both_phase_sets(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, suffix
 ):
     custom = tmp_path / f"constraints{suffix}"
-    content = b"# custom \xff\ncreate_clock -period 5 [get_ports clk]\n"
+    content = SDC_INPUT_TEMPLATE.replace(":100", ":200").encode()
     custom.write_bytes(content)
     workspace = create_workspace(
         directory=tmp_path / "run",
@@ -79,18 +80,25 @@ def test_workspace_with_custom_full_constraints_generates_only_phase_wrappers(
     )
     assert workspace is not None
     assert workspace.pdk.sdc is not None
-    assert workspace.pdk.sdc.read_bytes() == content
-    assert {path for path in (workspace.directory / "origin").rglob("*") if path.is_file()} == {
+    snapshot = workspace.directory / "origin" / custom.name
+    assert snapshot.read_bytes() == content
+    scripts = {
+        scenario_tcl_path(workspace.directory, scenario, post_cts=post_cts)
+        for scenario in timing_scenarios(workspace)
+        for post_cts in (False, True)
+    }
+    assert {
+        path for path in (workspace.directory / "origin").rglob("*") if path.is_file()
+    } == scripts | {
         workspace.design.origin_verilog,
-        workspace.pdk.sdc,
-        workspace.directory / "origin/pre_CTS" / f"{custom.name}.ecc.tcl",
-        workspace.directory / "origin/post_CTS" / f"{custom.name}.ecc.tcl",
+        snapshot,
     }
     loaded = load_workspace(workspace.directory)
     assert loaded.pdk.sdc == workspace.pdk.sdc
     refresh_workspace_config(loaded)
     assert loaded.pdk.sdc is not None
-    assert loaded.pdk.sdc.read_bytes() == content
+    assert all("set clk_freq_mhz 200.0" in path.read_text() for path in scripts)
+    assert snapshot.read_bytes() == content
 
 
 def test_refresh_legacy_workspace_rebinds_timing_without_rewriting_base_sdc(
@@ -124,7 +132,7 @@ def test_copied_workspace_uses_its_own_timing_input(
     custom = None
     if custom_suffix is not None:
         custom = tmp_path / f"constraints{custom_suffix}"
-        custom.write_text("create_clock -period 5 [get_ports clk]\n")
+        custom.write_text(SDC_INPUT_TEMPLATE.replace(":100", ":200"))
     workspace = create_workspace(
         directory=tmp_path / "source",
         origin_def="",
@@ -148,12 +156,11 @@ def test_copied_workspace_uses_its_own_timing_input(
     assert save_parameter(loaded.parameters)
     refresh_workspace_config(loaded)
     assert workspace.pdk.sdc.read_bytes() == original
-    if custom_suffix is not None:
+    if custom is not None:
         assert loaded.pdk.sdc is not None
-        for phase in ("pre_CTS", "post_CTS"):
-            wrapper = loaded.directory / "origin" / phase / f"{loaded.pdk.sdc.name}.ecc.tcl"
-            assert str(loaded.pdk.sdc) in wrapper.read_text()
-            assert str(workspace.directory) not in wrapper.read_text()
+        assert loaded.parameters.data["sdc"] == workspace.parameters.data["sdc"]
+        assert "set clk_freq_mhz 200.0" in loaded.pdk.sdc.read_text()
+        assert (destination / "origin" / custom.name).read_bytes() == custom.read_bytes()
 
 
 @pytest.mark.parametrize("override_keys", [("liberty",), ("signoff",), ("liberty", "signoff")])

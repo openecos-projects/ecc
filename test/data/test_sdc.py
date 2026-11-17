@@ -268,83 +268,6 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
     assert workspace.pdk.sdc.read_bytes() == original
 
 
-@pytest.mark.parametrize(
-    "content",
-    [
-        b"# Auto-generated SDC file\ncreate_clock -period 1.5 [get_ports clk]\n",
-        "# 用户时序约束\ncreate_clock -period 1.5 [get_ports clk]\n".encode("gbk"),
-    ],
-)
-@pytest.mark.parametrize("has_io_cells", [False, True])
-@pytest.mark.parametrize("post_cts", [False, True])
-def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
-    workspace, content, has_io_cells, post_cts
-):
-    workspace.pdk.sdc = workspace.directory / "custom.sdc"
-    workspace.pdk.sdc.write_bytes(content)
-    target = workspace.directory / "sta" / "signoff.tcl"
-
-    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
-    actual = signoff_sdc_path(
-        workspace,
-        target,
-        post_cts=post_cts,
-        corner="MAX",
-        rc_para="Cworst",
-        has_io_cells=has_io_cells,
-    )
-
-    phase = "post_CTS" if post_cts else "pre_CTS"
-    assert actual == workspace.directory / "origin" / phase / "custom.sdc.ecc.tcl"
-    assert workspace.pdk.sdc.read_bytes() == content
-    assert not target.exists()
-
-
-@pytest.mark.parametrize("post_cts", [False, True])
-@pytest.mark.parametrize("propagated_input", [False, True])
-def test_custom_timing_wrappers_apply_phase_after_all_user_commands(
-    workspace, sdc_trace, post_cts, propagated_input
-):
-    custom = workspace.directory / "user [literal] $clock {constraints}.sdc"
-    included = workspace.directory / "extra clocks.tcl"
-    included.write_text(
-        "create_clock -name CLK_aux -period 16 [get_ports aux]\n"
-        "set_false_path -from [get_ports reset]\n"
-    )
-    content = (
-        "create_clock -name CLK_clk -period 8 [get_ports clk]\n"
-        "source [file join [file dirname [info script]] {extra clocks.tcl}]\n"
-        "set_input_delay 0.15 -clock CLK_aux [get_ports data]\n"
-    )
-    if propagated_input:
-        content += "if {1} {set_propagated_clock \\\n    [all_clocks]}\n"
-    custom.write_text(content)
-    workspace.pdk.sdc = custom
-    generate_timing_scripts(workspace)
-    path = signoff_sdc_path(
-        workspace,
-        workspace.directory / "unused.tcl",
-        post_cts=post_cts,
-        corner="TYP",
-        rc_para="TYPICAL",
-    )
-    expected = [
-        ("create_clock", "-name", "CLK_clk", "-period", 8.0, "clk"),
-        ("create_clock", "-name", "CLK_aux", "-period", 16.0, "aux"),
-        ("set_false_path", "-from", "reset"),
-        ("set_input_delay", 0.15, "-clock", "CLK_aux", "data"),
-    ]
-    if propagated_input:
-        expected.append(("set_propagated_clock", "CLK_clk CLK_aux"))
-    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
-    expected.append((command, "CLK_clk CLK_aux"))
-    assert sdc_trace(path) == expected
-    assert custom.read_text() == content
-    before = (path.read_bytes(), path.stat().st_mtime_ns)
-    generate_timing_scripts(workspace)
-    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-
-
 def test_generated_names_are_literal_tcl_words(workspace, sdc_trace):
     clock = 'clk[0]$x; [set ::injected 1] " \\ {}'
     workspace.parameters.data["clock"] = clock
@@ -591,25 +514,6 @@ def test_invalid_user_corner_does_not_partially_replace_scenario_files(workspace
     assert {path: path.read_bytes() for path in previous} == previous
 
 
-def test_full_custom_constraints_bypass_user_input_parsing(workspace):
-    custom = workspace.directory / "full.tcl"
-    custom.write_text("# User-owned complete Tcl\nset custom 1\n")
-    workspace.pdk.sdc = custom
-    workspace.parameters.data["sdc"] = {"clock_list": "invalid clock list"}
-    generate_timing_scripts(workspace, has_io_cells=False)
-    assert (
-        signoff_sdc_path(
-            workspace,
-            workspace.directory / "ignored.tcl",
-            post_cts=True,
-            corner="TYP",
-            rc_para="TYPICAL",
-        )
-        == workspace.directory / "origin/post_CTS/full.tcl.ecc.tcl"
-    )
-    assert custom.read_text() == "# User-owned complete Tcl\nset custom 1\n"
-
-
 @pytest.mark.parametrize("has_io_cells", [False, True])
 def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace, has_io_cells):
     workspace.parameters.data.update({"clock": "ref_clk", "frequency_max": 80})
@@ -617,7 +521,7 @@ def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace
     paths = sorted((workspace.directory / "origin").rglob("*.tcl"))
     assert {path.parent.name for path in paths} == {"pre_CTS", "post_CTS"}
     expected = {path: sdc_trace(path) for path in paths}
-    inputs = tomllib.loads(SDC_INPUT_TEMPLATE)["params"]["sdc"]
+    inputs = tomllib.loads(SDC_INPUT_TEMPLATE)
     # Only optional fields are commented examples now; the primary clock is active.
     inputs["clock_list"] = ""
     workspace.parameters.data["sdc"] = inputs

@@ -1,9 +1,9 @@
-"""Editable timing-input section included in new ecc.toml projects."""
+"""Standalone five-field timing input included in new projects."""
 
 SDC_INPUT_TEMPLATE = r"""
-# Edit clock_list below; uncomment optional examples inside the quotes as needed.
-# Used in pre_CTS and post_CTS. Unused optional commands stay commented.
-[params.sdc]
+# ECC timing inputs: five TOML strings, not an executable Tcl script.
+# Edit clock_list; uncomment optional commands inside the quotes as needed.
+# ECC generates pre_CTS and post_CTS constraints from these inputs.
 
 # 1. Primary clocks: each row is <port-or-pin> <corner>:<MHz> ...
 # The first row's TYP value also drives flow metadata.

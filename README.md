@@ -125,7 +125,10 @@ ecc init gcd
 cp /path/to/gcd.v gcd/rtl/gcd.v  # example design: docs/examples/gcd/gcd.v
 ```
 
-`ecc init` generates `gcd/ecc.toml`. Edit it as needed. `pdk.root` is required
+`ecc init` generates `gcd/ecc.toml` and a five-field timing template at
+`gcd/sdc/gcd.tcl` (default clock: `clk`, 100 MHz). Edit the template for your
+design; complete SDC files must first be converted to this input format.
+`pdk.root` is required
 unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
 `--with-toolchain` wrapper does this):
 
@@ -134,8 +137,7 @@ unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
 name = "gcd"
 top = "gcd"
 rtl = ["rtl/gcd.v"]
-clock_port = "clk"
-frequency_mhz = 100.0
+sdc = "sdc/gcd.tcl"
 
 [pdk]
 name = "ics55"

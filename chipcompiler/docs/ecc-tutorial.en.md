@@ -177,8 +177,9 @@ This generates the project skeleton:
 ```
 gcd/
 ├── ecc.toml       # project config (edit as needed in the next step)
+├── project.json   # project identity and workspace registry
 ├── rtl/           # put Verilog sources or a filelist here
-└── constraints/   # reserved for constraints (none needed in this tutorial, see §3.3)
+└── sdc/gcd.tcl    # five-field timing input template, see §3.3
 
 # the workspace is created by the first `ecc run`: `gcd/default/` by default and
 # registered in `project.json`. Create another managed workspace with
@@ -207,14 +208,12 @@ For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [
 name = "gcd"
 top = "gcd"              # top module name
 rtl = ["rtl/gcd.v"]      # a single Verilog file, or a filelist for multi-source designs
+sdc = "sdc/gcd.tcl"      # five-field timing input; edit this file to change clocks
 # Optional entry inputs for a non-RTL range:
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"       # clock port name
-frequency_mhz = 100.0    # target frequency (MHz)
 
 [pdk]
 name = "ics55"           # ics55 is currently the only supported PDK
@@ -241,7 +240,7 @@ ecc project show                              # list what ecc.toml declares
 
 Two things worth knowing:
 
-- **No hand-written SDC needed**: the flow generates `origin/gcd.sdc` from `clock_port` and `frequency_mhz`, with zero input/output delay, separate setup/hold uncertainty, transition and maximum-fanout constraints, and the PDK output load when configured. A user-supplied `design.sdc` is copied unchanged instead;
+- **Timing inputs**: `ecc init` writes five TOML string fields into `sdc/gcd.tcl`, with an active `clk`/100 MHz default. Edit that file, not the project TOML. ECC snapshots it and generates executable Tcl under `origin/pre_CTS/` and `origin/post_CTS/`; complete SDC files must be converted first. See [the timing input format](ecc-config-ref.en.md#17-five-user-written-timing-inputs);
 - **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
 
 ### 3.4 Validate
@@ -404,7 +403,7 @@ Each managed workspace is isolated under `gcd/<workspace-name>/`; `project.json`
 ```
 default/
 ├── home/               # flow.json (step states) + params.toml + checklist.json
-├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
+├── origin/             # frozen gcd.v + gcd.tcl inputs; pre_CTS/ and post_CTS/ scripts
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── Synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── lec_kepler_formal/   # synthesis-level LEC equivalence check

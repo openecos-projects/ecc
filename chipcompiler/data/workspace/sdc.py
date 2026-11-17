@@ -1,7 +1,7 @@
 """Generate pre/post-CTS golden timing-constraint Tcl.
 
 The two scenario sets share golden rules; only post-CTS propagates clocks.
-Custom files retain their design constraints; the flow sets clock propagation.
+User files supply the five structured timing inputs, never a complete SDC.
 """
 
 import re
@@ -98,20 +98,14 @@ def is_generated_sdc(path: Path | None) -> bool:
         return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
 
 
-def custom_step_sdc_path(source: Path, directory: Path, *, post_cts: bool) -> Path:
-    """Source user Tcl unchanged, then apply the flow's final clock state."""
-    phase = "post_CTS" if post_cts else "pre_CTS"
-    target = directory / "origin" / phase / f"{source.name}.ecc.tcl"
-    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
-    text = (
-        f"# ECC {phase} entry for user timing constraints\n"
-        f"source {_tcl_word(str(source.absolute()))}\n"
-        f"{command} [all_clocks]\n"
-    )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists() or target.read_text(encoding="utf-8") != text:
-        write_text_atomic(target, text)
-    return target
+def load_timing_inputs(workspace: "Workspace") -> None:
+    """Resolve a user input file before deriving tool configs and scenario scripts."""
+    source = workspace.pdk.sdc
+    if source is None or is_generated_sdc(source):
+        return
+    inputs = SdcInputs.from_file(source)
+    workspace.parameters.data.update(inputs.parameters())
+    workspace.pdk.sdc = None
 
 
 def signoff_sdc_path(
@@ -124,10 +118,7 @@ def signoff_sdc_path(
     has_io_cells: bool | None = None,
 ) -> Path:
     """Write a standalone scenario with IO rules selected from the loaded design."""
-    source = workspace.pdk.sdc
-    if source is not None and not is_generated_sdc(source):
-        return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
-
+    load_timing_inputs(workspace)
     inputs = SdcInputs.from_parameters(workspace.parameters.data)
     clocks = inputs.clocks(workspace.parameters.data, corner) if inputs.has_clock_inputs else None
     lines = _design_constraints(workspace, clocks, has_io_cells=has_io_cells)

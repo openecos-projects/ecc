@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace, WorkspaceStep
-from chipcompiler.data.workspace.sdc import custom_step_sdc_path, is_generated_sdc
+from chipcompiler.data.workspace.sdc import is_generated_sdc, load_timing_inputs
 from chipcompiler.data.workspace.timing_constraints import (
     generate_timing_scripts,
     scenario_tcl_path,
@@ -30,7 +30,7 @@ def step_tcl_path(
     name = StepEnum.DIFF_SIZING.value if step.name == StepEnum.DIFF_BUFFERING.value else step.name
     post_cts = names.index(name) > names.index(StepEnum.CTS.value)
     if not is_generated_sdc(source):
-        return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
+        generate_timing_scripts(workspace)
     scenario = next(
         (item for item in timing_scenarios(workspace) if (item.corner, item.rc) == (corner, rc)),
         None,
@@ -44,8 +44,9 @@ def prepare_timing_context(
     workspace: Workspace, step: WorkspaceStep, ecc_module: ECCToolsModule | None = None
 ) -> None:
     """Resolve the generated IO rules from fresh iDB data before timing runs."""
-    if not is_generated_sdc(workspace.pdk.sdc):
+    if workspace.pdk.sdc is None:
         return
+    load_timing_inputs(workspace)
     if step.data.dir is None:
         raise ValueError(f"Missing data directory for {step.name} timing context")
     context_path = step.data.dir / "timing_context.json"

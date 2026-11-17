@@ -2,7 +2,9 @@
 
 import math
 import re
-from dataclasses import dataclass, fields
+import tomllib
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,46 @@ class SdcInputs:
     clk_group_txt: str = ""
     io_constraint_txt: str = ""
     timing_exception_txt: str = ""
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "SdcInputs":
+        """Read the five top-level TOML strings; never execute an input as Tcl."""
+        path = Path(path)
+        required = {field.name for field in fields(cls)}
+        try:
+            with path.open("rb") as stream:
+                values = tomllib.load(stream)
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError(
+                f"Invalid timing input {path}: expected five TOML string fields, not a full "
+                "SDC/Tcl script. Convert it to clock_list, generated_clock_txt, clk_group_txt, "
+                "io_constraint_txt and timing_exception_txt."
+            ) from exc
+        if set(values) != required:
+            missing = sorted(required - values.keys())
+            unknown = sorted(values.keys() - required)
+            raise ValueError(
+                f"Invalid timing input {path}: expected the five fields at the file root "
+                f"(no [params.sdc] table); missing={missing}, unknown={unknown}"
+            )
+        inputs = cls.from_parameters({"sdc": values})
+        inputs.primary_clock()
+        return inputs
+
+    def primary_clock(self) -> PrimaryClock:
+        clocks = self.clocks({}, "TYP")
+        if not clocks:
+            raise ValueError("Timing input clock_list requires an uncommented primary-clock row")
+        return clocks[0]
+
+    def parameters(self) -> dict:
+        """Workspace snapshot and legacy single-clock metadata from one source."""
+        primary = self.primary_clock()
+        return {
+            "sdc": asdict(self),
+            "clock": primary.target,
+            "frequency_max": primary.frequency_mhz,
+        }
 
     @classmethod
     def from_parameters(cls, parameters: dict) -> "SdcInputs":

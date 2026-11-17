@@ -2,6 +2,7 @@ import json
 import tomllib
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 
 
 def _ready_project(tmp_path, monkeypatch):
@@ -18,7 +19,8 @@ def _ready_project(tmp_path, monkeypatch):
 
 def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatch):
     project, pdk = _ready_project(tmp_path, monkeypatch)
-    clock_list = "clk MAX:250 WCL:250 MIN:250 ML:250 TYP:250"
+    timing_input = project / "sdc/fast.tcl"
+    timing_input.write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
 
     rc = cli_main.run(
         [
@@ -29,7 +31,7 @@ def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatc
             "--set",
             f"pdk.root={pdk}",
             "--set",
-            f"sdc.clock_list={clock_list}",
+            "design.sdc=sdc/fast.tcl",
             "--set",
             "place.target_density=0.7",
             "--add-rtl",
@@ -40,7 +42,7 @@ def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatc
     assert rc == 0
     config = (project / "ecc.toml").read_text()
     manifest = json.loads((project / "project.json").read_text())
-    assert tomllib.loads(config)["params"]["sdc"]["clock_list"] == clock_list
+    assert tomllib.loads(config)["design"]["sdc"] == "sdc/fast.tcl"
     assert "target_density = 0.7" in config
     assert manifest["base_design"]["pdk_root"] == str(pdk)
     assert manifest["base_design"]["parameters"]["frequency_max"] == 250.0

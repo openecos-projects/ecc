@@ -996,6 +996,8 @@ def _run_project(
         fresh=fresh_target,
         flow_config=flow_config,
         cli_overrides=cli_overrides,
+        # Existing runs consume their frozen timing inputs, not the project's source file.
+        validate_timing_input=fresh_target,
     )
     if errors:
         return CommandResult.err(

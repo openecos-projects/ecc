@@ -48,6 +48,10 @@ def create_project(command_input: InitInput) -> Path:
     default_name = target.name or "project"
     project_name = _nonempty(command_input.project_name, default_name, "Project name")
     design_name = _nonempty(command_input.design_name, default_name, "Design name")
+    if Path(design_name).name != design_name or design_name in {".", ".."}:
+        raise ProjectInitError(
+            "invalid_project", "Design name must be a single filename component", target
+        )
     mpc = _load_mpc(command_input)
 
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=parent))
@@ -166,9 +170,12 @@ def _populate(
     mpc: dict | None,
 ) -> None:
     rtl = staging / "rtl"
-    constraints = staging / "constraints"
+    sdc = staging / "sdc"
     rtl.mkdir()
-    constraints.mkdir()
+    sdc.mkdir()
+    from .timing_template import SDC_INPUT_TEMPLATE
+
+    _write_file(sdc / f"{design_name}.tcl", SDC_INPUT_TEMPLATE)
     config = _default_toml(design_name)
     _write_file(staging / CONFIG_FILENAME, config)
     base_design = {
@@ -177,6 +184,7 @@ def _populate(
         "clock": "clk",
         "rtl_list": [f"rtl/{design_name}.v"],
         "origin_verilog": f"rtl/{design_name}.v",
+        "sdc": f"sdc/{design_name}.tcl",
         "parameters": {
             "design": design_name,
             "top_module": design_name,
@@ -196,21 +204,19 @@ def _populate(
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
     )
     _fsync_directory(rtl)
-    _fsync_directory(constraints)
+    _fsync_directory(sdc)
     _fsync_directory(staging)
 
 
 def _default_toml(design_name: str) -> str:
     from chipcompiler.data import DEFAULT_SKIP_STEPS
 
-    from .timing_template import SDC_INPUT_TEMPLATE
-
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
-    return (
-        f'''[design]
+    return f'''[design]
 name = "{design_name}"
 top = "{design_name}"
 rtl = ["rtl/{design_name}.v"]
+sdc = "sdc/{design_name}.tcl"
 
 [pdk]
 name = "ics55"
@@ -222,8 +228,6 @@ preset = "rtl2gds"
 # Remove diff_opt to enable it; clear the list to also enable synthesis LEC.
 skip_steps = {skip_steps}
 '''
-        + SDC_INPUT_TEMPLATE
-    )
 
 
 def _load_mpc(command_input: InitInput) -> dict | None:

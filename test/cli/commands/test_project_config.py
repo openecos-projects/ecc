@@ -1,7 +1,7 @@
 import json
-import tomllib
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.project.manifest_write import manifest_workspace_entry
 
 
@@ -100,18 +100,12 @@ def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_rec
 
 def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
     project_dir = _manifest_project(tmp_path, monkeypatch)
-    # This command still supports legacy projects with explicit clock metadata.
-    config = project_dir / "ecc.toml"
-    text = config.read_text()
-    clock_list = tomllib.loads(text)["params"]["sdc"]["clock_list"]
-    text = text.replace(f"clock_list = '''\n{clock_list}'''", "clock_list = ''")
-    text = text.replace("[design]", '[design]\nclock_port = "clk"\nfrequency_mhz = 100.0')
-    config.write_text(text)
+    (project_dir / "sdc/fast.tcl").write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
     pdk = tmp_path / "pdk"
     pdk.mkdir()
 
     _run_project(project_dir, "set", "design.top", "gcd_top")
-    _run_project(project_dir, "set", "design.frequency_mhz", "250")
+    _run_project(project_dir, "set", "design.sdc", "sdc/fast.tcl")
     _run_project(project_dir, "set", "pdk.root", str(pdk))
 
     base = _manifest(project_dir)["base_design"]

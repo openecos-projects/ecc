@@ -13,12 +13,15 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import PDK, EccStep, OriginDesign, Parameters, Workspace
 
 
 def _workspace(tmp_path):
     directory = tmp_path / "workspace"
     directory.mkdir(parents=True, exist_ok=True)
+    timing_input = directory / "clock.tcl"
+    timing_input.write_text(SDC_INPUT_TEMPLATE)
     workspace = Workspace(
         directory=directory,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -26,7 +29,7 @@ def _workspace(tmp_path):
             tech=Path("tech.lef"),
             lefs=[Path("std.lef")],
             libs=[Path("slow.lib")],
-            sdc=Path("clock.sdc"),
+            sdc=timing_input,
             spef=Path("route.spef"),
         ),
         parameters=Parameters(data={"bottom_layer": "M2", "top_layer": "M7"}),

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, call
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import (
     PDK,
     EccAnalysis,
@@ -91,6 +92,7 @@ def _power_workspace(tmp_path, monkeypatch):
     spef = tmp_path / "design.spef"
     for path in (liberty, sdc, spef):
         path.write_text("input\n", encoding="utf-8")
+    sdc.write_text(SDC_INPUT_TEMPLATE)
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",
@@ -153,12 +155,13 @@ def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_pat
             "update_step_paths",
             {"output_dir": step.data.dir, "feature_dir": step.feature.dir},
         ),
+        ("feature_sammry", step.data.dir / "timing_context.json"),
         (
             "init_pw",
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
+                "sdc_path": workspace.directory / "origin/post_CTS/TYP_25_TYPICAL.tcl",
                 "spef_path": str(spef),
             },
         ),
@@ -281,12 +284,13 @@ def test_power_analysis_requires_native_power_report(tmp_path, monkeypatch):
             "update_step_paths",
             {"output_dir": step.data.dir, "feature_dir": step.feature.dir},
         ),
+        ("feature_sammry", step.data.dir / "timing_context.json"),
         (
             "init_pw",
             {
                 "output_dir": power_data_dir,
                 "lib_paths": [str(liberty)],
-                "sdc_path": workspace.directory / "origin/post_CTS" / f"{sdc.name}.ecc.tcl",
+                "sdc_path": workspace.directory / "origin/post_CTS/TYP_25_TYPICAL.tcl",
                 "spef_path": str(spef),
             },
         ),
@@ -315,7 +319,8 @@ def test_power_analysis_requires_configured_spef(tmp_path, monkeypatch):
         (
             "update_step_paths",
             {"output_dir": step.data.dir, "feature_dir": step.feature.dir},
-        )
+        ),
+        ("feature_sammry", step.data.dir / "timing_context.json"),
     ]
 
 

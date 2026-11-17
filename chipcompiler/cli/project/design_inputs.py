@@ -81,8 +81,8 @@ def resolve_design_inputs(cfg) -> ResolvedDesignInputs:
 def validate_entry_inputs(cfg, entry_step: str | None) -> list[str]:
     """Validate only files needed by the requested entry step.
 
-    Optional SDC is checked when explicitly declared because it is copied into
-    the workspace instead of generating a default constraint file.
+    Declared timing inputs are copied into the workspace and used to generate
+    its pre/post-CTS scripts; their five-field schema is checked with the config.
     """
     if not entry_step:
         return []

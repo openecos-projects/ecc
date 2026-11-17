@@ -140,10 +140,8 @@ def test_geometry_to_parameters_logs_and_keeps_unknown_flat_keys(caplog):
 
 
 def test_geometry_to_parameters_keeps_registered_subtrees_without_warning(caplog):
-    # `ecc init` writes [params.sdc]; the project then carries it in its
-    # base parameters. A subtree of registered parameters is not unknown.
+    # A subtree of registered parameters is not unknown.
     flat = {
-        "sdc": {"clock_list": "clk MAX:100 TYP:100\n"},
         "dreamplace": {"target_density": 0.5},
         "macro": {"placements": []},
         "geometry": {"clock_tree": True},
@@ -152,6 +150,17 @@ def test_geometry_to_parameters_keeps_registered_subtrees_without_warning(caplog
         result = geometry_to_parameters(flat)
     assert result == flat
     assert not [r.message for r in caplog.records if "unknown GUI parameter key" in r.message]
+
+
+def test_workspace_timing_snapshot_round_trips_without_key_warnings(caplog):
+    import tomllib
+
+    from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+
+    payload = {"sdc": tomllib.loads(SDC_INPUT_TEMPLATE)}
+    with caplog.at_level("WARNING"):
+        assert geometry_to_parameters(payload) == payload
+    assert not caplog.records
 
 
 def test_every_registered_parameter_is_stored_under_a_known_top_level_key():
