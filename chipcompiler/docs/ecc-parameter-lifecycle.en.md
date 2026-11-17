@@ -79,7 +79,14 @@ legalization each resolve `<step dir>/config/dreamplace_ecc.json` from it plus
 that step's values in `[params.step_params.<step>]`. A DreamPlace parameter is
 always set with a step (`<step>:<param>` keys, `--step` on `param apply`,
 `[params.step.<step>]` in `ecc.toml`), only on the steps its schema declares,
-and a change invalidates from that step only.
+and a change invalidates from that step only. A step that is not in the
+workspace's flow is rejected with `unknown_flow_step`, an unqualified key with
+`parameter_step_required`, and a step the parameter does not declare with
+`parameter_not_applicable`. Workspace-wide (non-step) parameters invalidate from
+the earliest flow step that reads any of their target configs, not only from
+the step they declare: `route.bottom_layer` also writes the floorplan db config
+(from pre_floorplan) and `route.top_layer` feeds the DreamPlace gpugr layers
+(from macro_placement/placement).
 
 Each step directory also gets a `params.json` beside `req.json`/`rsp.json`,
 written by the step worker after the tool has finalized its config. It lists

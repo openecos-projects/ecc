@@ -9,6 +9,7 @@ from chipcompiler.data.parameter import get_parameters
 from chipcompiler.data.step_parameters import ParameterStepError, step_parameter_view
 from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.params import (
+    invalid_carried_parameters,
     lookup_schema,
     parse_cli_overrides,
     parse_toml_params,
@@ -17,6 +18,7 @@ from chipcompiler.params import (
     workspace_param_diff,
     workspace_param_value,
 )
+from test.flow_fixture import current_flow_document
 
 
 def _workspace(tmp_path: Path) -> Workspace:
@@ -27,6 +29,10 @@ def _workspace(tmp_path: Path) -> Workspace:
         parameters=get_parameters("ics55"),
     )
     init_workspace_config(workspace)
+    workspace.flow.data = current_flow_document(
+        {"name": name, "tool": "dreamplace", "state": "Unstart"}
+        for name in ("placement", "diff_opt")
+    )
     return workspace
 
 
@@ -109,3 +115,25 @@ def test_a_step_view_replays_the_step_values_as_its_config_patch() -> None:
         "dreamplace": {"target_density": 0.7},
     }
     assert step_parameter_view(parameters, "diff_opt") == parameters
+
+
+def test_carried_step_values_must_name_a_declared_step_of_the_new_flow() -> None:
+    carried = {
+        "step_params": {
+            "placement": {"place.target_density": 0.7},
+            "legalization": {"place.target_density": 0.7},
+        },
+        "workspace_param_overrides": [
+            {"key": "place.timing_sizing_action", "step": "diff_opt", "baseline": "up"},
+            {"key": "cts.skew_bound", "step": "cts", "baseline": "0.1"},
+        ],
+    }
+
+    assert invalid_carried_parameters(carried, "ics55", ["synthesis", "placement"]) == [
+        "place.target_density does not apply to step legalization",
+        "diff_opt:place.timing_sizing_action: step diff_opt is not in the new flow",
+        "cts.skew_bound is workspace-wide but was carried at step cts",
+    ]
+    assert invalid_carried_parameters({"step_params": carried["step_params"]}, "ics55") == [
+        "place.target_density does not apply to step legalization"
+    ]

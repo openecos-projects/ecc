@@ -6,7 +6,6 @@ import math
 import os
 import sys
 from contextlib import contextmanager, suppress
-from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,20 +14,14 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.utility.path import optional_path
 
+from .run_modes import GEOMETRY_ONLY_CONFIG, MODE_FLAGS, DreamplaceRunMode
+
 _LEGALIZE_OWNERS = frozenset(
     {
         StepEnum.LEGALIZATION.value,
         SkippableStepEnum.TIMING_OPT.value,
     }
 )
-
-
-class DreamplaceRunMode(Enum):
-    PLACEMENT = "placement"
-    DIFF_OPT = "diff_opt"
-    DIFF_SIZING = "diff_sizing"
-    MACRO_PLACEMENT = "macro_placement"
-    LEGALIZATION = "legalization"
 
 
 class DreamplaceModule:
@@ -71,31 +64,7 @@ class DreamplaceModule:
 
             config = _apply_diff_sizing_defaults(config)
         elif mode is not DreamplaceRunMode.PLACEMENT:
-            config.update(
-                place_io_engine="ecc",
-                flow_kind="placement",
-                placement_sizing_mode="place_only",
-                sizing_parameterization="logits",
-                diff_timing_driven_placement=0,
-                differentiable_timing_obj=0,
-                with_sta=0,
-                timing_rc_mode="placement",
-                timing_opt_flag=0,
-                timing_eval_flag=0,
-                enable_net_weighting=0,
-                pin2pin_net_weighting=0,
-                timing_opt_enabled=0,
-                inflation_s5b1_enabled=0,
-                routability_opt_flag=0,
-                l_shape_routability_flag=0,
-                adjust_gpugr_area_flag=0,
-                gpugr_final_eval_flag=0,
-                buffering_continuous_relaxed_optimization=False,
-                buffering_segment_count_tns_gradient=False,
-                buffering_segment_strategy="continuous",
-                buffering_candidate_strategy="continuous",
-                joint_segment_virtual_density_enabled=0,
-            )
+            config.update(GEOMETRY_ONLY_CONFIG)
 
         params = params_cls()
         params.fromJson(config)
@@ -114,27 +83,10 @@ class DreamplaceModule:
         params.base_design_name = self.workspace.design.name
 
         params.macro_only = 0
-        if mode is DreamplaceRunMode.MACRO_PLACEMENT:
-            params.macro_only = 1
-            params.detailed_place_flag = 0
-            params.global_place_flag = 1
-            params.macro_place_flag = 1
-            params.legalize_flag = 1
-            params.two_stage_flag = 0
-            params.macro_halo_x = 2000
-            params.macro_halo_y = 2000
-            params.routability_opt_flag = 0
-            params.get_congestion_map = 0
-            params.egr_padding_flag = 0
-        elif mode is DreamplaceRunMode.LEGALIZATION:
-            params.global_place_flag = 0
-            params.legalize_flag = 1
-            # Geometry-only legalization preserves the repaired hold timing.
-            params.detailed_place_flag = 0
-            params.enable_fillers = 0
-            params.random_center_init_flag = 0
-            params.auto_adjust_bins = 1
-            params.post_legalization_adaptive_padding_flag = 0
+        # Already in the step file (``force_mode_config``); the flow defaults
+        # above must not override the stages this mode runs.
+        for name, value in MODE_FLAGS.get(mode, {}).items():
+            setattr(params, name, value)
 
         if mode in (
             DreamplaceRunMode.DIFF_OPT,

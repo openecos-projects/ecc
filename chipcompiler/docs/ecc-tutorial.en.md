@@ -636,16 +636,16 @@ Getting through once is only the start — the daily backend loop is "tweak → 
 ecc param list                          # concise list: legacy parameters and explicit overrides
 ecc param list --step cts               # all reviewed CTS fields
 ecc param list --all                    # complete schema for every step
-ecc param show place.target_density     # one parameter: value/default/range/tool mapping
+ecc param show placement:place.target_density  # one parameter: value/default/range/tool mapping (DreamPlace parameters are set per step: <step>:<param>)
 ecc param diff                          # only those differing from defaults
-ecc param set place.target_density 0.55 # written to ecc.toml (comments & formatting preserved)
+ecc param set placement:place.target_density 0.55 # written to ecc.toml (comments & formatting preserved)
 ecc param set cts.skew_bound 0.05       # change a direct CTS configuration field
 ecc param set cts.routing_layer '[4, 5]' # lists use JSON literals
-ecc param unset place.target_density    # back to default
+ecc param unset placement:place.target_density    # back to default
 # Workspace-local overrides — same commands with --workspace; ecc.toml is NOT touched:
-ecc param set place.target_density 0.60 --workspace exp1   # writes home/params.toml of exp1
+ecc param set placement:place.target_density 0.60 --workspace exp1   # writes home/params.toml of exp1
 ecc param diff --workspace exp1                            # vs. the values exp1 was created with
-ecc param unset place.target_density --workspace exp1      # restore exp1's original value
+ecc param unset placement:place.target_density --workspace exp1      # restore exp1's original value
 ```
 
 Frequently used legacy parameters are `design.frequency_mhz`, `floorplan.core_util`, `place.target_density`, `route.top_layer`, and `sta.max_paths`. Other static tool fields are supplied by per-step schemas; find them with `--step` or `--all`. Workspace input, output, temporary, and generated paths cannot be changed. PDK path parameters use `ecc param set KEY VALUE`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve against `pdk.root`, while `pdk.sdc`/`pdk.spef` are design data resolved against the project directory; keep `pdk.root` on `ecc pdk set-root`. See [User Guide §9](ecc-user-guide.en.md#9-param--parameter-management) (`ecc doc ug`) for the full contract.
@@ -657,7 +657,7 @@ A `--workspace` override marks the parameter's owning step (and everything after
 Name a workspace when creating it; it is automatically registered in `project.json`:
 
 ```bash
-ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.55
+ecc run --workspace exp1 --preset rtl2gds --set placement:place.target_density=0.55
 ecc status --workspace exp1
 ecc report qor --workspace exp1
 ```
@@ -680,7 +680,7 @@ ecc run --workspace default --resume
 
 ```bash
 ecc run --workspace default --overwrite            # rebuild default (with safety checks; deletes only the actual ECC workspace directory)
-ecc run --workspace default --overwrite --set place.target_density=0.55
+ecc run --workspace default --overwrite --set placement:place.target_density=0.55
 ```
 
 The same `--overwrite` rerun is also how an existing workspace picks up changes to its **entry inputs, PDK paths, or `flow.preset`** — those alter the workspace's input snapshot or flow structure. To rebuild the workspace from the current `ecc.toml` *without* running it, use the dedicated command (handy before a batch of runs). Like every fresh workspace target, refresh still runs the startup tool preflight for the selected range, so the flow's tools must be installed first:
@@ -811,7 +811,7 @@ Example goal: **shrink area** — raise utilization and placement density, keep 
 # 1. Fresh experiment workspace: --set is recorded for this creation only —
 #    ecc.toml and default are untouched
 ecc run --workspace exp-area --preset rtl2gds \
-  --set floorplan.core_util=0.6 --set place.target_density=0.45
+  --set floorplan.core_util=0.6 --set placement:place.target_density=0.45
 
 # 2. Look at both workspaces' QoR
 ecc report qor --workspace default
@@ -845,13 +845,13 @@ Keeping the winner: keep using `--workspace exp-area`, or make it the project co
 When a full rebuild is not warranted, use a workspace-local override — only the owning step and its suffix are invalidated:
 
 ```bash
-ecc param set place.target_density 0.50 --workspace exp-area   # invalidates place and its suffix only
-ecc run --workspace exp-area                                    # resumes from place
+ecc param set placement:place.target_density 0.50 --workspace exp-area   # invalidates placement and its suffix only
+ecc run --workspace exp-area                                    # resumes from placement
 ecc param diff --workspace exp-area                             # current overrides vs creation-time values
-ecc param unset place.target_density --workspace exp-area      # restore the original value
+ecc param unset placement:place.target_density --workspace exp-area      # restore the original value
 ```
 
-The invalidation scope follows the parameter's owning step (`param set` prints `invalidated_steps`): `place.*` invalidates from place onward (cheap — only the back half of the physical flow reruns); `design.frequency_mhz` invalidates from Synthesis onward (the whole chain — for frequency changes prefer a fresh workspace).
+The invalidation scope follows the parameter (`param set` prints `invalidated_steps`): a step-scoped parameter such as `placement:place.target_density` invalidates from the step in its key onward (cheap — only the back half of the physical flow reruns); a workspace-wide parameter invalidates from the earliest flow step that reads any of its target configs (`route.bottom_layer` also writes the floorplan db config, so it invalidates from pre_floorplan; `route.top_layer` feeds the DreamPlace gpugr layers, so it invalidates from macro_placement/placement); `design.frequency_mhz` invalidates from Synthesis onward (the whole chain — for frequency changes prefer a fresh workspace).
 
 ### 7.5 Finding the next knob from the QoR report
 
@@ -869,7 +869,7 @@ Scoring profiles (`balanced` / `timing_critical` / `low_power` / `area_optimized
 To try several values of one parameter in one go, use sweep — it builds an isolated workspace per candidate and never touches the baseline:
 
 ```bash
-ecc sweep create --name density --param place.target_density=0.30,0.45,0.60
+ecc sweep create --name density --param placement:place.target_density=0.30,0.45,0.60
 ecc sweep run --name density            # runs candidates in order, resumable; --max-candidates N smokes the first N
 ecc sweep compare --name density        # table of all candidates
 ecc explore rank --name density         # passed-first, descending-QoR ranking

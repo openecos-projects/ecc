@@ -1,5 +1,14 @@
 import os
 
+from chipcompiler.cli.command_handlers.param_step_values import (
+    config_target_str,
+    list_record,
+    maps_to_str,
+    pdk_target_str,
+    step_diff_records,
+    step_list_records,
+    value_at_step,
+)
 from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
@@ -8,10 +17,8 @@ from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import validate_pdk_target
 from chipcompiler.data.step_parameters import (
-    is_step_scoped,
     parse_step_key,
     split_step_key,
-    step_key,
 )
 from chipcompiler.params import (
     display_key_for,
@@ -85,7 +92,8 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+    pdk = _project_pdk(ctx)
+    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
     selected_step = str(getattr(args, "step", None) or "")
     show_all = bool(getattr(args, "all", False))
     preset = getattr(ctx.config, "flow_preset", "")
@@ -104,63 +112,14 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             continue
         if selected_step and not s.listed_at(selected_step, first_flow_step):
             continue
-        _value, source = _value_at_step(rp, toml_overrides, selected_step or None)
+        _value, source = value_at_step(rp, toml_overrides, selected_step or None)
         if selected_step or show_all or not s.has_direct_target or source != "default":
-            records.append(_list_record(ctx, rp, toml_overrides, selected_step or None))
-        if not selected_step and is_step_scoped(s):
+            records.append(list_record(ctx, rp, toml_overrides, selected_step or None, pdk))
+        if not selected_step:
             # Without a step, also list each step value ecc.toml sets ([params.step.<step>]).
-            records.extend(
-                _list_record(ctx, rp, toml_overrides, step, qualified=True)
-                for step in s.steps
-                if step_key(step, s.param) in toml_overrides
-            )
+            records.extend(step_list_records(ctx, rp, toml_overrides, pdk))
 
     return CommandResult.ok(records)
-
-
-def _value_at_step(rp, toml_overrides: dict, step: str | None) -> tuple[object, str]:
-    """*rp*'s project value and source at *step* (``[params.step.<step>]`` for a step value)."""
-    if step is None or not is_step_scoped(rp.schema):
-        return rp.value, rp.source
-    key = step_key(step, rp.param)
-    if key in toml_overrides:
-        return toml_overrides[key], "ecc.toml"
-    return rp.default, "default"
-
-
-def _list_record(
-    ctx: CommandContext, rp, toml_overrides: dict, step: str | None, *, qualified: bool = False
-) -> dict:
-    """One ``param list`` row; *qualified* names the step in the key (``placement:place.x``)."""
-    s = rp.schema
-    project = ctx.project
-    value, source = _value_at_step(rp, toml_overrides, step)
-    param = step_key(step, s.param) if qualified and step is not None else s.param
-    record = {
-        "param": param,
-        "group": s.group,
-        "name": s.name,
-        "value": value,
-        "default": rp.default,
-        "source": source,
-        "type": s.type,
-        "applies": s.applies,
-        "maps_to": _maps_to_str(s.maps_to),
-        "description": s.description,
-        "inspect": disclosure_cmd(f"ecc param show {param}", project),
-    }
-    if s.config_target is not None:
-        record["config_target"] = _config_target_str(s.config_target)
-    if s.pdk_target is not None:
-        record["pdk_target"] = _pdk_target_str(s.pdk_target)
-    if s.range is not None:
-        record["range"] = f"[{s.range[0]}, {s.range[1]}]"
-    choices = s.choices_for(_project_pdk(ctx))
-    if choices is not None:
-        record["choices"] = ", ".join(choices)
-    if s.unit is not None:
-        record["unit"] = s.unit
-    return record
 
 
 def _parameter_catalog_records() -> list[dict[str, object]]:
@@ -212,7 +171,7 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
-    if step is not None and key_error is not None:
+    if key_error is not None:
         return _step_key_error(key, step, key_error)
 
     toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
@@ -222,7 +181,7 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         )
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
     rp = next(r for r in resolved if r.param == schema.param)
-    value, source = _value_at_step(rp, toml_overrides, step)
+    value, source = value_at_step(rp, toml_overrides, step)
 
     record = {
         "param": key,
@@ -231,16 +190,16 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         "source": source,
         "type": schema.type,
         "applies": schema.applies,
-        "maps_to": _maps_to_str(schema.maps_to),
+        "maps_to": maps_to_str(schema.maps_to),
         "description": schema.description,
         "inspect": disclosure_cmd(f"ecc param show {key}", ctx.project),
         "set": disclosure_cmd(f"ecc param set {key}", ctx.project),
         "run": disclosure_cmd(f"ecc run --set {key}=<value>", ctx.project),
     }
     if schema.config_target is not None:
-        record["config_target"] = _config_target_str(schema.config_target)
+        record["config_target"] = config_target_str(schema.config_target)
     if schema.pdk_target is not None:
-        record["pdk_target"] = _pdk_target_str(schema.pdk_target)
+        record["pdk_target"] = pdk_target_str(schema.pdk_target)
     if schema.range is not None:
         record["range"] = f"[{schema.range[0]}, {schema.range[1]}]"
     choices = schema.choices_for(_project_pdk(ctx))
@@ -454,17 +413,7 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
                     "source": rp.source,
                 }
             )
-        for step in rp.schema.steps if is_step_scoped(rp.schema) else ():
-            value, source = _value_at_step(rp, toml_overrides, step)
-            if value != rp.default:
-                records.append(
-                    {
-                        "param": step_key(step, rp.param),
-                        "value": value,
-                        "default": rp.default,
-                        "source": source,
-                    }
-                )
+        records.extend(step_diff_records(rp, toml_overrides))
 
     if not records:
         return CommandResult.ok([{"diff_status": "clean"}])
@@ -635,28 +584,6 @@ def _parse_parameter_values(
             raise ValueError(f"{key}: {errors[0]}")
         result[key] = value
     return result
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _maps_to_str(maps_to):
-    if maps_to is None:
-        return ""
-    if isinstance(maps_to, str):
-        return maps_to
-    parts = [f"{k}.{v}" for k, v in maps_to.items()]
-    return ", ".join(parts)
-
-
-def _config_target_str(target) -> str:
-    return f"{target.config_key}:{'.'.join(target.json_path)}"
-
-
-def _pdk_target_str(target: str) -> str:
-    return f"pdk.overrides:{target}"
 
 
 def _registered_workspace_names(project_dir: str) -> list[str]:
