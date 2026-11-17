@@ -146,10 +146,13 @@ def test_export_adds_additional_files_next_to_the_deliverables(monkeypatch, tmp_
     )
 
     with tarfile.open(output_path, "r:gz") as archive:
-        root = "design_signoff_package/"
-        assert archive.extractfile(root + "harden/design.gds").read() == LAYOUT
-        assert archive.extractfile(root + "manifest.json").read() == MANIFEST
-        assert archive.extractfile(root + "design_summaries/design_summary.md").read() == (
-            b"summary\n"
-        )
-        assert archive.extractfile(root + "harden/notes.txt").read() == b"notes\n"
+        assert _member(archive, "harden/design.gds") == LAYOUT
+        assert _member(archive, "manifest.json") == MANIFEST
+        assert _member(archive, "design_summaries/design_summary.md") == b"summary\n"
+        assert _member(archive, "harden/notes.txt") == b"notes\n"
+
+
+def _member(archive: tarfile.TarFile, name: str) -> bytes:
+    member = archive.extractfile("design_signoff_package/" + name)
+    assert member is not None
+    return member.read()
