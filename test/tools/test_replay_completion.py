@@ -4,8 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.tools.replay import capture_step, capture_subflow
-from chipcompiler.tools.replay_artifacts import freeze_geometry
+from chipcompiler.tools.replay_artifacts import reference_geometry
 from chipcompiler.tools.replay_completion import finalize, prepare
+from chipcompiler.tools.replay_integrity import fingerprint
 from chipcompiler.tools.replay_metrics import attach_comparisons
 
 
@@ -55,18 +56,25 @@ def test_parent_failure_cannot_publish_tool_success(tmp_path):
     assert pointer["status"] == "unavailable"
 
 
-def test_freeze_geometry_owns_every_side_file(tmp_path):
+def test_geometry_reference_owns_content_identity_without_copying_side_files(tmp_path):
     source = tmp_path / "geometry"
     source.mkdir()
     (source / "nodes.bin").write_bytes(b"original")
     manifest = source / "geometry.manifest"
     manifest.write_text("schema_version=1\nclock_tree_meta=nodes.bin\nclock_tree_nodes=nodes.bin\n")
-    destination = tmp_path / "attempt"
-    result = freeze_geometry(manifest, destination)
+    result = reference_geometry(manifest)
+    expected = {
+        "manifest": "geometry.manifest",
+        "clock_tree": True,
+        "files": {
+            "geometry.manifest": fingerprint(manifest),
+            "nodes.bin": fingerprint(source / "nodes.bin"),
+        },
+    }
+    assert result == {"shared_geometry": expected}
     (source / "nodes.bin").write_bytes(b"changed")
-    frozen = destination / result["frozen_clock_tree"]
-    assert (frozen.parent / "clock_tree_nodes.bin").read_bytes() == b"original"
-    assert all(len(item["sha256"]) == 64 for item in result["artifact_files"])
+    assert fingerprint(source / "nodes.bin") != expected["files"]["nodes.bin"]
+    assert sorted(p.name for p in source.iterdir()) == ["geometry.manifest", "nodes.bin"]
 
 
 def test_missing_fresh_checklist_does_not_reuse_previous_success(tmp_path):

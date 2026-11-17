@@ -183,6 +183,7 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
     started_unix_ns = time.time_ns()
     attempt = attempt_id
     enabled = False
+    log_capture = None
     try:
         try:
             from chipcompiler.tools.replay_completion import prepare
@@ -212,6 +213,9 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                     ECC_REPLAY_STEP=step.name,
                     ECC_REPLAY_SAMPLE_ITERATIONS=str(interval),
                 )
+                from chipcompiler.tools.replay_log import LogCapture
+
+                log_capture = LogCapture.start(workspace, step, capture.parent, started)
         except Exception as error:
             logger.warning("Replay setup failed for %s: %s", step.name, error)
             for key in ENV_KEYS:
@@ -228,6 +232,13 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                     logger.warning("Cannot record Replay setup failure", exc_info=True)
         yield outcome
     finally:
+        log_result = {}
+        if log_capture is not None:
+            try:
+                log_result = log_capture.finish()
+            except (OSError, ValueError) as error:
+                logger.warning("Replay log finalization failed: %s", error)
+                log_result = {"log_unavailable": str(error)}
         for key in ENV_KEYS:
             os.environ.pop(key, None)
             previous_value = previous[key]
@@ -243,6 +254,7 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                     capture_started_fs_ns,
                     workspace.directory,
                 )
+                results.update(log_result)
                 results["capture_started_fs_ns"] = capture_started_fs_ns
                 if not outcome["ok"]:
                     from chipcompiler.tools.replay_diagnostics import require_evidence

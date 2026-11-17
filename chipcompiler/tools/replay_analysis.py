@@ -9,12 +9,11 @@ import hashlib
 import json
 import logging
 import math
-import shutil
 from collections import defaultdict
 from pathlib import Path
 
+from chipcompiler.tools.replay_analysis_compact import compact_analysis
 from chipcompiler.tools.replay_harden import lef_views, liberty_views
-from chipcompiler.tools.replay_rcx import network_views
 from chipcompiler.tools.replay_reports import deliverables, formal, rcx
 from chipcompiler.tools.replay_storage import atomic_json, within
 
@@ -45,7 +44,12 @@ def violations(path, kind):
     rows = document if kind == "drc" else document.get("violations", [])
     groups = defaultdict(list)
     for row in rows:
-        item = {"label": str(row.get("type", kind)), "details": row, "bboxes": []}
+        details = {
+            key: value
+            for key, value in row.items()
+            if key not in {"type", "shape", "shapes", "location", "net", "instance"}
+        }
+        item = {"label": str(row.get("type", kind)), "details": details, "bboxes": []}
         if kind == "drc":
             item["bboxes"] = [_box(row["shape"][:4])]
             item["nets"] = row.get("net") or []
@@ -76,12 +80,29 @@ def timing(path):
     for row in document.get("paths", []):
         item = {
             "label": f"{row.get('start_point', '?')} → {row.get('end_point', '?')}",
-            "instances": [
-                stage["instance"] for stage in row.get("stages", []) if stage.get("instance")
-            ],
-            "pins": [stage["pin"] for stage in row.get("stages", []) if stage.get("pin")],
             "value": _number(row["slack_ns"]),
-            "details": row,
+            "details": {
+                **{
+                    key: row[key]
+                    for key in (
+                        "analysis_type",
+                        "start_point",
+                        "end_point",
+                        "slack_ns",
+                        "arrival_ns",
+                        "required_ns",
+                    )
+                    if key in row
+                },
+                "stages": [
+                    {
+                        key: stage[key]
+                        for key in ("instance", "pin", "kind", "incremental_delay_ns")
+                        if key in stage
+                    }
+                    for stage in row.get("stages", [])
+                ],
+            },
         }
         groups[row.get("analysis_type", "timing")].append(item)
     corner = document.get("corner", path.parent.name)
@@ -109,34 +130,23 @@ def power(path):
         json.loads(metadata_path.read_text()) if "lx" in columns and metadata_path.is_file() else {}
     )
     views = []
+    # Coordinates are already in the step's geometry. Validate a spatial report
+    # if supplied, but keep only names/values; the native viewer orders the sweep.
+    if "lx" in columns:
+        for row in rows:
+            _box([int(row[key]) for key in ("lx", "ly", "hx", "hy")])
     for component in ("total", "internal", "switching", "leakage"):
         column = f"{component}_power_w"
         if column not in columns:
             continue
 
-        def bbox(row):
-            if "lx" not in columns:
-                return []
-            return [_box([int(row[key]) for key in ("lx", "ly", "hx", "hy")])]
-
         items = [
             {
                 "label": row["instance_name"],
-                "instances": [row["instance_name"]],
                 "value": _number(row[column]),
-                "bboxes": bbox(row),
-                "details": row,
             }
             for row in rows
         ]
-        # Reveal the heatmap in a stable floorplan sweep.
-        items.sort(
-            key=lambda item: (
-                item["bboxes"][0][1] if item["bboxes"] else 0,
-                item["bboxes"][0][0] if item["bboxes"] else 0,
-                item["label"],
-            )
-        )
         views.append(
             _view(
                 f"Instance {component} power",
@@ -171,7 +181,7 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
             ("output/geometry/power/instance_power_geometry.tsv", power),
             ("data/pw/power_reporter/instance_power.tsv", power),
         ],
-        "RCX": [("output/*.spef", lambda p: rcx(p) + network_views(p, Path(step.input.def_)))],
+        "RCX": [("output/*.spef", rcx)],
         "lec": [("output/*_result.json", formal)],
         "postRouteLec": [("output/*_result.json", formal)],
         "Harden": [
@@ -203,14 +213,13 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
             try:
                 source = within(root, path)
                 parsed = parse(source)
-                destination.mkdir(parents=True, exist_ok=True)
-                target = destination / "sources" / source.relative_to(root)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
-                digest = hashlib.sha256(target.read_bytes()).hexdigest()
+                # The parsed display payload is self-contained. Provenance does
+                # not require another full copy of SPEF/TSV/JSON/LEF/LIB reports.
+                with source.open("rb") as stream:
+                    digest = hashlib.file_digest(stream, "sha256").hexdigest()
                 for view in parsed:
                     view["source"] = {
-                        "path": target.relative_to(directory).as_posix(),
+                        "report": source.relative_to(root).as_posix(),
                         "sha256": digest,
                     }
                     view["basis"] = "final"
@@ -253,6 +262,6 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
                         },
                     }
                 )
-    payload = {"schema": "ecos.replay.analysis.v1", "views": views, "unavailable": unavailable}
+    payload = compact_analysis(views, unavailable)
     atomic_json(destination / "index.json", payload)
     return {"analysis": f"{relative}/index.json", "analysis_view_count": len(views)}

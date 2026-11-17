@@ -1,7 +1,6 @@
-"""Convert captured Yosys netlists into compact logical views, retaining raw evidence."""
+"""Keep the logical summary used by Replay; discard staging-only raw netlists."""
 
 import json
-import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -56,7 +55,6 @@ def collect_logical(directory: Path):
         summary = summarize(json.loads(source.read_text()))
         folder = directory / f"subflows/logical-{sequence:03d}/overlays"
         folder.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, folder / "netlist.json")
         atomic_json(folder / "logic.json", summary)
         atomic_json(
             capture / f"logical-{sequence:03d}.json",

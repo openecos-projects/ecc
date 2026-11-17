@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.tools.replay_analysis import collect_analysis
-from chipcompiler.tools.replay_artifacts import freeze_geometry
+from chipcompiler.tools.replay_artifacts import reference_geometry
 from chipcompiler.tools.replay_storage import within
 
 
@@ -45,7 +45,8 @@ def completion_checklist(
 
 
 def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=None) -> dict:
-    result: dict[str, object] = {"result_metrics": current_metrics(step, started_unix_ns)}
+    metrics = current_metrics(step, started_unix_ns)
+    result: dict[str, object] = {"result_metrics": metrics}
     result.update(collect_analysis(step, directory, started_unix_ns))
     if step.name in {"lec", "postRouteLec"}:
         output_json = getattr(getattr(step, "output", None), "json", None)
@@ -58,10 +59,24 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
                 verdict = json.loads(Path(output_json).read_text()).get("status", "unknown")
             except (OSError, ValueError):
                 verdict = "unavailable"
-            result["result_metrics"].append(
-                {"id": "equivalence", "display_name": "Equivalence", "value": verdict}
-            )
+            metrics.append({"id": "equivalence", "display_name": "Equivalence", "value": verdict})
     feature = getattr(getattr(step, "feature", None), "dir", None)
+    if feature:
+        frozen_features = []
+        for suffix in ("db.json", "step.json"):
+            source = Path(feature) / f"{step.name}.{suffix}"
+            if source.is_file() and source.stat().st_mtime_ns >= started_unix_ns:
+                if workspace_dir:
+                    source = within(Path(workspace_dir), source)
+                if source.stat().st_size > 16 * 1024 * 1024:
+                    continue
+                relative = f"subflows/results/features/{suffix}"
+                target = directory / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+                frozen_features.append(relative)
+        if frozen_features:
+            result["result_feature_files"] = frozen_features
     if workspace_dir:
         geometry_manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
         if geometry_manifest:
@@ -71,7 +86,7 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
                 resolved = manifest_path.resolve()
                 if resolved.is_file() and resolved.stat().st_mtime_ns >= started_unix_ns:
                     within(workspace_path, resolved)
-                    result.update(freeze_geometry(resolved, directory))
+                    result.update(reference_geometry(resolved))
             except (OSError, ValueError) as error:
                 result["geometry_unavailable"] = str(error)
     if step.name != "place" or not feature:

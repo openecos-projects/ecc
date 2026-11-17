@@ -6,7 +6,6 @@ from pathlib import Path
 
 from chipcompiler.tools.ecc.metrics import (
     _SPEF_CAPACITANCE_UNIT_TO_FF,
-    _SPEF_RESISTANCE_UNIT_TO_OHM,
     _spef_entry_value,
     _spef_unit_scale,
 )
@@ -14,7 +13,7 @@ from chipcompiler.tools.ecc.metrics import (
 
 def rcx(path: Path):
     names, items = {}, []
-    cap_scale = res_scale = None
+    cap_scale = None
     section, current = "", None
     with path.open() as stream:
         for line in stream:
@@ -26,8 +25,6 @@ def rcx(path: Path):
                 section = "names"
             elif directive == "*C_UNIT":
                 cap_scale = _spef_unit_scale(tokens, _SPEF_CAPACITANCE_UNIT_TO_FF)
-            elif directive == "*R_UNIT":
-                res_scale = _spef_unit_scale(tokens, _SPEF_RESISTANCE_UNIT_TO_OHM)
             elif directive == "*D_NET":
                 total = _spef_entry_value(tokens)
                 if total is None or cap_scale is None:
@@ -35,34 +32,28 @@ def rcx(path: Path):
                 name = names.get(tokens[1], tokens[1])
                 current = {
                     "label": name,
-                    "nets": [name],
                     "value": total * cap_scale,
-                    "details": {"capacitance_ff": total * cap_scale, "resistance_sum_ohm": 0.0},
                 }
                 items.append(current)
                 section = ""
-            elif directive == "*RES":
-                section = "res"
             elif directive == "*END":
                 current, section = None, ""
             elif section == "names" and directive.startswith("*") and directive[1:].isdigit():
                 names[directive] = " ".join(tokens[1:])
             elif directive.startswith("*"):
                 section = ""
-            elif section == "res" and current is not None:
-                resistance = _spef_entry_value(tokens)
-                if resistance is None or res_scale is None:
-                    raise ValueError("Missing valid SPEF resistance units or value")
-                current["details"]["resistance_sum_ohm"] += resistance * res_scale
     return [
         {
-            "label": f"{path.stem} · net capacitance",
+            "label": f"{path.stem} · SPEF extraction",
             "kind": "rcx",
             "unit": "fF",
             "items": items,
             "summary": {
                 "reported_nets": len(items),
-                "resistance_note": "Sum of segments; not effective path resistance",
+                "display": (
+                    "Extraction result replay on native routed nets; "
+                    "display order is not extraction chronology"
+                ),
             },
         }
     ]

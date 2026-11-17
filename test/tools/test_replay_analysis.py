@@ -16,10 +16,17 @@ def test_drc_results_freeze_native_positions_and_do_not_reuse_old_report(tmp_pat
     payload = json.loads((attempt / result["analysis"]).read_text())
     view = payload["views"][0]
     assert view["items"] == [
-        {"label": "cut_spacing", "details": row, "bboxes": [[1, 2, 3, 4]], "nets": ["n"]}
+        {
+            "label": "cut_spacing",
+            "details": {"original_layer": "V1"},
+            "bboxes": [[1, 2, 3, 4]],
+            "nets": ["n"],
+        }
     ]
     report.write_text("[]")
-    assert json.loads((attempt / view["source"]["path"]).read_text()) == [row]
+    assert json.loads((attempt / result["analysis"]).read_text())["views"][0] == view
+    assert view["source"]["report"] == "data/drc/violation_map.json"
+    assert not (attempt / "subflows/analysis/overlays/sources").exists()
     os.utime(report, ns=(1, 1))
     result = collect_analysis(step, tmp_path / "new", 2)
     assert result["analysis_view_count"] == 0
@@ -52,7 +59,10 @@ def test_timing_retains_corner_slack_and_pin_path_without_guessing_geometry(tmp_
     result = collect_analysis(step, tmp_path / "attempt", 0)
     view = json.loads((tmp_path / "attempt" / result["analysis"]).read_text())["views"][0]
     assert view["label"] == "slow · setup"
-    assert view["items"][0]["pins"] == ["a/Q", "b/D"]
+    assert view["items"][0]["details"]["stages"] == [
+        {"instance": "a", "pin": "a/Q"},
+        {"instance": "b", "pin": "b/D"},
+    ]
     assert view["items"][0]["value"] == -0.2
     assert "bboxes" not in view["items"][0]
 
@@ -131,16 +141,17 @@ def test_power_geometry_is_preferred_frozen_and_stale_or_invalid_geometry_falls_
     attempt = tmp_path / "a"
     result = collect_analysis(step, attempt, 2)
     (view,) = json.loads((attempt / result["analysis"]).read_text())["views"]
-    assert view["items"][0]["bboxes"] == [[1, 2, 3, 4]]
+    assert view["items"] == [{"instance_ref": 0, "value": 0.31}]
+    assert json.loads((attempt / result["analysis"]).read_text())["instances"] == ["a"]
     assert view["summary"]["spatial_coverage"] == metadata
-    source = attempt / view["source"]["path"]
+    source = attempt / result["analysis"]
     frozen = source.read_text()
     os.utime(spatial, ns=(1, 1))
     result = collect_analysis(step, tmp_path / "b", 2)
     (fallback,) = json.loads((tmp_path / "b" / result["analysis"]).read_text())["views"]
-    assert fallback["items"][0]["bboxes"] == []
+    assert fallback["items"] == [{"instance_ref": 0, "value": 0.31}]
     spatial.write_text("instance_name\tlx\tly\thx\thy\ttotal_power_w\na\t3\t2\t1\t4\t0.31\n")
     result = collect_analysis(step, tmp_path / "c", 2)
     (fallback,) = json.loads((tmp_path / "c" / result["analysis"]).read_text())["views"]
-    assert fallback["items"][0]["bboxes"] == []
+    assert fallback["items"] == [{"instance_ref": 0, "value": 0.31}]
     assert source.read_text() == frozen
