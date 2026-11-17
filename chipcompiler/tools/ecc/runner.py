@@ -979,9 +979,9 @@ def run_harden(
 
         from chipcompiler.tools.replay_events import export_phase
 
-        with export_phase("lef", step.output.lef or ""):
+        with export_phase("lef", str(step.output.lef or "")):
             ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
-        with export_phase("lib", step.output.lib or ""):
+        with export_phase("lib", str(step.output.lib or "")):
             ecc_module.write_timing_model(
                 output_lib_path=step.output.lib or "",
                 config=sta_config,
@@ -995,7 +995,7 @@ def run_harden(
         if not layer_map_path:
             workspace.logger.error("Cannot harden without a PDK GDS layer map")
             return False
-        with export_phase("gds", step.output.gds or ""):
+        with export_phase("gds", str(step.output.gds or "")):
             ecc_module.gds_save(
                 output_path=step.output.gds or "",
                 layer_map_path=layer_map_path,
