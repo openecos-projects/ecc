@@ -49,21 +49,15 @@ class DreamplaceModule:
         self.input_verilog = optional_path(input_verilog)
         self.output_def = optional_path(output_def)
         self.output_verilog = optional_path(output_verilog)
-        self.param_path = workspace.config["dreamplace"]
+        from .builder import step_config_path
+
+        self.param_path = step_config_path(workspace, step)
         self.result_dir = str(step.data.workdir_for(step.name))
 
     def _build_params(self, params_cls, *, mode: DreamplaceRunMode):
-        param_path = self.param_path
-        if mode in (
-            DreamplaceRunMode.DIFF_OPT,
-            DreamplaceRunMode.DIFF_SIZING,
-        ):
-            from .builder import step_config_path
-
-            generated_path = step_config_path(self.workspace, self.step)
-            if generated_path.is_file():
-                param_path = generated_path
-        with open(param_path, encoding="utf-8") as f_reader:
+        if not self.param_path.is_file():
+            raise FileNotFoundError(f"DreamPlace step config is missing: {self.param_path}")
+        with open(self.param_path, encoding="utf-8") as f_reader:
             config = json.load(f_reader)
         if config.get("cell_model_schema") is None:
             config.pop("cell_model_schema", None)

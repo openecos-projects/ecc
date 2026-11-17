@@ -54,7 +54,7 @@ def test_step_config_keeps_cli_overrides_above_nested_workspace_settings(
         input_verilog=tmp_path / "input.v",
     )
     init_workspace_config(workspace)
-    config_path = workspace.config["dreamplace"]
+    config_path = dreamplace_builder.step_config_path(workspace, step)
     expected = dict(
         gpugr_backend="cpu_pr_mt",
         l_shape_routability_flag=1,

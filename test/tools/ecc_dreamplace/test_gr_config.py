@@ -49,7 +49,11 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     step = EccStep(
         name=StepEnum.PLACEMENT.value,
         data=EccData(steps={StepEnum.PLACEMENT.value: tmp_path / "pl"}),
+        directory=tmp_path / "placement",
     )
+    step_config = tmp_path / "placement" / "config" / "dreamplace_ecc.json"
+    step_config.parent.mkdir(parents=True)
+    step_config.write_text(path.read_text())
     module = DreamplaceModule(workspace, step, None, None, None, None, None)
     actual = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
     assert {key: getattr(actual, key) for key in values} == {

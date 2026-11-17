@@ -173,7 +173,8 @@ class FakeDreamplaceParams:
 
 
 def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
-    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path = tmp_path / "placement" / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True)
     json_write(
         config_path,
         {
@@ -191,6 +192,7 @@ def test_routability_runtime_flags_are_config_driven(tmp_path) -> None:
     step = WorkspaceStep(
         name=StepEnum.PLACEMENT.value,
         data=step_data,
+        directory=tmp_path / "placement",
     )
     module = DreamplaceModule(
         workspace=workspace,
