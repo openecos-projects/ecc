@@ -190,7 +190,7 @@ def _stub_run_preflight(monkeypatch):
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.run_preflight.pdk_issues",
-        lambda pdk, step_names: [],
+        lambda pdk, step_names, **kwargs: [],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.run_preflight.config_issues",

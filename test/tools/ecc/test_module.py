@@ -416,7 +416,9 @@ def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module.destroy_drc()
     module.feature_placement_map(Path("/ws/feature/placement.map.json"))
     module.init_mj(Path("/ws/data/mj"))
-    module.run_filler(Path("/ws/config/filler.json"))
+    filler_config = tmp_path / "filler.json"
+    filler_config.write_text('{"MJ": {"-filler": "FILL1"}}')
+    module.run_filler(filler_config)
     module.destroy_mj()
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))

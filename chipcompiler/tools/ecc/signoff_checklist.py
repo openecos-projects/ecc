@@ -690,6 +690,10 @@ def _flow_items(workspace: Workspace) -> list[dict]:
                 if advisory
                 else f"Current flow state is {states.get(step) or 'missing'}."
             )
+        if step == StepEnum.EMIR.value:
+            from chipcompiler.tools.ecc.emir_model import model_notice
+
+            summary = " ".join(part for part in (summary, model_notice(workspace)) if part)
         items.append(
             _item(
                 item_id=f"flow.{step.lower()}.completed",

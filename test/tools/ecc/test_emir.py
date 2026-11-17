@@ -35,7 +35,7 @@ def test_description_without_em_model_does_not_inject_synthetic_data(
         origin_verilog=Path(__file__).parents[2] / "fixtures/gcd/gcd.v",
         pdk="ics55",
         pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk"),
-        parameters={},
+        parameters={"config_overrides": {"emir": {"synthetic_model": ""}}},
     )
     assert workspace is not None
     config_path = workspace.config[StepEnum.EMIR.value]
@@ -77,6 +77,7 @@ def emir_case(tmp_path, monkeypatch):
     template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
     config = json_read(template)
     config["technology_file_path"] = str(tmp_path / "process.tech")
+    (tmp_path / "process.tech").write_text("# Test process model\n")
     assert json_write(workspace.config[StepEnum.EMIR.value], config)
     step = builder.build_step(
         workspace,
@@ -245,6 +246,28 @@ def test_emir_publishes_native_reports_after_save(emir_case):
         ("run EMIR", "Success"),
         ("save data", "Success"),
     ]
+
+
+def test_emir_publishes_synthetic_model_provenance(emir_case):
+    from chipcompiler.pdk.manifest import file_digest
+    from chipcompiler.tools.ecc.emir_model import SYNTHETIC_NOTICE
+
+    workspace, step, module, _save_data = emir_case
+    assert builder.__file__ is not None
+    model = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
+    config = json_read(workspace.config["emir"])
+    config["technology_file_path"] = str(model)
+    json_write(workspace.config["emir"], config)
+    write_native_emir_reports(step, "ir.rpt")
+
+    assert runner.run_step(workspace, step, module) is True
+    assert json_read(step.report.dir / "model.json") == {
+        "technology_file_path": str(model),
+        "sha256": file_digest(model),
+        "model_kind": "synthetic",
+        "qualification": "not_for_signoff",
+        "notice": SYNTHETIC_NOTICE,
+    }
 
 
 def test_emir_missing_native_reports_does_not_change_save_result(emir_case):

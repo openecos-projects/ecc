@@ -274,8 +274,6 @@ def _refresh_emir_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
     config["technology_file_path"] = str(technology_path)
     json_write(config_path, config)
-
-
 def _has_new_floorplan_schema(config: dict) -> bool:
     die_builder = config.get("die_builder")
     macro_placer = config.get("macro_placer")
@@ -526,14 +524,9 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
 
-    filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
-    filler = json_read(filler_path)
-    if not isinstance(filler, dict):
-        raise FileNotFoundError(f"Filler config missing or corrupt: {filler_path}")
-    min_filler_width = filler.get("-min_filler_width")
-    if min_filler_width is None:
-        raise ValueError(f"filler config requires -min_filler_width: {filler_path}")
-    json_write(filler_path, {"-min_filler_width": min_filler_width})
+    from .filler_config import refresh_filler_config
+
+    refresh_filler_config(workspace)
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     if not cts:
@@ -575,8 +568,13 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
     from .config_manifest import record_derived_config
     from .config_overrides import apply_config_overrides
+    from .filler_config import refresh_filler_config
 
     apply_config_overrides(workspace.config, workspace.parameters.data)
+    refresh_filler_config(workspace)
+    from chipcompiler.tools.ecc.emir_model import refresh_emir_config
+
+    refresh_emir_config(workspace)
     cts_path = workspace.config[f"{StepEnum.CTS.value}"]
     cts = json_read(cts_path)
     if not cts.get("buffer_type") and workspace.pdk.buffers:

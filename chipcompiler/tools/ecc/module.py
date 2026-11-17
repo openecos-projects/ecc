@@ -756,6 +756,10 @@ class ECCToolsModule:
         return self.ecc.init_mj(config_dict={"-temp_directory_path": os.fspath(output_dir)})
 
     def run_filler(self, config: PathArg) -> bool:
+        from chipcompiler.utility import json_read
+
+        if not json_read(os.fspath(config)).get("MJ", {}).get("-filler", "").strip():
+            raise ValueError("Select PDK filler roles or set filler.-filler before insertion")
         return self.ecc.insert_filler(config=config)
 
     def check_antenna(self, step_json: PathArg | None = None) -> bool:

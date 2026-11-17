@@ -1,5 +1,7 @@
 """Stage guards for description-backed inputs, before tool output is created."""
 
+from pathlib import Path
+
 from .manifest import Descriptor
 from .validation import validate_resources
 
@@ -24,16 +26,35 @@ _STEP_STAGE = {
 }
 
 
-def stage_diagnostics(pdk, steps) -> list[dict[str, str]]:
+def stage_diagnostics(pdk, steps, *, emir_config: dict | None = None) -> list[dict[str, str]]:
     if not pdk.description:
         return []
     descriptor = Descriptor.model_validate(pdk.description)
-    readiness = validate_resources(pdk.root, descriptor)["stages"]
+    validation = validate_resources(pdk.root, descriptor)
+    readiness = validation["stages"]
     diagnostics = []
     stages = {_STEP_STAGE[step] for step in steps if step in _STEP_STAGE}
     for stage in sorted(stages):
         missing = readiness[stage]["missing_roles"]
-        if not readiness[stage]["resources_ready"]:
+        ready = readiness[stage]["resources_ready"]
+        if stage == "emir" and missing == ["em"]:
+            from chipcompiler.tools.ecc.emir_model import model_config, resolve_model
+
+            from .manifest import DescriptorError
+
+            try:
+                model = resolve_model(
+                    pdk, model_config(pdk) if emir_config is None else emir_config
+                )
+                # Resource validation still reports missing foundry EM data. An
+                # explicit ECC test model can satisfy execution preflight only.
+                ready = (
+                    bool(model.path and Path(model.path).is_file())
+                    and not validation["diagnostics"]
+                )
+            except DescriptorError as exc:
+                diagnostics.append({"stage": stage, "message": str(exc)})
+        if not ready:
             diagnostics.append(
                 {"stage": stage, "message": f"missing or invalid resources: {missing}"}
             )

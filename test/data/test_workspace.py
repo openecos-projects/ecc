@@ -984,7 +984,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
     init_workspace_config(workspace)
 
     filler = json_read(workspace.config["filler"])
-    assert filler == {"-min_filler_width": 1}
+    assert filler == {"MJ": {"-filler": " ".join(workspace.pdk.fillers)}, "-min_filler_width": 1}
 
 
 def test_refresh_workspace_config_updates_all_parameter_derived_fields(
@@ -1049,7 +1049,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert cts["skew_bound"] == "0.13"
-    assert filler == {"-min_filler_width": 1}
+    assert filler == {"MJ": {"-filler": " ".join(workspace.pdk.fillers)}, "-min_filler_width": 1}
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
     assert routing["RT"]["-top_routing_layer"] == "MET6"

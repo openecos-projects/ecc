@@ -25,7 +25,9 @@ def make_ics55_parameters():
         defaults = json.loads(
             (Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json").read_text()
         )
-        parameters.data["dreamplace"] = {"buffering_fixed_buffer_master": "fixture_buffer"}
+        parameters.data.setdefault("dreamplace", {})["buffering_fixed_buffer_master"] = (
+            "fixture_buffer"
+        )
         parameters.data["config_overrides"] = {"sta": defaults["sta"]}
         if overrides:
             update_parameters(overrides, parameters.data)

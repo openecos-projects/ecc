@@ -173,7 +173,9 @@ def test_fresh_target_pdk_preflight_does_not_require_generated_sdc(tmp_path, mon
     )
     monkeypatch.setattr("chipcompiler.data.pdk.get_pdk", lambda *args, **kwargs: pdk)
 
-    issues = pdk_issues_for_config(SimpleNamespace(pdk_name="ics55"), ["filler", "sta"])
+    from chipcompiler.cli.project.config import ProjectConfig
+
+    issues = pdk_issues_for_config(ProjectConfig(pdk_name="ics55"), ["filler", "sta"])
 
     assert issues == []
 
@@ -198,7 +200,8 @@ def test_config_preflight_reports_missing_emir_technology_file(tmp_path):
             "status": "fail",
             "required": True,
             "detail": str(emir_config),
-            "remediation": "Set technology_file_path in config/emir_ecc.json.",
+            "remediation": "Select an EM resource with ecc pdk configure; for ICS55 flow testing "
+            "only, set emir.synthetic_model to ics55 with ecc param set.",
         }
     ]
 

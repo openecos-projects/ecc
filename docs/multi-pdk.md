@@ -80,15 +80,25 @@ namespaces include `timing.default_view` (backend Liberty selection),
 `synthesis.primitive_mappings`. Unknown typed settings are rejected. Raw native
 configurations remain subject to their backend's validation.
 
-STA path entries must resolve to declared Liberty resources. EMIR consumes the
-single declared `em` resource; absent authentic data stays unavailable. The generic
-runtime never substitutes the synthetic ICS55 EM model. Macro halo is configured
+STA path entries must resolve to declared Liberty resources. EMIR prefers the
+single declared `em` resource. For flow validation, an ICS55 adaptation may
+explicitly select `tools.configs.emir.synthetic_model: "ics55"` (or the public
+parameter `emir.synthetic_model`). The bundled fixture has invented electrical
+values: its config, log, model report and checklist label it **NOT FOR SIGNOFF**.
+It does not register an authentic EM resource or qualify process signoff.
+An empty selection disables this fallback; other processes never inherit it.
+Macro halo is configured
 as `tools.configs.dreamplace.macro_halo_microns` and converted using actual LEF DBU.
 
 Drafts may be incomplete. Validation separates file readiness from backend
 support and process qualification; readable files do not certify physical signoff.
 A Liberty-only package can create a synthesis workspace with explicit SDC and
 `synthesis_libraries`; requesting physical steps reports missing resources.
+
+For the reviewed ICS55 9T defaults and update procedure, see
+[ICS55 v2 stage configuration](ics55-v2-defaults.md). Version-specific changes
+apply to the selected ECC-managed adaptation, without editing PDK files or
+configurations locked by existing projects.
 
 ## Shared library and independent defaults
 
