@@ -290,11 +290,69 @@ def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected)
         [1],
         ["lec", "route"],
         ["bogus"],
+        ["CTS"],  # CTS requires flow.no_clock
     ],
 )
 def test_resolve_skip_steps_rejects_invalid_values(raw):
     with pytest.raises(ValueError, match="skip_steps"):
         builder_module.resolve_skip_steps({"skip_steps": raw})
+
+
+def test_resolve_skip_steps_no_clock_always_omits_cts():
+    assert builder_module.resolve_skip_steps({"no_clock": True}) == (
+        "lec",
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
+        SkippableStepEnum.CTS.value,
+        "Timing optimization",
+    )
+    assert builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": []}) == (
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
+        SkippableStepEnum.CTS.value,
+        "Timing optimization",
+    )
+    assert builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": ["lec", "CTS"]}) == (
+        "lec",
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
+        SkippableStepEnum.CTS.value,
+        "Timing optimization",
+    )
+
+
+def test_resolve_no_clock_and_materials_for_cts_skip():
+    decision = builder_module.resolve_no_clock({}, materials={"clock_port": ""})
+    assert decision.enabled and decision.source == "inferred"
+    assert builder_module.resolve_skip_steps({"skip_steps": []}, materials={"clock": ""}) == (
+        "preplace",
+        "diff_opt",
+        "diff_sizing",
+        SkippableStepEnum.CTS.value,
+        "Timing optimization",
+    )
+    # Named clock without flag: CTS listing still rejected.
+    with pytest.raises(ValueError, match="CTS"):
+        builder_module.resolve_skip_steps({"skip_steps": ["CTS"]}, materials={"clock_port": "clk"})
+
+
+def test_build_rtl2gds_flow_no_clock_skips_cts_via_policy():
+    skip = builder_module.resolve_skip_steps({"no_clock": True, "skip_steps": ["lec"]})
+    names = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow(skip=skip)]
+    assert SkippableStepEnum.CTS.value not in names
+    assert "lec" not in names
+    for omitted in (
+        SkippableStepEnum.PREPLACE.value,
+        SkippableStepEnum.DIFF_OPT.value,
+        SkippableStepEnum.DIFF_SIZING.value,
+        SkippableStepEnum.TIMING_OPT.value,
+    ):
+        assert omitted not in names
+    # place still chains into legalization without the placement/timing stages
+    assert names.index(StepEnum.PLACEMENT.value) < names.index(StepEnum.LEGALIZATION.value)
 
 
 def test_filter_flow_steps_removes_entries_without_reordering():
