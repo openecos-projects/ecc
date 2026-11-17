@@ -269,7 +269,7 @@ def test_reapply_restores_the_dreamplace_step_value(tmp_path):
     receipt = materialize_candidate_config(
         workspace,
         "placement",
-        [{"knob_id": "place.routability_opt", "value": True}],
+        [{"knob_id": "place.routability_opt", "value": False}],
         candidate_id="place-candidate",
     )
     params_path = tmp_path / "home" / "params.toml"
@@ -278,7 +278,7 @@ def test_reapply_restores_the_dreamplace_step_value(tmp_path):
     assert reapply_materialized_candidate_config(workspace, "placement") == receipt
     assert workspace.parameters.data == load_parameter(params_path).data
     assert workspace.parameters.data["step_params"] == {
-        "placement": {"place.routability_opt_flag": 1}
+        "placement": {"place.routability_opt_flag": 0}
     }
 
 
@@ -317,6 +317,25 @@ def test_materialize_rejects_noop_without_writing_artifacts(tmp_path):
             "placement",
             [{"knob_id": "place.target_density", "value": 0.8}],
             candidate_id="noop-candidate",
+        )
+
+    assert params_path.read_bytes() == before
+    assert not (tmp_path / "analysis" / "candidate_materialization.v1.json").exists()
+    assert not (tmp_path / "analysis" / "candidate_config_snapshots.v1").exists()
+
+
+def test_materialize_rejects_baseline_value_without_writing_artifacts(tmp_path):
+    workspace = _workspace(tmp_path)
+    params_path = tmp_path / "home" / "params.toml"
+    before = params_path.read_bytes()
+
+    # The DreamPlace baseline holds target_density 0.8 and no step value is stored.
+    with pytest.raises(CandidateMaterializationError, match="did not change config"):
+        materialize_candidate_config(
+            workspace,
+            "placement",
+            [{"knob_id": "place.target_density", "value": 0.8}],
+            candidate_id="baseline-noop-candidate",
         )
 
     assert params_path.read_bytes() == before

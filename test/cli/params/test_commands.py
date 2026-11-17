@@ -6,7 +6,9 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.data.step_parameters import is_step_scoped, step_key
 from chipcompiler.params import lookup_schema
+from chipcompiler.rtl2gds import get_flow_builders
 
 
 class TestParamList:
@@ -540,7 +542,16 @@ class TestConfigResolved:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         param_records = [r for r in records if r.get("kind") == "param"]
-        assert [record["key"] for record in param_records] == semantic_parameter_ids
+        # A step-scoped parameter is shown per declared step of the rtl2gds flow.
+        flow_steps = {str(step) for step, _tool, _state in get_flow_builders()["rtl2gds"]()}
+        expected = []
+        for param in semantic_parameter_ids:
+            schema = lookup_schema(param)
+            if is_step_scoped(schema):
+                expected.extend(step_key(s, param) for s in schema.steps if s in flow_steps)
+            else:
+                expected.append(param)
+        assert [record["key"] for record in param_records] == expected
         first_param = param_records[0]
         assert "source" in first_param
         assert "maps_to" in first_param

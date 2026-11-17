@@ -9,6 +9,7 @@ from pathlib import Path
 from chipcompiler.data.types import StepEnum
 from chipcompiler.utility.path import path_is_within
 
+from .candidate_verification import verify_candidate_step_configs
 from .data.candidate_artifacts import validate_candidate_id
 from .data.candidate_input_binding import reapply_candidate_input_binding
 from .data.candidate_materialization import (
@@ -38,7 +39,6 @@ from .workspace_api import (
     _reapply_candidate_input,
     _required_file_sha256,
     _run_candidate_steps,
-    _verify_candidate_step_configs,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
 )
@@ -98,7 +98,7 @@ def _candidate_resume(api, session, request: CandidateResumeRequest, observer) -
         _prepare_candidate_rerun(candidate_workspace, flow, steps)
         _notify_candidate_resume_prepared(observer, steps, manifest["target_step"])
         _run_candidate_steps(flow, steps, observer)
-        _verify_candidate_step_configs(
+        verify_candidate_step_configs(
             candidate_workspace,
             rerun_request,
             executed_steps=steps,

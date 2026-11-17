@@ -827,3 +827,35 @@ def test_config_resolved_pdk_overrides_absent(
         assert by_key["design.top"]["resolved"] == "gcd"
         assert by_key["design.top"]["source"] == "project.json"
         assert by_key["pdk.name"]["resolved"] == "ics55"
+
+
+def test_config_renders_step_scoped_params_per_step(
+    tmp_path,
+    capsys,
+    create_cli_project,
+    mock_pdk_validation,
+    plain_records,
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write("\n[params.step.placement.place]\ntarget_density = 0.7\n")
+
+    rc = cli_main.run(["config", "--plain", "--project", project_dir])
+    assert rc == 0
+    params = [
+        item
+        for item in plain_records(capsys.readouterr().out)
+        if item.get("param", item.get("config", "")).split(":")[-1].startswith("place.")
+    ]
+    keys = [item.get("param", item.get("config")) for item in params]
+    assert "place.target_density" not in keys
+    density = next(i for i in params if "placement:place.target_density" in i.values())
+    assert (density["value"], density["source"]) == ("0.7", "ecc.toml")
+
+    for item in params:
+        command = item["inspect"].split()
+        assert command[:3] == ["ecc", "param", "show"], item
+        assert ":" in command[3], item
+        assert cli_main.run(command[1:]) == 0, item
+        capsys.readouterr()
