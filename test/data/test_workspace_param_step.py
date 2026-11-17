@@ -44,3 +44,9 @@ def test_pdk_content_parameters_need_a_full_workspace_refresh(param: str) -> Non
         workspace_param_step(schema)
     with pytest.raises(ValueError, match="requires a full workspace refresh"):
         workspace_param_value(SimpleNamespace(), schema)
+
+
+def test_a_routing_layer_invalidates_from_placement_whose_gpugr_layers_it_sets() -> None:
+    workspace = _workspace("synthesis", "placement", "cts", "routing")
+
+    assert workspace_param_step(_schema("route.top_layer"), workspace) == "placement"
