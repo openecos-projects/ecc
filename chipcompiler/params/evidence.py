@@ -25,26 +25,6 @@ logger = logging.getLogger(__name__)
 
 EVIDENCE_FILE = "params.json"
 
-# ``ParamSchema.applies`` groups that span several flow steps.
-_APPLIES_ALIASES = {
-    "synthesis": {"synthesis"},
-    "floorplan": {"pre_floorplan", "macro_placement", "post_floorplan"},
-    "placement": {"placement", "macro_placement"},
-    "fixfanout": {"fixfanout"},
-}
-
-
-def _applies_to_step(applies: str, step_name: str) -> bool:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    step = normalize_flow_step(step_name).casefold()
-    for part in (item.strip() for item in applies.split(",")):
-        if part == "all":
-            return True
-        if step in _APPLIES_ALIASES.get(part.casefold(), {normalize_flow_step(part).casefold()}):
-            return True
-    return False
-
 
 def _source(parameters: Mapping[str, object], schema: ParamSchema) -> str:
     """The layer a value came from: workspace edit, recorded creation layer, or default."""
@@ -88,13 +68,16 @@ def _config_values(
 
 def build_step_parameter_record(workspace: Any, step_name: str, tool: str) -> dict[str, Any]:
     """Step-applicable parameters with value, default and source, plus the config they reach."""
+    from chipcompiler.rtl2gds import normalize_flow_step
+
     parameters: Mapping[str, object] = workspace.parameters.data
     pdk = str(parameters.get("pdk") or "") or None
+    step = normalize_flow_step(step_name)
     schemas = sorted(
         (
             schema
             for schema in list_schemas()
-            if schema.pdk_target is None and _applies_to_step(schema.applies, step_name)
+            if schema.pdk_target is None and (schema.workspace_wide or schema.applies_to(step))
         ),
         key=lambda schema: schema.param,
     )

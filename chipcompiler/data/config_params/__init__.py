@@ -38,6 +38,7 @@ def validate_config_registry() -> list[str]:
         seen.add(schema.param)
         if schema.config_target is None and schema.pdk_target is None:
             errors.append(f"config parameter missing target: {schema.param}")
+        errors.extend(schema.applies_errors())
         if schema.extra_config_targets and schema.config_target is None:
             errors.append(f"extra config targets need a primary target: {schema.param}")
         if any(target.element is not None for target in schema.config_targets) and not (

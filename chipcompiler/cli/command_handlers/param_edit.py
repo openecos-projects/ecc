@@ -70,8 +70,8 @@ def edit_and_apply(
     if isinstance(rows, CommandResult):
         return rows
     if group:
-        identity = normalize_flow_step(group).casefold()
-        rows = [row for row in rows if identity in _row_steps(row)]
+        identity = normalize_flow_step(group)
+        rows = [row for row in rows if _row_applies_to(row, identity)]
         if not rows:
             return CommandResult.err([error_record("unknown_step", step=group)])
     if not rows:
@@ -165,7 +165,6 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     from chipcompiler.cli.command_handlers.param import (
         _load_toml_overrides,
         _manifest_mode_error,
-        _parameter_flow_steps,
         _project_pdk,
     )
     from chipcompiler.params import resolve_parameters
@@ -181,7 +180,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         )
     builder = get_flow_builders().get(getattr(ctx.config, "flow_preset", ""))
     in_flow = (
-        {normalize_flow_step(step).casefold() for step, _tool, _state in builder()}
+        {normalize_flow_step(step) for step, _tool, _state in builder()}
         if builder is not None
         else set()
     )
@@ -190,9 +189,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     return [
         _row(item.schema, item.value, item.default, overridden=item.is_explicit, pdk=pdk)
         for item in resolved
-        if not in_flow
-        or item.schema.applies == "all"
-        or _parameter_flow_steps(item.schema.applies) & in_flow
+        if not in_flow or item.schema.workspace_wide or in_flow.intersection(item.schema.steps)
     ]
 
 
@@ -241,16 +238,12 @@ def _row(
     )
 
 
-def _row_steps(row: "ParamRow") -> set[str]:
-    """The step spellings ``--step`` matches for *row*: its group and the step it applies to."""
+def _row_applies_to(row: "ParamRow", step: str) -> bool:
+    """Whether *row*'s parameter is declared for the flow *step* ``--step`` names."""
     from chipcompiler.params import lookup_schema
 
     schema = lookup_schema(row.param)
-    applies = schema.applies if schema is not None else row.group
-    return {
-        normalize_flow_step(row.group).casefold(),
-        *(normalize_flow_step(part.strip()).casefold() for part in applies.split(",")),
-    }
+    return schema is not None and schema.applies_to(step)
 
 
 def value_text(value: object) -> str:

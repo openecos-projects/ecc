@@ -643,14 +643,7 @@ def _step_catalog(workspace: Any, step_id: str):
     schemas = tuple(
         schema
         for schema in list_schemas()
-        if schema.pdk_target is None
-        and (
-            any(
-                normalize_flow_step(part.strip()).casefold() == identity
-                for part in schema.applies.split(",")
-            )
-            or (schema.applies == "all" and identity == first)
-        )
+        if schema.pdk_target is None and schema.listed_at(identity, first)
     )
     return step, schemas
 

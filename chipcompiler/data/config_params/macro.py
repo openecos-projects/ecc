@@ -7,7 +7,7 @@ SCHEMAS = (
         name="manual_placement",
         type="bool",
         default=False,
-        applies="floorplan",
+        applies="pre_floorplan",
         maps_to={"macro": "manual_placement"},
         description=(
             "Require manual hard-macro placement. When true, macro_placement stops "
