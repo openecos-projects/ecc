@@ -498,6 +498,7 @@ def test_a_fork_can_open_its_parameters_right_away(completed_source, scripted_te
 def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_source):
     from chipcompiler.cli.command_handlers.param_edit import workspace_rows
     from chipcompiler.cli.core.types import CommandContext, OutputMode
+    from chipcompiler.data.step_parameters import split_step_key
     from chipcompiler.params import lookup_schema, workspace_param_step
 
     project, _source, _steps = completed_source
@@ -524,9 +525,10 @@ def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_sour
     rows = workspace_rows(ctx, steps=["placement", "cts"])
 
     assert isinstance(rows, list)
-    affected = {workspace_param_step(lookup_schema(row.param)) for row in rows}
+    keys = [split_step_key(row.param) for row in rows]
+    affected = {workspace_param_step(lookup_schema(param), None, step) for step, param in keys}
     assert affected <= {"placement", "cts", None}
-    assert {"place.target_density", "cts.max_fanout"} <= {row.param for row in rows}
+    assert {"placement:place.target_density", "cts.max_fanout"} <= {row.param for row in rows}
 
 
 def test_workspace_parameters_edited_in_the_terminal_change_only_that_workspace(
@@ -561,8 +563,8 @@ def test_workspace_parameters_edited_in_the_terminal_change_only_that_workspace(
     assert cli_main.run(edit) == 0
 
     branch = workspace_param_diff(load_workspace(project / "branch"))
-    assert [(record["key"], record["value"]) for record in branch] == [
-        ("place.target_density", 0.65)
+    assert [(record["key"], record["step"], record["value"]) for record in branch] == [
+        ("place.target_density", "placement", 0.65)
     ]
     assert workspace_param_diff(load_workspace(source)) == []
 

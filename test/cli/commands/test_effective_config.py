@@ -608,14 +608,14 @@ class TestManifestParameterValidation:
         ("param", "value", "expected"),
         [
             (
-                "place.random_seed",
+                "placement:place.random_seed",
                 "3001",
-                {"dreamplace": {"random_seed": 3001}},
+                {"step_params": {"placement": {"place.random_seed": 3001}}},
             ),
             (
                 "route.RT.-enable_timing",
                 "1",
-                {"routing": {"RT": {"-enable_timing": "1"}}},
+                {"config_overrides": {"routing": {"RT": {"-enable_timing": "1"}}}},
             ),
         ],
     )
@@ -645,7 +645,8 @@ class TestManifestParameterValidation:
         )
 
         assert rc == 0
-        assert flow_mocks.capture["create_kwargs"]["parameters"]["config_overrides"] == expected
+        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+        assert {key: parameters[key] for key in expected if key in parameters} == expected
 
     def test_run_set_direct_config_parameter_warns_on_different_toml_value(
         self, tmp_path, capsys, monkeypatch, flow_mocks, manifest_stubs
@@ -656,7 +657,7 @@ class TestManifestParameterValidation:
             monkeypatch,
             100,
             ecc_toml=self._hybrid_toml(project_dir=tmp_path / "proj", frequency=False)
-            + "\n[params.place]\nrandom_seed = 3000\n",
+            + '\n[params.route.RT]\n"-enable_timing" = "0"\n',
         )
 
         rc = cli_main.run(
@@ -669,7 +670,7 @@ class TestManifestParameterValidation:
                 "--to",
                 "synthesis",
                 "--set",
-                "place.random_seed=3001",
+                "route.RT.-enable_timing=1",
                 "--plain",
             ]
         )
@@ -681,12 +682,12 @@ class TestManifestParameterValidation:
             if record.get("warning") == "config_layer_diverged"
         ]
         assert len(warnings) == 1
-        assert "place.random_seed" in warnings[0]["keys"]
+        assert "route.RT.-enable_timing" in warnings[0]["keys"]
 
     @pytest.mark.parametrize(
         ("section", "key", "value"),
         [
-            ("[params.place]", "random_seed", "3001"),
+            ("[params.step.placement.place]", "random_seed", "3001"),
             ("[params.route.RT]", '"-enable_timing"', '"1"'),
         ],
     )

@@ -9,6 +9,13 @@ from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
 )
+from chipcompiler.data.step_parameters import (
+    check_parameter_step,
+    is_step_scoped,
+    set_step_value,
+    step_value,
+    unset_step_value,
+)
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
@@ -18,10 +25,11 @@ PARAM_SOURCES_KEY = "_param_sources"
 _MISSING = object()
 
 
-def workspace_param_step(schema, workspace=None) -> str | None:
+def workspace_param_step(schema, workspace=None, step: str | None = None) -> str | None:
     """The earliest flow step a parameter change invalidates.
 
-    A workspace-wide parameter invalidates the Workspace's first step; a
+    A step-scoped parameter invalidates the *step* whose value changed; a
+    workspace-wide parameter invalidates the Workspace's first step; a
     parameter naming several steps resolves against the Workspace's flow.
     Without a Workspace the declared order decides (``"all"`` for a
     workspace-wide parameter).
@@ -30,6 +38,8 @@ def workspace_param_step(schema, workspace=None) -> str | None:
         return None
     if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
+    if is_step_scoped(schema) and step is not None:
+        return check_parameter_step(schema, step)
     # Only multi-step and workspace-wide parameters need the flow to pick their step.
     flow_names = (
         [str(step.get("name", "")) for step in workspace.flow.steps()]
@@ -41,9 +51,21 @@ def workspace_param_step(schema, workspace=None) -> str | None:
     return next((name for name in flow_names if schema.applies_to(name)), schema.steps[0])
 
 
-def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
+def workspace_param_value(
+    workspace, schema, *, step: str | None = None, strict: bool = False
+) -> object:
+    """The value *schema* holds in *workspace* (at *step* for a step-scoped parameter).
+
+    A step-scoped parameter reads the step's stored value, else the value
+    the workspace baseline config carries; generated step configs are never
+    read, since they are stale until the step runs again.
+    """
     if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
+    if step is not None and is_step_scoped(schema):
+        stored = step_value(workspace.parameters.data, step, schema.param, _MISSING)
+        if stored is not _MISSING:
+            return stored
     pdk = str(workspace.parameters.data.get("pdk") or "") or None
     default = schema.default_for(pdk)
     if schema.maps_to is not None:
@@ -88,42 +110,78 @@ def _config_target_value(workspace, schema, default: object, *, strict: bool) ->
     return elements
 
 
-def set_workspace_param(workspace, schema, value: object) -> tuple[object, str | None]:
-    baseline = update_workspace_param_value(workspace, schema, value)
-    return baseline, workspace_param_step(schema, workspace)
+def set_workspace_param(
+    workspace, schema, value: object, step: str | None = None
+) -> tuple[object, str | None]:
+    baseline = update_workspace_param_value(workspace, schema, value, step=step)
+    return baseline, workspace_param_step(schema, workspace, _scope(schema, step))
 
 
-def update_workspace_param_value(workspace, schema, value: object) -> object:
+def update_workspace_param_value(
+    workspace, schema, value: object, *, step: str | None = None
+) -> object:
+    """Journal and apply *value*; a step-scoped parameter needs its *step*.
+
+    Raises :class:`~chipcompiler.data.step_parameters.ParameterStepError`
+    for a missing or inapplicable step.
+    """
+    scope = check_parameter_step(schema, _scope(schema, step))
     records = _override_records(workspace.parameters.data)
-    record = next((item for item in records if item["key"] == schema.param), None)
+    record = _find_record(records, schema.param, scope)
     if record is None:
         record = {
             "key": schema.param,
-            "baseline": deepcopy(workspace_param_value(workspace, schema)),
+            "baseline": deepcopy(workspace_param_value(workspace, schema, step=scope)),
         }
+        if scope is not None:
+            record["step"] = scope
+            # Unset removes the step value again unless the step already had one.
+            record["stored"] = (
+                step_value(workspace.parameters.data, scope, schema.param, _MISSING) is not _MISSING
+            )
         records.append(record)
     record["value"] = deepcopy(value)
     _set_override_records(workspace.parameters.data, records)
-    _apply_workspace_value(workspace, schema, value)
+    _apply_workspace_value(workspace, schema, value, scope)
     return record["baseline"]
 
 
-def unset_workspace_param(workspace, schema) -> tuple[object, str | None] | None:
+def unset_workspace_param(
+    workspace, schema, step: str | None = None
+) -> tuple[object, str | None] | None:
+    scope = check_parameter_step(schema, _scope(schema, step))
     records = _override_records(workspace.parameters.data)
-    record = next((item for item in records if item["key"] == schema.param), None)
+    record = _find_record(records, schema.param, scope)
     if record is None:
         return None
     records.remove(record)
     _set_override_records(workspace.parameters.data, records)
-    _apply_workspace_value(workspace, schema, record["baseline"])
-    return record["baseline"], workspace_param_step(schema, workspace)
+    if scope is not None and not record.get("stored", True):
+        unset_step_value(workspace.parameters.data, scope, schema.param)
+    else:
+        _apply_workspace_value(workspace, schema, record["baseline"], scope)
+    return record["baseline"], workspace_param_step(schema, workspace, scope)
+
+
+def _scope(schema, step: str | None) -> str | None:
+    """The journal scope of an edit: its step for a step-scoped parameter, else none."""
+    return step if is_step_scoped(schema) else None
+
+
+def _find_record(records: list[dict], param: str, step: str | None) -> dict | None:
+    return next(
+        (item for item in records if item["key"] == param and item.get("step") == step), None
+    )
 
 
 def workspace_param_diff(workspace) -> list[dict]:
     return _override_records(workspace.parameters.data)
 
 
-def _apply_workspace_value(workspace, schema, value: object) -> None:
+def _apply_workspace_value(workspace, schema, value: object, step: str | None = None) -> None:
+    if step is not None:
+        set_step_value(workspace.parameters.data, step, schema.param, value)
+        return
     resolved = ResolvedParam(schema.param, value, schema.default, "workspace", schema)
     update_parameters(build_backend_overrides([resolved]), workspace.parameters.data)
     config_overrides = build_config_overrides([resolved])

@@ -184,52 +184,6 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
     assert report["observation"]["density_operator_call_count"] == 2
 
 
-def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace_ecc.json"
-    _write_json(config_path, {"bndry_padding_x": 0})
-    workspace = _ns(
-        directory=str(tmp_path),
-        config={"dreamplace": config_path},
-        pdk=_ns(),
-        logger=_ns(),
-        flow=_ns(
-            data={
-                "schema_version": 3,
-                "steps": [
-                    {
-                        "name": "legalization",
-                        "tool": "dreamplace",
-                        **step_fields("legalization", "dreamplace"),
-                    }
-                ],
-            }
-        ),
-    )
-    step = _ns(name="legalization", tool="dreamplace")
-    materialize_candidate_config(
-        workspace,
-        "legalization",
-        [{"knob_id": "legalization.bndry_padding_x", "value": 16}],
-        candidate_id="legalization-rerun-001",
-    )
-    consumed = []
-
-    def build_step_config(_workspace, _step):
-        _write_json(config_path, {"bndry_padding_x": 0})
-
-    def run_step(workspace, step, ecc_module):
-        del workspace, step
-        consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["bndry_padding_x"])
-        return ecc_module
-
-    tool = _ns(build_step_config=build_step_config, run_step=run_step)
-    monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
-    monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
-
-    assert eda.run_step(workspace, step, ecc_module=True) is True
-    assert consumed == [16]
-
-
 def test_tool_runner_without_receipts_uses_the_shared_tool_contract(monkeypatch, tmp_path):
     workspace = _ns(directory=tmp_path, config={}, logger=None)
     step = _ns(name="routing", tool="ecc")

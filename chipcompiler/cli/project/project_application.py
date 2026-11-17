@@ -16,7 +16,7 @@ from chipcompiler.cli.project.config import (
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
-from chipcompiler.params import lookup_schema, parse_value, validate_value
+from chipcompiler.params import parse_value, validate_value
 from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
 from chipcompiler.project.manifest_write import (
     base_design_from_config,
@@ -627,6 +627,17 @@ def _batch_pdk(text: str, parsed_sets: tuple[tuple[str, str], ...]) -> str | Non
     return declared[-1] if declared else _pdk_name(text)
 
 
+def _parameter_key(key: str):
+    """``(step, schema)`` of a parameter key, ``<step>:``-qualified for a step value."""
+    from chipcompiler.data.step_parameters import parse_step_key
+
+    step, schema, error = parse_step_key(key)
+    if schema is not None and error is not None:
+        code = "parameter_step_required" if step is None else "parameter_not_applicable"
+        raise ProjectApplicationError(code, error, key=key)
+    return step, schema
+
+
 def _apply_text(
     text: str,
     *,
@@ -641,7 +652,7 @@ def _apply_text(
     pdk = _batch_pdk(text, parsed_sets)
     for key, raw in parsed_sets:
         field = lookup_project_field(key)
-        schema = lookup_schema(key)
+        step, schema = _parameter_key(key) if field is None else (None, None)
         if field is not None:
             value = _parse_field_value(field, raw)
             updated = set_scoped_key(updated, field.table, field.name, value)
@@ -653,17 +664,17 @@ def _apply_text(
             errors = validate_value(value, schema, pdk)
             if errors:
                 raise ProjectApplicationError("invalid_value", errors[0], key=key)
-            updated = set_parameter(updated, schema, value)
+            updated = set_parameter(updated, schema, value, step)
         else:
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         changed.append(key)
     for key in unsets:
         field = lookup_project_field(key)
-        schema = lookup_schema(key)
+        step, schema = _parameter_key(key) if field is None else (None, None)
         if field is not None:
             result = remove_scoped_key(updated, field.table, field.name)
         elif schema is not None:
-            result = unset_parameter(updated, schema)
+            result = unset_parameter(updated, schema, step)
         else:
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         if result is not None:

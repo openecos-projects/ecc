@@ -481,22 +481,24 @@ def _diverging_lower_keys(overrides: dict, resolve_lower) -> tuple[list[str], se
     """Per-schema divergences between *overrides* and the layer
     *resolve_lower* supplies.
 
-    *resolve_lower(schema)* returns ``(lower_value, present)``: an absent
+    *resolve_lower(key)* returns ``(lower_value, present)`` for an override
+    key (step-qualified for a step value, ``placement:place.x``): an absent
     lower value cannot diverge, a type-invalid one counts as divergent, and
     a coerced-equal one does not ("false" vs false). Returns (diverging
     backend leaf keys, leaf keys the per-schema pass covered).
     """
+    from chipcompiler.data.step_parameters import split_step_key
     from chipcompiler.params import lookup_schema, validate_schema_type
 
     diverging: list[str] = []
     compared: set[str] = set()
     for dotted, override_value in overrides.items():
-        schema = lookup_schema(dotted)
+        schema = lookup_schema(split_step_key(dotted)[1])
         if schema is None:
             continue
         leaf_keys = _backend_leaf_keys(schema)
         compared.update(leaf_keys)
-        lower_value, present = resolve_lower(schema)
+        lower_value, present = resolve_lower(dotted)
         if not present:
             continue
         coerced, type_err = validate_schema_type(lower_value, schema)
@@ -525,8 +527,7 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     explicit = getattr(cfg, "_explicit_keys", frozenset())
     params_overrides = cfg.params_overrides or {}
 
-    def resolve_lower(schema):
-        key = schema.param
+    def resolve_lower(key):
         if key in params_overrides:
             return params_overrides[key], True
         if key == "design.frequency_mhz" and "design.frequency_mhz" in explicit:

@@ -433,14 +433,14 @@ def test_save_replace_and_cleanup_failure_returns_false(
 
 def test_load_rejects_non_table_sections(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("schema_version = 3\nparams = [1]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 4\nparams = [1]\n")
     with pytest.raises(WorkspaceConfigError):
         load_workspace_config(tmp_path)
 
 
 def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("schema_version = 3\n[params]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 4\n[params]\n")
     (tmp_path / "home" / "flow.json").write_text('{"schema_version": 3, "steps": 1}')
 
     loaded = load_workspace_config(tmp_path)

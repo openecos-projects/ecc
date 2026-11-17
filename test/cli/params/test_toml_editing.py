@@ -60,10 +60,14 @@ class TestScopedTomlEdit:
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
 
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.65", "--project", project_dir]
+        )
         capsys.readouterr()
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -75,14 +79,14 @@ class TestScopedTomlEdit:
     def test_set_then_show_still_works(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
 
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -97,11 +101,13 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.step.placement.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -114,15 +120,15 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.floorplan]\n  core_util = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -133,11 +139,11 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.step.placement.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        cli_main.run(["param", "unset", "placement:place.target_density", "--project", project_dir])
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -149,11 +155,16 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\n  target_density = 0.65\n\n[flow]\npreset = "rtl2gds"\n'
+        content += (
+            "\n[params.step.placement.place]\n  target_density = 0.65\n"
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -383,16 +394,18 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.step.placement.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
             after = f.read()
-        assert "[params.place]" in after
+        assert "[params.step.placement.place]" in after
         assert "target_density = 0.7" in after
 
     def test_set_ignores_indented_next_section_header(self, tmp_path, capsys, create_cli_project):
@@ -400,11 +413,16 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\ntarget_density = 0.65\n\n  [flow]\npreset = "rtl2gds"\n'
+        content += (
+            "\n[params.step.placement.place]\ntarget_density = 0.65\n"
+            '\n  [flow]\npreset = "rtl2gds"\n'
+        )
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -420,15 +438,15 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.floorplan]\n# core_util = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -439,11 +457,13 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.step.placement.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "unset", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         capsys.readouterr()
         with open(toml_path) as f:

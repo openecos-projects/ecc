@@ -6,9 +6,9 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.data.step_parameters import parse_step_key, step_key
 from chipcompiler.params import (
     list_schemas,
-    lookup_schema,
     parse_value,
     set_workspace_param,
     unset_workspace_param,
@@ -22,7 +22,7 @@ from chipcompiler.rtl2gds import normalize_flow_step
 
 @command_handler
 def param_set(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx)
     try:
         value = parse_value(args.value, schema)
     except ValueError as exc:
@@ -32,39 +32,48 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
     if errors:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=errors[0])])
     return _mutate(
-        ctx, schema, lambda workspace: set_workspace_param(workspace, schema, value), value, "set"
+        ctx,
+        schema,
+        lambda workspace: set_workspace_param(workspace, schema, value, step),
+        value,
+        "set",
+        step,
     )
 
 
 @command_handler
 def param_unset(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx)
 
     def unset(workspace):
-        return unset_workspace_param(workspace, schema)
+        return unset_workspace_param(workspace, schema, step)
 
-    return _mutate(ctx, schema, unset, None, "unset")
+    return _mutate(ctx, schema, unset, None, "unset", step)
 
 
 @command_handler
 def param_show(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx, require_step=False)
     workspace = _load_workspace(ctx)
     try:
-        value = workspace_param_value(workspace, schema)
+        value = workspace_param_value(workspace, schema, step=step)
     except ValueError as exc:
         return CommandResult.err(
             [error_record("workspace_param_refresh_required", param=args.key, reason=str(exc))]
         )
-    return CommandResult.ok([_record(ctx, schema.param, value, "workspace")])
+    return CommandResult.ok([_record(ctx, _key(schema, step), value, "workspace")])
 
 
 @command_handler
 def param_list(args, ctx: CommandContext) -> CommandResult:
     workspace = _load_workspace(ctx)
-    overrides = {record["key"] for record in workspace_param_diff(workspace)}
     selected_step = normalize_flow_step(args.step or "").casefold()
     canonical_step = normalize_flow_step(args.step or "")
+    overrides = {
+        record["key"]
+        for record in workspace_param_diff(workspace)
+        if record.get("step") in (None, canonical_step or None)
+    }
     # ``load_workspace`` keeps the flow ledger lazy; use the accessor so
     # persisted steps are hydrated before validating the requested step.
     steps_accessor = getattr(workspace.flow, "steps", None)
@@ -92,7 +101,7 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         if selected_step and not schema.listed_at(selected_step, first_step):
             continue
         try:
-            value = workspace_param_value(workspace, schema)
+            value = workspace_param_value(workspace, schema, step=canonical_step or None)
         except ValueError:
             continue
         status = "workspace" if schema.param in overrides else "base"
@@ -124,7 +133,9 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
     workspace = _load_workspace(ctx)
     records = [
         {
-            "param": record["key"],
+            "param": record["key"]
+            if record.get("step") is None
+            else step_key(record["step"], record["key"]),
             "value": record.get("value"),
             "baseline": record["baseline"],
             "source": "workspace",
@@ -194,7 +205,12 @@ def _restore_transaction(snapshot: dict) -> list[str]:
 
 
 def _mutate(
-    ctx: CommandContext, schema, mutation, requested_value: object, status: str
+    ctx: CommandContext,
+    schema,
+    mutation,
+    requested_value: object,
+    status: str,
+    scope: str | None = None,
 ) -> CommandResult:
     from chipcompiler.data import refresh_workspace_config, save_parameter
     from chipcompiler.engine import EngineFlow, rerun
@@ -207,7 +223,9 @@ def _mutate(
         with workspace_lock(Path(ctx.run_dir)):
             workspace = _load_workspace(ctx)
             if (Path(ctx.run_dir) / "home" / "engineering-snapshot.json").is_file():
-                return _mutate_via_engine(ctx, workspace, schema, mutation, requested_value, status)
+                return _mutate_via_engine(
+                    ctx, workspace, schema, mutation, requested_value, status, scope
+                )
             try:
                 result = mutation(workspace)
             except ValueError as exc:
@@ -219,7 +237,7 @@ def _mutate(
                     ]
                 )
             if result is None:
-                return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+                return CommandResult.ok([_record(ctx, _key(schema, scope), None, "no_override")])
             value, step = result
             try:
                 snapshot = _snapshot_transaction(workspace)
@@ -272,24 +290,30 @@ def _mutate(
             [error_record("workspace_param_lock_failed", param=schema.param, reason=str(exc))]
         )
     effective_value = requested_value if status == "set" else value
-    record = _record(ctx, schema.param, effective_value, status)
+    record = _record(ctx, _key(schema, scope), effective_value, status)
     if step is not None:
         record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
 
-def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object, status: str):
+def _mutate_via_engine(
+    ctx, workspace, schema, mutation, requested_value: object, status: str, scope: str | None
+):
     from chipcompiler.engine import update_workspace_step_configuration
     from chipcompiler.engine.snapshot import read_engineering_snapshot
     from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
     from chipcompiler.params import workspace_param_diff, workspace_param_step
 
+    key = _key(schema, scope)
     overrides = workspace_param_diff(workspace)
-    existing = next((item for item in overrides if item["key"] == schema.param), None)
+    existing = next(
+        (item for item in overrides if item["key"] == schema.param and item.get("step") == scope),
+        None,
+    )
     if status == "unset" and existing is None:
-        return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+        return CommandResult.ok([_record(ctx, key, None, "no_override")])
     if status == "set":
         if requested_value is None:
             mutation(workspace)
@@ -298,12 +322,21 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
             value = requested_value
     else:
         if existing is None:
-            return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+            return CommandResult.ok([_record(ctx, key, None, "no_override")])
         value = existing["baseline"]
-    step = workspace_param_step(schema, workspace)
+    step = workspace_param_step(schema, workspace, scope)
     try:
         revision = read_engineering_snapshot(workspace)["workspaceRevision"]
-        if step is None:
+        if scope is not None:
+            # A step value: the step-qualified key scopes both set and unset.
+            updated = apply_workspace_parameters(
+                ctx.run_dir,
+                revision,
+                {key: value} if status == "set" else {},
+                (key,) if status == "unset" else (),
+                command_id="",
+            )
+        elif step is None:
             updated = apply_workspace_parameters(
                 ctx.run_dir,
                 revision,
@@ -321,11 +354,11 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
             )
     except WorkspaceLifecycleError as exc:
         return CommandResult.err(
-            [error_record(exc.code, param=schema.param, reason=str(exc), **exc.details)]
+            [error_record(exc.code, param=key, reason=str(exc), **exc.details)]
         )
     except Exception as exc:
         return CommandResult.err(
-            [error_record("workspace_param_refresh_failed", param=schema.param, reason=str(exc))]
+            [error_record("workspace_param_refresh_failed", param=key, reason=str(exc))]
         )
 
     invalidated = []
@@ -345,17 +378,29 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
             for item in updated_steps[start:]
             if item.get("name") and item.get("state") == "Unstart"
         ]
-    record = _record(ctx, schema.param, value, status)
+    record = _record(ctx, key, value, status)
     if step is not None:
         record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
 
-def _schema_and_workspace_error(key: str, ctx: CommandContext):
-    schema = lookup_schema(key)
+def _key(schema, step: str | None) -> str:
+    return schema.param if step is None else step_key(step, schema.param)
+
+
+def _schema_and_workspace_error(key: str, ctx: CommandContext, *, require_step: bool = True):
+    """The schema and step of a (possibly ``<step>:``-qualified) parameter *key*.
+
+    A step-scoped (DreamPlace) parameter must name its step to be changed;
+    reading one without a step shows the workspace baseline value.
+    """
+    step, schema, key_error = parse_step_key(key)
     if schema is None:
         raise CommandError([error_record("unknown_parameter", param=key)])
+    if key_error is not None and (require_step or step is not None):
+        code = "parameter_step_required" if step is None else "parameter_not_applicable"
+        raise CommandError([error_record(code, param=key, reason=key_error)])
     if not schema.output_only:
         try:
             workspace_param_step(schema)
@@ -364,7 +409,7 @@ def _schema_and_workspace_error(key: str, ctx: CommandContext):
                 [error_record("workspace_param_refresh_required", param=key, reason=str(exc))]
             ) from exc
     _workspace_scope_error(ctx)
-    return schema
+    return schema, step
 
 
 def _load_workspace(ctx: CommandContext):

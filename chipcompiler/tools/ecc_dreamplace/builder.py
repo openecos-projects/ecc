@@ -12,6 +12,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     build_workspace_config_paths,
 )
+from chipcompiler.data.step_parameters import step_parameter_view
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -297,7 +298,8 @@ def write_step_config(workspace: Workspace, step: EccStep) -> Path:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
     params = json_read(workspace.config["dreamplace"])
-    parameter_data = _current_parameter_data(workspace)
+    # The step's own values replay as part of its direct config patch.
+    parameter_data = step_parameter_view(_current_parameter_data(workspace), step.name)
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
     params, internal_buffering_keys = _apply_placement_buffering_profile(workspace, step, params)

@@ -185,7 +185,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
 def test_create_workspace_rejects_existing_non_empty_directory(tmp_path):
     workspace_dir = tmp_path / "workspace"
     (workspace_dir / "home").mkdir(parents=True)
-    (workspace_dir / "home" / "params.toml").write_text("schema_version = 3\n")
+    (workspace_dir / "home" / "params.toml").write_text("schema_version = 4\n")
 
     workspace = create_workspace(
         directory=workspace_dir,
@@ -1052,6 +1052,8 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "cts.max_fanout": 91,
         "route.bottom_layer": "MET3",
         "route.top_layer": "MET6",
+    }
+    placement_edits = {
         "place.target_density": 0.42,
         "place.stop_overflow": 0.07,
         "place.cell_padding_x": 444,
@@ -1061,6 +1063,10 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         schema = lookup_schema(param)
         assert schema is not None
         update_workspace_param_value(workspace, schema, value)
+    for param, value in placement_edits.items():
+        schema = lookup_schema(param)
+        assert schema is not None
+        update_workspace_param_value(workspace, schema, value, step="placement")
     assert save_parameter(workspace.parameters)
 
     cts = json_read(workspace.config[StepEnum.CTS.value])
@@ -1074,7 +1080,6 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     floorplan = json_read(workspace.config[StepEnum.FLOORPLAN.value])
     routing = json_read(workspace.config["routing"])
     cts = json_read(workspace.config[StepEnum.CTS.value])
-    dreamplace = json_read(workspace.config["dreamplace"])
 
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
@@ -1083,10 +1088,8 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
     assert routing["RT"]["-top_routing_layer"] == "MET6"
-    assert dreamplace["target_density"] == 0.42
-    assert dreamplace["stop_overflow"] == 0.07
-    assert dreamplace["cell_padding_x"] == 444
-    assert dreamplace["routability_opt_flag"] == 0
+    # DreamPlace values are step-scoped: the refresh keeps them for the step to replay.
+    assert workspace.parameters.data["step_params"] == {"placement": placement_edits}
     assert floorplan["die_builder"] == {
         "mode": "die_util",
         "site_name": "core7",

@@ -14,6 +14,7 @@ from chipcompiler.params import (
     write_step_parameter_evidence,
 )
 from chipcompiler.params.evidence import build_step_parameter_record
+from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
 
 
 def _workspace(tmp_path: Path, minimal_ics55_pdk_factory: Any, parameters: dict) -> Any:
@@ -42,15 +43,19 @@ def test_record_reports_value_default_and_source_per_layer(
     workspace = _workspace(
         tmp_path,
         minimal_ics55_pdk_factory,
-        {**default_ics55_parameters, PARAM_SOURCES_KEY: {"place.cell_padding_x": "cli"}},
+        {**default_ics55_parameters, PARAM_SOURCES_KEY: {"placement:place.cell_padding_x": "cli"}},
     )
     schema = lookup_schema("place.target_density")
     assert schema is not None
-    update_workspace_param_value(workspace, schema, 0.5)
+    update_workspace_param_value(workspace, schema, 0.5, step="placement")
     assert save_parameter(workspace.parameters)
     refresh_workspace_config(workspace)
+    step = dreamplace_builder.build_step(
+        workspace, "placement", input_def=tmp_path / "in.def", input_verilog=tmp_path / "in.v"
+    )
+    dreamplace_builder.write_step_config(workspace, step)
 
-    record = build_step_parameter_record(workspace, "placement", "dreamplace")
+    record = build_step_parameter_record(workspace, "placement", "dreamplace", step.directory)
 
     assert _record(record, "place.target_density") == {
         "param": "place.target_density",

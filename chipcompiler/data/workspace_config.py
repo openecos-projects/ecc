@@ -9,13 +9,14 @@ metrics); this module owns the human-facing configuration file only.
 
 Layout::
 
-    schema_version = 3   (required; every other version is rejected)
+    schema_version = 4   (required; every other version is rejected)
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
                skip_steps = [...]  (optional, normalized)
     [params]   flat snake_case parameters; nested dicts map to subtables;
-               identity mirrors are reconstructed on load, not persisted
+               identity mirrors are reconstructed on load, not persisted;
+               [params.step_params.<step>] holds per-step DreamPlace values
 """
 
 import logging
