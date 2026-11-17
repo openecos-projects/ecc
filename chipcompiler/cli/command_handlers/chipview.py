@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from chipcompiler.cli.core.errors import CommandError, command_handler
-from chipcompiler.cli.core.output import normalize_step_name
+from chipcompiler.cli.core.output import flow_step_token
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
@@ -85,7 +85,7 @@ def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
     requested_lower = requested.strip().lower()
     if not requested_lower:
         return False
-    normalized = normalize_step_name(name)
+    normalized = flow_step_token(name)
     candidates = {
         name.lower(),
         normalized.lower(),

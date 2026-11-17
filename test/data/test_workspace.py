@@ -854,7 +854,7 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
 def test_workspace_data_does_not_import_cli_step_normalization():
     source = Path("chipcompiler/data/workspace/__init__.py").read_text()
 
-    assert "normalize_step_name" not in source
+    assert "flow_step_token" not in source
     assert "chipcompiler.cli" not in source
 
 

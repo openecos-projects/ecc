@@ -37,10 +37,10 @@ class _StepEntry:
     aliases: frozenset[str]
 
     def state(self) -> str:
-        from chipcompiler.cli.core.output import normalize_state
+        from chipcompiler.cli.core.output import flow_step_status
 
         if self.flow is not None:
-            return normalize_state(self.flow.get("state", ""))
+            return flow_step_status(self.flow.get("state", ""))
         return "unknown"  # dir-discovered step with no flow record
 
     def runtime(self) -> str | None:
@@ -57,7 +57,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     A flow step links to its step directory on token equality or the
     underscore alias of its token ("Timing optimization" -> "timing_optimization").
     """
-    from chipcompiler.cli.core.output import normalize_step_name
+    from chipcompiler.cli.core.output import flow_step_token
     from chipcompiler.cli.inspection.discovery import (
         discover_step_dirs,
         read_flow_json,
@@ -72,7 +72,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     taken_dirs: set[str] = set()
     for flow_step in flow_steps:
         name = str(flow_step["name"])
-        token = normalize_step_name(name)
+        token = flow_step_token(name)
         alias = token.replace(" ", "_")
         matched = None
         for dir_token in dir_tokens:

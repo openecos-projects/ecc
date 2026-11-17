@@ -289,7 +289,7 @@ def build_step_config_items(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.core.output import normalize_step_name
+    from chipcompiler.cli.core.output import flow_step_token
     from chipcompiler.cli.inspection.discovery import (
         _safe_steps,
         discover_step_dirs,
@@ -301,7 +301,7 @@ def build_step_config_items(
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     requested_step_token = step_token or ""
-    step_token = normalize_step_name(requested_step_token)
+    step_token = flow_step_token(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
@@ -310,7 +310,7 @@ def build_step_config_items(
 
     step_dirs = discover_step_dirs(run_dir)
     steps = _safe_steps(flow_data)
-    flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
+    flow_step_by_token = {flow_step_token(s.get("name", "")): s for s in steps}
 
     if step_token not in flow_step_by_token and step_token not in step_dirs:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1

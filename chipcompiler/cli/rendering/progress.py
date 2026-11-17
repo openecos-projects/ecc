@@ -7,7 +7,7 @@ import sys
 import threading
 import time
 
-from chipcompiler.cli.core.output import disclosure_cmd, normalize_state, normalize_step_name
+from chipcompiler.cli.core.output import disclosure_cmd, flow_step_status, flow_step_token
 from chipcompiler.cli.core.types import OutputMode
 from chipcompiler.cli.inspection.log_view import (
     _KIND_COLOR,
@@ -390,10 +390,10 @@ def _render_step_completion(
     runtime=None,
     log_path=None,
 ):
-    step_token = normalize_step_name(step.name)
+    step_token = flow_step_token(step.name)
     if log_path is None:
         log_path = getattr(getattr(step, "log", None), "file", "") or ""
-    status = normalize_state(getattr(state, "value", str(state)))
+    status = flow_step_status(getattr(state, "value", str(state)))
     if runtime is None:
         runtime = _flow_step_runtime(workspace, step.name) or "0:00:00"
 
@@ -470,7 +470,7 @@ class RunProgressEventSink:
 
     def on_step_started(self, step):
         self._stop_monitor()
-        step_token = normalize_step_name(step.name)
+        step_token = flow_step_token(step.name)
         key = (step.name, step.tool)
         self._running[key] = (step_token, getattr(getattr(step, "log", None), "file", "") or "")
         self._renderer.start_step(step_token, step.tool)
