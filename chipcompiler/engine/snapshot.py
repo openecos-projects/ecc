@@ -68,7 +68,9 @@ def ensure_engineering_snapshot(workspace: Any) -> dict[str, Any]:
     if path.is_file():
         snapshot = _read_snapshot(path)
         if snapshot["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-            raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
+            raise EngineeringSnapshotError(
+                f"Engineering Snapshot requires schemaVersion {SNAPSHOT_SCHEMA_VERSION}"
+            )
         return snapshot
     return create_engineering_snapshot(workspace, cause="workspace.created")
 
@@ -188,7 +190,9 @@ def commit_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
+        raise EngineeringSnapshotError(
+            f"Engineering Snapshot requires schemaVersion {SNAPSHOT_SCHEMA_VERSION}"
+        )
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError(
             "Workspace identity changed before commit", code=SNAPSHOT_IDENTITY_MISMATCH
@@ -228,7 +232,9 @@ def invalidate_engineering_snapshot(
 ) -> dict[str, Any]:
     current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
+        raise EngineeringSnapshotError(
+            f"Engineering Snapshot requires schemaVersion {SNAPSHOT_SCHEMA_VERSION}"
+        )
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError(
             "Workspace identity changed before invalidation", code=SNAPSHOT_IDENTITY_MISMATCH
@@ -295,7 +301,9 @@ def refresh_engineering_snapshot(
     """
     current = read_engineering_snapshot(workspace)
     if current["schemaVersion"] != SNAPSHOT_SCHEMA_VERSION:
-        raise EngineeringSnapshotError("Engineering Snapshot requires schemaVersion 6")
+        raise EngineeringSnapshotError(
+            f"Engineering Snapshot requires schemaVersion {SNAPSHOT_SCHEMA_VERSION}"
+        )
     if current["workspaceId"] != workspace_id:
         raise EngineeringSnapshotError(
             "Workspace identity changed before refresh", code=SNAPSHOT_IDENTITY_MISMATCH
