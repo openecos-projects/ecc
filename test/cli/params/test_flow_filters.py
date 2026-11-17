@@ -28,7 +28,7 @@ def test_param_set_rejects_parameter_outside_project_flow(
         [
             "param",
             "set",
-            "place.target_density",
+            "placement:place.target_density",
             "0.65",
             "--project",
             project_dir,
@@ -67,7 +67,7 @@ def test_param_list_default_excludes_explicit_absent_step_parameters(
     config_path = tmp_path / "gcd" / "ecc.toml"
     config_path.write_text(
         config_path.read_text().replace('preset = "rtl2gds"', 'preset = "synthesis_lec"')
-        + "\n[params.place]\ntarget_density = 0.65\n"
+        + "\n[params.step.placement.place]\ntarget_density = 0.65\n"
     )
 
     rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])

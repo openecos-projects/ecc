@@ -18,6 +18,7 @@ from chipcompiler.engine import (
     update_workspace_step_configuration,
 )
 from chipcompiler.engine.snapshot import create_engineering_snapshot, read_engineering_snapshot
+from chipcompiler.params import lookup_schema, workspace_param_value
 
 
 def _workspace_spec_fixture() -> tuple[dict, dict]:
@@ -76,8 +77,8 @@ def test_workspace_configuration_update_is_revision_aware_and_idempotent(
 
 
 def _target_density(workspace: Any) -> float:
-    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
-    return config["target_density"]
+    """The placement step's target density, as its DreamPlace config build will see it."""
+    return workspace_param_value(workspace, lookup_schema("place.target_density"), step="placement")
 
 
 def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_step(
@@ -101,7 +102,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     updated = apply_workspace_parameters(
         workspace.directory,
         1,
-        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        {"placement:place.target_density": 0.65, "cts.skew_bound": "0.10"},
         (),
         command_id="batch-1",
     )
@@ -121,7 +122,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     repeated = apply_workspace_parameters(
         workspace.directory,
         1,
-        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        {"placement:place.target_density": 0.65, "cts.skew_bound": "0.10"},
         (),
         command_id="batch-1",
     )
@@ -131,7 +132,7 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
         workspace.directory,
         2,
         {},
-        ("place.target_density", "cts.skew_bound"),
+        ("placement:place.target_density", "cts.skew_bound"),
         command_id="batch-2",
     )
     assert read_engineering_snapshot(restored)["workspaceRevision"] == 3

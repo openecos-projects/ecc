@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from chipcompiler.cli.core.inputs import ParamApplyInput, ParamEditInput
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
+from chipcompiler.data.step_parameters import is_step_scoped, split_step_key, step_key
 from chipcompiler.rtl2gds import normalize_flow_step
 
 if TYPE_CHECKING:
@@ -141,22 +142,29 @@ def workspace_rows(
     kept = in_flow
     if steps is not None:
         kept = in_flow & {normalize_flow_step(step).casefold() for step in steps}
-    overrides = {record["key"]: record for record in workspace_param_diff(workspace)}
+    overrides = {
+        (record["key"], record.get("step")): record for record in workspace_param_diff(workspace)
+    }
     pdk = str(workspace.parameters.data.get("pdk") or "") or None
     rows = []
     for schema in list_schemas():
         if schema.pdk_target is not None:
             continue
-        try:
-            step = workspace_param_step(schema, workspace)
-            value = workspace_param_value(workspace, schema)
-        except ValueError:
-            continue
-        if step is not None and normalize_flow_step(step).casefold() not in kept:
-            continue
-        override = overrides.get(schema.param)
-        base = override["baseline"] if override is not None else value
-        rows.append(_row(schema, value, base, overridden=override is not None, pdk=pdk))
+        # A step-scoped (DreamPlace) parameter gets one row per declared step.
+        scopes = schema.steps if is_step_scoped(schema) else (None,)
+        for scope in scopes:
+            try:
+                step = workspace_param_step(schema, workspace, scope)
+                value = workspace_param_value(workspace, schema, step=scope)
+            except ValueError:
+                continue
+            if step is not None and normalize_flow_step(step).casefold() not in kept:
+                continue
+            override = overrides.get((schema.param, scope))
+            base = override["baseline"] if override is not None else value
+            rows.append(
+                _row(schema, value, base, overridden=override is not None, pdk=pdk, step=scope)
+            )
     return rows
 
 
@@ -186,11 +194,32 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     )
     pdk = _project_pdk(ctx)
     resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
-    return [
-        _row(item.schema, item.value, item.default, overridden=item.is_explicit, pdk=pdk)
-        for item in resolved
-        if not in_flow or item.schema.workspace_wide or in_flow.intersection(item.schema.steps)
-    ]
+    rows = []
+    for item in resolved:
+        schema = item.schema
+        if in_flow and not schema.workspace_wide and not in_flow.intersection(schema.steps):
+            continue
+        if not is_step_scoped(schema):
+            rows.append(
+                _row(schema, item.value, item.default, overridden=item.is_explicit, pdk=pdk)
+            )
+            continue
+        for step in schema.steps:
+            if in_flow and step not in in_flow:
+                continue
+            key = step_key(step, schema.param)
+            value = toml_overrides.get(key, item.default)
+            rows.append(
+                _row(
+                    schema,
+                    value,
+                    item.default,
+                    overridden=key in toml_overrides,
+                    pdk=pdk,
+                    step=step,
+                )
+            )
+    return rows
 
 
 def workspace_context(ctx: CommandContext, workspace_id: str, directory: str) -> CommandContext:
@@ -215,6 +244,7 @@ def _row(
     *,
     overridden: bool,
     pdk: str | None = None,
+    step: str | None = None,
 ) -> "ParamRow":
     from chipcompiler.cli.interactive.param_edit import ParamRow
 
@@ -227,7 +257,7 @@ def _row(
     if schema.unit is not None:
         hints.append(schema.unit)
     return ParamRow(
-        param=schema.param,
+        param=schema.param if step is None else step_key(step, schema.param),
         group=schema.group,
         value=value_text(value),
         base=value_text(base),
@@ -242,8 +272,9 @@ def _row_applies_to(row: "ParamRow", step: str) -> bool:
     """Whether *row*'s parameter is declared for the flow *step* ``--step`` names."""
     from chipcompiler.params import lookup_schema
 
-    schema = lookup_schema(row.param)
-    return schema is not None and schema.applies_to(step)
+    row_step, param = split_step_key(row.param)
+    schema = lookup_schema(param)
+    return schema is not None and schema.applies_to(step) and row_step in (None, step)
 
 
 def value_text(value: object) -> str:
@@ -265,7 +296,7 @@ def _edit_pdk(ctx: CommandContext, *, workspace_scope: bool) -> str | None:
 def _check(param: str, text: str, pdk: str | None = None) -> str | None:
     from chipcompiler.params import lookup_schema, parse_value, validate_value
 
-    schema = lookup_schema(param)
+    schema = lookup_schema(split_step_key(param)[1])
     if schema is None:
         return f"unknown parameter {param}"
     try:

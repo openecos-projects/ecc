@@ -103,7 +103,7 @@ def test_load_parameter_reads_workspace_config(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     config_path = home / "params.toml"
-    config_path.write_text('schema_version = 3\n[params]\ndesign = "gcd"\n')
+    config_path.write_text('schema_version = 4\n[params]\ndesign = "gcd"\n')
 
     parameters = load_parameter(config_path)
 
@@ -156,7 +156,7 @@ def test_reload_parameter_keeps_identity_when_file_is_empty(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     path = home / "params.toml"
-    path.write_text("schema_version = 3\n")
+    path.write_text("schema_version = 4\n")
     current = Parameters(
         path=path,
         data={

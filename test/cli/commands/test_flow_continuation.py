@@ -466,7 +466,7 @@ class TestFlowMismatchZeroMutation:
         os.makedirs(home)
         # Current config with a ledger that diverges from the project preset.
         Path(home, "params.toml").write_text(
-            """schema_version = 3
+            """schema_version = 4
 [design]
 name = "gcd"
 top = "gcd"

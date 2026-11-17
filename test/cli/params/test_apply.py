@@ -13,14 +13,14 @@ def test_project_parameter_apply_is_atomic(ready_project):
             "--set",
             "design.frequency_mhz=250",
             "--set",
-            "place.target_density=0.65",
+            "floorplan.core_util=0.65",
         ]
     )
 
     assert rc == 0
     text = (project / "ecc.toml").read_text(encoding="utf-8")
     assert "frequency_mhz = 250.0" in text
-    assert "target_density = 0.65" in text
+    assert "core_util = 0.65" in text
 
 
 def test_parameter_apply_rejects_conflicting_batch_without_writes(ready_project):
@@ -34,9 +34,9 @@ def test_parameter_apply_rejects_conflicting_batch_without_writes(ready_project)
             "--project",
             str(project),
             "--set",
-            "place.target_density=0.65",
+            "placement:place.target_density=0.65",
             "--unset",
-            "place.target_density",
+            "placement:place.target_density",
         ]
     )
 

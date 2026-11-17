@@ -7,6 +7,12 @@ from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMod
 from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import validate_pdk_target
+from chipcompiler.data.step_parameters import (
+    is_step_scoped,
+    parse_step_key,
+    split_step_key,
+    step_key,
+)
 from chipcompiler.params import (
     display_key_for,
     knob_id_for,
@@ -39,6 +45,11 @@ def _manifest_mode_error(ctx: CommandContext) -> CommandResult | None:
             ]
         )
     return None
+
+
+def _step_key_error(key: str, step: str | None, reason: str) -> CommandResult:
+    code = "parameter_step_required" if step is None else "parameter_not_applicable"
+    return CommandResult.err([error_record(code, param=key, reason=reason)], exit_code=1)
 
 
 def _parameter_flow_error(schema, ctx: CommandContext) -> CommandResult | None:
@@ -75,8 +86,6 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
-    project = ctx.project
-
     selected_step = normalize_flow_step(getattr(args, "step", None) or "").casefold()
     show_all = bool(getattr(args, "all", False))
     preset = getattr(ctx.config, "flow_preset", "")
@@ -97,35 +106,63 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             continue
         if selected_step and not s.listed_at(selected_step, first_flow_step):
             continue
-        if not selected_step and not show_all and s.has_direct_target and not rp.is_explicit:
-            continue
-        record = {
-            "param": s.param,
-            "group": s.group,
-            "name": s.name,
-            "value": rp.value,
-            "default": rp.default,
-            "source": rp.source,
-            "type": s.type,
-            "applies": s.applies,
-            "maps_to": _maps_to_str(s.maps_to),
-            "description": s.description,
-            "inspect": disclosure_cmd(f"ecc param show {s.param}", project),
-        }
-        if s.config_target is not None:
-            record["config_target"] = _config_target_str(s.config_target)
-        if s.pdk_target is not None:
-            record["pdk_target"] = _pdk_target_str(s.pdk_target)
-        if s.range is not None:
-            record["range"] = f"[{s.range[0]}, {s.range[1]}]"
-        choices = s.choices_for(_project_pdk(ctx))
-        if choices is not None:
-            record["choices"] = ", ".join(choices)
-        if s.unit is not None:
-            record["unit"] = s.unit
-        records.append(record)
+        _value, source = _value_at_step(rp, toml_overrides, selected_step or None)
+        if selected_step or show_all or not s.has_direct_target or source != "default":
+            records.append(_list_record(ctx, rp, toml_overrides, selected_step or None))
+        if not selected_step and is_step_scoped(s):
+            # Without a step, also list each step value ecc.toml sets ([params.step.<step>]).
+            records.extend(
+                _list_record(ctx, rp, toml_overrides, step, qualified=True)
+                for step in s.steps
+                if step_key(step, s.param) in toml_overrides
+            )
 
     return CommandResult.ok(records)
+
+
+def _value_at_step(rp, toml_overrides: dict, step: str | None) -> tuple[object, str]:
+    """*rp*'s project value and source at *step* (``[params.step.<step>]`` for a step value)."""
+    if step is None or not is_step_scoped(rp.schema):
+        return rp.value, rp.source
+    key = step_key(step, rp.param)
+    if key in toml_overrides:
+        return toml_overrides[key], "ecc.toml"
+    return rp.default, "default"
+
+
+def _list_record(
+    ctx: CommandContext, rp, toml_overrides: dict, step: str | None, *, qualified: bool = False
+) -> dict:
+    """One ``param list`` row; *qualified* names the step in the key (``placement:place.x``)."""
+    s = rp.schema
+    project = ctx.project
+    value, source = _value_at_step(rp, toml_overrides, step)
+    param = step_key(step, s.param) if qualified and step is not None else s.param
+    record = {
+        "param": param,
+        "group": s.group,
+        "name": s.name,
+        "value": value,
+        "default": rp.default,
+        "source": source,
+        "type": s.type,
+        "applies": s.applies,
+        "maps_to": _maps_to_str(s.maps_to),
+        "description": s.description,
+        "inspect": disclosure_cmd(f"ecc param show {param}", project),
+    }
+    if s.config_target is not None:
+        record["config_target"] = _config_target_str(s.config_target)
+    if s.pdk_target is not None:
+        record["pdk_target"] = _pdk_target_str(s.pdk_target)
+    if s.range is not None:
+        record["range"] = f"[{s.range[0]}, {s.range[1]}]"
+    choices = s.choices_for(_project_pdk(ctx))
+    if choices is not None:
+        record["choices"] = ", ".join(choices)
+    if s.unit is not None:
+        record["unit"] = s.unit
+    return record
 
 
 def _parameter_catalog_records() -> list[dict[str, object]]:
@@ -166,7 +203,7 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
     if manifest_error is not None:
         return manifest_error
     key = args.key
-    schema = lookup_schema(key)
+    step, schema, key_error = parse_step_key(key)
     if schema is None:
         return CommandResult.err(
             [
@@ -177,6 +214,8 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
+    if step is not None and key_error is not None:
+        return _step_key_error(key, step, key_error)
 
     toml_overrides, param_errors = _load_toml_overrides(ctx.project_dir)
     if param_errors:
@@ -184,20 +223,21 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
     resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
-    rp = next(r for r in resolved if r.param == key)
+    rp = next(r for r in resolved if r.param == schema.param)
+    value, source = _value_at_step(rp, toml_overrides, step)
 
     record = {
-        "param": rp.param,
-        "value": rp.value,
+        "param": key,
+        "value": value,
         "default": rp.default,
-        "source": rp.source,
+        "source": source,
         "type": schema.type,
         "applies": schema.applies,
         "maps_to": _maps_to_str(schema.maps_to),
         "description": schema.description,
-        "inspect": disclosure_cmd(f"ecc param show {rp.param}", ctx.project),
-        "set": disclosure_cmd(f"ecc param set {rp.param}", ctx.project),
-        "run": disclosure_cmd(f"ecc run --set {rp.param}=<value>", ctx.project),
+        "inspect": disclosure_cmd(f"ecc param show {key}", ctx.project),
+        "set": disclosure_cmd(f"ecc param set {key}", ctx.project),
+        "run": disclosure_cmd(f"ecc run --set {key}=<value>", ctx.project),
     }
     if schema.config_target is not None:
         record["config_target"] = _config_target_str(schema.config_target)
@@ -225,7 +265,7 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
     key = args.key
     raw_value = args.value
 
-    schema = lookup_schema(key)
+    step, schema, key_error = parse_step_key(key)
     if schema is None:
         return CommandResult.err(
             [
@@ -236,6 +276,8 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
+    if key_error is not None:
+        return _step_key_error(key, step, key_error)
     flow_error = _parameter_flow_error(schema, ctx)
     if flow_error is not None:
         return flow_error
@@ -294,7 +336,7 @@ def param_set(args, ctx: CommandContext) -> CommandResult:
             )
 
     try:
-        _write_param_to_toml(config_path, schema, value)
+        _write_param_to_toml(config_path, schema, value, step)
     except (OSError, ValueError) as exc:
         return CommandResult.err(
             [error_record("config_error", param=key, reason=str(exc))], exit_code=1
@@ -330,7 +372,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
         return manifest_error
     key = args.key
 
-    schema = lookup_schema(key)
+    step, schema, key_error = parse_step_key(key)
     if schema is None:
         return CommandResult.err(
             [
@@ -341,6 +383,8 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
             ],
             exit_code=1,
         )
+    if key_error is not None:
+        return _step_key_error(key, step, key_error)
     flow_error = _parameter_flow_error(schema, ctx)
     if flow_error is not None:
         return flow_error
@@ -358,7 +402,7 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
         )
 
     try:
-        removed = _remove_param_from_toml(config_path, schema)
+        removed = _remove_param_from_toml(config_path, schema, step)
     except (OSError, ValueError) as exc:
         return CommandResult.err(
             [error_record("config_error", param=key, reason=str(exc))], exit_code=1
@@ -412,6 +456,17 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
                     "source": rp.source,
                 }
             )
+        for step in rp.schema.steps if is_step_scoped(rp.schema) else ():
+            value, source = _value_at_step(rp, toml_overrides, step)
+            if value != rp.default:
+                records.append(
+                    {
+                        "param": step_key(step, rp.param),
+                        "value": value,
+                        "default": rp.default,
+                        "source": source,
+                    }
+                )
 
     if not records:
         return CommandResult.ok([{"diff_status": "clean"}])
@@ -558,7 +613,8 @@ def _validate_parameter_patch(sets: tuple[tuple[str, str], ...], unsets: tuple[s
     if overlap:
         raise ValueError(f"Parameter cannot be set and unset: {min(overlap)}")
     for key in (*[key for key, _raw in sets], *unsets):
-        if lookup_schema(key) is None:
+        # Step-qualified keys (``placement:place.x``) are scoped by the apply target.
+        if lookup_schema(split_step_key(key)[1]) is None:
             raise ValueError(f"Unknown parameter: {key}")
 
 
@@ -567,7 +623,7 @@ def _parse_parameter_values(
 ) -> dict[str, object]:
     result = {}
     for key, raw in sets:
-        schema = lookup_schema(key)
+        schema = lookup_schema(split_step_key(key)[1])
         assert schema is not None
         flow_error = _parameter_flow_error(schema, ctx)
         if flow_error is not None and ctx.config is not None:
@@ -644,19 +700,19 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
 # TODO: Move ecc.toml parameter editing into chipcompiler.data.project_config_edit
 # or the future EccTomlConfig owner. CLI should only call the edit operation and
 # translate its result into command records.
-def _write_param_to_toml(config_path: str, schema, value: object) -> None:
+def _write_param_to_toml(config_path: str, schema, value: object, step: str | None = None) -> None:
     with open(config_path) as f:
         original = f.read()
 
-    new_text = set_parameter(original, schema, value)
+    new_text = set_parameter(original, schema, value, step)
     write_text_atomic(config_path, new_text)
 
 
-def _remove_param_from_toml(config_path: str, schema) -> bool:
+def _remove_param_from_toml(config_path: str, schema, step: str | None = None) -> bool:
     with open(config_path) as f:
         original = f.read()
 
-    result = unset_parameter(original, schema)
+    result = unset_parameter(original, schema, step)
     if result is None:
         return False
 

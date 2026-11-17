@@ -442,7 +442,7 @@ class TestBackendMapping:
     @pytest.mark.parametrize("schema", PARAM_REGISTRY, ids=lambda schema: schema.param)
     def test_every_schema_is_safe_in_divergence_projection(self, schema):
         diverging, compared = _diverging_lower_keys(
-            {schema.param: schema.default}, lambda _schema: (None, False)
+            {schema.param: schema.default}, lambda _key: (None, False)
         )
 
         assert diverging == []
@@ -458,12 +458,12 @@ class TestCliOverrides:
     def test_repeatable_set(self):
         result, errors = parse_cli_overrides(
             [
-                "place.target_density=0.65",
+                "placement:place.target_density=0.65",
                 "cts.max_fanout=16",
             ]
         )
         assert errors == []
-        assert result == {"place.target_density": 0.65, "cts.max_fanout": 16}
+        assert result == {"placement:place.target_density": 0.65, "cts.max_fanout": 16}
 
     def test_malformed_rejected(self):
         result, errors = parse_cli_overrides(["noequals"])
@@ -478,17 +478,17 @@ class TestCliOverrides:
         assert len(errors) > 0
 
     def test_invalid_value_does_not_produce_override(self):
-        result, errors = parse_cli_overrides(["place.target_density=1.5"])
-        assert "place.target_density" not in result
+        result, errors = parse_cli_overrides(["placement:place.target_density=1.5"])
+        assert "placement:place.target_density" not in result
         assert len(errors) > 0
 
 
 class TestTomlParams:
     def test_flat_toml_parsing(self):
-        table = {"place": {"target_density": 0.65}}
+        table = {"step": {"placement": {"place": {"target_density": 0.65}}}}
         flat, errors = parse_toml_params(table)
         assert errors == []
-        assert flat == {"place.target_density": 0.65}
+        assert flat == {"placement:place.target_density": 0.65}
 
     def test_nested_toml_parsing(self):
         flat, errors = parse_toml_params({"floorplan": {"die_builder": {"mode": "die_size"}}})

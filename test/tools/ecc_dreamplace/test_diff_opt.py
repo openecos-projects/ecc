@@ -6,7 +6,8 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import EccData, EccStep, OriginDesign, SkippableStepEnum, StepEnum, Workspace
-from chipcompiler.params import parse_cli_overrides, resolve_parameters
+from chipcompiler.data.step_parameters import resolve_step_parameters
+from chipcompiler.params import parse_cli_overrides
 from chipcompiler.rtl2gds.builder import build_flow_range
 from chipcompiler.tools.ecc_dreamplace.diff_opt import apply_diff_opt_defaults
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
@@ -80,18 +81,15 @@ def test_diff_opt_public_fields_are_scoped_to_diff_opt():
     }
     cli, errors = parse_cli_overrides(
         [
-            "place.diff_optimization_mode=joint",
-            "place.timing_sizing_action=quad",
-            "place.diff_optimization_flows=" + json.dumps(payload["place.diff_optimization_flows"]),
+            "diff_opt:place.diff_optimization_mode=joint",
+            "diff_opt:place.timing_sizing_action=quad",
+            "diff_opt:place.diff_optimization_flows="
+            + json.dumps(payload["place.diff_optimization_flows"]),
         ]
     )
     assert errors == []
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    values = {item.param: item.value for item in resolved}
-    assert values["place.diff_optimization_mode"] == "joint"
-    assert values["place.diff_optimization_flows"] == payload["place.diff_optimization_flows"]
-    assert values["place.timing_sizing_action"] == payload["place.timing_sizing_action"]
+    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    assert step_params == {"diff_opt": payload}
 
 
 def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():

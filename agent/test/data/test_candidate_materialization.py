@@ -167,8 +167,6 @@ def test_registry_covers_the_declared_public_physical_knobs():
         "route.thread_number",
         "route.enable_timing",
         "cts.skew_bound",
-        "legalization.detailed_place_flag",
-        "legalization.bndry_padding_x",
     }.issubset(knob_ids)
     assert "design.frequency_mhz" not in knob_ids
     assert "place.global_right_padding" not in knob_ids
@@ -224,23 +222,6 @@ def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_pa
             "after_sha256": _sha256(cts_path),
         }
     ]
-
-
-def test_materialize_legalization_overlay_targets_real_dreamplace_config(tmp_path):
-    workspace = _workspace(tmp_path)
-
-    receipt = materialize_candidate_config(
-        workspace,
-        "legalization",
-        [{"knob_id": "legalization.detailed_place_flag", "value": True}],
-        candidate_id="legalization-candidate",
-    )
-
-    config = _read_json(workspace.config["dreamplace"])
-    assert config["bndry_padding_x"] == 0
-    assert config["detailed_place_flag"] == 1
-    assert receipt["configs"][0]["config_key"] == "dreamplace"
-    assert receipt["configs"][0]["ref"] == "config/dreamplace_ecc.json"
 
 
 def test_materialization_preserves_complete_before_and_after_config_snapshots(tmp_path):
@@ -483,14 +464,6 @@ def test_materialized_candidate_rejects_tampered_config_snapshot(tmp_path):
             ["BUF_1"],
             ["BUF_2"],
         ),
-        (
-            "legalization",
-            [{"knob_id": "legalization.bndry_padding_y", "value": 4}],
-            "dreamplace",
-            ("bndry_padding_y",),
-            0,
-            4,
-        ),
     ],
 )
 def test_reapply_after_refresh_restores_only_matching_target_and_updates_hashes(
@@ -602,9 +575,7 @@ def test_export_capabilities_returns_stable_schema_and_backend_truth_without_wri
         "adapter": "legalization_dreamplace",
         "available": True,
     }
-    assert any(
-        knob["knob_id"] == "legalization.detailed_place_flag" for knob in legalization["knobs"]
-    )
+    assert legalization["knobs"] == []
     assert filler["backend"]["available"] is False
     assert filler["candidate_generation"] is False
     assert filler["knobs"] == []
@@ -639,17 +610,15 @@ def test_materialized_candidate_rejects_backend_drift_before_execution(tmp_path)
     workspace = _workspace(tmp_path)
     materialize_candidate_config(
         workspace,
-        "legalization",
-        [{"knob_id": "legalization.bndry_padding_x", "value": 4}],
-        candidate_id="legalization-candidate",
+        "placement",
+        [{"knob_id": "place.target_density", "value": 0.6}],
+        candidate_id="placement-candidate",
     )
-    legalization = next(
-        step for step in workspace.flow.data["steps"] if step["name"] == "legalization"
-    )
-    legalization["tool"] = "ecc"
+    placement = next(step for step in workspace.flow.data["steps"] if step["name"] == "placement")
+    placement["tool"] = "ecc"
 
     with pytest.raises(CandidateMaterializationError, match="not candidate-capable"):
-        validate_materialized_candidate_config(workspace, "legalization")
+        validate_materialized_candidate_config(workspace, "placement")
 
 
 def test_duplicate_workspace_target_is_fail_closed_for_candidates(tmp_path):

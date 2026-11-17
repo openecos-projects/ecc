@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 
 from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, validate_value
+from chipcompiler.data.step_parameters import STEP_PARAMS_KEY, step_values
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.data.workspace_parameters import (
     PARAM_SOURCES_KEY,
@@ -60,7 +61,7 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
     Structural keys (design, PDK, flow, inputs) come from the new Workspace
     Spec; runtime results (die/core geometry) are regenerated. What survives is
     every stored tunable (``maps_to`` parameters) the user set, the direct
-    config patch and the baseline journal. A stored tunable still at its old
+    config patch, the per-step values and the baseline journal. A stored tunable still at its old
     PDK default is left to the new template, so a PDK migration picks up the
     new family's default instead of pinning the old one.
     """
@@ -82,7 +83,12 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
             nested = carried.setdefault(parent, {})
             if isinstance(nested, dict):
                 nested[child] = deepcopy(value)
-    for key in (CONFIG_OVERRIDES_KEY, WORKSPACE_PARAM_OVERRIDES_KEY, PARAM_SOURCES_KEY):
+    for key in (
+        CONFIG_OVERRIDES_KEY,
+        WORKSPACE_PARAM_OVERRIDES_KEY,
+        PARAM_SOURCES_KEY,
+        STEP_PARAMS_KEY,
+    ):
         if key in parameters:
             carried[key] = deepcopy(parameters[key])
     _rebind_liberty(carried, pdk_root)
@@ -117,8 +123,8 @@ def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -
     """Range and choice errors of carried values under the new PDK family.
 
     Covers the journaled workspace edits, the direct config patch (which also
-    holds the values given at creation through ``ecc.toml`` or ``--set``) and the
-    stored tunables.
+    holds the values given at creation through ``ecc.toml`` or ``--set``), the
+    per-step values and the stored tunables.
     """
     errors: list[str] = []
     for schema in list_schemas():
@@ -134,6 +140,11 @@ def invalid_carried_parameters(carried: Mapping[str, object], pdk: str | None) -
         schema = lookup_schema(str(record.get("key", "")))
         if schema is not None and schema.pdk_target is None:
             errors.extend(validate_value(record["value"], schema, pdk))
+    for values in step_values(carried).values():
+        for param, value in values.items():
+            schema = lookup_schema(param)
+            if schema is not None:
+                errors.extend(validate_value(value, schema, pdk))
     patch = carried.get(CONFIG_OVERRIDES_KEY)
     if isinstance(patch, Mapping):
         for schema in list_schemas():

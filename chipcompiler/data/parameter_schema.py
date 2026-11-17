@@ -11,6 +11,7 @@ from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
 from chipcompiler.data.config_params.common import ConfigTarget, ParamSchema, PdkVariant
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
 from chipcompiler.data.config_params.sdc import SCHEMAS as SDC_SCHEMAS
+from chipcompiler.data.step_parameters import STEP_TABLE, parse_step_key, step_key
 
 _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
     ParamSchema(
@@ -423,9 +424,9 @@ def parse_cli_overrides(pairs, pdk: str | None = None):
             errors.append(f"malformed override: '{pair}' (expected key=value)")
             continue
         key, raw = (part.strip() for part in pair.split("=", 1))
-        schema = lookup_schema(key)
-        if schema is None:
-            errors.append(f"unknown parameter: '{key}'")
+        _step, schema, key_error = parse_step_key(key)
+        if key_error is not None:
+            errors.append(key_error)
             continue
         try:
             value = parse_value(raw, schema)
@@ -443,10 +444,16 @@ def parse_cli_overrides(pairs, pdk: str | None = None):
 def parse_toml_params(params_table, pdk: str | None = None):
     flat, errors = {}, []
 
-    def visit(path, value):
+    def visit(path, value, step=None):
         key = ".".join(path)
         schema = lookup_schema(key)
         if schema:
+            if step is not None:
+                key = step_key(step, key)
+            _step, _schema, key_error = parse_step_key(key)
+            if key_error is not None:
+                errors.append(f"{key_error} (ecc.toml)")
+                return
             try:
                 parsed = parse_value(value, schema) if isinstance(value, str) else value
                 parsed, type_error = validate_schema_type(parsed, schema)
@@ -464,12 +471,20 @@ def parse_toml_params(params_table, pdk: str | None = None):
             return
         if isinstance(value, dict):
             for child, child_value in value.items():
-                visit((*path, child), child_value)
+                visit((*path, child), child_value, step)
         else:
             errors.append(f"unknown parameter in ecc.toml: '{key}'")
 
     for group, value in params_table.items():
-        if isinstance(value, dict):
+        if group == STEP_TABLE and isinstance(value, dict):
+            # [params.step.<step>.<group>] holds step-scoped (DreamPlace) values.
+            for step, table in value.items():
+                if not isinstance(table, dict):
+                    errors.append(f"[params.step.{step}] must be a table")
+                    continue
+                for child, child_value in table.items():
+                    visit((child,), child_value, step)
+        elif isinstance(value, dict):
             visit((group,), value)
         else:
             errors.append(f"[params.{group}] must be a table, got {type(value).__name__}")

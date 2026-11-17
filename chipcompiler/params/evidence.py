@@ -12,6 +12,7 @@ from typing import Any
 
 from chipcompiler.data.config_params.common import ParamSchema
 from chipcompiler.data.parameter_schema import list_schemas
+from chipcompiler.data.step_parameters import is_step_scoped, step_key
 from chipcompiler.data.workspace import step_config_keys
 from chipcompiler.data.workspace.config_overrides import config_path_for_key
 from chipcompiler.data.workspace_parameters import (
@@ -26,16 +27,22 @@ logger = logging.getLogger(__name__)
 EVIDENCE_FILE = "params.json"
 
 
-def _source(parameters: Mapping[str, object], schema: ParamSchema) -> str:
-    """The layer a value came from: workspace edit, recorded creation layer, or default."""
+def _source(parameters: Mapping[str, object], schema: ParamSchema, step: str | None) -> str:
+    """The layer a value came from: workspace edit, recorded creation layer, or default.
+
+    *step* scopes the lookup for a step-scoped parameter.
+    """
     journal = parameters.get(WORKSPACE_PARAM_OVERRIDES_KEY)
     if isinstance(journal, list) and any(
-        isinstance(record, dict) and record.get("key") == schema.param for record in journal
+        isinstance(record, dict)
+        and record.get("key") == schema.param
+        and record.get("step") == step
+        for record in journal
     ):
         return "workspace"
     recorded = parameters.get(PARAM_SOURCES_KEY)
     if isinstance(recorded, Mapping):
-        source = recorded.get(schema.param)
+        source = recorded.get(schema.param if step is None else step_key(step, schema.param))
         if isinstance(source, str):
             return source
     return "default"
@@ -95,8 +102,9 @@ def build_step_parameter_record(
     records = []
     readable: list[ParamSchema] = []
     for schema in schemas:
+        scope = step if is_step_scoped(schema) else None
         try:
-            value = workspace_param_value(workspace, schema)
+            value = workspace_param_value(workspace, schema, step=scope)
         except (OSError, ValueError):
             continue
         readable.append(schema)
@@ -105,7 +113,7 @@ def build_step_parameter_record(
                 "param": schema.param,
                 "value": value,
                 "default": schema.default_for(pdk),
-                "source": _source(parameters, schema),
+                "source": _source(parameters, schema, scope),
             }
         )
     return {
