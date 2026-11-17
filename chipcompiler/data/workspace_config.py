@@ -145,8 +145,8 @@ def flow_no_clock(flow: object) -> bool:
 
 def _with_no_clock(section: dict, *, no_clock: bool) -> dict:
     result = dict(section)
-    if "no_clock" in section:
-        result["no_clock"] = flow_no_clock(section)
+    if no_clock:
+        result["no_clock"] = True
     return result
 
 

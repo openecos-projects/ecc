@@ -164,6 +164,20 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     return CommandResult.ok(records)
 
 
+def _preflight_clock_materials(cfg) -> dict[str, str] | None:
+    """Clock materials for no-clock inference during preflight.
+
+    Inference must only run against a real project config. When ``cfg`` is
+    ``None`` there is no declared clock port to read, so pass ``None`` and let
+    :func:`resolve_no_clock` stay flag-only; an empty-string fallback here
+    would fabricate an inferred no-clock policy and wrongly drop clocked steps
+    such as ``Timing optimization`` from the probe set.
+    """
+    if cfg is None:
+        return None
+    return {"clock_port": getattr(cfg, "design_clock_port", "") or ""}
+
+
 def _preflight_environment(
     preset: str | None,
     project: str | None,
@@ -183,10 +197,7 @@ def _preflight_environment(
 
     if preset is None:
         return None
-    skip = resolve_skip_steps(
-        flow_config,
-        materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
-    )
+    skip = resolve_skip_steps(flow_config, materials=_preflight_clock_materials(cfg))
     lec_engine = resolve_lec_engine(flow_config)
     probes = env_probe.probe_environment(
         env_probe.probe_components_for_preset(preset, skip=skip, lec_engine=lec_engine)
@@ -220,8 +231,7 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
             flow_config["start_step"],
             flow_config["end_step"],
             skip=resolve_skip_steps(
-                flow_config,
-                materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
+                flow_config, materials=_preflight_clock_materials(cfg)
             ),
             lec_engine=resolve_lec_engine(flow_config),
         )
