@@ -6,9 +6,13 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.step_parameters import resolve_step_parameters
 from chipcompiler.data.workspace import init_workspace_config
-from chipcompiler.params import parse_cli_overrides, parse_toml_params
+from chipcompiler.params import (
+    build_step_params,
+    parse_cli_overrides,
+    parse_toml_params,
+    resolve_parameters,
+)
 from chipcompiler.tools.ecc_dreamplace import builder
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.utility import json_read
@@ -37,7 +41,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
         {"step": {"diff_sizing": {"place": {"diff_sizing_coefficients": override}}}}
     )
     assert (toml, errors) == (public, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     placement_weights = {
         "timing_wns_coeff": 2.5,
         "timing_tns_coeff": 0.025,
@@ -147,7 +151,7 @@ def test_public_continuous_steps_parse_and_resolve(steps):
         {"step": {"diff_sizing": {"place": {"diff_sizing_continuous_steps": steps}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.diff_sizing_continuous_steps": steps}}
 
 
@@ -162,7 +166,7 @@ def test_public_terminal_gr_sta_flag_parse_and_resolve(enabled):
         {"step": {"diff_sizing": {"place": {"diff_sizing_terminal_gr_sta_enabled": enabled}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.diff_sizing_terminal_gr_sta_enabled": enabled}}
 
 
@@ -174,7 +178,7 @@ def test_public_action_gradient_mode_parses_and_resolves():
         {"step": {"diff_sizing": {"place": {"timing_action_gradient_mode": "lut_action"}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.timing_action_gradient_mode": "lut_action"}}
 
 
@@ -189,7 +193,7 @@ def test_public_action_score_objective_parses_and_resolves(objective):
         {"step": {"diff_sizing": {"place": {"timing_action_score_objective": objective}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.timing_action_score_objective": objective}}
 
 
@@ -202,7 +206,7 @@ def test_public_diff_sizing_timing_rc_mode_parses_and_resolves(rc_mode):
         {"step": {"diff_sizing": {"place": {"diff_sizing_timing_rc_mode": rc_mode}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.diff_sizing_timing_rc_mode": rc_mode}}
 
 
@@ -243,7 +247,7 @@ def test_public_diff_sizing_optimization_flows_parse_and_resolve():
         {"step": {"diff_sizing": {"place": {"diff_sizing_optimization_flows": flows}}}}
     )
     assert (toml, errors) == (expected, [])
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     assert step_params == {"diff_sizing": {"place.diff_sizing_optimization_flows": flows}}
 
 
@@ -312,7 +316,7 @@ def test_public_lut_action_mode_survives_step_resolution(
         ["diff_sizing:place.timing_action_gradient_mode=lut_action", *extra_args]
     )
     assert errors == []
-    step_params, _sources = resolve_step_parameters((cli, "cli"))
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
