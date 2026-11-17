@@ -225,7 +225,7 @@ root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
 preset = "rtl2gds"       # 本教程使用的完整 RTL-to-Harden 流程
 ```
 
-对 gcd 示例，按上一步设置 RTL 路径即可；默认顶层 `gcd` 和时序模板中的 `clk`/100 MHz 已匹配。换成自己的设计时，修改 `ecc.toml` 中的 `top`、`rtl`，并填写时序模板中的 `clock_list`。
+对 gcd 示例，按上一步设置 RTL 路径即可；默认顶层 `gcd` 和时序模板中的 `clk`/100 MHz 已匹配。换成自己的设计时，修改 `ecc.toml` 中的 `top`、`rtl`，并填写时序模板中的 `primary_clocks` 命令。
 
 除了用编辑器改 `ecc.toml`，也可以用 `ecc project` 命令组直接改声明（写入 `ecc.toml`，保留注释；详见[用户指南 §8.5](ecc-user-guide.cn.md#85-project--workspace--编辑项目资源与刷新-workspace)（终端：`ecc doc ug --lang cn`））：
 

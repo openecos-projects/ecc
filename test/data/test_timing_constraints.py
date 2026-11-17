@@ -2,10 +2,12 @@
 
 import json
 import shutil
+import tomllib
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import create_workspace, load_workspace, refresh_workspace_config
@@ -67,7 +69,9 @@ def test_workspace_with_external_inputs_generates_both_phase_sets(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, suffix
 ):
     custom = tmp_path / f"constraints{suffix}"
-    content = SDC_INPUT_TEMPLATE.replace(":100", ":200").encode()
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name CLK_clk -period 5 [get_ports clk]\n"
+    content = tomli_w.dumps(values).encode()
     custom.write_bytes(content)
     workspace = create_workspace(
         directory=tmp_path / "run",
@@ -97,7 +101,8 @@ def test_workspace_with_external_inputs_generates_both_phase_sets(
     assert loaded.pdk.sdc == workspace.pdk.sdc
     refresh_workspace_config(loaded)
     assert loaded.pdk.sdc is not None
-    assert all("set clk_freq_mhz 200.0" in path.read_text() for path in scripts)
+    assert all(values["primary_clocks"] in path.read_text() for path in scripts)
+    assert loaded.parameters.data["frequency_max"] == 200.0
     assert snapshot.read_bytes() == content
 
 
@@ -132,7 +137,9 @@ def test_copied_workspace_uses_its_own_timing_input(
     custom = None
     if custom_suffix is not None:
         custom = tmp_path / f"constraints{custom_suffix}"
-        custom.write_text(SDC_INPUT_TEMPLATE.replace(":100", ":200"))
+        values = tomllib.loads(SDC_INPUT_TEMPLATE)
+        values["primary_clocks"] = "create_clock -name CLK_clk -period 5 [get_ports clk]\n"
+        custom.write_text(tomli_w.dumps(values))
     workspace = create_workspace(
         directory=tmp_path / "source",
         origin_def="",
@@ -159,7 +166,7 @@ def test_copied_workspace_uses_its_own_timing_input(
     if custom is not None:
         assert loaded.pdk.sdc is not None
         assert loaded.parameters.data["sdc"] == workspace.parameters.data["sdc"]
-        assert "set clk_freq_mhz 200.0" in loaded.pdk.sdc.read_text()
+        assert "create_clock -name CLK_clk -period 5 [get_ports clk]" in loaded.pdk.sdc.read_text()
         assert (destination / "origin" / custom.name).read_bytes() == custom.read_bytes()
 
 

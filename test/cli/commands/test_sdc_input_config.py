@@ -10,6 +10,7 @@ from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
 from chipcompiler.data import load_workspace, refresh_workspace_config
 from chipcompiler.data.workspace import create_workspace
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 
 
@@ -40,20 +41,21 @@ def test_file_inputs_survive_cli_creation_reload_and_source_changes(
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     source, values = _timing_file(
         project,
-        clock_list="ref_clk MAX:50 WCL:80 MIN:200 ML:125 TYP:83.25",
-        generated_clock_txt="create_generated_clock -name CLK_div2 -divide_by 2 \\\n"
+        primary_clocks="create_clock -name CLK_ref_clk -period 12.5 [get_ports ref_clk]\n",
+        generated_clocks="create_generated_clock -name CLK_div2 -divide_by 2 \\\n"
         "    -source [get_ports ref_clk] [get_pins u_div/Q]",
-        clk_group_txt="# No asynchronous domains in this example\n",
-        io_constraint_txt="set_input_delay 0.3 -max -clock CLK_ref_clk [get_ports req]\n",
-        timing_exception_txt="set_false_path -from [get_ports reset_n]\n",
+        clock_groups="# No asynchronous domains in this example\n",
+        io_constraints="set_input_delay 0.3 -max -clock CLK_ref_clk [get_ports req]\n",
+        timing_exceptions="set_false_path -from [get_ports reset_n]\n",
     )
     original = source.read_bytes()
+    timing_parameters = SdcInputs.from_file(source).parameters()
     assert "sdc" not in tomllib.loads(config.read_text()).get("params", {})
     assert cli_main.run(["run", "--project", str(project)]) == 0
     arguments = flow_mocks.capture["create_kwargs"]
     assert {key: arguments["parameters"][key] for key in ("clock", "frequency_max")} == {
         "clock": "ref_clk",
-        "frequency_max": 83.25,
+        "frequency_max": 80,
     }
     workspace = create_workspace(**{**arguments, "directory": tmp_path / "persisted"})
     assert workspace is not None
@@ -69,27 +71,24 @@ def test_file_inputs_survive_cli_creation_reload_and_source_changes(
     loaded = load_workspace(workspace.directory)
     refresh_workspace_config(loaded)
     generate_timing_scripts(loaded, has_io_cells=False)
-    assert loaded.parameters.data["sdc"] == values
+    assert loaded.parameters.data["sdc"] == timing_parameters["sdc"]
     assert {key: loaded.parameters.data[key] for key in ("clock", "frequency_max")} == {
         "clock": "ref_clk",
-        "frequency_max": 83.25,
+        "frequency_max": 80,
     }
-    frequencies = {"MAX": 50.0, "WCL": 80.0, "MIN": 200.0, "ML": 125.0, "TYP": 83.25}
     for phase in ("pre_CTS", "post_CTS"):
         paths = list((loaded.directory / "origin" / phase).glob("*.tcl"))
         assert len(paths) == len(timing_scenarios(loaded))
         for path in paths:
             content = path.read_text()
-            corner = path.stem.split("_", 1)[0]
-            assert f"set clk_freq_mhz {frequencies[corner]}" in content
-            assert all(value in content for key, value in values.items() if key != "clock_list")
+            assert all(value in content for value in values.values())
             assert ("set_propagated_clock [all_clocks]" in content) == (phase == "post_CTS")
     assert snapshot.read_bytes() == original
 
 
 @pytest.mark.parametrize("manifest", [False, True])
 @pytest.mark.parametrize("legacy_metadata", [False, True])
-def test_external_clock_list_is_the_source_of_primary_flow_metadata(
+def test_external_primary_clock_is_the_source_of_flow_metadata(
     tmp_path, flow_mocks, manifest, legacy_metadata
 ):
     project = tmp_path / "project"
@@ -107,8 +106,8 @@ def test_external_clock_list_is_the_source_of_primary_flow_metadata(
     text = config.read_text().replace('root = ""', f'root = "{tmp_path}"')
     _timing_file(
         project,
-        clock_list="bus_clk MAX:50 WCL:80 MIN:200 ML:125 TYP:83.25\n"
-        "aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25",
+        primary_clocks="create_clock -name BUS -period 12.5 [get_ports bus_clk]\n"
+        "create_clock -name AUX -period 40 [get_ports aux]\n",
     )
     if legacy_metadata:
         text = text.replace("[design]", '[design]\nclock_port = "unused_clk"\nfrequency_mhz = 42.0')
@@ -118,7 +117,7 @@ def test_external_clock_list_is_the_source_of_primary_flow_metadata(
     parameters = flow_mocks.capture["create_kwargs"]["parameters"]
     assert {key: parameters[key] for key in ("clock", "frequency_max")} == {
         "clock": "bus_clk",
-        "frequency_max": 83.25,
+        "frequency_max": 80,
     }
 
 
@@ -127,8 +126,8 @@ def test_external_clock_list_is_the_source_of_primary_flow_metadata(
     [
         ("create_clock -period 10 [get_ports clk]\n", "not a full SDC/Tcl script"),
         (
-            tomli_w.dumps({**tomllib.loads(SDC_INPUT_TEMPLATE), "clock_list": "# no clocks\n"}),
-            "clock_list requires an uncommented primary-clock row",
+            tomli_w.dumps({**tomllib.loads(SDC_INPUT_TEMPLATE), "primary_clocks": "# no clocks\n"}),
+            "primary_clocks requires an uncommented create_clock",
         ),
     ],
 )

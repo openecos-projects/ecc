@@ -1,4 +1,7 @@
 import json
+import tomllib
+
+import tomli_w
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
@@ -100,7 +103,9 @@ def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_rec
 
 def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
     project_dir = _manifest_project(tmp_path, monkeypatch)
-    (project_dir / "fast.tcl").write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name CLK_clk -period 4 [get_ports clk]\n"
+    (project_dir / "fast.tcl").write_text(tomli_w.dumps(values))
     pdk = tmp_path / "pdk"
     pdk.mkdir()
 

@@ -1,6 +1,8 @@
 import json
 import tomllib
 
+import tomli_w
+
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 
@@ -20,7 +22,9 @@ def _ready_project(tmp_path, monkeypatch):
 def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatch):
     project, pdk = _ready_project(tmp_path, monkeypatch)
     timing_input = project / "fast.tcl"
-    timing_input.write_text(SDC_INPUT_TEMPLATE.replace(":100", ":250"))
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name CLK_clk -period 4 [get_ports clk]\n"
+    timing_input.write_text(tomli_w.dumps(values))
 
     rc = cli_main.run(
         [

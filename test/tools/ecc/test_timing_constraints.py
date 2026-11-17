@@ -1,10 +1,12 @@
 """Runtime selection of workspace-owned pre/post-CTS constraints."""
 
 import json
+import tomllib
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import tomli_w
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
@@ -138,7 +140,9 @@ def test_external_timing_inputs_select_phase_after_native_probe(
     custom = workspace.directory / f"custom{suffix}"
     from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 
-    contents = SDC_INPUT_TEMPLATE.replace("clk MAX:100", "fast_clk MAX:100")
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name FAST -period 10 [get_ports fast_clk]\n"
+    contents = tomli_w.dumps(values)
     custom.write_text(contents)
     workspace.pdk.sdc = custom
     workspace.config.clear()

@@ -226,7 +226,7 @@ root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT 
 preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 ```
 
-For the gcd example, set the RTL path as shown above; the default top `gcd` and timing template's `clk`/100 MHz clock already match. For your own design, set `top` and `rtl` in `ecc.toml` and edit the template's `clock_list`.
+For the gcd example, set the RTL path as shown above; the default top `gcd` and timing template's `clk`/100 MHz clock already match. For your own design, set `top` and `rtl` in `ecc.toml` and edit the template's `primary_clocks` commands.
 
 You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-user-guide.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
 
