@@ -21,16 +21,23 @@ def record_at_step(by_key: dict, rp, step: str | None):
     return by_key.get(step_key(step, rp.param), rp)
 
 
-def list_record(ctx: CommandContext, rp, pdk: str | None, *, step: str | None = None) -> dict:
+def list_record(
+    ctx: CommandContext,
+    rp,
+    pdk: str | None,
+    *,
+    step: str | None = None,
+    qualified: bool = False,
+) -> dict:
     """One ``param list`` row of *rp*.
 
-    In a *step* view the row keeps the plain parameter name; a step-scoped
-    parameter is still inspected at that step (``placement:place.x``).
+    In a *step* view the row keeps the plain parameter name unless *qualified*;
+    a step-scoped parameter is always inspected at its step (``placement:place.x``).
     """
     s = rp.schema
     inspect_key = step_key(step, s.param) if step is not None and is_step_scoped(s) else rp.key
     record = {
-        "param": s.param if step is not None else rp.key,
+        "param": inspect_key if qualified else (s.param if step is not None else rp.key),
         "group": s.group,
         "name": s.name,
         "value": rp.value,
