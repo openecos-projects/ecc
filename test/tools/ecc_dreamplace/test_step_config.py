@@ -196,12 +196,19 @@ def test_an_inner_legalization_runs_on_its_owner_step_file(
 
     path = owner.directory / "config" / "dreamplace_ecc.json"
     assert not path.exists()
+    record_derived_config(workspace)
+    baseline = workspace.config["dreamplace"].read_bytes()
+    manifest = derived_config_manifest_path(workspace.directory).read_bytes()
 
     result = runner.legalize_layout(
         workspace, owner, tmp_path / "sizer.def.gz", tmp_path / "sizer.v.gz"
     )
 
     baseline_density = json_read(workspace.config["dreamplace"])["target_density"]
+    # The run resolves and executes on the owner's step file only.
+    assert workspace.config["dreamplace"].read_bytes() == baseline
+    assert derived_config_manifest_path(workspace.directory).read_bytes() == manifest
+    assert modified_derived_configs(workspace.directory) == []
     assert result is engine
     assert loaded == [(path, baseline_density, 0, 0)]
     assert json_read(path)["result_dir"] == str(owner.data.workdir_for(owner.name))
