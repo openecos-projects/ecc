@@ -59,15 +59,21 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
 
     Structural keys (design, PDK, flow, inputs) come from the new Workspace
     Spec; runtime results (die/core geometry) are regenerated. What survives is
-    every stored tunable (``maps_to`` parameters), the direct config patch and
-    the baseline journal.
+    every stored tunable (``maps_to`` parameters) the user set, the direct
+    config patch and the baseline journal. A stored tunable still at its old
+    PDK default is left to the new template, so a PDK migration picks up the
+    new family's default instead of pinning the old one.
     """
+    old_pdk = str(parameters.get("pdk") or "") or None
+    explicit = _explicit_parameters(parameters)
     carried: dict[str, object] = {}
     for schema in list_schemas():
         if schema.maps_to is None:
             continue
         value = stored_value(parameters, schema.maps_to)
         if value is MISSING:
+            continue
+        if schema.param not in explicit and value == schema.default_for(old_pdk):
             continue
         if isinstance(schema.maps_to, str):
             carried[schema.maps_to] = deepcopy(value)
@@ -81,6 +87,17 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
             carried[key] = deepcopy(parameters[key])
     _rebind_liberty(carried, pdk_root)
     return carried
+
+
+def _explicit_parameters(parameters: Mapping[str, object]) -> set[str]:
+    """Parameters set at creation (recorded sources) or by a workspace edit (journal)."""
+    sources = parameters.get(PARAM_SOURCES_KEY)
+    explicit = set(sources) if isinstance(sources, Mapping) else set()
+    records = parameters.get(WORKSPACE_PARAM_OVERRIDES_KEY)
+    for record in records if isinstance(records, list) else []:
+        if isinstance(record, dict) and isinstance(record.get("key"), str):
+            explicit.add(record["key"])
+    return explicit
 
 
 def _rebind_liberty(carried: dict[str, object], pdk_root: str) -> None:
