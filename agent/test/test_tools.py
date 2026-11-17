@@ -30,14 +30,18 @@ class _Scalar:
         return self.value
 
 
-def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypatch, tmp_path):
+def _placement_workspace(tmp_path: Path, logger: object) -> Any:
+    from chipcompiler.data.workspace_config import save_workspace_config
+
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
-    workspace = _ns(
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
+    return _ns(
         directory=str(tmp_path),
         config={"dreamplace": config_path},
+        parameters=_ns(path=tmp_path / "home" / "params.toml"),
         pdk=_ns(),
-        logger=_ns(),
+        logger=logger,
         flow=_ns(
             data={
                 "schema_version": 3,
@@ -51,21 +55,35 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
             }
         ),
     )
-    step = _ns(name="placement", tool="dreamplace")
+
+
+def test_tool_runner_restores_candidate_step_values_before_the_step_build(monkeypatch, tmp_path):
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.step_parameters import step_config_patch
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    workspace = _placement_workspace(tmp_path, _ns())
+    step = _ns(name="placement", tool="dreamplace", directory=tmp_path / "placement_dreamplace")
+    step_config = step.directory / "config" / "dreamplace_ecc.json"
     materialize_candidate_config(
         workspace,
         "placement",
         [{"knob_id": "place.target_density", "value": 0.65}],
         candidate_id="place-rerun-001",
     )
+    # A refresh between materialization and the run drops the step value.
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
     consumed = []
 
-    def build_step_config(_workspace, _step):
-        _write_json(config_path, {"target_density": 0.2})
+    def build_step_config(workspace, step):
+        # Mirrors the DreamPlace build: baseline plus the step's stored values.
+        stored = load_parameter(workspace.parameters.path).data
+        config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+        _write_json(step_config, config | step_config_patch(stored, step.name)["dreamplace"])
 
     def run_step(workspace, step, ecc_module):
         del workspace, step
-        consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["target_density"])
+        consumed.append(json.loads(step_config.read_text(encoding="utf-8")))
         return ecc_module
 
     tool = _ns(build_step_config=build_step_config, run_step=run_step)
@@ -73,7 +91,7 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
-    assert consumed == [0.65]
+    assert consumed == [{"target_density": 0.65}]
 
 
 def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
@@ -125,26 +143,7 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
 
 
 def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace_ecc.json"
-    _write_json(config_path, {"target_density": 0.8})
-    workspace = _ns(
-        directory=str(tmp_path),
-        config={"dreamplace": config_path},
-        pdk=_ns(),
-        logger=_ns(exception=lambda *_args, **_kwargs: None),
-        flow=_ns(
-            data={
-                "schema_version": 3,
-                "steps": [
-                    {
-                        "name": "placement",
-                        "tool": "dreamplace",
-                        **step_fields("placement", "dreamplace"),
-                    }
-                ],
-            }
-        ),
-    )
+    workspace = _placement_workspace(tmp_path, _ns(exception=lambda *_args, **_kwargs: None))
     step = _ns(name="placement", tool="dreamplace")
     materialize_candidate_config(
         workspace,

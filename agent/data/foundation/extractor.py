@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
+from chipcompiler.data.step.directories import recorded_step_directory, step_directory_for_tool
 from chipcompiler.data.types import StepEnum
 
 from .grid.canonical_grid import build_gcell_patch_grid, build_patch_grid, resize_nearest
@@ -38,10 +39,6 @@ from .writers import write_json, write_jsonl
 FOUNDATION_REL = Path("foundation_data") / "ecc"
 _SUPPORTED_PROFILE = "iccd_full_v1"
 _ROUTE_COMPLETION_MODES = {"full_route", "space_router_label"}
-_STAGE_DIR_OVERRIDES = {
-    (StepEnum.PLACEMENT.value, "dreamplace"): "placement_dreamplace",
-    ("legalization", "dreamplace"): "legalization_dreamplace",
-}
 _ENTITY_NAMES = ("instances", "nets", "pins", "wires", "routing_graphs", "timing_paths", "patches")
 _TECH_REQUIRED_TABLES = {"tech_layers": "layers", "tech_vias": "vias", "library_cells": "cells"}
 _ATTRIBUTION_INPUT_TABLES = (
@@ -549,8 +546,12 @@ class FoundationExtractor:
             tool = str(item.get("tool", "")).strip()
             if not name or not tool:
                 continue
-            directory = self.workspace_dir / _STAGE_DIR_OVERRIDES.get(
-                (name, tool), f"{name}_{tool}"
+            # The ledger records each step's directory (index-prefixed, e.g.
+            # 04_placement_dreamplace); older ledgers fall back to <step>_<tool>.
+            directory = self.workspace_dir / (
+                recorded_step_directory(item)
+                if "directory" in item
+                else step_directory_for_tool(name, tool)
             )
             stages.append(
                 StageInfo(

@@ -9,6 +9,8 @@ import pytest
 from agent.data.candidate_artifacts import sha256_path
 from agent.data.candidate_input_binding import _validate_edge
 from agent.data.candidate_materialization import materialize_candidate_config
+from agent.data.candidate_registry import candidate_knob_registry
+from agent.data.candidate_step_values import knob_step_parameter, knob_store_value
 from agent.operations import RuntimeOperationManager
 from agent.requests import CandidateRerunRequest
 from agent.runtime_support import AgentApplicationError as RuntimeApiError
@@ -26,8 +28,11 @@ from agent.workspace_api import (
     build_agent_flow_for_workspace,
 )
 from chipcompiler.data import StateEnum
+from chipcompiler.data.parameter import load_parameter, save_parameter
 from chipcompiler.data.step import new_step_directory
+from chipcompiler.data.step_parameters import set_step_value, step_config_patch
 from chipcompiler.data.workspace.layout import EccOutput
+from chipcompiler.data.workspace_config import save_workspace_config
 from test.flow_fixture import step_fields
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
@@ -431,6 +436,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     config_path = tmp_path / "config" / "dreamplace.json"
     config_path.parent.mkdir()
     config_path.write_text('{"target_density": 0.5}\n', encoding="utf-8")
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.5}})
     workspace = SimpleNamespace(
         directory=tmp_path,
         flow=SimpleNamespace(data=flow_data, path=flow_path),
@@ -457,6 +463,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
                 SimpleNamespace(
                     name="placement",
                     tool="dreamplace",
+                    directory=root / "placement_dreamplace",
                     output=EccOutput(dir=root / "placement_dreamplace" / "output"),
                     analysis={"dir": root / "placement_dreamplace" / "analysis"},
                 ),
@@ -493,10 +500,7 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     def materialize(candidate_workspace, target, patch, candidate):
         assert flows[-1].created
         assert flows[-1].initialize_config is False
-        path = Path(candidate_workspace.directory) / "config" / "dreamplace.json"
-        config = json.loads(path.read_text(encoding="utf-8"))
-        config[patch[0]["knob_id"].removeprefix("place.")] = patch[0]["value"]
-        path.write_text(json.dumps(config, sort_keys=True) + "\n", encoding="utf-8")
+        _store_candidate_knob(candidate_workspace, patch)
         calls.append(("materialize", target, patch, candidate))
 
     monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", materialize)
@@ -568,8 +572,17 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
     assert (tmp_path / "placement_dreamplace" / "analysis" / "stale").is_file()
     assert (tmp_path / "cts_ecc" / "output" / "stale").is_file()
     assert (tmp_path / "harden_ecc" / "output" / "stale").is_file()
+    # The seed and knob are placement step values; the shared baseline is untouched.
+    assert (candidate_root / "config" / "dreamplace.json").read_text(
+        encoding="utf-8"
+    ) == '{"target_density": 0.5}\n'
+    assert _stored_step_values(candidate_root) == {
+        "placement": {"place.random_seed": 17, "place.target_density": 0.6}
+    }
     assert json.loads(
-        (candidate_root / "config" / "dreamplace.json").read_text(encoding="utf-8")
+        (candidate_root / "placement_dreamplace" / "config" / "dreamplace_ecc.json").read_text(
+            encoding="utf-8"
+        )
     ) == {"random_seed": 17, "target_density": 0.6}
     assert candidate_flow.observed_random_seeds == [17]
     assert not list((candidate_root / "placement_dreamplace" / "output").iterdir())
@@ -633,16 +646,19 @@ def test_candidate_rerun_starts_a_full_flow_operation_and_replays_its_receipts(
         )
     )
     _wait_for_terminal(api.ecc_api.operations, second["operationId"])
-    second_config = json.loads(
-        (
-            tmp_path / ".agent" / "candidates" / "candidate-2" / "config" / "dreamplace.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert second_config == {
-        "random_seed": 17,
-        "routability_opt": True,
-        "target_density": 0.6,
+    second_root = tmp_path / ".agent" / "candidates" / "candidate-2"
+    assert _stored_step_values(second_root) == {
+        "placement": {
+            "place.random_seed": 17,
+            "place.routability_opt_flag": 1,
+            "place.target_density": 0.6,
+        }
     }
+    assert json.loads(
+        (second_root / "placement_dreamplace" / "config" / "dreamplace_ecc.json").read_text(
+            encoding="utf-8"
+        )
+    ) == {"random_seed": 17, "routability_opt_flag": 1, "target_density": 0.6}
     second_manifest = json.loads(
         (
             tmp_path
@@ -712,9 +728,11 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     config = candidate / "config" / "dreamplace.json"
     config.parent.mkdir(parents=True)
     config.write_text('{"target_density": 0.5}', encoding="utf-8")
+    assert save_workspace_config(candidate, {"core": {"utilitization": 0.5}})
     candidate_workspace = SimpleNamespace(
         directory=candidate,
         config={"dreamplace": config},
+        parameters=SimpleNamespace(path=candidate / "home" / "params.toml"),
         flow=SimpleNamespace(data=json.loads(flow_path.read_text()), path=flow_path),
     )
     parent = {
@@ -742,7 +760,7 @@ def test_failed_candidate_returns_materialization_application_and_manifest_evide
     monkeypatch.setattr(api, "_build_flow", lambda *_args, **_kwargs: flow)
     monkeypatch.setattr(
         "agent.workspace_api._materialize_candidate_rerun",
-        lambda workspace, _flow, request: materialize_candidate_config(
+        lambda workspace, _flow, request, _steps: materialize_candidate_config(
             workspace, request.target_step, request.patch, request.candidate_id
         ),
     )
@@ -884,12 +902,31 @@ def test_succeeded_candidate_preserves_flow_when_runtime_report_is_missing(
     assert manifest["terminal_state"] == "succeeded"
 
 
-def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch, tmp_path):
-    analysis = tmp_path / "analysis"
-    analysis.mkdir()
+def _seed_target_workspace(tmp_path: Path) -> tuple[SimpleNamespace, Path]:
     dreamplace = tmp_path / "config" / "dreamplace.json"
     dreamplace.parent.mkdir()
     dreamplace.write_text('{"random_seed": 3000}', encoding="utf-8")
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.5}})
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        config={"dreamplace": dreamplace},
+        parameters=load_parameter(tmp_path / "home" / "params.toml"),
+        flow=SimpleNamespace(
+            data={
+                "steps": [
+                    {"name": name, "tool": tool}
+                    for name, tool in (("placement", "dreamplace"), ("cts", "ecc"))
+                ]
+            }
+        ),
+    )
+    return workspace, dreamplace
+
+
+def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch, tmp_path):
+    analysis = tmp_path / "analysis"
+    analysis.mkdir()
+    workspace, dreamplace = _seed_target_workspace(tmp_path)
     for name in ("parameter_runtime_report.v2.json", "parameter_application_receipt.v2.json"):
         (analysis / name).write_text('{"stale": true}', encoding="utf-8")
     flow = SimpleNamespace(
@@ -914,13 +951,49 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
     monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", lambda *_args: None)
 
-    _materialize_candidate_rerun(
-        SimpleNamespace(directory=tmp_path, config={"dreamplace": dreamplace}), flow, request
-    )
+    steps = [SimpleNamespace(name=name) for name in ("placement", "cts", "harden")]
+
+    _materialize_candidate_rerun(workspace, flow, request, steps)
 
     assert not (analysis / "parameter_runtime_report.v2.json").exists()
     assert not (analysis / "parameter_application_receipt.v2.json").exists()
-    assert json.loads(dreamplace.read_text(encoding="utf-8"))["random_seed"] == 17
+    # The seed is the placement step's value, saved to params.toml; never the baseline.
+    assert dreamplace.read_text(encoding="utf-8") == '{"random_seed": 3000}'
+    assert _stored_step_values(tmp_path) == {"placement": {"place.random_seed": 17}}
+    assert workspace.parameters.data["step_params"] == {"placement": {"place.random_seed": 17}}
+
+
+def test_candidate_rerun_after_placement_stores_no_seed(monkeypatch, tmp_path):
+    workspace, dreamplace = _seed_target_workspace(tmp_path)
+    flow = SimpleNamespace(
+        workspace=SimpleNamespace(
+            flow=SimpleNamespace(
+                data={"schema_version": 3, "steps": [{"name": "placement"}, {"name": "cts"}]}
+            )
+        )
+    )
+    request = CandidateRerunRequest(
+        workspace_id="workspace-1",
+        target_step="cts",
+        end_step="harden",
+        candidate_id="candidate-1",
+        patch=[{"knob_id": "cts.skew_bound", "value": 0.1}],
+        execution_scope="full_flow",
+        idempotency_key="episode-1.intervention-1",
+        context_sha256=CONTEXT_SHA256,
+        parameter_card_sha256=CONTEXT_SHA256,
+        seed=17,
+    )
+    monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
+    monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", lambda *_args: None)
+    params_before = (tmp_path / "home" / "params.toml").read_bytes()
+
+    _materialize_candidate_rerun(
+        workspace, flow, request, [SimpleNamespace(name=name) for name in ("cts", "harden")]
+    )
+
+    assert (tmp_path / "home" / "params.toml").read_bytes() == params_before
+    assert dreamplace.read_text(encoding="utf-8") == '{"random_seed": 3000}'
 
 
 def test_candidate_rerun_rejects_multi_knob_patch_before_starting_an_operation(tmp_path):
@@ -1169,6 +1242,7 @@ class _EccApi:
         return SimpleNamespace(
             directory=root,
             config={"dreamplace": root / "config" / "dreamplace.json"},
+            parameters=load_parameter(root / "home" / "params.toml"),
             design=SimpleNamespace(name="gcd"),
             flow=SimpleNamespace(
                 data=json.loads(flow_path.read_text(encoding="utf-8")), path=flow_path
@@ -1218,9 +1292,7 @@ class _Flow:
     def run_step(self, step, *, rerun, observer=None) -> StateEnum:
         self.run_calls.append((step.name, rerun))
         if step.name == "placement":
-            config = json.loads(
-                Path(self.workspace.config["dreamplace"]).read_text(encoding="utf-8")
-            )
+            config = _build_fake_step_config(self.workspace, step)
             self.observed_random_seeds.append(config.get("random_seed"))
         if step.name == "harden":
             for artifact in (step.output.gds, step.output.lef, step.output.lib):
@@ -1231,12 +1303,41 @@ class _Flow:
         return StateEnum.Success
 
 
+def _build_fake_step_config(workspace, step) -> dict:
+    """The DreamPlace step build: the baseline plus the step's stored values."""
+    stored = load_parameter(workspace.parameters.path).data
+    config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+    config |= step_config_patch(stored, step.name).get("dreamplace", {})
+    path = Path(step.directory) / "config" / "dreamplace_ecc.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return config
+
+
+def _store_candidate_knob(candidate_workspace, patch) -> None:
+    """Stand-in materialization: store the knob as its target step's value."""
+    knob = next(item for item in candidate_knob_registry() if item.knob_id == patch[0]["knob_id"])
+    parameters = load_parameter(candidate_workspace.parameters.path)
+    set_step_value(
+        parameters.data,
+        knob.target_step,
+        knob_step_parameter(knob).param,
+        knob_store_value(knob, patch[0]["value"]),
+    )
+    assert save_parameter(parameters)
+    candidate_workspace.parameters.data = parameters.data
+
+
+def _stored_step_values(root: Path) -> dict:
+    return load_parameter(root / "home" / "params.toml").data["step_params"]
+
+
 def _wait_for_terminal(operations, operation_id, expected_state="succeeded"):
     deadline = threading.Event()
     for _ in range(100):
         status = operations.operation_status(operation_id)
         if status["state"] in {"succeeded", "failed", "cancelled"}:
-            assert status["state"] == expected_state
+            assert status["state"] == expected_state, status.get("error")
             return status
         deadline.wait(0.01)
     raise AssertionError("candidate operation did not reach a terminal state")
@@ -1278,6 +1379,7 @@ def _seed_candidate_source_workspace(tmp_path: Path) -> tuple[Path, Path, object
     config_path = tmp_path / "config" / "dreamplace.json"
     config_path.parent.mkdir()
     config_path.write_text('{"target_density": 0.5}\n', encoding="utf-8")
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.5}})
     for directory in (
         tmp_path / "placement_dreamplace" / "output",
         tmp_path / "cts_ecc" / "output",
@@ -1303,6 +1405,7 @@ def _fake_candidate_flow_factory(flows: list):
                 SimpleNamespace(
                     name="placement",
                     tool="dreamplace",
+                    directory=root / "placement_dreamplace",
                     output=EccOutput(dir=root / "placement_dreamplace" / "output"),
                     analysis={"dir": root / "placement_dreamplace" / "analysis"},
                 ),
@@ -1346,18 +1449,8 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     )
     monkeypatch.setattr(
         "agent.workspace_api.materialize_candidate_config",
-        lambda candidate_workspace, _target, patch, _candidate: (
-            Path(candidate_workspace.directory) / "config" / "dreamplace.json"
-        ).write_text(
-            json.dumps(
-                {
-                    "random_seed": 17,
-                    patch[0]["knob_id"].removeprefix("place."): patch[0]["value"],
-                },
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
+        lambda candidate_workspace, _target, patch, _candidate: _store_candidate_knob(
+            candidate_workspace, patch
         ),
     )
     monkeypatch.setattr(
@@ -1372,6 +1465,8 @@ def test_two_isolated_candidates_execute_concurrently_without_touching_the_sourc
     step_barrier = threading.Barrier(2, timeout=30)
 
     def run_candidate_step(flow, step, *, observer):
+        if step.name == "placement":
+            _build_fake_step_config(flow.workspace, step)
         if step.name == "harden":
             # Both candidates must be inside step execution at the same
             # moment; a serialized backend times the barrier out and fails
