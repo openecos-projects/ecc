@@ -230,9 +230,7 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
         steps = build_flow_range(
             flow_config["start_step"],
             flow_config["end_step"],
-            skip=resolve_skip_steps(
-                flow_config, materials=_preflight_clock_materials(cfg)
-            ),
+            skip=resolve_skip_steps(flow_config, materials=_preflight_clock_materials(cfg)),
             lec_engine=resolve_lec_engine(flow_config),
         )
     except ValueError:
