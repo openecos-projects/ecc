@@ -201,32 +201,29 @@ def _make_workspace(
             ],
         },
     )
-    from chipcompiler.data.parameter_keys import normalize_parameter_dict
     from chipcompiler.data.workspace_config import save_workspace_config
 
     assert save_workspace_config(
         ws,
-        normalize_parameter_dict(
-            {
-                "PDK": "ics55",
-                "Design": "gcd",
-                "Die": {"Size": [], "Area": 0},
-                "Core": {
-                    "Size": [],
-                    "Area": 0,
-                    "Utilitization": 0.5,
-                    "Margin": [2, 2],
-                    "Aspect ratio": 1,
-                },
-                "Max fanout": 20,
-                "Target density": 0.3,
-                "Target overflow": 0.1,
-                "Cell padding x": 600,
-                "Routability opt flag": 1,
-                "Bottom layer": "MET2",
-                "Top layer": "MET5",
-            }
-        ),
+        {
+            "pdk": "ics55",
+            "design": "gcd",
+            "die": {"size": [], "area": 0},
+            "core": {
+                "size": [],
+                "area": 0,
+                "utilitization": 0.5,
+                "margin": [2, 2],
+                "aspect_ratio": 1,
+            },
+            "max_fanout": 20,
+            "target_density": 0.3,
+            "target_overflow": 0.1,
+            "cell_padding_x": 600,
+            "routability_opt_flag": 1,
+            "bottom_layer": "MET2",
+            "top_layer": "MET5",
+        },
     )
     for stage_dir, stage_name in [
         ("Floorplan_ecc", "Floorplan"),
@@ -4390,19 +4387,16 @@ def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribu
     tmp_path: Path,
 ):
     ws = _make_workspace(tmp_path)
-    from chipcompiler.data.parameter_keys import normalize_parameter_dict
     from chipcompiler.data.workspace_config import save_workspace_config
 
     assert save_workspace_config(
         ws,
-        normalize_parameter_dict(
-            {
-                "PDK": "unit-test",
-                "PDK Root": str(ws / "pdk"),
-                "Design": "gcd",
-                "Core": {"Utilitization": 0.5},
-            }
-        ),
+        {
+            "pdk": "unit-test",
+            "pdk_root": str(ws / "pdk"),
+            "design": "gcd",
+            "core": {"utilitization": 0.5},
+        },
     )
     _write_text(
         ws / "pdk" / "unit.lef",

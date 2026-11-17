@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import tomllib
+from copy import deepcopy
 
 import pytest
 
@@ -8,7 +9,6 @@ from chipcompiler.data.parameter import (
     ICS55_PARAMETERS_TEMPLATE,
     SG13G2_PARAMETERS_TEMPLATE,
 )
-from chipcompiler.data.parameter_keys import normalize_keys
 from chipcompiler.data.workspace_config import (
     WORKSPACE_CONFIG_SCHEMA_VERSION,
     WorkspaceConfigError,
@@ -27,9 +27,7 @@ from test.flow_fixture import step_fields
 
 
 def _flat_template(template: dict) -> dict:
-    flat = normalize_keys(template)
-    assert isinstance(flat, dict)
-    return flat
+    return deepcopy(template)
 
 
 def test_save_load_round_trip_ics55(tmp_path):
@@ -427,21 +425,6 @@ def test_save_replace_and_cleanup_failure_returns_false(
 
     assert save_workspace_config(tmp_path, payload) is False
     assert not workspace_config_path(tmp_path).exists()
-
-
-def test_load_rejects_legacy_long_keys(tmp_path):
-    from chipcompiler.data.workspace_config import load_workspace_config
-
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / "params.toml").write_text(
-        'schema_version = 3\n[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
-        '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
-        '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
-    )
-
-    with pytest.raises(WorkspaceConfigError, match="legacy parameter keys"):
-        load_workspace_config(tmp_path)
 
 
 def test_load_rejects_non_table_sections(tmp_path):

@@ -302,11 +302,7 @@ def _split_payload(data: dict) -> dict[str, Any]:
 
 
 def _merge_payload(sections: dict[str, Any]) -> dict:
-    """Inverse of _split_payload: flatten TOML sections back to one dict.
-
-    Persisted keys must already use the canonical flat vocabulary; legacy
-    display keys are rejected rather than normalized.
-    """
+    """Inverse of _split_payload: flatten TOML sections back to one dict."""
     for name in ("params", "design", "pdk"):
         section = sections.get(name)
         if section is not None and not isinstance(section, dict):
@@ -328,14 +324,7 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
         if value is not None and (str(value or "").strip() or param_key not in params):
             params[param_key] = value
 
-    from .parameter_keys import normalize_parameter_dict
-
-    normalized = normalize_parameter_dict(params)
-    if normalized != params:
-        raise WorkspaceConfigError(
-            "legacy parameter keys are not supported; create a new workspace with canonical keys"
-        )
-    return normalized
+    return params
 
 
 def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:

@@ -11,7 +11,7 @@ from chipcompiler.data.schema_versions import (
     ensure_supported_schema_version,
 )
 from chipcompiler.data.workspace.flow_types import load_flow_document
-from chipcompiler.data.workspace_config import WorkspaceConfigError, load_workspace_config
+from chipcompiler.data.workspace_config import load_workspace_config
 
 
 def test_current_params_and_flow_documents_load(tmp_path):
@@ -71,12 +71,3 @@ def test_legacy_parameters_json_is_not_used(tmp_path):
 
     with pytest.raises(UnsupportedSchemaVersionError, match="create a new workspace"):
         load_workspace(tmp_path)
-
-
-def test_workspace_config_rejects_legacy_display_keys(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / "params.toml").write_text('schema_version = 3\n[params]\n"Max fanout" = 48\n')
-
-    with pytest.raises(WorkspaceConfigError, match="legacy parameter keys"):
-        load_workspace_config(tmp_path)
