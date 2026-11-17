@@ -126,14 +126,22 @@ def _build_deferred_step(
 def run_step(
     workspace: Workspace, step: WorkspaceStep, ecc_module=None, *, replay_attempt: str | None = None
 ) -> bool:
+    from . import geometry_display
     from .replay import capture_step
 
+    display_started_ns = geometry_display.begin(step)
     with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
         outcome["ok"] = _run_step(workspace, step, ecc_module)
         if outcome["ok"] and step.name == "postRouteLec":
             from .lec_layout import save_checked_layout
 
             save_checked_layout(workspace, step, ecc_module)
+        if outcome["ok"]:
+            try:
+                geometry_display.publish(step, display_started_ns)
+            except Exception:
+                outcome["ok"] = False
+                raise
         return outcome["ok"]
 
 
