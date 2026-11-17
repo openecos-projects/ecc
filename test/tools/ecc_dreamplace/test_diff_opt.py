@@ -115,7 +115,8 @@ def test_diff_opt_replaces_diff_buffering_but_keeps_diff_sizing():
 def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     tmp_path, dreamplace_default_config, overrides, flow_kind
 ):
-    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path = tmp_path / "diff_opt" / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True)
     table_path = tmp_path / "buffer_drive_strength.json"
     table_path.write_text("{}")
     json_write(
@@ -128,6 +129,7 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     step = EccStep(
         name=SkippableStepEnum.DIFF_OPT.value,
         data=EccData(dir=tmp_path / "data", steps={SkippableStepEnum.DIFF_OPT.value: result_dir}),
+        directory=tmp_path / "diff_opt",
     )
     workspace = Workspace(
         directory=tmp_path / "workspace",

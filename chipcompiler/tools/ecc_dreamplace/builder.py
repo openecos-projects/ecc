@@ -87,18 +87,29 @@ def _apply_placement_buffering_profile(
     }
 
 
+STEP_CONFIG_FILE = "dreamplace_ecc.json"
+
+
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
-    if step.name == SkippableStepEnum.DIFF_OPT.value:
-        return (
-            require_path(step.data.workdir_for(step.name), "DreamPlace diff-opt workdir")
-            / "dreamplace_diff_opt.json"
-        )
-    if step.name == StepEnum.DIFF_SIZING.value:
-        return (
-            require_path(step.data.workdir_for(step.name), "DreamPlace diff-sizing workdir")
-            / "dreamplace_diff_sizing.json"
-        )
-    return Path(workspace.config["dreamplace"])
+    """The step's own DreamPlace config, ``<step dir>/config/dreamplace_ecc.json``.
+
+    The workspace ``config/dreamplace_ecc.json`` is the baseline every step
+    starts from; each DreamPlace step (and an owner of inner legalization)
+    resolves its effective config into its own step directory, so no step
+    rewrites another's inputs.
+    """
+    _ = workspace
+    return require_path(step.directory, "DreamPlace step directory") / "config" / STEP_CONFIG_FILE
+
+
+def effective_config_path(workspace: Workspace, step: WorkspaceStep) -> Path | None:
+    """The step's config once it is built, else the workspace baseline."""
+    if step.directory is not None:
+        path = step_config_path(workspace, step)
+        if path.is_file():
+            return path
+    baseline = workspace.config.get("dreamplace") if workspace.config else None
+    return Path(baseline) if baseline else None
 
 
 def _resolve_diff_sizing_rc_mode(result: dict, explicit_keys) -> str:
@@ -278,10 +289,13 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     from .checklist import DreamplaceChecklist
 
     DreamplaceChecklist(workspace=workspace, workspace_step=step)
+    write_step_config(workspace, step)
 
+
+def write_step_config(workspace: Workspace, step: EccStep) -> Path:
+    """Resolve *step*'s DreamPlace config from the workspace baseline into its step directory."""
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
-
     params = json_read(workspace.config["dreamplace"])
     parameter_data = _current_parameter_data(workspace)
     params = apply_parameter_overrides(params, parameter_data)
@@ -313,4 +327,6 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
 
     config_path = step_config_path(workspace, step)
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    json_write(config_path, params)
+    if not json_write(config_path, params):
+        raise OSError(f"Failed to write DreamPlace step config: {config_path}")
+    return config_path

@@ -327,11 +327,22 @@ def build_step_config_items(
     items = []
     display_run = run_id or "default"
 
-    config_paths = ()
+    config_paths: list[tuple[str, str]] = []
     if data_step is not None:
-        config_paths = step_config_paths(run_dir, data_step, tool, existing_only=True)
+        config_paths = [
+            ("workspace_config", str(path))
+            for path in step_config_paths(run_dir, data_step, tool, existing_only=True)
+        ]
+    # A step that resolves its own config (DreamPlace) keeps it in <step dir>/config.
+    step_config_dir = os.path.join(step_dir, "config") if step_dir is not None else ""
+    if step_config_dir and os.path.isdir(step_config_dir):
+        config_paths.extend(
+            ("step_config", os.path.join(step_config_dir, name))
+            for name in sorted(os.listdir(step_config_dir))
+            if name.endswith(".json")
+        )
 
-    for fpath in config_paths:
+    for source, fpath in config_paths:
         items.append(
             {
                 "kind": "config",
@@ -339,8 +350,8 @@ def build_step_config_items(
                 "step": requested_step_token,
                 "role": "config",
                 "workspace_id": display_run,
-                "path": os.path.relpath(str(fpath), base_dir),
-                "source": "workspace_config",
+                "path": os.path.relpath(fpath, base_dir),
+                "source": source,
                 "inspect_cmd": disclosure_cmd(
                     f"ecc config {requested_step_token}", project, run_id
                 ),

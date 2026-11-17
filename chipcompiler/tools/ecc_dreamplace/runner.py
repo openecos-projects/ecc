@@ -14,6 +14,7 @@ from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.utility import json_read
 
+from .builder import effective_config_path, write_step_config
 from .checklist import DreamplaceChecklist
 from .module import DreamplaceModule, DreamplaceRunMode
 from .utility import is_eda_exist
@@ -26,9 +27,9 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     checklist.check()
 
 
-def _placement_backend(workspace: Workspace) -> str:
-    config_path = workspace.config.get("dreamplace")
-    if not config_path:
+def _placement_backend(workspace: Workspace, step: EccStep) -> str:
+    config_path = effective_config_path(workspace, step)
+    if config_path is None:
         return "ieda"
     return str(json_read(config_path).get("place_io_engine", "ieda") or "ieda").lower()
 
@@ -182,7 +183,7 @@ def _run_placement_mode(
         DreamplaceRunMode.DIFF_OPT: EccSubFlowEnum.run_diff_opt.value,
         DreamplaceRunMode.DIFF_SIZING: EccSubFlowEnum.run_diff_sizing.value,
     }[mode]
-    backend = _placement_backend(workspace)
+    backend = _placement_backend(workspace, step)
     if mode in (
         DreamplaceRunMode.DIFF_OPT,
         DreamplaceRunMode.DIFF_SIZING,
@@ -348,13 +349,14 @@ def legalize_layout(
         from chipcompiler.data import build_workspace_config_paths
 
         workspace.config["dreamplace"] = build_workspace_config_paths(workspace)["dreamplace"]
-    dreamplace_config = workspace.config.get("dreamplace")
-    if not dreamplace_config or not Path(dreamplace_config).is_file():
+    if not Path(workspace.config["dreamplace"]).is_file():
         logger.error(
             "DreamPlace config is missing for inner legalization of %s",
             owner_step.name,
         )
         return None
+    # The owner resolves its own DreamPlace config into its step directory.
+    write_step_config(workspace, owner_step)
 
     load_step = replace(
         owner_step,
