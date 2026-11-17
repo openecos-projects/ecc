@@ -61,7 +61,6 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
-    config_dir = tmp_path / "workspace" / "config"
 
     real_copy2 = shutil.copy2
 
@@ -81,7 +80,7 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    dreamplace_config = config_dir / "dreamplace_ecc.json"
+    dreamplace_config = dreamplace_builder.step_config_path(workspace, step)
     mode = dreamplace_config.stat().st_mode
     data = json_read(dreamplace_config)
 
@@ -194,7 +193,7 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    dreamplace_config = json_read(workspace.config["dreamplace"])
+    dreamplace_config = json_read(dreamplace_builder.step_config_path(workspace, step))
     assert dreamplace_config["target_density"] == 0.7
     assert dreamplace_config["def_input"] == "input.def"
     assert dreamplace_config["verilog_input"] == "input.v"

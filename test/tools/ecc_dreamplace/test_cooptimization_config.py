@@ -169,7 +169,11 @@ def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_pa
     step = EccStep(
         name=StepEnum.LEGALIZATION.value,
         data=EccData(steps={StepEnum.LEGALIZATION.value: tmp_path / "pl"}),
+        directory=tmp_path / "legalization",
     )
+    step_config = tmp_path / "legalization" / "config" / "dreamplace_ecc.json"
+    step_config.parent.mkdir(parents=True)
+    step_config.write_text(path.read_text())
     module = DreamplaceModule(workspace, step, None, None, None, None, None)
     params = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
     disabled = (

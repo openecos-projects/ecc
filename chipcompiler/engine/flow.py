@@ -488,10 +488,12 @@ class EngineFlow:
             or workspace_step.tool != ToolName.DREAMPLACE
         ):
             return False
-        config_path = self.workspace.config.get("dreamplace")
-        if not config_path:
-            return False
+        from chipcompiler.tools.ecc_dreamplace.builder import effective_config_path
         from chipcompiler.utility import json_read
+
+        config_path = effective_config_path(self.workspace, workspace_step)
+        if config_path is None:
+            return False
 
         return str(json_read(config_path).get("place_io_engine", "") or "").lower() == "openroad"
 

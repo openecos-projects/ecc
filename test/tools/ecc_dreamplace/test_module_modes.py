@@ -27,7 +27,8 @@ from .test_module import FakeParams
     ],
 )
 def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
-    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path = tmp_path / "step" / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     json_write(
         config_path,
         {
@@ -43,6 +44,7 @@ def test_legalization_params_follow_owner(tmp_path, owner, detailed_place_flag):
         config={"dreamplace": config_path},
     )
     step = EccStep(
+        directory=tmp_path / "step",
         name=owner,
         data=EccData(
             dir=tmp_path / "data",
@@ -125,7 +127,8 @@ def test_geometry_legalization_preserves_configured_padding(
 
 
 def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
-    config_path = tmp_path / "dreamplace_ecc.json"
+    config_path = tmp_path / "step" / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     json_write(config_path, {})
     workspace = Workspace(
         directory=Path(tmp_path / "workspace"),
@@ -134,6 +137,7 @@ def _module_for_owner(tmp_path, step_name: str) -> DreamplaceModule:
     )
     result_dir = tmp_path / "data" / "to"
     step = EccStep(
+        directory=tmp_path / "step",
         name=step_name,
         data=EccData(dir=tmp_path / "data", steps={step_name: result_dir}),
         log=LogPaths(file=tmp_path / "step.log"),
@@ -313,6 +317,7 @@ def test_legalize_layout_fills_missing_dreamplace_config_without_clobbering(tmp_
         config={"db": workspace_dir / "config" / "db_ecc.json"},
     )
     step = EccStep(
+        directory=tmp_path / "step",
         name=SkippableStepEnum.TIMING_OPT.value,
         data=EccData(
             dir=tmp_path / "data",
