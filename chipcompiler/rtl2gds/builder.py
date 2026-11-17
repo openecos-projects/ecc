@@ -70,10 +70,9 @@ def resolve_skip_steps(flow_config: Mapping[str, object] | None) -> tuple[str, .
     """The effective skip policy carried by a flow config.
 
     Presence-keyed: an absent ``skip_steps`` key yields the code default;
-    an explicitly empty list yields ``()`` (run every step). Entries accept
-    the same aliases as step ranges, must name steps of the rtl2gds chain,
-    and normalize to canonical step values in canonical chain order
-    (idempotently). ``lec`` is accepted and dropped: it was a chain step, and
+    an explicitly empty list yields ``()`` (run every step). Entries must
+    name steps of the rtl2gds chain exactly and are returned deduplicated in
+    canonical chain order (idempotently). ``lec`` is accepted and dropped: it was a chain step, and
     existing ecc.toml, project.json and params.toml files still list it;
     an LEC is inserted with ``insert_steps`` instead. Whether the remaining
     steps can run is decided by their capabilities
@@ -88,7 +87,7 @@ def resolve_skip_steps(flow_config: Mapping[str, object] | None) -> tuple[str, .
     for entry in raw:
         if not isinstance(entry, str):
             raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
-        requested.add(normalize_flow_step(entry))
+        requested.add(entry.strip())
     requested.discard(StepEnum.LEC.value)
     chain_names = rtl2gds_step_names()
     unknown = sorted(requested - set(chain_names))
@@ -137,8 +136,8 @@ def _canonical_inserted_steps() -> dict[str, tuple[str, str]]:
 def resolve_insert_steps(flow_config: Mapping[str, object] | None) -> tuple[str, ...]:
     """The inserted steps a flow config declares (``[flow] insert_steps``).
 
-    Nothing is inserted when the key is absent. Entries are ``STEP@AFTER``;
-    both names accept the selector aliases (``lec@timing_opt``). Only an
+    Nothing is inserted when the key is absent. Entries are ``STEP@AFTER``
+    with canonical step names (``lec@timing_optimization``). Only an
     insertable step (LEC) can be inserted, after a step of
     :func:`lec_insert_anchors`, at most once per step. Returns canonical
     names ordered by the step they follow; raises ``ValueError`` otherwise.
@@ -159,12 +158,12 @@ def resolve_insert_steps(flow_config: Mapping[str, object] | None) -> tuple[str,
                 f"insert_steps entry {entry!r} must be STEP{INSERTED_STEP_MARK}AFTER, "
                 f"for example lec{INSERTED_STEP_MARK}{StepEnum.CTS.value}"
             )
-        if normalize_flow_step(step) not in INSERTABLE_FLOW_STEPS:
+        if step.strip() not in INSERTABLE_FLOW_STEPS:
             raise ValueError(
                 f"insert_steps entry {entry!r}: only "
                 f"{', '.join(sorted(INSERTABLE_FLOW_STEPS))} can be inserted"
             )
-        anchor = normalize_flow_step(after)
+        anchor = after.strip()
         if anchor not in anchors:
             raise ValueError(
                 f"insert_steps entry {entry!r}: lec can be inserted after {', '.join(anchors)}"
@@ -258,60 +257,6 @@ def build_rtl2gds_flow(
     return insert_flow_steps(filter_flow_steps(steps, skip), insert, lec_engine)
 
 
-def normalize_flow_step(value: str | StepBaseEnum) -> str:
-    """Resolve a CLI/manifest step spelling to its canonical flow name."""
-    if isinstance(value, StepBaseEnum):
-        return value.value
-    token = str(value or "").strip()
-    if not token:
-        return ""
-    kind, mark, after = token.partition(INSERTED_STEP_MARK)
-    if mark:
-        # An inserted step (``LEC@CTS``) resolves each side: ``lec@cts``.
-        return inserted_step_name(normalize_flow_step(kind), normalize_flow_step(after))
-    alias_key = token.lower().replace("_", "").replace("-", "").replace(" ", "")
-    aliases = {
-        "synth": StepEnum.SYNTHESIS.value,
-        "synthesis": StepEnum.SYNTHESIS.value,
-        "prefloorplan": StepEnum.PRE_FLOORPLAN.value,
-        "floorplan": StepEnum.PRE_FLOORPLAN.value,
-        "macro": StepEnum.MACRO_PLACEMENT.value,
-        "macroplace": StepEnum.MACRO_PLACEMENT.value,
-        "macroplacement": StepEnum.MACRO_PLACEMENT.value,
-        "postfloorplan": StepEnum.POST_FLOORPLAN.value,
-        "preplace": StepEnum.PREPLACE.value,
-        "preplaceopt": StepEnum.PREPLACE.value,
-        "preplaceoptimization": StepEnum.PREPLACE.value,
-        "place": StepEnum.PLACEMENT.value,
-        "placement": StepEnum.PLACEMENT.value,
-        "diffopt": SkippableStepEnum.DIFF_OPT.value,
-        "diffoptimization": SkippableStepEnum.DIFF_OPT.value,
-        "diffsizing": StepEnum.DIFF_SIZING.value,
-        "cts": StepEnum.CTS.value,
-        "legal": StepEnum.LEGALIZATION.value,
-        "legalization": StepEnum.LEGALIZATION.value,
-        "timingopt": SkippableStepEnum.TIMING_OPT.value,
-        "timingoptimization": SkippableStepEnum.TIMING_OPT.value,
-        "route": StepEnum.ROUTING.value,
-        "routing": StepEnum.ROUTING.value,
-        "drc": StepEnum.DRC.value,
-        "antenna": StepEnum.ANTENNA_CHECK.value,
-        "antennacheck": StepEnum.ANTENNA_CHECK.value,
-        "lvs": StepEnum.LVS.value,
-        "filler": StepEnum.FILLER.value,
-        "lec": StepEnum.LEC.value,
-        "postlec": SkippableStepEnum.POST_ROUTE_LEC.value,
-        "postroutelec": SkippableStepEnum.POST_ROUTE_LEC.value,
-        "rcx": StepEnum.RCX.value,
-        "sta": StepEnum.STA.value,
-        "poweranalysis": StepEnum.POWER_ANALYSIS.value,
-        "emir": StepEnum.EMIR.value,
-        "harden": StepEnum.HARDEN.value,
-        "defview": StepEnum.DEFVIEW.value,
-    }
-    return aliases.get(alias_key, token)
-
-
 def build_flow_range(
     from_step: str | StepBaseEnum,
     to_step: str | StepBaseEnum,
@@ -332,8 +277,8 @@ def build_flow_range(
     names = [
         step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
     ]
-    first = normalize_flow_step(from_step)
-    last = normalize_flow_step(to_step)
+    first = str(from_step)
+    last = str(to_step)
     if first not in names or last not in names:
         available = ", ".join(names)
         raise ValueError(

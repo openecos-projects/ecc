@@ -89,7 +89,7 @@ def test_edit_writes_and_removes_insert_steps(capsys, create_cli_project):
     project_dir = create_cli_project()
     edit = ("flow", "edit", "--project", project_dir, "--yes")
 
-    inserted = _run(capsys, *edit, "--insert", "lec@routing", "--insert", "lec@timing_opt")
+    inserted = _run(capsys, *edit, "--insert", "lec@routing", "--insert", "lec@timing_optimization")
     written = _flow_table(project_dir)
     removed = _run(capsys, *edit, "--remove", "lec@routing", "--remove", "lec@timing_optimization")
 

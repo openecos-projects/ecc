@@ -106,10 +106,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
 
 
 def _resolve_entry(entries: list[_StepEntry], token: str) -> _StepEntry | None:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    # A typed step alias ("timing optimization", "place") resolves to its flow step.
-    wanted = {token.strip().lower(), normalize_flow_step(token).lower()}
+    wanted = {token.strip().lower(), token.strip()}
     return next((e for e in entries if wanted & e.aliases), None)
 
 

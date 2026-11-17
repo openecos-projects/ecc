@@ -9,7 +9,6 @@ from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS, flow_section_fr
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
-from chipcompiler.rtl2gds import normalize_flow_step
 
 
 def bound_derived_flow(
@@ -64,9 +63,9 @@ def bound_derived_flow(
 
 
 def _step_index(names: list[str], name: str) -> int:
-    identity = normalize_flow_step(name).casefold()
+    identity = str(name)
     for index, candidate in enumerate(names):
-        if normalize_flow_step(candidate).casefold() == identity:
+        if str(candidate) == identity:
             return index
     raise WorkspaceLifecycleError("flow_step_not_found", f"Flow Step not found: {name}")
 

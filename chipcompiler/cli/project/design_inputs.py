@@ -48,9 +48,7 @@ _PHYSICAL_STEPS = frozenset(
 
 def required_inputs_for_step(step: str) -> tuple[str, ...]:
     """Return the declared ``[design]`` fields required to enter *step*."""
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    canonical = normalize_flow_step(step)
+    canonical = str(step)
     if canonical == "synthesis":
         return ("rtl",)
     if canonical == "post_route_lec":

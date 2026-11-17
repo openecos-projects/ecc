@@ -69,7 +69,9 @@ def test_selection_missing_required_data_is_not_written(capsys, create_cli_proje
     with open(os.path.join(project_dir, "ecc.toml")) as f:
         before = f.read()
 
-    rc, records = _edit(capsys, project_dir, "--disable", "legalization", "--disable", "TimingOpt")
+    rc, records = _edit(
+        capsys, project_dir, "--disable", "legalization", "--disable", "timing_optimization"
+    )
 
     assert rc == 1
     assert records == [

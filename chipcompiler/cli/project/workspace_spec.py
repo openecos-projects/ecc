@@ -44,10 +44,9 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         input_bindings[input_id] = path
 
     from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
-    from chipcompiler.rtl2gds import normalize_flow_step
 
     entry_step = fresh_entry_step(cfg, flow_config)
-    rtl_mode = normalize_flow_step(entry_step or "") == "synthesis"
+    rtl_mode = str(entry_step or "") == "synthesis"
     if rtl_mode:
         for index, path in enumerate(inputs.rtl):
             add("rtl", path, index)
@@ -82,9 +81,7 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         current_flow = {}
     flow = {"flowId": cfg.flow_preset or current_flow.get("flowId") or "custom"}
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        flow["fromStepId"] = normalize_flow_step(flow_config["start_step"])
-        flow["throughStepId"] = normalize_flow_step(
-            flow_config.get("end_step") or flow_config["start_step"]
-        )
+        flow["fromStepId"] = str(flow_config["start_step"])
+        flow["throughStepId"] = str(flow_config.get("end_step") or flow_config["start_step"])
     spec["flow"] = flow
     return spec, bindings

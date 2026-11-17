@@ -34,7 +34,7 @@ from chipcompiler.params import (
     workspace_param_step,
     workspace_param_value,
 )
-from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
+from chipcompiler.rtl2gds import get_flow_builders
 from chipcompiler.utility import JsonReadError
 
 from .macro_location_handoff import (
@@ -198,18 +198,14 @@ def _apply_workspace_parameters(
                 "step_output_commit_requires_step",
                 "commit_step_output requires parameters scoped to a Flow Step",
             )
-        if normalize_flow_step(step).casefold() != normalize_flow_step(first_step).casefold():
+        if str(step) != str(first_step):
             raise WorkspaceLifecycleError(
                 "step_output_scope_mismatch",
                 "Published step output must belong to the earliest affected Flow Step",
                 {"step": step, "firstAffectedStep": first_step},
             )
         selected = next(
-            (
-                item
-                for item in workspace.flow.steps()
-                if str(item.get("name", "")).casefold() == first_step.casefold()
-            ),
+            (item for item in workspace.flow.steps() if item.get("name") == first_step),
             None,
         )
         if selected is None or selected.get("state") != StateEnum.Success.value:
@@ -303,10 +299,10 @@ def _value_errors(workspace: Any, value: object, schema: Any) -> list[str]:
 
 
 def _earliest_flow_step(workspace: Any, affected_steps: list[str]) -> str:
-    identities = {normalize_flow_step(step).casefold() for step in affected_steps}
+    identities = {str(step) for step in affected_steps}
     for step in workspace.flow.steps():
         name = str(step.get("name", ""))
-        if normalize_flow_step(name).casefold() in identities:
+        if name in identities:
             return name
     raise WorkspaceLifecycleError(
         "parameter_not_in_flow", "No affected parameter step exists in this Workspace flow"
@@ -648,15 +644,15 @@ def _update_workspace_step_configuration(
 
 
 def _step_catalog(workspace: Any, step_id: str):
-    identity = normalize_flow_step(step_id).casefold()
+    identity = str(step_id)
     steps = [str(step.get("name", "")) for step in workspace.flow.steps() if step.get("name")]
     step = next(
-        (candidate for candidate in steps if normalize_flow_step(candidate).casefold() == identity),
+        (candidate for candidate in steps if str(candidate) == identity),
         None,
     )
     if step is None:
         raise WorkspaceLifecycleError("unknown_flow_step", f"Flow Step not found: {step_id}")
-    first = normalize_flow_step(steps[0]).casefold()
+    first = str(steps[0])
     schemas = tuple(
         schema
         for schema in list_schemas()
