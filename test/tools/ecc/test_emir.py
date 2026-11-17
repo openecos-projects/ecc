@@ -335,3 +335,44 @@ def test_emir_reads_the_power_analysis_a_derived_workspace_inherited(emir_case, 
         workspace.directory / "post_floorplan_ecc",
         inherited,
     )
+
+def test_emir_publishes_spatial_result_only_after_new_geometry_is_saved(emir_case):
+    workspace, step, module, save_data = emir_case
+    payload = {
+        "schema": "ecos.emir.ir.v1",
+        "coordinate_unit": "dbu",
+        "dbu_per_micron": 1000,
+        "views": [],
+    }
+
+    def analyze():
+        path = step.data.steps[StepEnum.EMIR.value] / "emir_reporter/ir_drop.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        assert json_write(path, payload)
+        return True
+
+    def save(**_kwargs):
+        step.output.geometry_manifest.parent.mkdir(parents=True, exist_ok=True)
+        step.output.geometry_manifest.write_text("dbu_per_micron=1000\n")
+        return True
+
+    module.run_emir.side_effect = analyze
+    save_data.side_effect = save
+    assert runner.run_step(workspace, step, module) is True
+    published = json_read(step.output.geometry_manifest.parent / "ir/ir_drop.json")
+    assert published.pop("geometry_manifest_sha256")
+    assert published == payload
+    assert json_read(step.report.dir / "ir_drop.json") == payload
+
+
+def test_emir_failed_rerun_removes_previous_spatial_result(emir_case):
+    workspace, step, module, _save_data = emir_case
+    target = step.output.geometry_manifest.parent / "ir/ir_drop.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("stale")
+    write_native_emir_reports(step, "ir_drop.json")
+    module.init_emir.return_value = False
+    assert runner.run_step(workspace, step, module) is False
+    assert not target.exists()
+    assert not (step.data.steps[StepEnum.EMIR.value] / "emir_reporter/ir_drop.json").exists()
+
