@@ -104,9 +104,9 @@ def lec_insert_anchors() -> tuple[str, ...]:
     """The steps an LEC can be inserted after (``[flow] insert_steps``), in chain order.
 
     The design-building steps from Synthesis up to filler, each of which
-    writes a netlist an LEC can check: ``lec@Synthesis`` compares the RTL with
+    writes a netlist an LEC can check: ``lec@synthesis`` compares the RTL with
     the mapped netlist (kepler-formal SEC), a later one compares the step's
-    netlist with the synthesis netlist. filler has ``postRouteLec``.
+    netlist with the synthesis netlist. filler has ``post_route_lec``.
     """
     names = rtl2gds_step_names()
     first = names.index(StepEnum.SYNTHESIS.value)
@@ -115,12 +115,8 @@ def lec_insert_anchors() -> tuple[str, ...]:
 
 
 def inserted_step_name(step: str, after: str) -> str:
-    """The ledger name of *step* inserted after *after*: ``lec@CTS``.
-
-    Spaces in *after* become underscores (``lec@Timing_optimization``), so the
-    name is one shell word and a plain file name.
-    """
-    return f"{step}{INSERTED_STEP_MARK}{'_'.join(after.split())}"
+    """The ledger name of *step* inserted after *after*: ``lec@cts``."""
+    return f"{step}{INSERTED_STEP_MARK}{after}"
 
 
 def parse_inserted_step(name: str) -> tuple[str, str] | None:
@@ -161,7 +157,7 @@ def resolve_insert_steps(flow_config: Mapping[str, object] | None) -> tuple[str,
         if not mark or not step.strip() or not after.strip():
             raise ValueError(
                 f"insert_steps entry {entry!r} must be STEP{INSERTED_STEP_MARK}AFTER, "
-                f"for example lec{INSERTED_STEP_MARK}CTS"
+                f"for example lec{INSERTED_STEP_MARK}{StepEnum.CTS.value}"
             )
         if normalize_flow_step(step) not in INSERTABLE_FLOW_STEPS:
             raise ValueError(
@@ -186,7 +182,7 @@ def insert_flow_steps(
 
     An inserted step runs exactly when the step it follows runs: one whose
     step is not in *steps* (skipped, or outside a range) is left out, and so
-    is one *steps* already holds (``synthesis_lec`` builds ``lec@Synthesis``).
+    is one *steps* already holds (``synthesis_lec`` builds ``lec@synthesis``).
     Inserted LEC steps use *lec_engine*.
     """
     lec_tool = LECEngineEnum.from_value(lec_engine).value

@@ -28,11 +28,11 @@ def _config(tmp_path, flow_extra=""):
 @pytest.mark.parametrize(
     ("flow_extra", "flow_config", "expected"),
     [
-        ("", None, "Synthesis"),
-        ('skip_steps = ["Synthesis"]\n', None, "preFloorplan"),
+        ("", None, "synthesis"),
+        ('skip_steps = ["synthesis"]\n', None, "pre_floorplan"),
         # The run's own policy wins over ecc.toml.
-        ('skip_steps = ["Synthesis"]\n', {"skip_steps": []}, "Synthesis"),
-        ("", {"start_step": "Place", "end_step": "route"}, "place"),
+        ('skip_steps = ["synthesis"]\n', {"skip_steps": []}, "synthesis"),
+        ("", {"start_step": "placement", "end_step": "routing"}, "placement"),
     ],
 )
 def test_entry_step_is_the_first_step_the_selection_keeps(
@@ -48,9 +48,9 @@ def test_code_default_policy_is_not_rechecked(tmp_path):
 
 
 def test_selection_missing_required_data_is_a_config_error(tmp_path):
-    cfg = _config(tmp_path, 'skip_steps = ["legalization", "Timing optimization"]\n')
+    cfg = _config(tmp_path, 'skip_steps = ["legalization", "timing_optimization"]\n')
 
-    expected = "flow.skip_steps: route requires legal; enable Timing optimization or legalization"
+    expected = "flow.skip_steps: routing requires legal; enable timing_optimization or legalization"
     assert selection_errors(cfg, None) == [expected]
     assert expected in validate_project_config(cfg)
 
@@ -59,23 +59,28 @@ def test_skipped_range_start_is_a_config_error(tmp_path):
     cfg = _config(tmp_path)
 
     assert selection_errors(
-        cfg, {"start_step": "CTS", "end_step": "route", "skip_steps": ["CTS"]}
-    ) == ["flow.skip_steps: 'CTS' starts the flow range and cannot be skipped"]
+        cfg, {"start_step": "cts", "end_step": "routing", "skip_steps": ["cts"]}
+    ) == ["flow.skip_steps: 'cts' starts the flow range and cannot be skipped"]
 
 
 def test_degraded_steps_are_warnings(tmp_path):
-    cfg = _config(tmp_path, 'skip_steps = ["CTS"]\n')
+    cfg = _config(tmp_path, 'skip_steps = ["cts"]\n')
 
     assert selection_errors(cfg, None) == []
     warnings = selection_warnings(cfg, None)
-    assert [warning["step"] for warning in warnings] == ["route", "sta", "powerAnalysis", "Harden"]
+    assert [warning["step"] for warning in warnings] == [
+        "routing",
+        "sta",
+        "power_analysis",
+        "harden",
+    ]
     assert warnings[0] == {
         "kind": "warning",
         "warning": "flow_step_degraded",
-        "step": "route",
+        "step": "routing",
         "missing": ["clock_tree"],
-        "fixes": ["CTS"],
-        "reason": "route runs with degraded results without clock_tree; enable CTS",
+        "fixes": ["cts"],
+        "reason": "routing runs with degraded results without clock_tree; enable cts",
     }
 
 
@@ -99,7 +104,7 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         str(config_path),
         preset="rtl2gds",
         lec_engine="kepler_formal",
-        skip_steps=["diff_opt", "CTS"],
+        skip_steps=["diff_opt", "cts"],
         insert_steps=[],
         max_parallel_steps=2,
     )
@@ -115,7 +120,7 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         "# preset: rtl2gds | syn_sta | synthesis_lec\n"
         'preset = "rtl2gds"\n'
         "# skipped steps\n"
-        'skip_steps = ["diff_opt", "CTS"]\n'
+        'skip_steps = ["diff_opt", "cts"]\n'
         "\n[params.cts]\n"
         "# fanout\n"
         "max_fanout = 32\n"

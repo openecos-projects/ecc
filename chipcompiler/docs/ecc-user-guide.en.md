@@ -115,11 +115,7 @@ uv run ecc --help
 | 21 | `revision_conflict`: `--expected-revision` disagrees with the manifest revision | commands taking `--expected-revision` |
 | 22 | `process_not_found`: the registered run process is stale and no live process holds the workspace lock | `ecc process` group |
 | 23 | contract incompatible (reserved: the CLI itself never emits it; the GUI-side contract gate uses it when the runtime/CLI contract is unsupported) | — |
-- Step tokens come in three vocabularies, distinguished by context:
-  - **display names** (output and input of `ecc status` / `ecc log` / `ecc report step`, uniformly lowercase/underscore): `synthesis / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_opt / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antennacheck / postroutelec / rcx / sta / poweranalysis / emir / harden`;
-  - **persisted names** (the original names in `home/flow.json`; required by `--from`/`--only`/`--to` on existing workspaces, e.g. `place`, `CTS`, `Timing optimization`): `Synthesis / preFloorplan / macroPlacement / postFloorplan / preplace / place / diff_opt / diff_sizing / CTS / legalization / Timing optimization / route / filler / lvs / drc / antennaCheck / postRouteLec / RCX / sta / powerAnalysis / emir / Harden`;
-  - **aliases when creating a new range** (the first `--from A --to B` workspace creation normalizes aliases; both spellings are accepted): e.g. `cts`↔`CTS`, `route`↔`routing`, `timingopt`↔`Timing optimization`, `diffsizing`↔`diff_sizing`, `antenna`↔`antennacheck`, `postlec`↔`postRouteLec`.
-  - an **inserted LEC** (`[flow] insert_steps`) is persisted as `lec@<step>` with spaces as underscores (`lec@Synthesis`, `lec@Timing_optimization`) and displayed in lowercase (`lec@synthesis`).
+- Step names are the flow step names recorded in `home/flow.json`; `ecc status` / `ecc log` / `ecc report step` show and accept the same names: `synthesis / pre_floorplan / macro_placement / post_floorplan / preplace / placement / diff_opt / diff_sizing / cts / legalization / timing_optimization / routing / filler / lvs / drc / antenna_check / post_route_lec / rcx / sta / power_analysis / emir / harden`. Commands also accept aliases (`synth`, `place`, `route`, `timingopt`, `antenna`, `postlec`, …) and resolve them to these names. An inserted LEC (`[flow] insert_steps`) is named `lec@<step>` (`lec@synthesis`, `lec@timing_optimization`).
   A misspelled name returns `unknown_step` with the full list of available step names — copy one of them as printed.
 
 Command overview:
@@ -370,7 +366,7 @@ $ ecc doctor          # run inside the project (the PDK probe needs ecc.toml or 
   ...
 ```
 
-- `kepler-formal` (required): the equivalence checker of every LEC step (inserted `lec@<step>` checks and postRouteLec). Resolved from `CHIPCOMPILER_KEPLER_FORMAL_ROOT` first (the root-level `kepler-formal` wrapper or `bin/kepler-formal`), then from PATH.
+- `kepler-formal` (required): the equivalence checker of every LEC step (inserted `lec@<step>` checks and post_route_lec). Resolved from `CHIPCOMPILER_KEPLER_FORMAL_ROOT` first (the root-level `kepler-formal` wrapper or `bin/kepler-formal`), then from PATH.
 - `klayout` (optional): its Python module supports legacy flow thumbnails, and
   its GUI executable is used by `gdsview`. The command accepts an explicit GUI
   executable through `KLAYOUT_BIN` and otherwise searches `PATH`.
@@ -398,7 +394,7 @@ $ ecc doctor --json
 ]
 ```
 
-For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping (steps skipped via `skip_steps` never have their tools probed): every flow preflights bundled ecc-tools; synthesis adds Yosys; placement/legalization adds DreamPlace; Timing optimization adds Sizer (including `rtl2gds`); an enabled LEC step (`postRouteLec`, or one inserted with `[flow] insert_steps`) probes kepler-formal. A missing component fails fast with `env_not_ready`:
+For a fresh or `--overwrite` target, `ecc run` preflights components derived from the target flow's actual step-tool mapping (steps skipped via `skip_steps` never have their tools probed): every flow preflights bundled ecc-tools; synthesis adds Yosys; placement/legalization adds DreamPlace; Timing optimization adds Sizer (including `rtl2gds`); an enabled LEC step (`post_route_lec`, or one inserted with `[flow] insert_steps`) probes kepler-formal. A missing component fails fast with `env_not_ready`:
 
 ```console
 $ ecc run
@@ -428,7 +424,7 @@ Notes:
 | Yosys slang frontend | `yosys -Q -T -p "help read_slang"` | output does **not** contain `No such command` (builtin since yosys ≥ v0.67; older builds need a loadable slang plugin) |
 | KLayout GUI (only needed by `gdsview`) | `KLAYOUT_BIN=/path/to/klayout ecc gdsview --help` or `command -v klayout` | executable resolves; run from a desktop session |
 | Sizer (required by `ecc doctor`; needed by the Timing optimization step in the complete rtl2gds chain) | `which Sizer`; optionally `echo $CHIPCOMPILER_ECC_SIZER_ROOT` | both the executable and a root containing `src/sizer_os.tcl` must resolve; the root may be configured or discovered from the binary. Fresh or `--overwrite` `rtl2gds` targets preflight Sizer; existing workspaces and `--workspace` reruns skip preflight, so a missing binary can still fail mid-flow |
-| kepler-formal (required by `ecc doctor`; probed when the selected range enables LEC/postRouteLec equivalence checks) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
+| kepler-formal (required by `ecc doctor`; probed when the selected range enables LEC/post_route_lec equivalence checks) | `echo $CHIPCOMPILER_KEPLER_FORMAL_ROOT`; `which kepler-formal` | either resolves the executable (the root-level wrapper or `bin/kepler-formal` under the root) |
 
 A copy-paste self-check snippet:
 
@@ -468,7 +464,7 @@ ecc run [OPTIONS]
 
 Automation options (used by ECOS Studio and CI drivers; optional for interactive use): `--expected-revision N` fails with `revision_conflict` (exit 21) when the workspace revision moved, `--command-id TEXT` stamps the mutation for idempotency/audit, `--no-wait` never blocks on a busy workspace (other mutation errors instead of waiting), `--run-id`/`--runtime-id` name the registered run process, and `--log-file PATH` redirects the whole run's stdout/stderr into a restricted-mode run log owned before preflight. The same revision/wait flags recur on other mutating commands (`param apply`, `macro import`, `workspace …`); `signoff export` accepts `--expected-revision` and `--no-wait`, but not `--command-id`. Runs registered this way are controlled with `ecc process` (§6.5).
 
-For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full step chain (Synthesis→preFloorplan→macroPlacement→postFloorplan→preplace→place→diff_opt (skipped by default: `[flow] skip_steps` defaults to `["diff_opt"]`)→diff_sizing→CTS→legalization→Timing optimization (sizer)→route→filler→lvs→drc→antennaCheck→postRouteLec (kepler-formal)→RCX→sta→powerAnalysis→emir→Harden; Harden emits GDS + Abstract LEF + timing LIB); `[flow] insert_steps` adds LEC checks, `lec@Synthesis` among them (§8.6). `antennaCheck` and `emir` are advisory steps: an incomplete analysis is reported but does not by itself stop the remaining flow.
+For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full step chain (synthesis→pre_floorplan→macro_placement→post_floorplan→preplace→placement→diff_opt (skipped by default: `[flow] skip_steps` defaults to `["diff_opt"]`)→diff_sizing→cts→legalization→timing_optimization (sizer)→routing→filler→lvs→drc→antenna_check→post_route_lec (kepler-formal)→rcx→sta→power_analysis→emir→harden; Harden emits GDS + Abstract LEF + timing LIB); `[flow] insert_steps` adds LEC checks, `lec@synthesis` among them (§8.6). `antenna_check` and `emir` are advisory steps: an incomplete analysis is reported but does not by itself stop the remaining flow.
 
 #### External workspace paths
 
@@ -489,7 +485,7 @@ ecc status --project /projects/gcd --workspace archive
 
 The path must be absolute. `ecc` creates only the final directory, so its parent must already exist; an existing non-empty directory must already be a valid ECC workspace. The project root and its legacy `runs/` directory are protected targets, and a path that contains the project directory is rejected. A workspace ID cannot be rebound to another path, and a path already declared for another ID cannot be reused. Use `ecc workspace import` to register an existing workspace without running or modifying it.
 
-The `synthesis_lec` preset runs Synthesis and its RTL check, `lec@Synthesis`:
+The `synthesis_lec` preset runs Synthesis and its RTL check, `lec@synthesis`:
 
 ```console
 $ ecc run --preset synthesis_lec
@@ -517,7 +513,7 @@ workspaces in a project declaring `flow.preset`. Otherwise the project preset or
 workspace's persisted target governs. An explicit `--preset` overrides the saved range.
 The CLI aligns the persisted ledger with that target:
 
-- the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary (for example a workspace first created with `--preset synthesis_lec` while `ecc.toml` says `rtl2gds` with `insert_steps = ["lec@Synthesis"]`: a subsequent bare `ecc run` continues from the current progress and completes the physical flow; without that insertion the target lacks the workspace's `lec@Synthesis`, a `flow_mismatch`);
+- the persisted steps are a **prefix** of the target and not finished yet → resume, **auto-extending** to the target end when necessary (for example a workspace first created with `--preset synthesis_lec` while `ecc.toml` says `rtl2gds` with `insert_steps = ["lec@synthesis"]`: a subsequent bare `ecc run` continues from the current progress and completes the physical flow; without that insertion the target lacks the workspace's `lec@synthesis`, a `flow_mismatch`);
 - the persisted range ⊇ the target and every step succeeded → `no_op` (a default resume never re-runs the wider persisted range past the target end);
 - the target and the persisted flow **diverge** (neither a prefix nor a superset) → `flow_mismatch`; rebuild with `--overwrite` as the error suggests, or use a new `--workspace`.
 
@@ -547,10 +543,10 @@ ecc run --workspace cts-only --from cts --to cts      # new range workspace (ali
 ecc run --workspace cts-route --from cts --to routing # same; both ends accept aliases
 ```
 
-When creating a range workspace, only the design inputs required by the **entry step** are validated: Synthesis needs `rtl`; postRouteLec needs `netlist` + `golden_netlist`; preFloorplan needs `netlist`; macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization, Timing optimization, route, filler, RCX, drc, lvs, and Harden need `def` + `netlist`; sta additionally needs `spef`; `sdc` is validated only when declared. `antennaCheck`, powerAnalysis, and emir currently have no entry-input contract and rely on chained upstream artifacts, so begin such a range at an earlier validated checkpoint. Missing inputs report `step_input_missing`:
+When creating a range workspace, only the design inputs required by the **entry step** are validated: Synthesis needs `rtl`; post_route_lec needs `netlist` + `golden_netlist`; pre_floorplan needs `netlist`; macro_placement, post_floorplan, preplace, place, diff_sizing, CTS, legalization, Timing optimization, route, filler, RCX, drc, lvs, and Harden need `def` + `netlist`; sta additionally needs `spef`; `sdc` is validated only when declared. `antenna_check`, power_analysis, and emir currently have no entry-input contract and rely on chained upstream artifacts, so begin such a range at an earlier validated checkpoint. Missing inputs report `step_input_missing`:
 
 ```console
-$ ecc run --from cts --to route          # new range but def/netlist are missing
+$ ecc run --from cts --to routing          # new range but def/netlist are missing
 [error]
   step_input_missing step_input_missing: cts requires design.def
   step_input_missing step_input_missing: cts requires design.netlist
@@ -561,15 +557,15 @@ For example, to reuse the post-floorplan artifacts from existing workspace `2` a
 
 ```bash
 PROJECT=~/projects/benchmark/gcd
-SOURCE="$PROJECT/2/postFloorplan_ecc/output"
+SOURCE="$PROJECT/2/post_floorplan_ecc/output"
 
-ecc project set design.def "$SOURCE/gcd_postFloorplan.def.gz" --project "$PROJECT"
-ecc project set design.netlist "$SOURCE/gcd_postFloorplan.v.gz" --project "$PROJECT"
+ecc project set design.def "$SOURCE/gcd_post_floorplan.def.gz" --project "$PROJECT"
+ecc project set design.netlist "$SOURCE/gcd_post_floorplan.v.gz" --project "$PROJECT"
 ecc run --project "$PROJECT" --workspace floorplan-2-place-route \
   --from placement --to routing
 ```
 
-`ecc run` has no `--def` or `--netlist` flag; a range entry reads `design.def` and `design.netlist` from `ecc.toml`. This registers `floorplan-2-place-route` in `project.json`, copies the two files into the new workspace's `origin/`, and runs placement through routing without rerunning postFloorplan. The first two commands change project-level `ecc.toml`, so they also affect later fresh workspaces. If those fields were previously absent, restore the default project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
+`ecc run` has no `--def` or `--netlist` flag; a range entry reads `design.def` and `design.netlist` from `ecc.toml`. This registers `floorplan-2-place-route` in `project.json`, copies the two files into the new workspace's `origin/`, and runs placement through routing without rerunning post_floorplan. The first two commands change project-level `ecc.toml`, so they also affect later fresh workspaces. If those fields were previously absent, restore the default project entry after creation with `ecc project unset design.def --project "$PROJECT"` and `ecc project unset design.netlist --project "$PROJECT"`.
 
 ### 5.2 Workspace mode (debugging / re-runs)
 
@@ -583,15 +579,15 @@ ecc run [--workspace NAME] [--resume | --from STEP [--to STEP] | --only STEP [--
 - `--only STEP [--force]`: run exactly one step; `--force` re-runs it even if it already succeeded;
 - `--resume`, `--only`, and a range are mutually exclusive; a fresh range cannot be combined with `--preset`, `--resume`, `--only`, `--force`, or `--overwrite`; `--workspace` may be combined with `--project`;
 - `--workspace` accepts either a single-segment name or an absolute path. Absolute paths create or register an external target; after registration, all workspace-scoped commands can use the manifest's declared ID;
-- **`--from`/`--only`/`--to` on an existing workspace require the persisted names** (the original names in `home/flow.json`; see the vocabulary in section 1, e.g. `place`, `CTS`, `Timing optimization`); only a fresh range (`--from A --to B` given together) accepts the lowercase aliases. A misspelled name reports `unknown_step` with the full list of available names:
+- **`--from`/`--only`/`--to`** take a step name or one of its aliases (section 1). A misspelled name reports `unknown_step` with the full list of available names:
 
 ```console
-$ ecc run --workspace default --from synthesis   # the persisted name is "Synthesis"
+$ ecc run --workspace default --from synthsis   # misspelled step name
 [error]
-  unknown_step unknown step 'synthesis'; available steps: Synthesis, lec@Synthesis, preFloorplan,
-  macroPlacement, postFloorplan, preplace, place, diff_sizing, CTS, legalization,
-  Timing optimization, route, filler, lvs, drc, antennaCheck, postRouteLec, RCX, sta,
-  powerAnalysis, emir, Harden
+  unknown_step unknown step 'synthsis'; available steps: synthesis, lec@synthesis, pre_floorplan,
+  macro_placement, post_floorplan, preplace, placement, diff_sizing, cts, legalization,
+  timing_optimization, routing, filler, lvs, drc, antenna_check, post_route_lec, rcx, sta,
+  power_analysis, emir, harden
   workspace: /tmp/gcd/default
 ```
 
@@ -599,10 +595,10 @@ $ ecc run --workspace default --from synthesis   # the persisted name is "Synthe
 
 ```bash
 ecc run --workspace default --resume               # continue from the first non-successful step
-ecc run --workspace default --from CTS --to route  # re-run an inclusive range
-ecc run --workspace default --only place           # run exactly one step (no_op if already successful)
-ecc run --workspace default --only place --force   # force a re-run of that step even if successful
-ecc run --workspace default --from Synthesis       # re-run the whole persisted suffix from the top
+ecc run --workspace default --from cts --to routing  # re-run an inclusive range
+ecc run --workspace default --only placement           # run exactly one step (no_op if already successful)
+ecc run --workspace default --only placement --force   # force a re-run of that step even if successful
+ecc run --workspace default --from synthesis       # re-run the whole persisted suffix from the top
 ```
 
 Misused selectors produce clear errors (all rc=1):
@@ -612,7 +608,7 @@ $ ecc run --resume            # the project has no workspaces yet
 [error]
   selector_requires_workspace
 
-$ ecc run --to route          # --to cannot appear on its own, without --from
+$ ecc run --to routing          # --to cannot appear on its own, without --from
 [error]
   flow_range_requires_pair
 
@@ -624,7 +620,7 @@ $ ecc run --force             # --force belongs to --only alone
 [error]
   force_requires_only
 
-$ ecc run --from cts --to route --preset rtl2gds   # a fresh range conflicts with other selectors
+$ ecc run --from cts --to routing --preset rtl2gds   # a fresh range conflicts with other selectors
 [error]
   selector_conflict
 
@@ -739,7 +735,7 @@ rc=22
 ecc log [STEP] [--project DIR] [--workspace NAME] [--plain]
 ```
 
-Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines). STEP accepts both the display name (`synthesis`) and the persisted name (`Synthesis`); a step that has not run yet (no log file) reports `log status: missing`, and a misspelled name reports `unknown_step`.
+Without STEP it lists all log files (the run-level flow log plus each step's log, with tail previews); with STEP it prints that step's log content (TEXT mode highlights ERROR/WARNING lines). STEP accepts a step name (`synthesis`) or an alias (`synth`); a step that has not run yet (no log file) reports `log status: missing`, and a misspelled name reports `unknown_step`.
 
 ```console
 $ ecc log
@@ -750,14 +746,14 @@ $ ecc log
       name | tool | state | runtime
       Synthesis | yosys | Success | 0:0:15
   inspect: ecc log --workspace default
-  synthesis  Synthesis_yosys/log/Synthesis.log
+  synthesis  synthesis_yosys/log/Synthesis.log
     tail:
       synthesizing gcd...
   inspect: ecc log synthesis --workspace default
 
 $ ecc log synthesis
 [log] step=synthesis
-  source: Synthesis_yosys/log/Synthesis.log
+  source: synthesis_yosys/log/Synthesis.log
         synthesizing gcd...
   inspect: ecc log synthesis --workspace default
 
@@ -777,8 +773,8 @@ ecc config [STEP] [--project DIR] [--workspace NAME] [--plain|--json]
 ```
 
 `--workspace` scopes the step view to an existing managed workspace; the project-level view remains
-project-scoped and reads `ecc.toml` from the project directory. LEC steps, `lvs`, `postroutelec`,
-`poweranalysis`, and `harden` have no step-specific configuration (Tcl-driven, tool-default, or
+project-scoped and reads `ecc.toml` from the project directory. LEC steps, `lvs`, `post_route_lec`,
+`power_analysis`, and `harden` have no step-specific configuration (Tcl-driven, tool-default, or
 reusing `db_ecc.json`).
 
 Without STEP it prints the project-level configuration (`ecc.toml` keys + resolved absolute paths); with STEP it lists the configuration files actually in effect for that step under the workspace's `config/`.
@@ -978,13 +974,13 @@ step); the source is not modified. Each workspace keeps one linear flow, so iter
 step is a chain of forks: fork, change parameters, run, compare, and fork the better one
 again. `--from STEP` resets that step and all later steps, retaining earlier
 completed states and outputs. To continue from a selected output, pass the **next runnable
-step**; for example, `ecc workspace fork source trial --from preFloorplan` retains the
+step**; for example, `ecc workspace fork source trial --from pre_floorplan` retains the
 Synthesis output. Without `--from`, all steps are reset.
 Adding `--to STEP` creates a bounded flow: `home/flow.json` contains only the inclusive
 `--from`/`--to` range (or starts at the source's first step if `--from` is omitted).
 The entry step's inherited netlist/DEF and constraints are copied into `origin/`, so the
 flow can resume without putting earlier steps back into the ledger. For example,
-`ecc workspace fork source trial --from preFloorplan --to macroPlacement` creates
+`ecc workspace fork source trial --from pre_floorplan --to macro_placement` creates
 exactly those two steps, using the source Synthesis output as input.
 The fork's snapshot uses the target
 Workspace ID and starts at revision 1. Workspace-local parameter changes can then be applied
@@ -1028,7 +1024,7 @@ $ ecc project baseline trial --reason "first experiment"
   status: selected
   workspace: trial
 
-$ ecc workspace fork trial branch_a --from place
+$ ecc workspace fork trial branch_a --from placement
 [status]
   workspace id: branch_a
   status: forked
@@ -1051,7 +1047,7 @@ ecc flow edit [--enable STEP]... [--disable STEP]... [--insert lec@STEP]... [--r
 `flow list` prints every registered flow preset and its ordered steps (`rtl2gds`, `syn_sta`,
 `synthesis_lec`) as `flow_step` records with `ordinal`, `skippable`, and `default skipped`
 flags — the same catalog `ecc run --preset` selects from. `skippable` marks the steps that
-are optional by design (`diff_opt`, `Timing optimization`, `postRouteLec`); any step
+are optional by design (`diff_opt`, `timing_optimization`, `post_route_lec`); any step
 may be skipped when the rest can still run, which `ecc flow status` checks. `flow show FLOW_ID` filters to one
 preset (`unknown_flow`, exit 2, for an unregistered name). `flow validate` checks the flow
 definitions and step metadata and emits one `flow_validation` record per flow; all three are
@@ -1081,7 +1077,7 @@ $ ecc flow list --json
   {
     "record": "flow_step",
     "flow_id": "rtl2gds",
-    "step_id": "Synthesis",
+    "step_id": "synthesis",
     "ordinal": 0,
     "skippable": false,
     "default_skipped": false
@@ -1098,16 +1094,16 @@ data, and what it provides:
 
 - An enabled step that lacks required design data is a config error: `ecc check`, `ecc run`,
   and workspace creation reject it, and the fix hint names the disabled steps to re-enable
-  (skipping `legalization` and `Timing optimization` gives
+  (skipping `legalization` and `timing_optimization` gives
   `route requires legal; enable Timing optimization or legalization`).
 - A step that lacks only optional data runs with degraded results and is reported as a
-  `flow_step_degraded` warning (skipping `CTS` warns
+  `flow_step_degraded` warning (skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS`, likewise for sta,
-  powerAnalysis, and Harden; routing/STA then use the pre-CTS ideal-clock timing constraints).
+  power_analysis, and Harden; routing/STA then use the pre-CTS ideal-clock timing constraints).
 - The preset's final step is the flow target and cannot be skipped (Harden for `rtl2gds`,
   Synthesis for `syn_sta`), nor can an explicit range start (`params.toml [flow] start`,
-  `ecc run --from`, `project.json` `start_step`). The first step can: skipping `Synthesis`
-  enters the run at `preFloorplan` with the declared `[design] netlist`; the entry
+  `ecc run --from`, `project.json` `start_step`). The first step can: skipping `synthesis`
+  enters the run at `pre_floorplan` with the declared `[design] netlist`; the entry
   step's inputs are checked as before.
 - `lec` is no longer a chain step: an LEC is inserted (below). Existing files that still list
   `lec` in `skip_steps` keep working; the entry is ignored.
@@ -1117,18 +1113,18 @@ data, and what it provides:
   or `--overwrite` run.
 
 **Inserted LEC checks (`[flow] insert_steps`).** Besides skipping steps, a selection can insert
-an LEC check after a design-building step: `insert_steps = ["lec@Synthesis", "lec@CTS"]`. An
+an LEC check after a design-building step: `insert_steps = ["lec@synthesis", "lec@cts"]`. An
 LEC changes nothing and the steps after it keep reading the step before it, so it can follow any
-step from `Synthesis` to `route` (`Synthesis`, `preFloorplan`, `macroPlacement`,
-`postFloorplan`, `preplace`, `place`, `diff_opt`, `diff_sizing`, `CTS`, `legalization`,
-`Timing optimization`, `route`); `filler` has `postRouteLec`. No other step can be inserted: the design-building steps run once each, and the signoff analyses need the
+step from `synthesis` to `routing` (`synthesis`, `pre_floorplan`, `macro_placement`,
+`post_floorplan`, `preplace`, `placement`, `diff_opt`, `diff_sizing`, `cts`, `legalization`,
+`timing_optimization`, `routing`); `filler` has `post_route_lec`. No other step can be inserted: the design-building steps run once each, and the signoff analyses need the
 final layout. Repeated buffering does not need extra steps: `diff_opt` alternates sizing and
 buffering rounds itself (`place.diff_optimization_flows`).
 
 - An entry is `lec@STEP` and accepts the step aliases (`lec@timing_opt`). The inserted step is
-  named `lec@<step>`, spaces written as underscores (`lec@Timing_optimization`); use that name
+  named `lec@<step>`, spaces written as underscores (`lec@timing_optimization`); use that name
   with `ecc run --only`/`--from` and `ecc log`.
-- `lec@Synthesis` checks synthesis: it compares the RTL Synthesis read (its filelist, else its
+- `lec@synthesis` checks synthesis: it compares the RTL Synthesis read (its filelist, else its
   RTL file) with the synthesized netlist. kepler-formal reads RTL only for sequential
   equivalence, so this check runs in SEC mode (`format: sv2v`, `verification: sec`); it applies
   no reset sequence and, like Synthesis, defines `SYNTHESIS`. Editing the RTL, or any file it reads
@@ -1136,20 +1132,20 @@ buffering rounds itself (`place.diff_optimization_flows`).
   design but proved three hand-made RTL mutations of `gcd` equivalent to the correct netlist
   (one inverted a 16-bit output), so treat a pass as weaker evidence than the netlist checks.
 - Any other inserted LEC compares the netlist of the step it follows (the gate) with the golden
-  netlist `postRouteLec` uses: the declared `design.golden_netlist`, else the synthesis-mapped
+  netlist `post_route_lec` uses: the declared `design.golden_netlist`, else the synthesis-mapped
   netlist, else the original input (combinational LEC).
-- It runs with `[flow] lec_engine` (kepler-formal) and, like `postRouteLec`, stops the flow when
+- It runs with `[flow] lec_engine` (kepler-formal) and, like `post_route_lec`, stops the flow when
   it does not prove equivalence.
 - It runs exactly when its step runs: skipping the step skips the check, a range that ends at the
-  step (`ecc run --to CTS`) includes it, and `ecc run --only CTS` does not. It cannot bound a range
+  step (`ecc run --to cts`) includes it, and `ecc run --only cts` does not. It cannot bound a range
   itself.
 - It is part of the workspace's flow target (`home/params.toml` `[flow] insert_steps`): adding
   or removing one makes an existing workspace a `flow_mismatch`; apply it with `--overwrite` or
   a new workspace. It is declared in `ecc.toml`. `project.json` still lists `LEC` as a
-  skippable step: a workspace entry whose declared `skip_steps` keeps it runs `lec@Synthesis`,
+  skippable step: a workspace entry whose declared `skip_steps` keeps it runs `lec@synthesis`,
   and a range ending at `LEC` ends at Synthesis plus that check. ECOS Studio does not
   recognize other inserted steps yet (follow them with the CLI).
-- Its result is an item of its step checklist; only `postRouteLec` goes into the signoff
+- Its result is an item of its step checklist; only `post_route_lec` goes into the signoff
   package.
 
 **Parallel steps (`[flow] max_parallel_steps`).** Steps that share a stage number (the `#`
@@ -1163,7 +1159,7 @@ reserve, so a run can use fewer workers than the setting allows. The value is re
 `ecc.toml` at run time only: it is never stored in a workspace and never changes which steps an
 existing workspace counts as selected, so editing it affects the next `ecc run` and nothing that
 already ran. `ecc config` shows it as `flow.max_parallel_steps`. When a step of a stage fails
-(other than an advisory step, `antennaCheck` or `emir`, ending `incomplete`), its siblings already
+(other than an advisory step, `antenna_check` or `emir`, ending `incomplete`), its siblings already
 running finish, none of the stage's remaining steps starts, and the run stops after the stage;
 the reported failed step is the first failed one in flow order. Ctrl-C starts no further step
 and stops the tools of every running one; as for a single interrupted step, they stay `ongoing`
@@ -1175,7 +1171,7 @@ lines of sibling steps interleave.
 `flow status` is read-only. It shows the preset's steps as a table — checkbox, stage `#`, step,
 tool, `After`, `Gives` and tags — followed by errors and warnings. `--enable`/`--disable` and
 `--insert`/`--remove lec@STEP` try a selection without writing `ecc.toml`. It exits 1 when an enabled step lacks required design
-data or an entry input is missing from `ecc.toml` (`step_input_missing: preFloorplan requires
+data or an entry input is missing from `ecc.toml` (`step_input_missing: pre_floorplan requires
 design.netlist`).
 
 - `#` is the stage. Steps that share a number can run in parallel: they get letter suffixes
@@ -1190,8 +1186,8 @@ design.netlist`).
 - `After` names the enabled steps a step takes design data from, nearest first. Optional inputs are
   dimmed; a need that no enabled step provides is shown as `(name)`, e.g. `(rtl)`. A producer is
   left out when another listed step already passes on everything this step takes from it (`sta`
-  lists `RCX`, which follows `filler`, but not `filler`). An inserted LEC lists the step whose
-  netlist it checks first (`lec@CTS`: `CTS, Synthesis`).
+  lists `rcx`, which follows `filler`, but not `filler`). An inserted LEC lists the step whose
+  netlist it checks first (`lec@cts`: `CTS, Synthesis`).
 - `Gives` lists what the step provides. The tag `check` marks a checker that provides nothing: it
   only reports; `inserted` marks an inserted LEC. `optional` and `target` are as before.
 
@@ -1217,8 +1213,8 @@ rtl2gds · 21 of 22 steps enabled
 [✔]  12     filler               ecc            route                         filled
 [✔]  13a ┐  lvs                  ecc            filler                                                 check
 [✔]  13b │  drc                  ecc            filler                                                 check
-[✔]  13c │  antennaCheck         ecc            filler                                                 check
-[✔]  13d │  postRouteLec         kepler_formal  filler, Synthesis                                      check · optional
+[✔]  13c │  antenna_check         ecc            filler                                                 check
+[✔]  13d │  post_route_lec         kepler_formal  filler, Synthesis                                      check · optional
 [✔]  13e ┘  RCX                  ecc            filler                        parasitics
 [✔]  14a ┐  sta                  ecc            RCX, CTS                                               check
   ...
@@ -1239,7 +1235,7 @@ cancels. The value stays between 1 and the larger of 4, the biggest stage of the
 and the value the editor started with. The legend redraws with it; when no stage has parallel
 steps, a line under the table shows it instead. Every toggle is re-checked live, a selection with errors cannot be saved,
 and the final step is shown as `target` and cannot be unchecked (a policy that skips it, such
-as `skip_steps = ["Synthesis"]` with `syn_sta`, is edited with it checked). With
+as `skip_steps = ["synthesis"]` with `syn_sta`, is edited with it checked). With
 `--enable`/`--disable`/`--insert`/`--remove`/`--max-parallel-steps N` (N >= 1) it applies the changes without the list; an invalid selection is reported before anything
 else. The value changes only when asked to: `--disable CTS --yes` writes the project's current value. Before writing, `flow edit` shows the new selection and its warnings and asks to
 confirm: `y` writes, `n`/`enter`/`q` keep `ecc.toml` unchanged. `--yes` writes without
@@ -1265,7 +1261,7 @@ $ ecc flow edit --disable CTS --enable diff_opt --yes
   enabled: diff_opt
   disabled: CTS
 ! warning: route runs with degraded results without clock_tree; enable CTS
-...                                   # likewise for sta, powerAnalysis, Harden
+...                                   # likewise for sta, power_analysis, Harden
 ```
 
 ## 9. param — parameter management
@@ -1418,12 +1414,12 @@ ecc macro import PATH [--project DIR] [--workspace NAME] [--expected-revision N]
 ecc macro show [--project DIR] [--workspace NAME] [--plain]
 ```
 
-A design with hard macros (SRAMs, analog blocks) places them automatically with DreamPlace in the `macroPlacement` step, writing `config/macro_location.tcl`. `ecc macro` manages the manual-placement parameter `macro.placements`: coordinates are in microns and instances are committed `fixed`. While the parameter is non-empty, `macroPlacement` keeps its load/save flow but skips DreamPlace, and `postFloorplan` commits the macros from the file. Orientations: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`; setting the same instance again updates it in place. `import` parses a `placeInstance` handoff file (microns, R-notation; comments and `setInstancePlacementStatus` lines are skipped) and replaces `macro.placements` wholesale; an empty file clears the parameter, and a malformed statement fails the import without writing anything.
+A design with hard macros (SRAMs, analog blocks) places them automatically with DreamPlace in the `macro_placement` step, writing `config/macro_location.tcl`. `ecc macro` manages the manual-placement parameter `macro.placements`: coordinates are in microns and instances are committed `fixed`. While the parameter is non-empty, `macro_placement` keeps its load/save flow but skips DreamPlace, and `post_floorplan` commits the macros from the file. Orientations: `R0`, `R90`, `R180`, `R270`, `MX`, `MY`, `MX90`, `MY90`; setting the same instance again updates it in place. `import` parses a `placeInstance` handoff file (microns, R-notation; comments and `setInstancePlacementStatus` lines are skipped) and replaces `macro.placements` wholesale; an empty file clears the parameter, and a malformed statement fails the import without writing anything.
 
 Both `ecc param` scopes apply:
 
 - project (default): stored in `ecc.toml` `[params.macro]`, rendered into the Tcl on the next fresh workspace (`ecc run` / `--overwrite`) or `ecc workspace refresh`;
-- `--workspace NAME`: written to that workspace's `home/params.toml`; the Tcl is regenerated immediately and `macroPlacement` and its suffix are marked pending, so the next `ecc run --workspace NAME` resumes from `macroPlacement`.
+- `--workspace NAME`: written to that workspace's `home/params.toml`; the Tcl is regenerated immediately and `macro_placement` and its suffix are marked pending, so the next `ecc run --workspace NAME` resumes from `macro_placement`.
 
 `ecc macro show --workspace NAME` additionally parses the current `config/macro_location.tcl` and reports `file_placements` plus `diverged` (whether the file disagrees with the parameter), which surfaces hand-edited files or an import that has not landed.
 
@@ -1459,7 +1455,7 @@ Adjusting macro positions on an existing workspace and re-running the affected s
 
 ```bash
 ecc macro set u_ram0 --x 120.0 --y 80.0 --orient MY --workspace default
-ecc run --workspace default                 # resumes from macroPlacement; downstream steps re-run
+ecc run --workspace default                 # resumes from macro_placement; downstream steps re-run
 ecc macro remove u_ram0 --workspace default # removing the last entry restores DreamPlace auto placement; resume again for the automatic result
 ```
 
@@ -1468,10 +1464,10 @@ Importing an existing `macro_location.tcl` (for example from another project or 
 ```bash
 ecc macro import /path/to/macro_location.tcl --workspace default
 ecc macro show --workspace default          # file_placements matches placements and diverged is False
-ecc run --workspace default                 # skips DreamPlace; postFloorplan commits the macros from the file
+ecc run --workspace default                 # skips DreamPlace; post_floorplan commits the macros from the file
 ```
 
-Instance names must exist in the design and every hard macro must be listed — `postFloorplan` fails with the missing instance names otherwise. `macro_location.tcl` is a generated file and hand-editing it is unsupported (re-running `macroPlacement` without the parameter regenerates it). See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format and staged-floorplan details, and the [Configuration Reference §1.5](ecc-config-ref.en.md) for the parameter.
+Instance names must exist in the design and every hard macro must be listed — `post_floorplan` fails with the missing instance names otherwise. `macro_location.tcl` is a generated file and hand-editing it is unsupported (re-running `macro_placement` without the parameter regenerates it). See [floorplan-flow.en.md](floorplan-flow.en.md) for the handoff format and staged-floorplan details, and the [Configuration Reference §1.5](ecc-config-ref.en.md) for the parameter.
 
 ## 10. pdk — PDK path configuration
 
@@ -1565,7 +1561,7 @@ and `provisional`. Artifact gates may additionally include `bytes` and `sha256`.
 ecc signoff check --profile physical_signoff --json
 ```
 
-It reads the postRouteLec proven result and Harden/filler final outputs, but does not hash
+It reads the post_route_lec proven result and Harden/filler final outputs, but does not hash
 file contents. Missing or ambiguous artifacts return `unknown`. This is an assessment of
 saved evidence, not tapeout approval. The physical profile marks QoR and checklist as
 informational (`required=false`); missing QoR alone does not block its physical gate result.
@@ -1864,7 +1860,7 @@ Previews the **current step artifacts** of one workspace directly in the termina
   - `checklist`: `<step>/checklist.json` (the v3 contract; falls back to `home/checklist.json` filtered by step when missing)
 - `--section` may be repeated to select sections; a section whose artifacts are missing renders as `unavailable`
 
-Step tokens follow `ecc log` (`synthesis/pre_floorplan/macro_placement/post_floorplan/placement/cts/...`); flow-internal names (`Timing optimization`) and directory-name variants (`timing_optimization`) are accepted too. An unknown token returns `unknown_step` with the list of valid tokens.
+Step tokens follow `ecc log` (`synthesis/pre_floorplan/macro_placement/post_floorplan/placement/cts/...`); flow-internal names (`timing_optimization`) and directory-name variants (`timing_optimization`) are accepted too. An unknown token returns `unknown_step` with the list of valid tokens.
 
 ```console
 $ ecc report step --workspace default
@@ -2011,8 +2007,8 @@ A real first JSON record (excerpt; the `columns`/`workspaces` arrays expand in f
     "status": "partial",
     "sort": "qor_score_descending_missing_last_manifest_order_ties",
     "columns": [
-      {"step": "Synthesis", "token": "synthesis", "tool": "yosys"},
-      {"step": "preFloorplan", "token": "pre_floorplan", "tool": "ecc"}
+      {"step": "synthesis", "token": "synthesis", "tool": "yosys"},
+      {"step": "pre_floorplan", "token": "pre_floorplan", "tool": "ecc"}
     ],
     "warnings": []
   }
@@ -2022,7 +2018,7 @@ A real first JSON record (excerpt; the `columns`/`workspaces` arrays expand in f
 Checker categories follow ECC metadata. DRC/LVS show explicit counts and clean/violated;
 STA keeps setup and hold counts separate without summing across corners. Unfinished
 checkers never reuse stale zero counts. LEC only shows a saved proven verdict, without
-verifying netlist content or inventing a count. RCX/powerAnalysis without a supported
+verifying netlist content or inventing a count. RCX/power_analysis without a supported
 violation count show N/A. Execution success is separate from checker cleanliness.
 
 No workspace loading, EDA execution, QoR/snapshot refresh or file writing occurs.
@@ -2056,7 +2052,7 @@ or Linux display returns a separate diagnostic instead of silently selecting
 another step.
 
 ```bash
-ecc gdsview --workspace default --step Harden
+ecc gdsview --workspace default --step harden
 ```
 
 ## 14. chipview — open a saved geometry snapshot
@@ -2115,7 +2111,7 @@ ecc project set design.top gcd && ecc project add design.rtl rtl/gcd.v
 ecc pdk set-root ~/pdk/icsprout55-pdk   # (optional) wire in a manually downloaded PDK
 ecc doctor                         # environment check (PDK/yosys/slang/components)
 ecc check                          # validate the project config before running
-ecc run --preset rtl2gds           # run the full chain in one shot (Synthesis→…→Harden)
+ecc run --preset rtl2gds           # run the full chain in one shot (synthesis→…→harden)
 ecc run                            # run again: all successful → no_op; interrupted/failed → auto-resume
 ecc status                         # step status; on failure:
 ecc log placement                  # the failing step's log (TEXT mode highlights error lines)
@@ -2123,8 +2119,8 @@ ecc param set place.target_density 0.55   # tune a parameter and re-run
 ecc run --overwrite --preset rtl2gds
 ecc param set place.target_density 0.65 --workspace default   # or tweak one workspace locally, no ecc.toml change
 ecc run --workspace default        # continues from the invalidated step
-ecc run --workspace default --only place --force   # or re-run a single step in place (--force needed once successful)
-ecc run --workspace default --from CTS --to route  # or re-run a range in place (persisted names)
+ecc run --workspace default --only placement --force   # or re-run a single step in place (--force needed once successful)
+ecc run --workspace default --from cts --to routing  # or re-run a range in place
 ecc workspace refresh default      # re-apply ecc.toml inputs/PDK/preset changes to the workspace without running
 ecc config place                   # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)
@@ -2133,7 +2129,7 @@ ecc report summary                 # text design summary (signoff/<design>_desig
 ecc report qor                     # QoR overall score report (signoff/<design>_qor_report.txt)
 ecc report checklist               # signoff checklist report (signoff/checklist_report.txt)
 ecc report step drc                # preview one step's feature/analysis/checklist (read-only)
-ecc gdsview --workspace default --step Harden
+ecc gdsview --workspace default --step harden
 ecc chipview --workspace default --step filler
 ```
 
@@ -2151,14 +2147,14 @@ ecc report qor --workspace exp1
 
 # With a ready-made synthesis netlist, a range workspace can also start from an
 # intermediate step (entry-input requirements in §5.1):
-ecc run --workspace pnr --from prefloorplan --to route
+ecc run --workspace pnr --from prefloorplan --to routing
 ```
 
 A design with hard macros can switch to manual placement instead (full contract in §9.5):
 
 ```bash
 ecc macro set u_ram0 --x 10 --y 20.5 --orient R0 --workspace default
-ecc run --workspace default   # resumes from macroPlacement: DreamPlace is skipped, the manual positions are committed
+ecc run --workspace default   # resumes from macro_placement: DreamPlace is skipped, the manual positions are committed
 ecc macro show --workspace default
 ```
 

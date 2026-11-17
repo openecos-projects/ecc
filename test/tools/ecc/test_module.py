@@ -281,7 +281,7 @@ def test_geometry_snapshot_save_forwards_clock_graph_and_stage():
 
     assert (
         module.geometry_snapshot_save(
-            Path("/tmp/geometry"), clock_tree_stage="CTS", clock_tree_graph=graph
+            Path("/tmp/geometry"), clock_tree_stage="cts", clock_tree_graph=graph
         )
         is True
     )
@@ -292,7 +292,7 @@ def test_geometry_snapshot_save_forwards_clock_graph_and_stage():
             (),
             {
                 "output_dir": Path("/tmp/geometry"),
-                "clock_tree_stage": "CTS",
+                "clock_tree_stage": "cts",
                 "clock_tree_graph": graph,
             },
         ),
@@ -414,7 +414,7 @@ def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module.report_summary(Path("/ws/report/db.rpt"))
     module.report_congestion(Path("/ws/report/cong.rpt"))
     module.report_dangling_net(Path("/ws/report/dangling.rpt"))
-    module.report_route(path=Path("/ws/report/route.rpt"))
+    module.report_route(path=Path("/ws/report/routing.rpt"))
     module.report_drc(Path("/ws/report/drc.rpt"))
     module.run_cts(Path("/ws/config/cts.json"), Path("/ws/data/cts"))
     module.report_cts(Path("/ws/report/cts"))
@@ -423,7 +423,7 @@ def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module.init_drc(Path("/ws/data/drc"))
     module.run_drc()
     module.destroy_drc()
-    module.feature_placement_map(Path("/ws/feature/place_map.json"))
+    module.feature_placement_map(Path("/ws/feature/placement.map.json"))
     module.init_mj(Path("/ws/data/mj"))
     module.run_filler(Path("/ws/config/filler.json"))
     module.destroy_mj()
@@ -921,7 +921,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["place_map_metrics"]["presentation"] == "place_map_summary"
-    assert details["place_map_metrics"]["feature_source"]["path"] == "feature/place.map.json"
+    assert details["place_map_metrics"]["feature_source"]["path"] == "feature/placement.map.json"
     assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     assert hotspots["schema_version"] == 3
@@ -938,7 +938,7 @@ def test_ecc_metrics_extract_place_map_qor_metrics(tmp_path):
         "category": "routability_physical",
         "source": {
             "kind": "feature",
-            "path": "feature/place.map.json",
+            "path": "feature/placement.map.json",
             "selector": "/Congestion/overflow/total/union",
         },
         "description": "Placement EGR overflow is present.",
@@ -962,7 +962,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
     step.feature.step.write_text(
         json.dumps(
             {
-                "CTS": {
+                "cts": {
                     "buffer_area": 8.4,
                     "buffer_num": 3,
                     "clock_path_max_buffer": 2,
@@ -1016,7 +1016,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "confidence": "medium",
         "source": {
             "kind": "feature",
-            "path": "feature/CTS.step.json",
+            "path": "feature/cts.step.json",
             "selector": "/CTS/timing_quality/worst_optimized_skew_ns",
         },
     }
@@ -1036,7 +1036,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "confidence": "medium",
         "source": {
             "kind": "feature",
-            "path": "feature/CTS.step.json",
+            "path": "feature/cts.step.json",
             "selector": "/CTS/timing_quality/worst_max_insertion_latency_ns",
         },
     }
@@ -1056,18 +1056,18 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         },
         "feature_source": {
             "kind": "feature",
-            "path": "feature/CTS.step.json",
+            "path": "feature/cts.step.json",
             "selector": "/CTS/timing_quality",
         },
     }
     assert records["clock_path_max_buffer"]["source"] == {
         "kind": "feature",
-        "path": "feature/CTS.step.json",
+        "path": "feature/cts.step.json",
         "selector": "/CTS/clock_path_max_buffer",
     }
     assert records["clock_path_min_buffer"]["source"] == {
         "kind": "feature",
-        "path": "feature/CTS.step.json",
+        "path": "feature/cts.step.json",
         "selector": "/CTS/clock_path_min_buffer",
     }
 
@@ -1085,7 +1085,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
     )
     build_step_space(step)
     assert step.feature.step is not None
-    step.feature.step.write_text(json.dumps({"CTS": {}}), encoding="utf-8")
+    step.feature.step.write_text(json.dumps({"cts": {}}), encoding="utf-8")
     timing_quality = {
         "schema_version": 1,
         "analysis_stage": "cts_fast_sta_post_optimization",
@@ -1128,7 +1128,7 @@ def test_ecc_metrics_persists_structured_cts_timing_without_log(tmp_path):
     assert metrics.data["cts_worst_max_insertion_latency_ns"] == 0.42
     assert metrics.data["cts_skew_target_unmet_count"] == 1
     feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
-    assert feature["CTS"]["timing_quality"] == timing_quality
+    assert feature["cts"]["timing_quality"] == timing_quality
 
 
 def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
@@ -1145,7 +1145,7 @@ def test_ecc_metrics_excludes_cts_metrics_without_feature_provenance(tmp_path):
     build_step_space(step)
     untraceable_feature = tmp_path / "untraceable_cts.step.json"
     untraceable_feature.write_text(
-        json.dumps({"CTS": {"buffer_num": 3}}),
+        json.dumps({"cts": {"buffer_num": 3}}),
         encoding="utf-8",
     )
     step.feature.step = untraceable_feature
@@ -1198,7 +1198,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
     step.feature.step.write_text(
         json.dumps(
             {
-                "route": {
+                "routing": {
                     "LA": {
                         "cut_via_num_map": {"1": 100, "2": 200},
                         "routing_demand_map": {"1": 500, "2": 750},
@@ -1300,7 +1300,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         for detail in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["details"]
     }
     assert details["route_layer_metrics"]["presentation"] == "layer_table"
-    assert details["route_layer_metrics"]["feature_source"]["path"] == "feature/route.step.json"
+    assert details["route_layer_metrics"]["feature_source"]["path"] == "feature/routing.step.json"
     assert step.analysis.qor_hotspots is not None
     hotspots = json.loads(step.analysis.qor_hotspots.read_text(encoding="utf-8"))
     hotspot_records = {record["metric_id"]: record for record in hotspots["hotspots"]}
@@ -1314,7 +1314,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         "category": "routability_physical",
         "source": {
             "kind": "feature",
-            "path": "feature/route.step.json",
+            "path": "feature/routing.step.json",
             "selector": "/route/LA",
         },
         "description": "Route layer assignment overflow is present.",
@@ -1439,7 +1439,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert records["rcx_output_gds_exists"]["rating"]["score"] is False
     assert records["rcx_worst_total_capacitance_ff"]["source"] == {
         "kind": "feature",
-        "path": "feature/RCX.step.json",
+        "path": "feature/rcx.step.json",
         "selector": "/rcx/signoff_metrics/parasitic_envelope/worst_total_capacitance_ff",
     }
     details = {
@@ -1450,7 +1450,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     assert rcx_detail["presentation"] == "rcx_spef_corner_table"
     assert rcx_detail["feature_source"] == {
         "kind": "feature",
-        "path": "feature/RCX.step.json",
+        "path": "feature/rcx.step.json",
         "selector": "/rcx/signoff_metrics",
     }
     assert rcx_detail["summary"]["coverage"] == {
@@ -1464,7 +1464,7 @@ def test_ecc_metrics_extract_rcx_output_completeness(tmp_path):
     }
     assert records["rcx_missing_corner_count"]["source"] == {
         "kind": "feature",
-        "path": "feature/RCX.step.json",
+        "path": "feature/rcx.step.json",
         "selector": "/rcx/signoff_metrics/coverage/missing_count",
     }
     assert step.feature.step is not None
@@ -2113,7 +2113,7 @@ def test_ecc_metrics_extract_harden_artifact_completeness(tmp_path):
     assert "harden_lib_check_exists" not in records
     assert records["harden_artifact_missing_count"]["source"] == {
         "kind": "feature",
-        "path": "feature/Harden.step.json",
+        "path": "feature/harden.step.json",
         "selector": "/harden/artifact_missing_count",
     }
     assert step.feature.step is not None
@@ -2192,7 +2192,7 @@ def test_ecc_metrics_harden_summarizes_completed_signoff_sources(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.DRC.value,
@@ -2245,7 +2245,7 @@ def test_ecc_metrics_harden_reads_v4_signoff_summary(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.DRC.value,
@@ -2298,7 +2298,7 @@ def test_ecc_metrics_harden_rejects_stale_signoff_summary(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.DRC.value,

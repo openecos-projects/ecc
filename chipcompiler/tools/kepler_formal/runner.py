@@ -12,7 +12,7 @@ from chipcompiler.utility.path import MissingPathError, require_path
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
 # verdict only appears in its stdout. Positive evidence is required for a
 # proven result, mirroring how the upstream MCP wrapper classifies runs. SEC
-# (lec@Synthesis) under its default dual-rail encoding words a proof as
+# (lec@synthesis) under its default dual-rail encoding words a proof as
 # "No binary-defined difference was found."
 _PROVEN_MARKERS = ("No difference was found.", "No binary-defined difference was found.")
 _DIFFERENCE_MARKER = "Difference was found."
@@ -92,7 +92,7 @@ def _classify(log_text: str) -> tuple[bool, str]:
 def _prepare_compare_netlists(workspace: Workspace, step: KeplerFormalStep) -> tuple[Path, Path]:
     """Materialize kepler-formal-readable copies of the golden/gate netlists.
 
-    An RTL golden (lec@Synthesis) is read as is. Digests in the result
+    An RTL golden (lec@synthesis) is read as is. Digests in the result
     contract keep using the original inputs; the YAML is regenerated against
     these prepared paths right before execution.
     """

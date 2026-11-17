@@ -22,8 +22,8 @@ def _request(**kwargs):
         **{
             "workspace_id": "workspace-1",
             "candidate_id": "candidate-1",
-            "target_step": "Floorplan",
-            "end_step": "Harden",
+            "target_step": "floorplan",
+            "end_step": "harden",
             "execution_scope": "full_flow",
             "idempotency_key": "mode-1",
             "context_sha256": "sha256:" + "a" * 64,
@@ -51,7 +51,7 @@ def _workspace(tmp_path):
             }
         )
     )
-    return SimpleNamespace(directory=root, config={"Floorplan": config})
+    return SimpleNamespace(directory=root, config={"floorplan": config})
 
 
 @pytest.mark.parametrize("mode", ("die_util", "die_size"))
@@ -67,7 +67,7 @@ def test_explicit_mode_only_baseline_request(mode):
         {"floorplan_mode": "auto"},
         {"floorplan_mode": False},
         {"floorplan_mode": None},
-        {"target_step": "place"},
+        {"target_step": "placement"},
     ),
 )
 def test_invalid_mode_request_is_rejected_before_execution(overrides):
@@ -79,12 +79,12 @@ def test_invalid_mode_request_is_rejected_before_execution(overrides):
 def test_mode_is_reapplied_after_config_rebuild_and_reload(tmp_path, mode):
     workspace = _workspace(tmp_path)
     prepare_floorplan_mode(workspace, _request(floorplan_mode=mode))
-    config = workspace.config["Floorplan"]
+    config = workspace.config["floorplan"]
     rebuilt = json.loads(config.read_text())
     rebuilt["die_builder"]["mode"] = "die_size" if mode == "die_util" else "die_util"
     config.write_text(json.dumps(rebuilt))
     reloaded: Any = SimpleNamespace(directory=workspace.directory, config=workspace.config)
-    apply_floorplan_mode(reloaded, "Floorplan")
+    apply_floorplan_mode(reloaded, "floorplan")
     assert json.loads(config.read_text())["die_builder"] == {
         "mode": mode,
         "die_size": {"width_micron": 100, "height_micron": 200},
@@ -104,7 +104,7 @@ def test_mode_tampering_and_nonisolated_workspace_fail_closed(tmp_path):
     receipt["mode"] = "die_size"
     path.write_text(json.dumps(receipt))
     with pytest.raises(ValueError, match="hash"):
-        apply_floorplan_mode(workspace, "Floorplan")
+        apply_floorplan_mode(workspace, "floorplan")
     ordinary = SimpleNamespace(directory=tmp_path, config=workspace.config)
     with pytest.raises(ValueError, match="isolated"):
         prepare_floorplan_mode(ordinary, _request())
@@ -113,7 +113,7 @@ def test_mode_tampering_and_nonisolated_workspace_fail_closed(tmp_path):
 def test_missing_mode_leaves_ordinary_workspace_unchanged(tmp_path):
     ordinary = SimpleNamespace(directory=tmp_path, config={})
     prepare_floorplan_mode(ordinary, replace(_request(), floorplan_mode=None))
-    apply_floorplan_mode(ordinary, "Floorplan")
+    apply_floorplan_mode(ordinary, "floorplan")
     assert list(tmp_path.iterdir()) == []
 
 
@@ -146,7 +146,7 @@ def test_terminal_success_rejects_a_lost_mode_override(tmp_path):
 
     workspace = _workspace(tmp_path)
     prepare_floorplan_mode(workspace, _request())
-    config = workspace.config["Floorplan"]
+    config = workspace.config["floorplan"]
     payload = json.loads(config.read_text())
     payload["die_builder"]["mode"] = "die_size"
     config.write_text(json.dumps(payload))
@@ -168,7 +168,7 @@ def test_mode_inheritance_switchback_and_context_binding(tmp_path):
     second_root = first.directory.with_name("candidate-2")
     shutil.copytree(first.directory, second_root)
     second = SimpleNamespace(
-        directory=second_root, config={"Floorplan": second_root / "config/floorplan_ecc.json"}
+        directory=second_root, config={"floorplan": second_root / "config/floorplan_ecc.json"}
     )
     request = _request(
         candidate_id="candidate-2",
@@ -186,7 +186,7 @@ def test_mode_inheritance_switchback_and_context_binding(tmp_path):
     with pytest.raises(ValueError, match="context"):
         validate_floorplan_mode_resume(second, replace(request, seed=18))
     prepare_floorplan_mode(second, replace(request, floorplan_mode="die_size"))
-    assert json.loads(second.config["Floorplan"].read_text())["die_builder"]["mode"] == "die_size"
+    assert json.loads(second.config["floorplan"].read_text())["die_builder"]["mode"] == "die_size"
     assert before == {
         p.relative_to(first.directory): p.read_bytes()
         for p in first.directory.rglob("*")
@@ -197,7 +197,7 @@ def test_mode_inheritance_switchback_and_context_binding(tmp_path):
 @pytest.mark.parametrize("width", (0, -1, False, float("nan"), float("inf")))
 def test_fixed_size_rejects_invalid_dimensions_without_writing_receipt(tmp_path, width):
     workspace = _workspace(tmp_path)
-    config = workspace.config["Floorplan"]
+    config = workspace.config["floorplan"]
     payload = json.loads(config.read_text())
     payload["die_builder"]["die_size"]["width_micron"] = width
     config.write_text(json.dumps(payload))
@@ -210,7 +210,7 @@ def test_fixed_size_rejects_invalid_dimensions_without_writing_receipt(tmp_path,
 
 def test_mode_rejects_config_symlinks(tmp_path):
     workspace = _workspace(tmp_path)
-    config = workspace.config["Floorplan"]
+    config = workspace.config["floorplan"]
     outside = tmp_path / "outside.json"
     config.rename(outside)
     config.symlink_to(outside)
@@ -249,19 +249,19 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
     _refresh_floorplan_config(workspace)
     patch = [{"knob_id": knob, "value": value}]
     prepare_floorplan_mode(workspace, _request(floorplan_mode=mode, patch=patch))
-    materialize_candidate_config(workspace, "Floorplan", patch, "candidate-1")
+    materialize_candidate_config(workspace, "floorplan", patch, "candidate-1")
     observed = []
 
     def builder(workspace, _step):
         workspace.parameters = load_parameter(workspace.parameters.path)
         _refresh_floorplan_config(workspace)
         assert (
-            json.loads(workspace.config["Floorplan"].read_text())["die_builder"]["mode"]
+            json.loads(workspace.config["floorplan"].read_text())["die_builder"]["mode"]
             == "die_size"
         )
 
     def native(**_kwargs):
-        observed.append(json.loads(workspace.config["Floorplan"].read_text())["die_builder"])
+        observed.append(json.loads(workspace.config["floorplan"].read_text())["die_builder"])
         return True
 
     monkeypatch.setattr(
@@ -273,7 +273,7 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
     monkeypatch.setattr(
         tools, "run_with_parameter_observation", lambda _ws, _step, _mat, run: run()
     )
-    step: Any = SimpleNamespace(name="Floorplan", tool="ecc")
+    step: Any = SimpleNamespace(name="floorplan", tool="ecc")
     assert tools.run_step(workspace, step)
     assert observed[0]["mode"] == mode
     assert observed[0]["die_util"][field] == value
@@ -296,7 +296,7 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
             "init_fp_call_count": 1,
             "run_fp_call_count": 1,
             "run_fp_completed": True,
-            "config_path": str(workspace.config["Floorplan"]),
+            "config_path": str(workspace.config["floorplan"]),
         },
         feature,
         engine_succeeded=True,

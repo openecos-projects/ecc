@@ -11,7 +11,6 @@ import time
 from pathlib import Path
 
 from chipcompiler.cli.core.errors import CommandError, command_handler
-from chipcompiler.cli.core.output import flow_step_token
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
@@ -82,18 +81,18 @@ def _read_flow_steps(workspace_dir: Path) -> list[dict]:
 
 
 def _step_matches(requested: str, name: str, tool: str, directory: str) -> bool:
+    from chipcompiler.rtl2gds import normalize_flow_step
+
     requested_lower = requested.strip().lower()
     if not requested_lower:
         return False
-    normalized = flow_step_token(name)
-    candidates = {
+    # A step alias ("place", "timing optimization") resolves to its flow step;
+    # a directory selector matches the step's directory exactly.
+    return normalize_flow_step(requested) == name or requested_lower in {
         name.lower(),
-        normalized.lower(),
         directory.lower(),
         f"{name}_{tool}".lower(),
-        f"{normalized}_{tool}".lower(),
     }
-    return requested_lower in candidates
 
 
 def _resolve_step_geometry(workspace_dir: Path, requested: str) -> dict:

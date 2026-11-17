@@ -8,7 +8,6 @@ from chipcompiler.cli.core.inputs import (
 from chipcompiler.cli.core.output import (
     disclosure_cmd,
     flow_step_status,
-    flow_step_token,
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -101,7 +100,7 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
     steps = _safe_steps(flow_data)
     stale = _stale_steps(run_dir, steps)
     for step in steps:
-        step_token = flow_step_token(step.get("name", ""))
+        step_token = step.get("name", "")
         record = {
             "step": step_token,
             "tool": step.get("tool", ""),
@@ -201,7 +200,9 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
             )
         return CommandResult.ok(records)
 
-    step_token = flow_step_token(requested_step_token)
+    from chipcompiler.rtl2gds import normalize_flow_step
+
+    step_token = normalize_flow_step(requested_step_token)
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         flow_steps = get_flow_step_names(run_dir)

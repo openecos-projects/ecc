@@ -50,37 +50,37 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
     _write(
         root / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
-                    **step_fields("Synthesis", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "Floorplan",
+                    "name": "floorplan",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("Floorplan", "ecc"),
+                    **step_fields("floorplan", "ecc"),
                 },
                 {
-                    "name": "place",
+                    "name": "placement",
                     "tool": "dreamplace",
                     "state": "Success",
-                    **step_fields("place", "dreamplace"),
+                    **step_fields("placement", "dreamplace"),
                 },
                 {
-                    "name": "CTS",
+                    "name": "cts",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("CTS", "ecc"),
+                    **step_fields("cts", "ecc"),
                 },
                 {
-                    "name": "route",
+                    "name": "routing",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("route", "ecc"),
+                    **step_fields("routing", "ecc"),
                 },
                 {
                     "name": "drc",
@@ -95,10 +95,10 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                     **step_fields("lvs", "ecc"),
                 },
                 {
-                    "name": "RCX",
+                    "name": "rcx",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("RCX", "ecc"),
+                    **step_fields("rcx", "ecc"),
                 },
                 {
                     "name": "sta",
@@ -107,10 +107,10 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                     **step_fields("sta", "ecc"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": "Success",
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
             ],
         },
@@ -128,7 +128,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
             _metrics_payload([_metric("lvs_count", 0, "gate")]),
         )
         _write(
-            root / "RCX_ecc" / "analysis" / "qor_metrics.json",
+            root / "rcx_ecc" / "analysis" / "qor_metrics.json",
             _metrics_payload(
                 [
                     _metric("rcx_spef_file_count", 1, "gate"),
@@ -153,7 +153,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
             ),
         )
         _write(
-            root / "Harden_ecc" / "analysis" / "qor_metrics.json",
+            root / "harden_ecc" / "analysis" / "qor_metrics.json",
             _metrics_payload([_metric("harden_artifact_missing_count", 0, "final")]),
         )
     if with_checklist:
@@ -169,7 +169,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                 "checklist": [
                     {
                         "id": "flow.route",
-                        "step": "route",
+                        "step": "routing",
                         "category": "flow",
                         "title": "Routing complete",
                         "policy": "block",
@@ -195,7 +195,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                     },
                     {
                         "id": "harden.gds",
-                        "step": "Harden",
+                        "step": "harden",
                         "category": "artifact",
                         "title": "Harden GDS",
                         "policy": "warn",

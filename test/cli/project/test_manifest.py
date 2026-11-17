@@ -66,8 +66,8 @@ def test_load_manifest_normalizes_workspace_entries(tmp_path):
     (entry,) = manifest.workspaces
     assert entry.workspace_id == "ws_0001"
     assert entry.workspace_path == str(workspace_dir)
-    assert entry.start_step == "Synth"
-    assert entry.end_step == "Harden"
+    assert entry.start_step == "synthesis"
+    assert entry.end_step == "harden"
     assert entry.status == "not_started"
     assert manifest.active_workspaces() == [entry]
 
@@ -82,7 +82,7 @@ def test_load_manifest_rejects_legacy_floor_range(tmp_path):
                     "workspace_id": "legacy",
                     "workspace_path": str(tmp_path / "legacy"),
                     "start_step": "Floor",
-                    "end_step": "Place",
+                    "end_step": "placement",
                 }
             ],
         ),
@@ -534,8 +534,8 @@ def test_load_manifest_rejects_reversed_flow_range(tmp_path):
             {
                 "workspace_id": "ws",
                 "workspace_path": str(tmp_path / "ws"),
-                "start_step": "Harden",
-                "end_step": "Synth",
+                "start_step": "harden",
+                "end_step": "synthesis",
             }
         ],
     }

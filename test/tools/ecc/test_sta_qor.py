@@ -144,12 +144,12 @@ def test_sta_power_summary_json_round_trip(tmp_path):
 
 
 def test_power_step_summary_json_reads_nested_power_summary(tmp_path):
-    step_path = tmp_path / "powerAnalysis.step.json"
+    step_path = tmp_path / "power_analysis.step.json"
     step_path.write_text(
         json.dumps(
             {
                 "schema_version": 1,
-                "step": "powerAnalysis",
+                "step": "power_analysis",
                 "power_summary": {
                     "schema_version": 1,
                     "internal_uw": 51.2062,
@@ -191,7 +191,7 @@ def test_read_sta_power_summary_json_returns_none_for_wrong_schema_version(tmp_p
 
 
 def test_power_step_summary_json_rejects_wrong_step(tmp_path):
-    step_path = tmp_path / "powerAnalysis.step.json"
+    step_path = tmp_path / "power_analysis.step.json"
     step_path.write_text(
         json.dumps(
             {

@@ -4,7 +4,6 @@ from pathlib import Path
 from chipcompiler.cli.core.output import (
     disclosure_cmd,
     flow_step_status,
-    flow_step_token,
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -70,7 +69,7 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
     flow_dir_tokens = {}
     if isinstance(flow_data, dict):
         flow_dir_tokens = {
-            recorded_step_directory(step): flow_step_token(step["name"])
+            recorded_step_directory(step): step["name"]
             for step in _safe_steps(flow_data)
             if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
         }
@@ -84,7 +83,7 @@ def discover_step_dirs(run_dir: str) -> dict[str, str]:
             name = step_dir_step_name(full)
             if name is None:
                 continue
-            token = flow_step_token(name)
+            token = name
         result[token] = full
     return result
 
@@ -107,7 +106,7 @@ def get_flow_step_names(run_dir: str) -> set[str]:
     flow_data = read_flow_json(run_dir)
     if not isinstance(flow_data, dict):
         return set()
-    return {flow_step_token(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")}
+    return {s.get("name", "") for s in _safe_steps(flow_data) if s.get("name")}
 
 
 def _list_files(directory: str) -> list[str]:
@@ -139,9 +138,7 @@ def listing_step_order(run_dir: str) -> list[str]:
 
     flow_data = read_flow_json(run_dir)
     if isinstance(flow_data, dict):
-        flow_tokens = [
-            flow_step_token(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")
-        ]
+        flow_tokens = [s.get("name", "") for s in _safe_steps(flow_data) if s.get("name")]
         flow_set = set(flow_tokens)
         result = [t for t in flow_tokens if t in step_dirs]
         result.extend(sorted(t for t in step_dirs if t not in flow_set))

@@ -3,6 +3,8 @@
 from dataclasses import asdict
 from typing import Any
 
+from chipcompiler.data.types import StepEnum
+
 from .candidate_registry import (
     CANDIDATE_TARGET_BACKENDS,
     candidate_capability_registry,
@@ -14,7 +16,7 @@ CAPABILITIES_SCHEMA = "ecc.workspace.candidate_capabilities.v1"
 CAPABILITIES_SCHEMA_VERSION = 1
 
 EXCLUDED_CONFIGURATION_GROUPS = {
-    "Floorplan": [
+    StepEnum.FLOORPLAN.value: [
         "Floorplan.Auto place pin",
         "Floorplan.Tracks",
         "Macro Placement",

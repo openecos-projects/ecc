@@ -75,11 +75,11 @@ def _make_workspace(root, records, *, design="same-design"):
     workspace.parameters = parameters
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [flow.init_flow_step(name, tool, state) for name, tool, state in records],
     }
     assert flow.save()
-    if any(name == "place" for name, _tool, _state in records):
+    if any(name == "placement" for name, _tool, _state in records):
         config_path = root / "config" / "dreamplace_ecc.json"
         config_path.parent.mkdir(exist_ok=True)
         config_path.write_text(
@@ -87,7 +87,7 @@ def _make_workspace(root, records, *, design="same-design"):
         )
     flow.create_step_workspaces(initialize_config=False)
     for step in flow.workspace_steps:
-        if step.name == "Floorplan":
+        if step.name == "floorplan":
             _write_success_outputs(step)
     return workspace
 
@@ -95,8 +95,8 @@ def _make_workspace(root, records, *, design="same-design"):
 def _rerun_request(candidate_id="candidate-1"):
     return CandidateRerunRequest(
         workspace_id="workspace-1",
-        target_step="place",
-        end_step="Harden",
+        target_step="placement",
+        end_step="harden",
         candidate_id=candidate_id,
         patch=[{"knob_id": "place.target_density", "value": 0.6}],
         execution_scope="full_flow",
@@ -131,7 +131,7 @@ def _wait_for_terminal(operations, operation_id, expected_state):
 
 def _write_success_outputs(step):
     paths = [step.output.def_, step.output.verilog]
-    if step.name == "Harden":
+    if step.name == "harden":
         paths.extend((step.output.gds, step.output.lef, step.output.lib))
     for path in paths:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -140,7 +140,7 @@ def _write_success_outputs(step):
     if manifest is not None:
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text("{}", encoding="utf-8")
-    if step.name == "place":
+    if step.name == "placement":
         report = step.directory / "analysis" / "parameter_runtime_report.v2.json"
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(
@@ -175,9 +175,9 @@ def test_candidate_rerun_parent_has_no_native_db_or_stdio(monkeypatch, tmp_path)
             _make_workspace(
                 tmp_path / "source",
                 [
-                    ("Floorplan", "ecc", StateEnum.Success),
-                    ("place", "dreamplace", StateEnum.Unstart),
-                    ("Harden", "ecc", StateEnum.Unstart),
+                    ("floorplan", "ecc", StateEnum.Success),
+                    ("placement", "dreamplace", StateEnum.Unstart),
+                    ("harden", "ecc", StateEnum.Unstart),
                 ],
             )
         )
@@ -229,9 +229,9 @@ def test_candidate_rerun_cancel_while_running_preserves_evidence(monkeypatch, tm
             _make_workspace(
                 tmp_path / "source",
                 [
-                    ("Floorplan", "ecc", StateEnum.Success),
-                    ("place", "dreamplace", StateEnum.Unstart),
-                    ("Harden", "ecc", StateEnum.Unstart),
+                    ("floorplan", "ecc", StateEnum.Success),
+                    ("placement", "dreamplace", StateEnum.Unstart),
+                    ("harden", "ecc", StateEnum.Unstart),
                 ],
             )
         )
@@ -265,9 +265,9 @@ def test_candidate_resume_cancel_while_running_preserves_evidence(monkeypatch, t
     workspace = _make_workspace(
         candidate,
         [
-            ("place", "dreamplace", StateEnum.Success),
-            ("route", "ecc", StateEnum.Imcomplete),
-            ("Harden", "ecc", StateEnum.Unstart),
+            ("placement", "dreamplace", StateEnum.Success),
+            ("routing", "ecc", StateEnum.Imcomplete),
+            ("harden", "ecc", StateEnum.Unstart),
         ],
     )
     flow = AgentEngineFlow(workspace)
@@ -280,7 +280,7 @@ def test_candidate_resume_cancel_while_running_preserves_evidence(monkeypatch, t
         "flow_sha256": "sha256:" + "1" * 64,
         "state_sha256": "sha256:" + "2" * 64,
     }
-    manifest = {"target_step": "place", "parent_candidate_root_ref": None}
+    manifest = {"target_step": "placement", "parent_candidate_root_ref": None}
     api = workspace_api.FlowAgentRuntimeApi(_EccApi(SimpleNamespace(directory=tmp_path)))
     monkeypatch.setattr(
         "agent.candidate_resume._load_candidate_resume",
@@ -299,7 +299,7 @@ def test_candidate_resume_cancel_while_running_preserves_evidence(monkeypatch, t
     terminal = _wait_for_terminal(api.ecc_api.operations, operation_id, "cancelled")
 
     assert terminal["result"]["candidateId"] == "candidate-1"
-    assert terminal["result"]["resumeStep"] == "route"
+    assert terminal["result"]["resumeStep"] == "routing"
     assert (
         json.loads((candidate / "home" / "flow.json").read_text())["steps"][1]["state"]
         == "Incomplete"
@@ -324,14 +324,14 @@ def initialize_db(flow, step):
     return True
 
 EngineFlow.init_db_engine_for_step = initialize_db
-# The toy chain (place straight to Harden) carries none of the design data the
+# The toy chain (placement straight to harden) carries none of the design data the
 # fake tools stand in for; step readiness is covered by its own tests.
 step_subprocess.missing_design_data = lambda *_args, **_kwargs: frozenset()
 
 
 def write_outputs(step):
     paths = [step.output.def_, step.output.verilog]
-    if step.name == "Harden":
+    if step.name == "harden":
         paths.extend((step.output.gds, step.output.lef, step.output.lib))
     for path in paths:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -340,7 +340,7 @@ def write_outputs(step):
     if manifest is not None:
         manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text("{}", encoding="utf-8")
-    if step.name == "place":
+    if step.name == "placement":
         report = step.directory / "analysis" / "parameter_runtime_report.v2.json"
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(
@@ -370,10 +370,10 @@ def write_outputs(step):
 def run_step(workspace, step, ecc_module=None):
     candidate = Path(workspace.directory).name
     mode = os.environ.get("WORKER_TEST_MODE")
-    if mode == "sleep" and step.name == "place":
+    if mode == "sleep" and step.name == "placement":
         Path(os.environ["WORKER_TEST_PID_PATH"]).write_text(str(os.getpid()))
         time.sleep(60)
-    if mode == "barrier" and step.name == "place":
+    if mode == "barrier" and step.name == "placement":
         ready_dir = Path(os.environ["WORKER_TEST_READY_DIR"])
         (ready_dir / f"{candidate}.ready").write_text("ready", encoding="utf-8")
         deadline = time.monotonic() + 20
@@ -421,15 +421,15 @@ def test_sigkill_step_worker_fails_candidate_with_evidence(monkeypatch, tmp_path
             _make_workspace(
                 tmp_path / "source",
                 [
-                    ("Floorplan", "ecc", StateEnum.Success),
-                    ("place", "dreamplace", StateEnum.Unstart),
-                    ("Harden", "ecc", StateEnum.Unstart),
+                    ("floorplan", "ecc", StateEnum.Success),
+                    ("placement", "dreamplace", StateEnum.Unstart),
+                    ("harden", "ecc", StateEnum.Unstart),
                 ],
             )
         )
     )
-    # A success response from an earlier place run, copied into the candidate.
-    answer(tmp_path / "source", "place_dreamplace", "place-earlier")
+    # A success response from an earlier placement run, copied into the candidate.
+    answer(tmp_path / "source", "placement_dreamplace", "place-earlier")
     worker_pid_path = tmp_path / "step-worker.pid"
     _configure_worker_test(
         monkeypatch,
@@ -451,8 +451,8 @@ def test_sigkill_step_worker_fails_candidate_with_evidence(monkeypatch, tmp_path
     assert json.loads(candidate_flow.read_text())["steps"][1]["state"] == "Incomplete"
     assert api.ecc_api.operations.operation_status(operation_id) == terminal
     # The killed worker never answered, and the earlier response the candidate
-    # copied for place was removed before the worker was spawned.
-    assert load_response(candidate_flow.parent.parent / "place_dreamplace") is None
+    # copied for placement was removed before the worker was spawned.
+    assert load_response(candidate_flow.parent.parent / "placement_dreamplace") is None
 
 
 @pytest.mark.real_step_worker
@@ -462,9 +462,9 @@ def test_same_design_candidates_keep_logs_and_events_separate(monkeypatch, tmp_p
             _make_workspace(
                 tmp_path / "source",
                 [
-                    ("Floorplan", "ecc", StateEnum.Success),
-                    ("place", "dreamplace", StateEnum.Unstart),
-                    ("Harden", "ecc", StateEnum.Unstart),
+                    ("floorplan", "ecc", StateEnum.Success),
+                    ("placement", "dreamplace", StateEnum.Unstart),
+                    ("harden", "ecc", StateEnum.Unstart),
                 ],
             )
         )
@@ -496,7 +496,7 @@ def test_same_design_candidates_keep_logs_and_events_separate(monkeypatch, tmp_p
     ):
         other_id = "candidate-2" if candidate_id == "candidate-1" else "candidate-1"
         candidate_root = tmp_path / "source" / ".agent" / "candidates" / candidate_id
-        step_log = candidate_root / "place_dreamplace" / "log" / "place.log"
+        step_log = candidate_root / "placement_dreamplace" / "log" / "placement.log"
         step_text = step_log.read_text(encoding="utf-8", errors="replace")
         assert f"step-marker-{candidate_id}" in step_text
         assert f"step-marker-{other_id}" not in step_text

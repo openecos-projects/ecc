@@ -315,7 +315,7 @@ def probe_components_for_preset(
     validate_project_config, and the slang check is left to the synthesis
     step's existing fail-fast so preflight stays fast. Skipped steps are
     filtered out first, so their tools are never probed; inserted steps are
-    added, so an inserted LEC probes the LEC engine even when postRouteLec
+    added, so an inserted LEC probes the LEC engine even when post_route_lec
     is skipped.
     """
     from chipcompiler import rtl2gds as rtl2gds_api

@@ -85,7 +85,7 @@ def reapply_materialized_candidate_config(
         return None
     receipt = _read_receipt(receipt_path)
     receipt_target = receipt["target_step"]
-    # The "Floorplan" receipt names the shared phase configuration, not a
+    # The "floorplan" receipt names the shared phase configuration, not a
     # flow step; a flow running the split phase re-applies it when its
     # first sub-step executes (same alias as candidate_input_binding).
     if (

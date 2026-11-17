@@ -83,7 +83,7 @@ def _workspace(tmp_path: Path):
         },
     )
     _write_json(
-        tmp_path / "config" / "route_ecc.json",
+        tmp_path / "config" / "routing_ecc.json",
         {"RT": {"-bottom_routing_layer": "MET2", "-top_routing_layer": "MET5"}},
     )
     parameters_path = tmp_path / "home" / "params.toml"
@@ -95,12 +95,12 @@ def _workspace(tmp_path: Path):
     return SimpleNamespace(
         directory=str(tmp_path),
         config={
-            "CTS": cts_path,
-            "Floorplan": tmp_path / "config" / "floorplan_ecc.json",
+            "cts": cts_path,
+            "floorplan": tmp_path / "config" / "floorplan_ecc.json",
             "dreamplace": tmp_path / "config" / "dreamplace_ecc.json",
             "legalization": pl_path,
             "filler": pl_path,
-            "route": tmp_path / "config" / "route_ecc.json",
+            "routing": tmp_path / "config" / "routing_ecc.json",
         },
         pdk=SimpleNamespace(
             buffers=["BUF_1", "BUF_2"],
@@ -111,22 +111,22 @@ def _workspace(tmp_path: Path):
         parameters=SimpleNamespace(path=parameters_path),
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Floorplan",
+                        "name": "floorplan",
                         "tool": "ecc",
-                        **step_fields("Floorplan", "ecc"),
+                        **step_fields("floorplan", "ecc"),
                     },
                     {
-                        "name": "place",
+                        "name": "placement",
                         "tool": "dreamplace",
-                        **step_fields("place", "dreamplace"),
+                        **step_fields("placement", "dreamplace"),
                     },
                     {
-                        "name": "CTS",
+                        "name": "cts",
                         "tool": "ecc",
-                        **step_fields("CTS", "ecc"),
+                        **step_fields("cts", "ecc"),
                     },
                     {
                         "name": "legalization",
@@ -134,9 +134,9 @@ def _workspace(tmp_path: Path):
                         **step_fields("legalization", "dreamplace"),
                     },
                     {
-                        "name": "route",
+                        "name": "routing",
                         "tool": "ecc",
-                        **step_fields("route", "ecc"),
+                        **step_fields("routing", "ecc"),
                     },
                     {
                         "name": "filler",
@@ -192,12 +192,12 @@ def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_pa
 
     receipt = materialize_candidate_config(
         workspace,
-        "CTS",
+        "cts",
         [{"knob_id": "cts.skew_bound", "value": 0.12}],
         candidate_id="cts-rerun-001",
     )
 
-    cts_path = workspace.config["CTS"]
+    cts_path = workspace.config["cts"]
     config = _read_json(cts_path)
     receipt_path = tmp_path / "analysis" / "candidate_materialization.v1.json"
     persisted = _read_json(receipt_path)
@@ -210,15 +210,15 @@ def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_pa
     assert receipt["schema"] == "ecc.workspace.candidate_materialization.v1"
     assert receipt["schema_version"] == 1
     assert receipt["candidate_id"] == "cts-rerun-001"
-    assert receipt["target_step"] == "CTS"
-    assert receipt["target"] == {"step": "CTS"}
+    assert receipt["target_step"] == "cts"
+    assert receipt["target"] == {"step": "cts"}
     assert receipt["patch"] == [{"knob_id": "cts.skew_bound", "value": 0.12}]
     assert receipt["registry_sha256"].startswith("sha256:")
     assert receipt["patch_sha256"].startswith("sha256:")
     assert receipt["receipt_sha256"].startswith("sha256:")
     assert receipt["configs"] == [
         {
-            "config_key": "CTS",
+            "config_key": "cts",
             "ref": "config/cts_ecc.json",
             "before_sha256": ANY,
             "after_sha256": _sha256(cts_path),
@@ -248,7 +248,7 @@ def test_materialization_preserves_complete_before_and_after_config_snapshots(tm
 
     receipt = materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
@@ -265,12 +265,12 @@ def test_materialization_preserves_complete_before_and_after_config_snapshots(tm
 
 def test_materialize_rejects_multiple_knobs_without_writing_artifacts(tmp_path):
     workspace = _workspace(tmp_path)
-    before = _read_json(workspace.config["CTS"])
+    before = _read_json(workspace.config["cts"])
 
     with pytest.raises(CandidateMaterializationError, match="exactly one knob"):
         materialize_candidate_config(
             workspace,
-            "CTS",
+            "cts",
             [
                 {"knob_id": "cts.skew_bound", "value": 0.12},
                 {"knob_id": "cts.max_fanout", "value": 48},
@@ -278,7 +278,7 @@ def test_materialize_rejects_multiple_knobs_without_writing_artifacts(tmp_path):
             candidate_id="multi-knob-candidate",
         )
 
-    assert _read_json(workspace.config["CTS"]) == before
+    assert _read_json(workspace.config["cts"]) == before
     assert not (tmp_path / "analysis" / "candidate_materialization.v1.json").exists()
 
 
@@ -289,7 +289,7 @@ def test_materialize_rejects_noop_without_writing_artifacts(tmp_path):
     with pytest.raises(CandidateMaterializationError, match="did not change config"):
         materialize_candidate_config(
             workspace,
-            "place",
+            "placement",
             [{"knob_id": "place.target_density", "value": 0.8}],
             candidate_id="noop-candidate",
         )
@@ -304,7 +304,7 @@ def test_materialize_converts_padding_sites_to_written_dbu(tmp_path):
 
     receipt = materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.cell_padding_x", "value": 2}],
         candidate_id="padding-candidate",
     )
@@ -317,16 +317,16 @@ def test_receipt_target_mismatch_is_fail_closed(tmp_path):
     workspace = _workspace(tmp_path)
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
 
     with pytest.raises(CandidateMaterializationError, match="target step mismatch"):
-        validate_candidate_materialization_receipt(workspace, "route")
+        validate_candidate_materialization_receipt(workspace, "routing")
     before = _read_json(workspace.config["dreamplace"])
 
-    assert reapply_materialized_candidate_config(workspace, "route") is None
+    assert reapply_materialized_candidate_config(workspace, "routing") is None
     assert _read_json(workspace.config["dreamplace"]) == before
 
 
@@ -341,7 +341,7 @@ def test_validated_receipt_rechecks_knob_target_and_value(tmp_path, knob_id, val
     workspace = _workspace(tmp_path)
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
@@ -352,14 +352,14 @@ def test_validated_receipt_rechecks_knob_target_and_value(tmp_path, knob_id, val
     _rewrite_receipt(receipt_path, receipt)
 
     with pytest.raises(CandidateMaterializationError, match=error):
-        validate_candidate_materialization_receipt(workspace, "place")
+        validate_candidate_materialization_receipt(workspace, "placement")
 
 
 def test_validated_receipt_requires_the_registry_config_path(tmp_path):
     workspace = _workspace(tmp_path)
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
@@ -371,7 +371,7 @@ def test_validated_receipt_requires_the_registry_config_path(tmp_path):
     _rewrite_receipt(receipt_path, receipt)
 
     with pytest.raises(CandidateMaterializationError, match="config ref does not match registry"):
-        validate_candidate_materialization_receipt(workspace, "place")
+        validate_candidate_materialization_receipt(workspace, "placement")
 
 
 @pytest.mark.parametrize(
@@ -382,14 +382,14 @@ def test_validated_receipt_requires_complete_one_to_one_config_snapshots(tmp_pat
     workspace = _workspace(tmp_path)
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
     receipt_path = tmp_path / "analysis" / "candidate_materialization.v1.json"
     receipt = _read_json(receipt_path)
     if tamper == "snapshot_key":
-        receipt["snapshots"][0]["config_key"] = "CTS"
+        receipt["snapshots"][0]["config_key"] = "cts"
     elif tamper == "incomplete_hash":
         receipt["configs"][0]["before_sha256"] = "sha256:x"
     elif tamper == "before_hash_mismatch":
@@ -399,7 +399,7 @@ def test_validated_receipt_requires_complete_one_to_one_config_snapshots(tmp_pat
     _rewrite_receipt(receipt_path, receipt)
 
     with pytest.raises(CandidateMaterializationError):
-        validate_candidate_materialization_receipt(workspace, "place")
+        validate_candidate_materialization_receipt(workspace, "placement")
 
 
 def test_reapply_keeps_in_memory_parameters_consistent(tmp_path):
@@ -409,7 +409,7 @@ def test_reapply_keeps_in_memory_parameters_consistent(tmp_path):
     workspace.parameters.data = load_parameter(workspace.parameters.path).data
     materialize_candidate_config(
         workspace,
-        "Floorplan",
+        "floorplan",
         [{"knob_id": "floorplan.core_util", "value": 0.7}],
         candidate_id="floorplan-candidate",
     )
@@ -418,7 +418,7 @@ def test_reapply_keeps_in_memory_parameters_consistent(tmp_path):
     assert save_parameter(refreshed)
     workspace.parameters.data = refreshed.data
 
-    reapply_materialized_candidate_config(workspace, "Floorplan")
+    reapply_materialized_candidate_config(workspace, "floorplan")
 
     assert workspace.parameters.data == load_parameter(workspace.parameters.path).data
     assert workspace.parameters.data["core"]["utilitization"] == 0.7
@@ -428,14 +428,14 @@ def test_reapply_keeps_receipt_when_tool_rewrites_equivalent_json(tmp_path):
     workspace = _workspace(tmp_path)
     original = materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.6}],
         candidate_id="equivalent-json-candidate",
     )
     config_path = workspace.config["dreamplace"]
     config_path.write_text(json.dumps(_read_json(config_path), indent=4) + "\n", encoding="utf-8")
 
-    reapplied = reapply_materialized_candidate_config(workspace, "place")
+    reapplied = reapply_materialized_candidate_config(workspace, "placement")
 
     assert reapplied is not None
     assert reapplied["receipt_sha256"] == original["receipt_sha256"]
@@ -446,12 +446,12 @@ def test_reapply_keeps_original_receipt_when_config_is_already_materialized(tmp_
     workspace = _workspace(tmp_path)
     original = materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
 
-    reapplied = reapply_materialized_candidate_config(workspace, "place")
+    reapplied = reapply_materialized_candidate_config(workspace, "placement")
 
     assert reapplied is not None
     assert reapplied == original
@@ -462,23 +462,23 @@ def test_materialized_candidate_rejects_tampered_config_snapshot(tmp_path):
     workspace = _workspace(tmp_path)
     receipt = materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.7}],
         candidate_id="place-candidate",
     )
     (tmp_path / receipt["snapshots"][0]["after_ref"]).write_text("{}\n", encoding="utf-8")
 
     with pytest.raises(CandidateMaterializationError, match="config snapshot drift"):
-        validate_materialized_candidate_config(workspace, "place")
+        validate_materialized_candidate_config(workspace, "placement")
 
 
 @pytest.mark.parametrize(
     ("target_step", "patch", "config_key", "path", "reset_value", "expected"),
     [
         (
-            "CTS",
+            "cts",
             [{"knob_id": "cts.buffer_type", "value": ["BUF_2"]}],
-            "CTS",
+            "cts",
             ("buffer_type",),
             ["BUF_1"],
             ["BUF_2"],
@@ -518,7 +518,7 @@ def test_reapply_after_refresh_restores_only_matching_target_and_updates_hashes(
     current[path[-1]] = reset_value
     _write_json(config_path, refreshed_config)
 
-    assert reapply_materialized_candidate_config(workspace, "route") is None
+    assert reapply_materialized_candidate_config(workspace, "routing") is None
     unchanged = _read_json(config_path)
     current = unchanged
     for key in path:
@@ -541,12 +541,12 @@ def test_reapply_after_refresh_restores_only_matching_target_and_updates_hashes(
 @pytest.mark.parametrize(
     "target_step,patch",
     [
-        ("CTS", [{"knob_id": "legalization.bndry_padding_x", "value": 20000}]),
-        ("CTS", [{"knob_id": "cts.max_fanout", "value": True}]),
-        ("CTS", [{"knob_id": "cts.buffer_type", "value": ["NOT_A_PDK_BUFFER"]}]),
+        ("cts", [{"knob_id": "legalization.bndry_padding_x", "value": 20000}]),
+        ("cts", [{"knob_id": "cts.max_fanout", "value": True}]),
+        ("cts", [{"knob_id": "cts.buffer_type", "value": ["NOT_A_PDK_BUFFER"]}]),
         ("filler", [{"knob_id": "filler.min_filler_width", "value": 2}]),
-        ("place", [{"knob_id": "place.timing_opt", "value": True}]),
-        ("CTS", [{"knob_id": "cts.skew_bound", "value": 0.1, "extra": "reject"}]),
+        ("placement", [{"knob_id": "place.timing_opt", "value": True}]),
+        ("cts", [{"knob_id": "cts.skew_bound", "value": 0.1, "extra": "reject"}]),
     ],
 )
 def test_materialize_rejects_out_of_contract_patches(tmp_path, target_step, patch):
@@ -568,7 +568,7 @@ def test_materialize_rejects_invalid_candidate_id(tmp_path, candidate_id):
     with pytest.raises(CandidateMaterializationError):
         materialize_candidate_config(
             workspace,
-            "CTS",
+            "cts",
             [{"knob_id": "cts.skew_bound", "value": 0.1}],
             candidate_id=candidate_id,
         )
@@ -581,12 +581,12 @@ def test_export_capabilities_returns_stable_schema_and_backend_truth_without_wri
 
     capabilities = export_candidate_capabilities(workspace)
 
-    cts = next(item for item in capabilities["targets"] if item["target_step"] == "CTS")
+    cts = next(item for item in capabilities["targets"] if item["target_step"] == "cts")
     legalization = next(
         item for item in capabilities["targets"] if item["target_step"] == "legalization"
     )
     filler = next(item for item in capabilities["targets"] if item["target_step"] == "filler")
-    floorplan = next(item for item in capabilities["targets"] if item["target_step"] == "Floorplan")
+    floorplan = next(item for item in capabilities["targets"] if item["target_step"] == "floorplan")
 
     assert not (tmp_path / "analysis" / "candidate_capabilities.v1.json").exists()
     assert capabilities["schema"] == "ecc.workspace.candidate_capabilities.v1"
@@ -682,7 +682,7 @@ def test_materialize_floorplan_patch_preserves_the_canonical_core_tree(tmp_path)
 
     materialize_candidate_config(
         workspace,
-        "Floorplan",
+        "floorplan",
         [{"knob_id": "floorplan.core_util", "value": 0.7}],
         candidate_id="floorplan-candidate",
     )
@@ -706,7 +706,7 @@ def test_materialize_rejects_missing_parameters_base_config(tmp_path):
     with pytest.raises(CandidateMaterializationError, match="missing candidate base config"):
         materialize_candidate_config(
             workspace,
-            "Floorplan",
+            "floorplan",
             [{"knob_id": "floorplan.core_util", "value": 0.7}],
             candidate_id="missing-base",
         )

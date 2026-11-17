@@ -22,7 +22,7 @@ from chipcompiler.engine.step_subprocess import run_step_worker
 def _new_flow(workspace, names):
     flow = AgentEngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [flow.init_flow_step(name, "ecc", StateEnum.Unstart) for name in names],
     }
     assert flow.save()
@@ -108,8 +108,8 @@ def _rerun_request():
     return CandidateRerunRequest(
         workspace_id="workspace-1",
         candidate_id="candidate-1",
-        target_step="Floorplan",
-        end_step="Harden",
+        target_step="floorplan",
+        end_step="harden",
         execution_scope="full_flow",
         idempotency_key="worker-mode-1",
         context_sha256="sha256:" + "a" * 64,
@@ -140,12 +140,12 @@ def _candidate_workspace(root):
         ),
         encoding="utf-8",
     )
-    workspace.config = {"Floorplan": config_path}
-    flow = _new_flow(workspace, ("Floorplan",))
+    workspace.config = {"floorplan": config_path}
+    flow = _new_flow(workspace, ("floorplan",))
     prepare_floorplan_mode(workspace, _rerun_request())
     materialize_candidate_config(
         workspace,
-        "Floorplan",
+        "floorplan",
         [{"knob_id": "floorplan.aspect_ratio", "value": 2.0}],
         candidate_id="candidate-1",
     )
@@ -190,10 +190,10 @@ def build_step_config(workspace, step):
             "die_util": {"utilization": 0.5, "aspect_ratio": aspect_ratio},
         }
     }
-    Path(workspace.config["Floorplan"]).write_text(json.dumps(config), encoding="utf-8")
+    Path(workspace.config["floorplan"]).write_text(json.dumps(config), encoding="utf-8")
 
 def run_step(workspace, step, ecc_module=None):
-    config_path = Path(workspace.config["Floorplan"])
+    config_path = Path(workspace.config["floorplan"])
     config = json.loads(config_path.read_text(encoding="utf-8"))
     boundary.update(
         init_fp_call_count=1,
@@ -240,8 +240,8 @@ def test_real_agent_worker_applies_receipts_and_writes_parameter_report(tmp_path
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join([str(site_dir), str(repository), env.get("PYTHONPATH", "")])
     payload = {
-        "schema_version": 2,
-        **_write_request(flow, "Floorplan", "agent-worker-test"),
+        "schema_version": 3,
+        **_write_request(flow, "floorplan", "agent-worker-test"),
         "result_path": str(result_path),
         "parent_pid": os.getpid(),
     }

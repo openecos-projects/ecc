@@ -34,7 +34,7 @@ def _no_parent_death_signal(monkeypatch):
     monkeypatch.setattr(step_subprocess, "new_attempt_id", lambda: "test-attempt")
 
 
-def _workspace_step(tmp_path, name="place", tool="ecc"):
+def _workspace_step(tmp_path, name="placement", tool="ecc"):
     from chipcompiler.data import StepInput
 
     log_file = tmp_path / "log" / "step.log"
@@ -61,7 +61,7 @@ def _workspace(tmp_path):
         directory=tmp_path,
         logger=logging.getLogger("ecc-test"),
         parameters=parameters,
-        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 2, "steps": []}),
+        flow=Flow(path=tmp_path / "home/flow.json", data={"schema_version": 3, "steps": []}),
     )
 
 
@@ -148,7 +148,7 @@ def _spawn_with_result(result_path, result, *, returncode=0, parasitics=()):
 def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
     from chipcompiler.data import EccOutput
 
-    step = _workspace_step(tmp_path, name="RCX")
+    step = _workspace_step(tmp_path, name="rcx")
     step.output = EccOutput(dir=tmp_path / "output")
     shared_sta_inputs = step.output.spef
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
@@ -176,7 +176,7 @@ def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, 
 def test_rcx_outputs_are_restored_when_worker_image_fails(monkeypatch, tmp_path):
     from chipcompiler.data import EccOutput
 
-    step = _workspace_step(tmp_path, name="RCX")
+    step = _workspace_step(tmp_path, name="rcx")
     step.output = EccOutput(dir=tmp_path / "output")
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
@@ -205,7 +205,7 @@ def test_rcx_outputs_are_restored_when_worker_image_fails(monkeypatch, tmp_path)
 def test_rcx_success_result_with_nonzero_exit_does_not_restore(monkeypatch, tmp_path):
     from chipcompiler.data import EccOutput
 
-    step = _workspace_step(tmp_path, name="RCX")
+    step = _workspace_step(tmp_path, name="rcx")
     step.output = EccOutput(dir=tmp_path / "output")
     result_path = Path(step.log.file).parent / step_subprocess._RESULT_NAME
     monkeypatch.setattr(
@@ -236,7 +236,7 @@ def test_rcx_success_result_with_nonzero_exit_does_not_restore(monkeypatch, tmp_
 def test_rcx_worker_rejects_invalid_output_references(tmp_path, names):
     from chipcompiler.data import EccOutput
 
-    step = _workspace_step(tmp_path, name="RCX")
+    step = _workspace_step(tmp_path, name="rcx")
     step.output = EccOutput(dir=tmp_path / "output")
     spef = tuple(tmp_path / "output" / name for name in names)
     assert step_subprocess._restore_rcx_outputs(step, spef)
@@ -365,7 +365,7 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
         "step_directory": str(request.directory),
         "attempt_id": "test-attempt",
     }
-    assert (request.step, request.tool, request.layout_image) == ("place", "ecc", True)
+    assert (request.step, request.tool, request.layout_image) == ("placement", "ecc", True)
     assert payload["result_path"].endswith(step_subprocess._RESULT_NAME)
     assert result.error is not None
     assert "code -11" in result.error
@@ -381,7 +381,7 @@ def test_failed_worker_reloads_subflow_for_interrupted_finalization(monkeypatch,
     subflow_path.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "path": str(subflow_path),
                 "steps": [{"name": "load", "state": StateEnum.Ongoing.value}],
             }

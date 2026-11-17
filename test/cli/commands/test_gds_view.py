@@ -20,23 +20,23 @@ def _context(workspace: Path) -> CommandContext:
 
 def _workspace(tmp_path: Path, *, gds: bool = True, multiple: bool = False) -> Path:
     workspace = tmp_path / "workspace"
-    output = workspace / "Harden_ecc" / "output"
+    output = workspace / "harden_ecc" / "output"
     output.mkdir(parents=True)
     if gds:
-        (output / "gcd_Harden.gds").write_bytes(b"GDS")
+        (output / "gcd_harden.gds").write_bytes(b"gds")
         if multiple:
-            (output / "gcd_Harden_extra.gds").write_bytes(b"GDS")
+            (output / "gcd_Harden_extra.gds").write_bytes(b"gds")
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Harden",
+                        "name": "harden",
                         "tool": "ecc",
                         "state": "Success",
-                        **step_fields("Harden", "ecc"),
+                        **step_fields("harden", "ecc"),
                     }
                 ],
             }
@@ -46,7 +46,7 @@ def _workspace(tmp_path: Path, *, gds: bool = True, multiple: bool = False) -> P
     return workspace
 
 
-def _input(step: str = "Harden") -> GdsViewInput:
+def _input(step: str = "harden") -> GdsViewInput:
     return GdsViewInput(output=OutputOptions(), project=ProjectOptions(), step=step)
 
 
@@ -89,7 +89,7 @@ def test_gds_view_opens_the_selected_step_gds(tmp_path, monkeypatch):
     result = gds_view.gds_view(_input(), _context(workspace))
 
     assert result.exit_code == 0
-    assert opened == [workspace / "Harden_ecc/output/gcd_Harden.gds"]
+    assert opened == [workspace / "harden_ecc/output/gcd_harden.gds"]
     assert result.records[0]["status"] == "closed"
 
 

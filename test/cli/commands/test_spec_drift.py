@@ -94,7 +94,7 @@ class TestRunWarnsOnSpecDrift:
         ]
         os.makedirs(os.path.join(run_dir, "home"), exist_ok=True)
         with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
-            json.dump({"schema_version": 2, "steps": steps}, f)
+            json.dump({"schema_version": 3, "steps": steps}, f)
         assert save_workspace_config(
             run_dir, parameters or _base_parameters(), {"preset": "rtl2gds"}
         )

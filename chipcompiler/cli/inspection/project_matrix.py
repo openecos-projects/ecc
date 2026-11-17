@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from chipcompiler.analysis.qor.schema import validate_report
-from chipcompiler.cli.core.output import flow_step_status, flow_step_token
+from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.discovery import get_run_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
@@ -102,7 +102,7 @@ def build_project_matrix(manifest: ProjectManifest) -> dict:
                 identity,
                 {
                     "step": step["name"],
-                    "token": flow_step_token(step["name"]),
+                    "token": step["name"],
                     "tool": step["tool"],
                 },
             )

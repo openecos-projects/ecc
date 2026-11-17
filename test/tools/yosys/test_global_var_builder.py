@@ -68,18 +68,18 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
     )
 
     step = YosysStep(
-        name="Synthesis",
-        directory=tmp_path / "Synthesis_yosys",
+        name="synthesis",
+        directory=tmp_path / "synthesis_yosys",
         input=StepInput(verilog=rtl_file),
         output=YosysOutput(
-            verilog=tmp_path / "Synthesis_yosys" / "output" / "top.v.gz",
-            sim_verilog=tmp_path / "Synthesis_yosys" / "output" / "top_sim.v.gz",
+            verilog=tmp_path / "synthesis_yosys" / "output" / "top.v.gz",
+            sim_verilog=tmp_path / "synthesis_yosys" / "output" / "top_sim.v.gz",
         ),
-        data=YosysData(dir=tmp_path / "Synthesis_yosys" / "data"),
-        feature=YosysFeature(stat=tmp_path / "Synthesis_yosys" / "feature" / "stat.json"),
+        data=YosysData(dir=tmp_path / "synthesis_yosys" / "data"),
+        feature=YosysFeature(stat=tmp_path / "synthesis_yosys" / "feature" / "stat.json"),
         report=YosysReport(
-            stat=tmp_path / "Synthesis_yosys" / "report" / "stat.json",
-            check=tmp_path / "Synthesis_yosys" / "report" / "check.rpt",
+            stat=tmp_path / "synthesis_yosys" / "report" / "stat.json",
+            check=tmp_path / "synthesis_yosys" / "report" / "check.rpt",
         ),
     )
     return workspace, step, rtl_file
@@ -104,7 +104,7 @@ def test_yosys_builder_constructs_path_objects_and_creates_dirs(tmp_path):
     assert isinstance(step.directory, Path)
     assert step.input.verilog == rtl_file
     assert step.output.dir == expected_step_dir / "output"
-    assert step.script.main == expected_step_dir / "script" / "Synthesis_main.tcl"
+    assert step.script.main == expected_step_dir / "script" / "synthesis_main.tcl"
 
     yosys_builder.build_step_space(step)
 

@@ -87,7 +87,7 @@ class TestSchemaRegistry:
         assert density.config_target == ConfigTarget("dreamplace", ("target_density",))
 
         fanout = _required_schema("cts.max_fanout")
-        assert fanout.config_target == ConfigTarget("CTS", ("max_fanout",))
+        assert fanout.config_target == ConfigTarget("cts", ("max_fanout",))
 
         util = _required_schema("floorplan.core_util")
         assert util.maps_to == {"core": "utilitization"}
@@ -119,7 +119,7 @@ class TestSchemaRegistry:
         schema = _required_schema("cts.skew_bound")
         assert schema is not None
         assert schema.config_target is not None
-        assert schema.config_target.config_key == "CTS"
+        assert schema.config_target.config_key == "cts"
         assert schema.config_target.json_path == ("skew_bound",)
 
     def test_list_groups_returns_ordered_groups(self):
@@ -378,7 +378,7 @@ class TestBackendMapping:
         )
         assert build_backend_overrides([rp]) == {}
         assert build_config_overrides([rp]) == {
-            "route": {"RT": {"-top_routing_layer": "MET4"}},
+            "routing": {"RT": {"-top_routing_layer": "MET4"}},
             "dreamplace": {"gpugr_top_routing_layer": "MET4"},
         }
 
@@ -402,7 +402,7 @@ class TestBackendMapping:
     def test_config_overrides_omit_defaults(self):
         resolved, errors = resolve_parameters(toml_overrides={"cts.skew_bound": "0.05"})
         assert errors == []
-        assert build_config_overrides(resolved) == {"CTS": {"skew_bound": "0.05"}}
+        assert build_config_overrides(resolved) == {"cts": {"skew_bound": "0.05"}}
 
     def test_mapping_does_not_mutate_schema_defaults(self):
         schema = _required_schema("place.target_density")

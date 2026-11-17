@@ -46,7 +46,7 @@ def test_placement_candidate_mode_expands_internal_lane_settings(monkeypatch):
 
 
 def test_placement_range_connects_diff_opt_to_sizing():
-    chain = build_flow_range("place", "diff_sizing")
+    chain = build_flow_range("placement", "diff_sizing")
     assert [(step.value, tool) for step, tool, _state in chain] == [
         (StepEnum.PLACEMENT.value, "dreamplace"),
         (SkippableStepEnum.DIFF_OPT.value, "dreamplace"),

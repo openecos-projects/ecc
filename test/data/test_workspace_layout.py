@@ -76,11 +76,11 @@ def test_data_supports_dynamic_step_keyed_directories():
     # ecc data holds per-step working dirs keyed by StepEnum values (some with
     # spaces) in an explicit `steps` mapping; workdir_for falls back to `dir`.
     step = EccStep(
-        name="Timing optimization",
-        data=EccData(dir=Path("/data"), steps={"Timing optimization": Path("/data/to")}),
+        name="timing_optimization",
+        data=EccData(dir=Path("/data"), steps={"timing_optimization": Path("/data/to")}),
     )
-    assert step.data.steps["Timing optimization"] == Path("/data/to")
-    assert step.data.workdir_for("Timing optimization") == Path("/data/to")
+    assert step.data.steps["timing_optimization"] == Path("/data/to")
+    assert step.data.workdir_for("timing_optimization") == Path("/data/to")
     assert step.data.workdir_for("unknown step") == Path("/data")
     assert step.data.dir == Path("/data")
 
@@ -88,8 +88,8 @@ def test_data_supports_dynamic_step_keyed_directories():
 def test_data_iter_directories_for_build_step_space():
     # ecc build_step_space iterates step.data.iter_directories() to mkdir each.
     step = EccStep(
-        name="Floorplan",
-        data=EccData(dir=Path("/data"), steps={"place": Path("/data/pl")}),
+        name="floorplan",
+        data=EccData(dir=Path("/data"), steps={"placement": Path("/data/pl")}),
     )
     assert sorted(str(v) for v in step.data.iter_directories()) == ["/data", "/data/pl"]
 
@@ -100,11 +100,11 @@ def test_build_step_returns_correct_variant(tmp_path):
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
 
-    yosys_step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
+    yosys_step = yosys_builder.build_step(workspace, "synthesis", None, tmp_path / "in.v")
     assert isinstance(yosys_step, YosysStep)
     assert isinstance(yosys_step, WorkspaceStep)
 
-    ecc_step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
+    ecc_step = ecc_builder.build_step(workspace, "floorplan", tmp_path / "i.def", tmp_path / "i.v")
     assert isinstance(ecc_step, EccStep)
     assert isinstance(ecc_step, WorkspaceStep)
 
@@ -127,10 +127,10 @@ def test_group_to_dict_renames_def_and_drops_unset_inherited_fields():
 
 
 def test_group_to_dict_flattens_data_steps_and_projects_nested_sta():
-    data = EccData(dir=Path("/d"), steps={"Timing optimization": Path("/d/to")})
+    data = EccData(dir=Path("/d"), steps={"timing_optimization": Path("/d/to")})
     projected = step_group_to_dict(data)
     # per-step dirs are flattened to top-level keys; "steps" itself is dropped.
-    assert projected == {"dir": Path("/d"), "Timing optimization": Path("/d/to")}
+    assert projected == {"dir": Path("/d"), "timing_optimization": Path("/d/to")}
 
     report = EccReport(dir=Path("/r"), sta={"dir": Path("/r/sta")})
     projected = step_group_to_dict(report)
@@ -158,7 +158,7 @@ def _shape_keys(step):
 
 def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = yosys_builder.build_step(workspace, "Synthesis", None, tmp_path / "in.v")
+    step = yosys_builder.build_step(workspace, "synthesis", None, tmp_path / "in.v")
     keys = _shape_keys(step)
     assert keys["output"] == sorted(
         ["dir", "def", "verilog", "sim_verilog", "golden_verilog", "json", "report", "image"]
@@ -177,7 +177,7 @@ def test_log_projection_yosys_shape_has_no_foreign_keys(tmp_path):
 
 def test_log_projection_ecc_shape_has_no_sizer_keys(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
-    step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
+    step = ecc_builder.build_step(workspace, "floorplan", tmp_path / "i.def", tmp_path / "i.v")
     keys = _shape_keys(step)
     assert keys["output"] == sorted(
         [
@@ -215,7 +215,7 @@ def test_log_projection_sizer_shape_includes_sizer_script_keys(tmp_path):
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     step = sizer_builder.build_step(
-        workspace, "Timing optimization", tmp_path / "i.def", tmp_path / "i.v"
+        workspace, "timing_optimization", tmp_path / "i.def", tmp_path / "i.v"
     )
     keys = _shape_keys(step)
     # sizer is the only shape that populates sizer_env/sizer_cmd and the
@@ -243,7 +243,7 @@ def test_log_workspace_step_renders_legacy_tables(tmp_path):
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
     )
-    step = ecc_builder.build_step(workspace, "Floorplan", tmp_path / "i.def", tmp_path / "i.v")
+    step = ecc_builder.build_step(workspace, "floorplan", tmp_path / "i.def", tmp_path / "i.v")
     logger = _CapturingLogger()
     log_workspace_step(step, logger)
     rendered = "\n".join(logger.messages)
@@ -256,6 +256,6 @@ def test_load_metrics_requires_present_metrics_path(tmp_path):
     from chipcompiler.analysis.step import StepMetricsBuilder
 
     builder = StepMetricsBuilder(workspace=Workspace(directory=tmp_path))
-    step = EccStep(name="place")  # analysis.metrics is None (never set)
+    step = EccStep(name="placement")  # analysis.metrics is None (never set)
     with pytest.raises(ValueError):
         builder.load(step)

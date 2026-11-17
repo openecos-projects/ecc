@@ -174,7 +174,7 @@ def _group_for(item: dict) -> str:
         return "config"
     if category == "provenance" or path.startswith(("origin/", "initial/")):
         return "initial"
-    if step == "Harden" or path.startswith(
+    if step == StepEnum.HARDEN.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/", "harden/")
     ):
         return "harden"
@@ -182,11 +182,11 @@ def _group_for(item: dict) -> str:
         (f"{STEP_DIRECTORIES[StepEnum.STA.value]}/", "final/timing/sta/")
     ):
         return "sta"
-    if step == "RCX" or path.startswith(
+    if step == StepEnum.RCX.value or path.startswith(
         (f"{STEP_DIRECTORIES[StepEnum.RCX.value]}/", "final/timing/spef/")
     ):
         return "spef"
-    if step in {"Route", "drc", "lvs", "filler"} or path.startswith(
+    if step in {StepEnum.ROUTING.value, "drc", "lvs", "filler"} or path.startswith(
         (
             f"{STEP_DIRECTORIES[StepEnum.ROUTING.value]}/",
             f"{STEP_DIRECTORIES[StepEnum.DRC.value]}/",

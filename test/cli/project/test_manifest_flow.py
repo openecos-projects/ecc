@@ -37,10 +37,10 @@ def _config(project_dir, flow_extra=""):
 @pytest.mark.parametrize(
     ("entry_skip", "flow_extra", "inserted"),
     [
-        # project.json still lists LEC as a step: keeping it runs lec@Synthesis.
-        ([], "", ["lec@Synthesis"]),
-        (["DiffOpt"], "", ["lec@Synthesis"]),
-        (["LEC", "DiffOpt"], "", None),
+        # project.json still lists LEC as a step: keeping it runs lec@synthesis.
+        ([], "", ["lec@synthesis"]),
+        (["diff_opt"], "", ["lec@synthesis"]),
+        (["lec", "diff_opt"], "", None),
         # An undeclared policy skipped the LEC by default.
         (None, "", None),
         # ecc.toml's skip_steps replaces the entry's policy.
@@ -60,15 +60,15 @@ def test_an_entry_keeping_the_lec_inserts_the_synthesis_check(
     ("start", "end", "expected"),
     [
         (
-            "Synth",
-            "LEC",
+            "synthesis",
+            "lec@synthesis",
             {
-                "start_step": "Synth",
-                "end_step": "Synthesis",
-                "insert_steps": ["lec@Synthesis"],
+                "start_step": "synthesis",
+                "end_step": "synthesis",
+                "insert_steps": ["lec@synthesis"],
             },
         ),
-        ("Synth", "Route", {"start_step": "Synth", "end_step": "Route"}),
+        ("synthesis", "routing", {"start_step": "synthesis", "end_step": "routing"}),
     ],
 )
 def test_a_range_bounded_by_the_lec_ends_at_synthesis_and_inserts_it(

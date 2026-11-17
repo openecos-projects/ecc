@@ -76,7 +76,7 @@ fresh_workspace "${ws}"
 check_export "happy path passes" "${ws}" pass
 
 summary_file="${tmp}/summary.md"
-sed -i 's/^Harden,die_area,40000.0,/Harden,die_area,,/' "${ws}/out/area.csv"
+sed -i 's/^harden,die_area,40000.0,/harden,die_area,,/' "${ws}/out/area.csv"
 mkdir -p "${ws}/signoff-artifacts/e2e-signoff-csv-invalid"
 ln -s "${ws}/out" "${ws}/signoff-artifacts/e2e-signoff-csv-gcd"
 printf '%s\n' '{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}' \
@@ -101,13 +101,13 @@ printf -v expected_summary '%s\n' \
   '' \
   '| Step | Metric | Value |' \
   '| --- | --- | --- |' \
-  '| `Synthesis` | `synthesis_cell_area` | `4200.0` um^2 |' \
-  '| `postFloorplan` | `die_area` | `40000.0` um^2 |' \
-  '| `postFloorplan` | `core_area` | `32000.0` um^2 |' \
-  '| `postFloorplan` | `core_utilization` | `0.62` ratio |' \
-  '| `Harden` | `die_area` | N/A |' \
-  '| `Harden` | `core_area` | `32000.0` um^2 |' \
-  '| `Harden` | `core_utilization` | `0.62` ratio |' \
+  '| `synthesis` | `synthesis_cell_area` | `4200.0` um^2 |' \
+  '| `post_floorplan` | `die_area` | `40000.0` um^2 |' \
+  '| `post_floorplan` | `core_area` | `32000.0` um^2 |' \
+  '| `post_floorplan` | `core_utilization` | `0.62` ratio |' \
+  '| `harden` | `die_area` | N/A |' \
+  '| `harden` | `core_area` | `32000.0` um^2 |' \
+  '| `harden` | `core_utilization` | `0.62` ratio |' \
   '' \
   '#### STA' \
   '' \
@@ -139,13 +139,13 @@ pass "job summary aggregates reports and handles missing or invalid artifacts"
 # 2. LEC: no selected-engine result -> mandatory gate fails.
 ws="${tmp}/lec-missing"
 fresh_workspace "${ws}"
-rm -rf "${ws}/postRouteLec_kepler_formal"
+rm -rf "${ws}/post_route_lec_kepler_formal"
 check_export "LEC missing result fails" "${ws}" fail
 
 # 3. LEC: recorded hash no longer matches the netlist -> stale fails.
 ws="${tmp}/lec-stale"
 fresh_workspace "${ws}"
-mutate_json "${ws}/postRouteLec_kepler_formal/output/gcd_postRouteLec_result.json" \
+mutate_json "${ws}/post_route_lec_kepler_formal/output/gcd_post_route_lec_result.json" \
   '.golden_sha256 = ("0" * 64)'
 check_export "LEC stale netlist fails" "${ws}" fail
 
@@ -154,7 +154,7 @@ check_export "LEC stale netlist fails" "${ws}" fail
 ws="${tmp}/lec-residue"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "yosys_lec"'
+  '(.steps[] | select(.name == "post_route_lec") | .tool) = "yosys_lec"'
 check_export "LEC cross-engine residue fails" "${ws}" fail
 
 # 5. DRC: clean gate reported as fail -> mandatory gate fails.
@@ -181,8 +181,8 @@ check_export "STA missing metric fails" "${ws}" fail
 # 8. Harden: missing final artifact -> present=false fails.
 ws="${tmp}/harden-missing-artifact"
 fresh_workspace "${ws}"
-rm -f "${ws}/Harden_ecc/output/gcd_Harden.gds"
-check_export "Harden missing artifact fails" "${ws}" fail
+rm -f "${ws}/harden_ecc/output/gcd_harden.gds"
+check_export "harden missing artifact fails" "${ws}" fail
 
 # 9. Fallback shape: no flow.json.design; design comes from params.toml.
 ws="${tmp}/no-flow-json"
@@ -190,45 +190,45 @@ fresh_workspace "${ws}"
 rm -f "${ws}/home/flow.json"
 check_export "no flow.json still passes from params design" "${ws}" pass
 
-# 10. postRouteLec omitted from the ledger is not a mandatory LEC gate.
+# 10. post_route_lec omitted from the ledger is not a mandatory LEC gate.
 ws="${tmp}/lec-skipped"
 fresh_workspace "${ws}"
-mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "postRouteLec")]'
-check_export "postRouteLec omitted from ledger is skipped and passes" "${ws}" pass
+mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "post_route_lec")]'
+check_export "post_route_lec omitted from ledger is skipped and passes" "${ws}" pass
 
-# 11. postRouteLec present but non-success must fail, never read stale residue.
+# 11. post_route_lec present but non-success must fail, never read stale residue.
 ws="${tmp}/lec-non-success"
 fresh_workspace "${ws}"
-mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "postRouteLec") | .state) = "Incomplete"'
-check_export "postRouteLec non-success fails despite stale result" "${ws}" fail
+mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "post_route_lec") | .state) = "Incomplete"'
+check_export "post_route_lec non-success fails despite stale result" "${ws}" fail
 
 # 12. Harden area metrics are optional; final artifacts still satisfy the gate.
 ws="${tmp}/harden-optional-area"
 fresh_workspace "${ws}"
-mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
+mutate_json "${ws}/harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
-check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
+check_export "harden optional area metrics do not fail the gate" "${ws}" pass
 
 # 13. Indexed step directories must populate CSV data used by the job summary.
 ws="${tmp}/indexed"
 fresh_workspace "${ws}"
-mv "${ws}/Synthesis_yosys" "${ws}/01_Synthesis_yosys"
-mv "${ws}/postFloorplan_ecc" "${ws}/04_postFloorplan_ecc"
+mv "${ws}/synthesis_yosys" "${ws}/01_synthesis_yosys"
+mv "${ws}/post_floorplan_ecc" "${ws}/04_post_floorplan_ecc"
 mv "${ws}/drc_ecc" "${ws}/14_drc_ecc"
 mv "${ws}/sta_ecc" "${ws}/18_sta_ecc"
-mv "${ws}/postRouteLec_kepler_formal" "${ws}/16_postRouteLec_kepler_formal"
-mv "${ws}/Harden_ecc" "${ws}/21_Harden_ecc"
+mv "${ws}/post_route_lec_kepler_formal" "${ws}/16_post_route_lec_kepler_formal"
+mv "${ws}/harden_ecc" "${ws}/21_harden_ecc"
 mutate_json "${ws}/home/flow.json" \
   '.steps = [.steps[] | . + {directory: ({
-    "Synthesis": "01_Synthesis_yosys",
-    "postFloorplan": "04_postFloorplan_ecc",
+    "synthesis": "01_synthesis_yosys",
+    "post_floorplan": "04_post_floorplan_ecc",
     "drc": "14_drc_ecc",
     "sta": "18_sta_ecc",
-    "postRouteLec": "16_postRouteLec_kepler_formal",
-    "Harden": "21_Harden_ecc"
+    "post_route_lec": "16_post_route_lec_kepler_formal",
+    "harden": "21_harden_ecc"
   }[.name] // (.name + "_" + .tool))}]'
 check_export "indexed step directories pass" "${ws}" pass
-grep -q '^Synthesis,synthesis_cell_area,4200.0,um^2,01_Synthesis_yosys/analysis/qor_metrics.json,true$' \
-  "${ws}/out/area.csv" || fail "indexed Synthesis area is missing from the summary CSV"
+grep -q '^synthesis,synthesis_cell_area,4200.0,um^2,01_synthesis_yosys/analysis/qor_metrics.json,true$' \
+  "${ws}/out/area.csv" || fail "indexed synthesis area is missing from the summary CSV"
 
 echo "all signoff CSV negative-path checks passed"

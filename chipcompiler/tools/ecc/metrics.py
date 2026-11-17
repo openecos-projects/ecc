@@ -1462,7 +1462,7 @@ def save_rcx_spef_feature_facts(workspace: Workspace, step: WorkspaceStep) -> bo
             len(expected_spef_paths) if expected_spef_paths else len(actual_spef_paths)
         ),
         "missing_corner_count": len(missing_spef_paths),
-        "output_def_exists": _artifact_exists(step.output.def_ or "", output_dir, "*_RCX.def.gz"),
+        "output_def_exists": _artifact_exists(step.output.def_ or "", output_dir, "*_rcx.def.gz"),
         "output_gds_exists": _artifact_exists(
             getattr(step.output, "gds", "") or "", output_dir, "*.gds"
         ),
@@ -1496,11 +1496,11 @@ def save_cts_timing_feature_facts(step: WorkspaceStep, timing_quality: dict) -> 
     if feature_path is None:
         return False
     feature = json_read(feature_path)
-    cts = feature.get("CTS") if isinstance(feature, dict) else None
+    cts = feature.get(StepEnum.CTS.value) if isinstance(feature, dict) else None
     cts = cts if isinstance(cts, dict) else {}
     return _save_step_feature_facts(
         step,
-        "CTS",
+        StepEnum.CTS.value,
         {**cts, "timing_quality": timing_quality},
     )
 
@@ -2076,7 +2076,11 @@ def _metric_feature_source(
 
     if metric_id.startswith("power_analysis_"):
         feature_dir = getattr(step.feature, "dir", None)
-        feature_path = Path(feature_dir) / "powerAnalysis.step.json" if feature_dir else None
+        feature_path = (
+            Path(feature_dir) / f"{StepEnum.POWER_ANALYSIS.value}.step.json"
+            if feature_dir
+            else None
+        )
         selector = {
             "power_analysis_internal_uw": "/power_summary/internal_uw",
             "power_analysis_switching_uw": "/power_summary/switching_uw",
@@ -2092,7 +2096,11 @@ def _metric_feature_source(
             "synthesis_power_leakage_uw": "/leakage_uw",
         }.get(metric_id, "")
         if step.name == StepEnum.POWER_ANALYSIS.value:
-            feature_path = Path(feature_dir) / "powerAnalysis.step.json" if feature_dir else None
+            feature_path = (
+                Path(feature_dir) / f"{StepEnum.POWER_ANALYSIS.value}.step.json"
+                if feature_dir
+                else None
+            )
             selector = f"/power_summary{selector}"
         else:
             feature_path = (
@@ -3753,7 +3761,7 @@ def build_metrics_routing(workspace: Workspace, step: EccStep) -> StepMetrics | 
 
     route_data = json_read(getattr(step.feature, "step", "") or "")
     if isinstance(route_data, dict):
-        route = route_data.get("route", {})
+        route = route_data.get(StepEnum.ROUTING.value, {})
         route = route if isinstance(route, dict) else {}
         metrics["route_layer_metrics"] = _route_layer_metrics(
             route,
@@ -4057,7 +4065,7 @@ def build_metrics_cts(workspace: Workspace, step: EccStep) -> StepMetrics | None
     json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if isinstance(data, dict):
-        cts = data.get("CTS", {})
+        cts = data.get(StepEnum.CTS.value, {})
         cts = cts if isinstance(cts, dict) else {}
         for metric, source_key in (
             ("buffer_num", "buffer_num"),
@@ -4112,8 +4120,8 @@ def build_metrics_placement(workspace: Workspace, step: EccStep) -> StepMetrics 
     # db summary matrics
     metrics.update(build_metrics_db(workspace, step))
 
-    # Placement congestion and wirelength are emitted through place.map.json.
-    # The old place.step.json overflow/bin fields are not part of the current
+    # Placement congestion and wirelength are emitted through placement.map.json.
+    # The old placement.step.json overflow/bin fields are not part of the current
     # DreamPlace feature contract.
     map_data = json_read(getattr(step.feature, "map", None) or "")
     if isinstance(map_data, dict):

@@ -10,9 +10,9 @@ from chipcompiler.cli.project.run_existing import run_existing_workspace
 @pytest.mark.parametrize(
     "selectors",
     [
-        {"from_step": "Synthesis", "to_step": "postFloorplan"},
-        {"from_step": "place"},
-        {"only": "place", "force": True},
+        {"from_step": "synthesis", "to_step": "post_floorplan"},
+        {"from_step": "placement"},
+        {"only": "placement", "force": True},
     ],
 )
 def test_manifest_workspace_honors_explicit_run_selectors(tmp_path, monkeypatch, selectors):
@@ -34,7 +34,7 @@ def test_manifest_workspace_honors_explicit_run_selectors(tmp_path, monkeypatch,
         "trial",
         {},
         [],
-        flow_config={"start_step": "Synthesis", "end_step": "Harden"},
+        flow_config={"start_step": "synthesis", "end_step": "harden"},
         workspace_registered=True,
     )
     assert result == expected

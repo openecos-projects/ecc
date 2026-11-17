@@ -58,11 +58,11 @@ def set_cmd(
       into `config/macro_location.tcl` when a workspace is created or
       refreshed.
     - `--workspace NAME`: written to `home/params.toml`, the Tcl file is
-      regenerated immediately, and `macroPlacement` and its suffix are
+      regenerated immediately, and `macro_placement` and its suffix are
       marked pending.
 
     Coordinates are in micrometers and the instance is committed `fixed`.
-    While `macro.placements` is non-empty the `macroPlacement` step keeps
+    While `macro.placements` is non-empty the `macro_placement` step keeps
     its load/save flow but skips DreamPlace macro placement.
 
     ```bash
@@ -92,7 +92,7 @@ def remove_cmd(
     """Remove one macro instance placement.
 
     Removing the last entry clears `macro.placements`, so the next
-    `macroPlacement` run goes back to DreamPlace macro placement.
+    `macro_placement` run goes back to DreamPlace macro placement.
 
     ```bash
     ecc macro remove u_ram0
@@ -123,7 +123,9 @@ def import_cmd(
         bool,
         typer.Option(
             "--commit-step-output",
-            help="Keep the successful macroPlacement output current and invalidate only its suffix",
+            help=(
+                "Keep the successful macro_placement output current and invalidate only its suffix"
+            ),
         ),
     ] = False,
     plain: PlainOption = False,
@@ -141,9 +143,9 @@ def import_cmd(
       into `config/macro_location.tcl` when a workspace is created or
       refreshed.
     - `--workspace NAME`: written to `home/params.toml`, the Tcl file is
-      regenerated immediately, and `macroPlacement` and its suffix are
+      regenerated immediately, and `macro_placement` and its suffix are
       marked pending. With `--commit-step-output`, the imported placements
-      replace the current successful `macroPlacement` output and only its
+      replace the current successful `macro_placement` output and only its
       suffix is marked pending. The generated handoff is verified against
       the committed placements before the transaction completes. An empty
       file clears the placements.

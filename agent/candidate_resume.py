@@ -6,6 +6,7 @@ import re
 import tempfile
 from pathlib import Path
 
+from chipcompiler.data.types import StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .data.candidate_artifacts import validate_candidate_id
@@ -54,7 +55,7 @@ def candidate_resume(api, request: CandidateResumeRequest) -> dict:
             kind="candidate_resume",
             origin="agent",
             rerun=True,
-            step="Harden",
+            step=StepEnum.HARDEN.value,
             idempotency_key=request.idempotency_key,
             runner=lambda observer: _candidate_resume(api, session, request, observer),
         )
@@ -182,7 +183,7 @@ def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
 
 
 def _candidate_resume_steps(flow, target_step: str) -> list:
-    steps = _candidate_rerun_steps(flow, target_step, "Harden", "full_flow")
+    steps = _candidate_rerun_steps(flow, target_step, StepEnum.HARDEN.value, "full_flow")
     for index, step in enumerate(steps):
         record = flow.get_step(step.name, step.tool)
         if record is None:
@@ -227,7 +228,7 @@ def _validate_candidate_resume_manifest(
         "candidate_id": Path(candidate_root_ref).name,
         "candidate_root_ref": candidate_root_ref,
         "terminal_state": "failed",
-        "end_step": "Harden",
+        "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
         "candidate_flow_sha256": _required_file_sha256(
             candidate_root / "home" / "flow.json", "resume flow"
@@ -294,7 +295,7 @@ def _candidate_resume_rerun_request(
     return CandidateRerunRequest(
         workspace_id=request.workspace_id,
         target_step=manifest["target_step"],
-        end_step="Harden",
+        end_step=StepEnum.HARDEN.value,
         candidate_id=request.candidate_id,
         patch=patch,
         execution_scope="full_flow",
@@ -333,7 +334,10 @@ def _validated_candidate_resume_patch(
             raise ValueError("candidate resume floorplan mode stage is invalid")
         mode_only = mode is not None and mode["patch"] == []
         if mode_only:
-            if target_step != "Floorplan" or "candidate_materialization" in manifest["artifacts"]:
+            if (
+                target_step != StepEnum.FLOORPLAN.value
+                or "candidate_materialization" in manifest["artifacts"]
+            ):
                 raise ValueError("mode-only baseline binding is invalid")
             binding = reapply_candidate_input_binding(workspace, flow, target_step)
             if binding is None or binding["candidate_id"] != request.candidate_id:

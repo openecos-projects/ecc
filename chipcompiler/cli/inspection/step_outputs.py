@@ -1,6 +1,5 @@
 from pathlib import Path
 
-from chipcompiler.cli.core.output import flow_step_token
 from chipcompiler.cli.inspection.artifact_evidence import inspect_artifact
 from chipcompiler.engine.snapshot import (
     EngineeringSnapshotError,
@@ -32,11 +31,9 @@ def output_records(workspace_dir: str, step_token: str, state: str) -> list[dict
             }
         ]
     invalidated = snapshot.get("stalePredecessor", {}).get("invalidatedStepIds", [])
-    current = state == "success" and step_token not in {
-        flow_step_token(name) for name in invalidated
-    }
+    current = state == "success" and step_token not in set(invalidated)
     for step in snapshot["stepOutputs"]["steps"]:
-        if flow_step_token(step["step"]) != step_token:
+        if step["step"] != step_token:
             continue
         for role in ("verilog", "def"):
             artifact = step.get(role)

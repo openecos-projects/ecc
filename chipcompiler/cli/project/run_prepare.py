@@ -337,7 +337,7 @@ def execute_fresh_run(
     from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
 
     entry_step = fresh_entry_step(cfg, flow_config)
-    uses_netlist_input = bool(inputs.netlist) and entry_step != "Synthesis"
+    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
     if uses_netlist_input:
         origin_verilog = inputs.netlist
         input_filelist = ""

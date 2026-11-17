@@ -3,7 +3,7 @@ import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace, step_storage_name
+from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc.timing_constraints import step_tcl_path
@@ -33,16 +33,13 @@ def step_shape(
     Dependency-free (no rosettakit import at module scope of this module's
     callers) so deferred creation and selected creation share one shape.
     """
-    safe_step_name = step_storage_name(step_name, "sizer")
     step_directory = step_directory or Path(workspace.directory) / new_step_directory(
         step_name, "sizer"
     )
     if output_def is None:
-        output_def = step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.def.gz"
+        output_def = step_directory / "output" / f"{workspace.design.name}_{step_name}.def.gz"
     if output_verilog is None:
-        output_verilog = (
-            step_directory / "output" / f"{workspace.design.name}_{safe_step_name}.v.gz"
-        )
+        output_verilog = step_directory / "output" / f"{workspace.design.name}_{step_name}.v.gz"
     return step_directory, output_def, output_verilog
 
 
@@ -179,7 +176,7 @@ def _append_route_layer_options(command, workspace: Workspace) -> None:
     layers: list[str] = []
     for param in ("route.bottom_layer", "route.top_layer"):
         schema = lookup_schema(param)
-        route_config = workspace.config.get("route")
+        route_config = workspace.config.get(StepEnum.ROUTING.value)
         if schema is None or route_config is None or not Path(route_config).is_file():
             layers.append("")
             continue
@@ -333,28 +330,28 @@ def _hold_rc_text(workspace: Workspace) -> str:
 def sizer_staging_def(step: EccStep) -> Path:
     workdir = step.data.workdir_for(step.name)
     if workdir is None:
-        raise ValueError("sizer step is missing a Timing optimization workdir")
+        raise ValueError("sizer step is missing a timing_optimization workdir")
     return Path(workdir) / SIZER_STAGING_DEF_NAME
 
 
 def sizer_staging_verilog(step: EccStep) -> Path:
     workdir = step.data.workdir_for(step.name)
     if workdir is None:
-        raise ValueError("sizer step is missing a Timing optimization workdir")
+        raise ValueError("sizer step is missing a timing_optimization workdir")
     return Path(workdir) / SIZER_STAGING_VERILOG_NAME
 
 
 def sizer_setup_staging_def(step: EccStep) -> Path:
     workdir = step.data.workdir_for(step.name)
     if workdir is None:
-        raise ValueError("sizer step is missing a Timing optimization workdir")
+        raise ValueError("sizer step is missing a timing_optimization workdir")
     return Path(workdir) / SIZER_SETUP_STAGING_DEF_NAME
 
 
 def sizer_setup_staging_verilog(step: EccStep) -> Path:
     workdir = step.data.workdir_for(step.name)
     if workdir is None:
-        raise ValueError("sizer step is missing a Timing optimization workdir")
+        raise ValueError("sizer step is missing a timing_optimization workdir")
     return Path(workdir) / SIZER_SETUP_STAGING_VERILOG_NAME
 
 

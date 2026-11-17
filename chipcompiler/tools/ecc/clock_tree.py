@@ -5,17 +5,16 @@ import math
 import re
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from chipcompiler.data import StepEnum
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace.flow_options import clock_tree_requested
 
-CLOCK_TREE_STAGE_BY_STEP = {
-    StepEnum.POST_FLOORPLAN.value: "postFloorplan",
-    StepEnum.CTS.value: "CTS",
-    StepEnum.FILLER.value: "filler",
-}
+# Steps whose clock network ecc-tools can capture into the geometry snapshot.
+CLOCK_TREE_STEPS: Final = frozenset(
+    {StepEnum.POST_FLOORPLAN.value, StepEnum.CTS.value, StepEnum.FILLER.value}
+)
 
 FILLER_RC_CORNER = "TYPICAL"
 FILLER_LIBERTY_CORNER = "TYP"
@@ -30,7 +29,7 @@ def clock_tree_stage_for_step(workspace, step_name: str) -> str | None:
     """Return the native snapshot stage, or None when capture is disabled."""
     if not clock_tree_requested(workspace):
         return None
-    return CLOCK_TREE_STAGE_BY_STEP.get(step_name)
+    return step_name if step_name in CLOCK_TREE_STEPS else None
 
 
 def _clock_tree_dir(workspace, step) -> Path:

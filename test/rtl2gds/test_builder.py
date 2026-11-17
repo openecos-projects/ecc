@@ -16,7 +16,7 @@ def test_discovery_includes_current_presets():
 
 def test_discovery_picks_up_new_flow_def(monkeypatch):
     def build_future_flow():
-        return [("Synthesis", "yosys", "Unstart")]
+        return [("synthesis", "yosys", "Unstart")]
 
     monkeypatch.setattr(builder_module, "build_future_flow", build_future_flow, raising=False)
     assert get_flow_builders()["future"] is build_future_flow
@@ -55,17 +55,17 @@ def test_discovery_ignores_non_matching_names(monkeypatch):
 def test_default_flow_data_marks_checker_steps():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    ledger = build_dynamic_flow_data({"start_step": "Synthesis", "end_step": "Harden"})
+    ledger = build_dynamic_flow_data({"start_step": "synthesis", "end_step": "harden"})
     categories = {step["name"]: step.get("category") for step in ledger.get("steps", [])}
 
     assert {name for name, category in categories.items() if category == "CHECKER"} == {
         "lvs",
         "drc",
-        "antennaCheck",
-        "postRouteLec",
-        "RCX",
+        "antenna_check",
+        "post_route_lec",
+        "rcx",
         "sta",
-        "powerAnalysis",
+        "power_analysis",
         "emir",
     }
 
@@ -76,12 +76,12 @@ def test_build_rtl2gds_flow_skip_removes_exactly_the_skipped_steps():
     step_names = [step.value for step, _tool, _state in flow]
     unfiltered = [step.value for step, _tool, _state in builder_module.build_rtl2gds_flow()]
     assert step_names == [
-        name for name in unfiltered if name not in {"diff_opt", "Timing optimization"}
+        name for name in unfiltered if name not in {"diff_opt", "timing_optimization"}
     ]
 
 
 def test_build_flow_range_slices_the_canonical_chain():
-    flow = builder_module.build_flow_range("diff_sizing", "route")
+    flow = builder_module.build_flow_range("diff_sizing", "routing")
 
     assert [(step, tool) for step, tool, _state in flow] == [
         (StepEnum.DIFF_SIZING, "dreamplace"),
@@ -108,7 +108,7 @@ def test_build_flow_range_accepts_antenna_after_drc(spelling):
 
 
 def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
-    assert [step for step, _tool, _state in builder_module.build_flow_range("place", "cts")] == [
+    assert [step for step, _tool, _state in builder_module.build_flow_range("place", "CTS")] == [
         StepEnum.PLACEMENT,
         SkippableStepEnum.DIFF_OPT,
         StepEnum.DIFF_SIZING,
@@ -122,13 +122,13 @@ def test_build_flow_range_normalizes_aliases_and_rejects_reverse_ranges():
     ]
 
     with pytest.raises(ValueError, match="reversed"):
-        builder_module.build_flow_range("route", "CTS")
+        builder_module.build_flow_range("routing", "cts")
     with pytest.raises(ValueError, match="reversed"):
         builder_module.build_flow_range("power_analysis", "lvs")
 
 
 def test_build_flow_range_exposes_split_floorplan_steps():
-    flow = builder_module.build_flow_range("preFloorplan", "postFloorplan")
+    flow = builder_module.build_flow_range("pre_floorplan", "post_floorplan")
 
     assert [(step, tool) for step, tool, _state in flow] == [
         (StepEnum.PRE_FLOORPLAN, "ecc"),
@@ -145,12 +145,12 @@ def test_floorplan_selector_alias_targets_pre_floorplan(selector):
 def test_a_chain_built_check_is_filtered_with_its_step():
     chain = builder_module.build_synthesis_lec_flow()
 
-    assert builder_module.filter_flow_steps(chain, ("Synthesis",)) == []
+    assert builder_module.filter_flow_steps(chain, ("synthesis",)) == []
 
 
 def test_build_flow_range_skip_excludes_steps_from_the_slice():
     flow = builder_module.build_flow_range(
-        "Synthesis", "postFloorplan", skip=(StepEnum.MACRO_PLACEMENT.value,)
+        "synthesis", "post_floorplan", skip=(StepEnum.MACRO_PLACEMENT.value,)
     )
 
     assert [step for step, _tool, _state in flow] == [
@@ -162,7 +162,7 @@ def test_build_flow_range_skip_excludes_steps_from_the_slice():
 
 def test_build_flow_range_rejects_skipped_step_as_boundary():
     with pytest.raises(ValueError, match="unknown flow step"):
-        builder_module.build_flow_range("Synthesis", "diff_opt", skip=("diff_opt",))
+        builder_module.build_flow_range("synthesis", "diff_opt", skip=("diff_opt",))
 
 
 def test_resolve_lec_engine_absent_key_yields_the_code_default():
@@ -170,7 +170,7 @@ def test_resolve_lec_engine_absent_key_yields_the_code_default():
 
     assert builder_module.resolve_lec_engine(None) is DEFAULT_LEC_ENGINE
     assert builder_module.resolve_lec_engine({}) is DEFAULT_LEC_ENGINE
-    assert builder_module.resolve_lec_engine({"start_step": "Synthesis"}) is DEFAULT_LEC_ENGINE
+    assert builder_module.resolve_lec_engine({"start_step": "synthesis"}) is DEFAULT_LEC_ENGINE
     assert DEFAULT_LEC_ENGINE is LECEngineEnum.KEPLER_FORMAL
 
 
@@ -187,7 +187,7 @@ def test_build_rtl2gds_flow_rejects_an_unknown_engine():
 def test_the_synthesis_lec_preset_builds_the_synthesis_check():
     assert builder_module.build_synthesis_lec_flow() == [
         (StepEnum.SYNTHESIS, "yosys", StateEnum.Unstart),
-        ("lec@Synthesis", "kepler_formal", StateEnum.Unstart),
+        ("lec@synthesis", "kepler_formal", StateEnum.Unstart),
     ]
 
 
@@ -196,7 +196,7 @@ def test_resolve_skip_steps_absent_key_yields_the_code_default():
 
     assert builder_module.resolve_skip_steps(None) == DEFAULT_SKIP_STEPS
     assert builder_module.resolve_skip_steps({}) == DEFAULT_SKIP_STEPS
-    assert builder_module.resolve_skip_steps({"start_step": "Synthesis"}) == DEFAULT_SKIP_STEPS
+    assert builder_module.resolve_skip_steps({"start_step": "synthesis"}) == DEFAULT_SKIP_STEPS
     assert (SkippableStepEnum.DIFF_OPT.value,) == DEFAULT_SKIP_STEPS
 
 
@@ -209,11 +209,11 @@ def test_resolve_skip_steps_explicit_empty_list_runs_everything():
     [
         (["diff_opt"], ("diff_opt",)),
         (["DIFF-OPT", "diff_optimization"], ("diff_opt",)),
-        (["postlec", "TimingOpt"], ("Timing optimization", "postRouteLec")),
+        (["postlec", "TimingOpt"], ("timing_optimization", "post_route_lec")),
         # lec is no chain step: existing files still list it, and it is dropped.
         (["lec", "LEC", "diff_opt"], ("diff_opt",)),
         # Any chain step may be named; plan_flow decides whether the rest runs.
-        (["route", "Synth", "cts"], ("Synthesis", "CTS", "route")),
+        (["route", "Synth", "CTS"], ("synthesis", "cts", "routing")),
     ],
 )
 def test_resolve_skip_steps_normalizes_aliases_in_canonical_order(raw, expected):
@@ -238,17 +238,17 @@ def test_resolve_skip_steps_rejects_invalid_values(raw):
 
 
 def test_filter_flow_steps_removes_entries_without_reordering():
-    steps = builder_module.build_flow_range("Synthesis", "macroPlacement")
+    steps = builder_module.build_flow_range("synthesis", "macro_placement")
 
     assert builder_module.filter_flow_steps(steps, ()) == steps
-    assert builder_module.filter_flow_steps(steps, ("preFloorplan",)) == [steps[0], steps[2]]
+    assert builder_module.filter_flow_steps(steps, ("pre_floorplan",)) == [steps[0], steps[2]]
 
 
-@pytest.mark.parametrize("declared_policy", [{}, {"skip_steps": ["CTS"]}])
+@pytest.mark.parametrize("declared_policy", [{}, {"skip_steps": ["cts"]}])
 def test_all_creation_paths_build_the_same_ledger_for_one_policy(declared_policy):
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    policy = {"start_step": "Synthesis", "end_step": "Harden", **declared_policy}
+    policy = {"start_step": "synthesis", "end_step": "harden", **declared_policy}
 
     # Sidecar/direct flow_config path: the dynamic ledger.
     sidecar = [step["name"] for step in build_dynamic_flow_data(policy).get("steps", [])]
@@ -257,7 +257,7 @@ def test_all_creation_paths_build_the_same_ledger_for_one_policy(declared_policy
     ranged = [
         step.value
         for step, _tool, _state in builder_module.build_flow_range(
-            "Synthesis", "Harden", skip=builder_module.resolve_skip_steps(policy)
+            "synthesis", "harden", skip=builder_module.resolve_skip_steps(policy)
         )
     ]
 
@@ -271,7 +271,7 @@ def test_all_creation_paths_build_the_same_ledger_for_one_policy(declared_policy
     ]
 
     assert sidecar == ranged == preset
-    assert ("diff_opt" in sidecar, "CTS" in sidecar) == (bool(declared_policy), not declared_policy)
+    assert ("diff_opt" in sidecar, "cts" in sidecar) == (bool(declared_policy), not declared_policy)
 
 
 def test_policy_only_flow_config_never_yields_a_ledger():
@@ -286,14 +286,14 @@ def test_unknown_flow_config_keys_never_become_steps_or_errors():
 
     ledger = build_dynamic_flow_data(
         {
-            "start_step": "Synthesis",
-            "end_step": "Harden",
+            "start_step": "synthesis",
+            "end_step": "harden",
             "future_unknown_key": {"nested": [1, 2, 3]},
         }
     )
 
     names = [step["name"] for step in ledger.get("steps", [])]
-    assert "Synthesis" in names
+    assert "synthesis" in names
     assert "future_unknown_key" not in names
 
 
@@ -301,38 +301,38 @@ def test_preset_shaped_flow_config_builds_the_preset_ledger():
     from chipcompiler.data.workspace import build_dynamic_flow_data
     from chipcompiler.data.workspace_config import flow_section_from_flow_config
 
-    policy = {"preset": "synthesis_lec", "skip_steps": [], "insert_steps": ["lec@Synthesis"]}
+    policy = {"preset": "synthesis_lec", "skip_steps": [], "insert_steps": ["lec@synthesis"]}
 
     ledger = build_dynamic_flow_data(policy)
-    # The preset's own lec@Synthesis is not inserted a second time.
-    assert [step["name"] for step in ledger.get("steps", [])] == ["Synthesis", "lec@Synthesis"]
+    # The preset's own lec@synthesis is not inserted a second time.
+    assert [step["name"] for step in ledger.get("steps", [])] == ["synthesis", "lec@synthesis"]
 
     # The persisted flow section keeps the preset and the normalized policy.
     section = flow_section_from_flow_config(policy)
     assert section == {
         "preset": "synthesis_lec",
         "skip_steps": [],
-        "insert_steps": ["lec@Synthesis"],
+        "insert_steps": ["lec@synthesis"],
     }
 
 
 def test_preset_ledger_may_start_after_a_skipped_first_step():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": ["Synthesis"]})
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": ["synthesis"]})
 
     assert [step["name"] for step in ledger.get("steps", [])][:2] == [
-        "preFloorplan",
-        "macroPlacement",
+        "pre_floorplan",
+        "macro_placement",
     ]
 
 
 def test_ledger_is_never_built_for_a_selection_missing_required_design_data():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    with pytest.raises(ValueError, match="route requires legal; enable Timing optimization"):
+    with pytest.raises(ValueError, match="routing requires legal; enable timing_optimization"):
         build_dynamic_flow_data(
-            {"preset": "rtl2gds", "skip_steps": ["legalization", "Timing optimization"]}
+            {"preset": "rtl2gds", "skip_steps": ["legalization", "timing_optimization"]}
         )
 
 
@@ -344,24 +344,24 @@ def test_resolve_insert_steps_normalizes_aliases_order_and_duplicates():
     insert = ["lec@route", "LEC@timing_opt", "lec@cts", "lec@CTS"]
 
     assert builder_module.resolve_insert_steps({"insert_steps": insert}) == (
-        "lec@CTS",
-        "lec@Timing_optimization",
-        "lec@route",
+        "lec@cts",
+        "lec@timing_optimization",
+        "lec@routing",
     )
 
 
 @pytest.mark.parametrize(
     ("raw", "message"),
     [
-        ("lec@CTS", "insert_steps must be a list, not str: 'lec@CTS'"),
+        ("lec@cts", "insert_steps must be a list, not str: 'lec@cts'"),
         ([1], "insert_steps entries must be strings, not 1"),
-        (["CTS"], "insert_steps entry 'CTS' must be STEP@AFTER, for example lec@CTS"),
+        (["cts"], "insert_steps entry 'cts' must be STEP@AFTER, for example lec@cts"),
         (["drc@CTS"], "insert_steps entry 'drc@CTS': only lec can be inserted"),
         (
             ["lec@filler"],
-            "insert_steps entry 'lec@filler': lec can be inserted after Synthesis, "
-            "preFloorplan, macroPlacement, postFloorplan, preplace, place, diff_opt, "
-            "diff_sizing, CTS, legalization, Timing optimization, route",
+            "insert_steps entry 'lec@filler': lec can be inserted after synthesis, "
+            "pre_floorplan, macro_placement, post_floorplan, preplace, placement, diff_opt, "
+            "diff_sizing, cts, legalization, timing_optimization, routing",
         ),
     ],
 )
@@ -373,12 +373,12 @@ def test_resolve_insert_steps_rejects_invalid_entries(raw, message):
 
 
 def test_an_inserted_lec_follows_its_step_with_the_lec_engine():
-    flow = builder_module.build_rtl2gds_flow(skip=("CTS",), insert=("lec@place", "lec@CTS"))
+    flow = builder_module.build_rtl2gds_flow(skip=("cts",), insert=("lec@placement", "lec@cts"))
 
     names = [str(getattr(step, "value", step)) for step, _tool, _state in flow]
-    place = names.index("place")
-    assert (names[place : place + 3], flow[place + 1][1:], "lec@CTS" in names) == (
-        ["place", "lec@place", "diff_opt"],
+    place = names.index("placement")
+    assert (names[place : place + 3], flow[place + 1][1:], "lec@cts" in names) == (
+        ["placement", "lec@placement", "diff_opt"],
         ("kepler_formal", StateEnum.Unstart),
         False,
     )
@@ -386,35 +386,35 @@ def test_an_inserted_lec_follows_its_step_with_the_lec_engine():
 
 def test_a_range_keeps_the_inserted_steps_of_its_steps_only():
     flow = builder_module.build_flow_range(
-        "CTS", "route", insert=("lec@place", "lec@CTS", "lec@route")
+        "cts", "routing", insert=("lec@placement", "lec@cts", "lec@routing")
     )
 
     assert [str(getattr(step, "value", step)) for step, _tool, _state in flow] == [
-        "CTS",
-        "lec@CTS",
+        "cts",
+        "lec@cts",
         "legalization",
-        "Timing optimization",
-        "route",
-        "lec@route",
+        "timing_optimization",
+        "routing",
+        "lec@routing",
     ]
 
 
 def test_a_ledger_holds_the_inserted_lec_after_its_step():
     from chipcompiler.data.workspace import build_dynamic_flow_data
 
-    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "insert_steps": ["lec@CTS"]})
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "insert_steps": ["lec@cts"]})
     steps = ledger.get("steps", [])
     names = [step["name"] for step in steps]
-    inserted = steps[names.index("lec@CTS")]
+    inserted = steps[names.index("lec@cts")]
 
-    assert (names[names.index("CTS") + 1], inserted) == (
-        "lec@CTS",
+    assert (names[names.index("cts") + 1], inserted) == (
+        "lec@cts",
         {
-            "name": "lec@CTS",
+            "name": "lec@cts",
             "tool": "kepler_formal",
             "category": "PNR",
             "state": "Unstart",
-            "directory": f"{names.index('lec@CTS') + 1:02d}_lec@CTS_kepler_formal",
+            "directory": f"{names.index('lec@cts') + 1:02d}_lec@cts_kepler_formal",
             "runtime": "",
             "peak memory (mb)": 0,
             "info": {},

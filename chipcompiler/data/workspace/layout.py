@@ -47,7 +47,7 @@ class OutputPaths:
 class YosysOutput(OutputPaths):
     sim_verilog: Path | None = None
     report: Path | None = None
-    # Pre-techmap netlist: the golden side of lec@Synthesis.
+    # Pre-techmap netlist: the golden side of lec@synthesis.
     golden_verilog: Path | None = None
 
 

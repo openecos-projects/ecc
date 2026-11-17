@@ -6,7 +6,7 @@ from typing import Any
 
 from chipcompiler.params.targets import derive_parameter_configs
 
-_MANAGED = ("CTS", "route", "db", "dreamplace", "floorplan")
+_MANAGED = ("cts", "routing", "db", "dreamplace", "floorplan")
 
 
 def _configs(tmp_path: Path, documents: dict[str, dict[str, Any]]) -> dict[str, Path]:
@@ -25,12 +25,12 @@ def _read(paths: dict[str, Path], key: str) -> dict[str, Any]:
 def test_forked_route_layers_reach_every_target_with_the_pdk_default(tmp_path: Path) -> None:
     paths = _configs(
         tmp_path,
-        {"route": {"RT": {}}, "db": {"LayerSettings": {}}, "dreamplace": {}},
+        {"routing": {"RT": {}}, "db": {"LayerSettings": {}}, "dreamplace": {}},
     )
 
     derive_parameter_configs(paths, {"pdk": "sg13g2"})
 
-    assert _read(paths, "route") == {
+    assert _read(paths, "routing") == {
         "RT": {"-bottom_routing_layer": "Metal2", "-top_routing_layer": "Metal5"}
     }
     assert _read(paths, "db") == {"LayerSettings": {"routing_layer_1st": "Metal2"}}

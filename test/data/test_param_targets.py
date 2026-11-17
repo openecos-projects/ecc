@@ -24,20 +24,20 @@ from chipcompiler.data.workspace_parameters import workspace_param_value
 
 _LAYER = ParamSchema(
     param="route.layer",
-    group="route",
+    group="routing",
     name="layer",
     type="str",
     default="MET2",
     applies="routing",
     description="layer fanned out to two configs",
-    config_target=ConfigTarget("route", ("RT", "-layer")),
+    config_target=ConfigTarget("routing", ("RT", "-layer")),
     extra_config_targets=(ConfigTarget("db", ("LayerSettings", "layer")),),
     choices=("MET1", "MET2"),
     pdk_variants={"sg13g2": PdkVariant("Metal2", ("Metal1", "Metal2"))},
 )
 _FLAG = ParamSchema(
     param="place.flag",
-    group="place",
+    group="placement",
     name="flag",
     type="int",
     default=1,
@@ -53,11 +53,11 @@ _MARGIN = ParamSchema(
     default=[2, 2],
     applies="floorplan",
     description="[horizontal, vertical] margin fanned into per-side scalars",
-    config_target=ConfigTarget("Floorplan", ("margin", "left"), element=0),
+    config_target=ConfigTarget("floorplan", ("margin", "left"), element=0),
     extra_config_targets=(
-        ConfigTarget("Floorplan", ("margin", "right"), element=0),
-        ConfigTarget("Floorplan", ("margin", "top"), element=1),
-        ConfigTarget("Floorplan", ("margin", "bottom"), element=1),
+        ConfigTarget("floorplan", ("margin", "right"), element=0),
+        ConfigTarget("floorplan", ("margin", "top"), element=1),
+        ConfigTarget("floorplan", ("margin", "bottom"), element=1),
     ),
 )
 
@@ -80,10 +80,10 @@ def test_override_patch_fans_out_to_every_target_with_transforms_and_elements() 
     )
 
     assert patch == {
-        "route": {"RT": {"-layer": "MET1"}},
+        "routing": {"RT": {"-layer": "MET1"}},
         "db": {"LayerSettings": {"layer": "MET1"}},
         "dreamplace": {"flag": 1},
-        "Floorplan": {"margin": {"left": 3, "right": 3, "top": 5, "bottom": 5}},
+        "floorplan": {"margin": {"left": 3, "right": 3, "top": 5, "bottom": 5}},
     }
 
 
@@ -103,7 +103,7 @@ def test_workspace_value_reads_the_primary_target_through_the_inverse_transform(
 def test_workspace_value_assembles_a_list_from_element_targets(tmp_path: Path) -> None:
     workspace = _workspace(
         tmp_path,
-        {"Floorplan": {"margin": {"left": 7, "right": 7, "top": 9, "bottom": 9}}},
+        {"floorplan": {"margin": {"left": 7, "right": 7, "top": 9, "bottom": 9}}},
     )
 
     assert workspace_param_value(workspace, _MARGIN) == [7, 9]
@@ -112,7 +112,7 @@ def test_workspace_value_assembles_a_list_from_element_targets(tmp_path: Path) -
 def test_workspace_value_falls_back_to_the_default_when_an_element_is_missing(
     tmp_path: Path,
 ) -> None:
-    workspace = _workspace(tmp_path, {"Floorplan": {"margin": {"left": 7}}})
+    workspace = _workspace(tmp_path, {"floorplan": {"margin": {"left": 7}}})
 
     assert workspace_param_value(workspace, _MARGIN) == [2, 2]
 
@@ -130,7 +130,7 @@ def test_pdk_variant_overrides_default_and_choices_only_for_its_family() -> None
 
 
 def test_workspace_default_follows_the_workspace_pdk(tmp_path: Path) -> None:
-    workspace = _workspace(tmp_path, {"route": {}}, pdk="sg13g2")
+    workspace = _workspace(tmp_path, {"routing": {}}, pdk="sg13g2")
 
     assert workspace_param_value(workspace, _LAYER) == "Metal2"
 
@@ -154,7 +154,7 @@ def test_resolve_parameters_uses_the_pdk_default() -> None:
                 1,
                 "x",
                 "d",
-                extra_config_targets=(ConfigTarget("route", ("x",)),),
+                extra_config_targets=(ConfigTarget("routing", ("x",)),),
                 maps_to="b",
             ),
             ["extra config targets need a primary target: a.b"],
@@ -168,7 +168,7 @@ def test_resolve_parameters_uses_the_pdk_default() -> None:
                 1,
                 "x",
                 "d",
-                config_target=ConfigTarget("route", ("x",), element=0),
+                config_target=ConfigTarget("routing", ("x",), element=0),
             ),
             ["element targets need a list parameter: a.c"],
         ),
@@ -187,7 +187,7 @@ def test_registry_validation_rejects_malformed_multi_target_schemas(
 def test_carried_creation_time_config_overrides_are_validated_against_the_new_pdk() -> None:
     from chipcompiler.params import invalid_carried_parameters
 
-    carried = {"config_overrides": {"route": {"RT": {"-bottom_routing_layer": "MET2"}}}}
+    carried = {"config_overrides": {"routing": {"RT": {"-bottom_routing_layer": "MET2"}}}}
 
     assert invalid_carried_parameters(carried, "ics55") == []
     assert invalid_carried_parameters(carried, "sg13g2") == [

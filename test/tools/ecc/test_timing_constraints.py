@@ -196,7 +196,7 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
             attempt_id="attempt-sta",
             inputs=StepInputs(),
             design_source=None,
-            upstream={AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+            upstream={AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
             final_step=False,
             layout_image=False,
         )
@@ -245,7 +245,7 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
             attempt_id="attempt-harden",
             inputs=StepInputs(),
             design_source=None,
-            upstream={AnalysisData.PARASITICS: UpstreamResponse("RCX_ecc", None)},
+            upstream={AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
             final_step=False,
             layout_image=False,
         )
@@ -260,7 +260,7 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
     timing_model = native_module.write_timing_model.call_args.kwargs
     assert timing_model["lib_paths"] == typical["path"]
     assert timing_model["spef_path"] == str(
-        workspace.directory / "RCX_ecc" / "output" / "gcd_TYPICAL_25C.spef"
+        workspace.directory / "rcx_ecc" / "output" / "gcd_TYPICAL_25C.spef"
     )
     assert timing_model["sdc_path"] == (
         workspace.directory / "origin" / "post_CTS" / "TYP_25_TYPICAL.tcl"

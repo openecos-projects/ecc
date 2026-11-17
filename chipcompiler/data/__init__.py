@@ -17,7 +17,6 @@ from .step import (
     load_metrics,
     save_metrics,
     step_directory_for_tool,
-    step_storage_name,
 )
 from .types import (
     ADVISORY_FLOW_STEPS,
@@ -183,7 +182,6 @@ __all__ = [
     "get_pdk",
     "StepEnum",
     "ToolName",
-    "step_storage_name",
     "SkippableStepEnum",
     "StepBaseEnum",
     "StateEnum",

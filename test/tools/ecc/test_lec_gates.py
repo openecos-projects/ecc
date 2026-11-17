@@ -16,10 +16,10 @@ def test_post_route_lec_gate_matches_execution_chain(tmp_path, checker_category,
         {"state": "Unstart", "name": "filler", "tool": "ecc"},
         {"state": "Unstart", "name": "lvs", "tool": "ecc"},
         {"state": "Unstart", "name": "drc", "tool": "ecc"},
-        {"state": "Unstart", "name": "antennaCheck", "tool": "ecc"},
+        {"state": "Unstart", "name": "antenna_check", "tool": "ecc"},
         {
             "state": "Unstart",
-            "name": "postRouteLec",
+            "name": "post_route_lec",
             "tool": "kepler_formal",
             "category": "CHECKER",
         },
@@ -51,7 +51,7 @@ def test_latest_pnr_output_skips_declared_checkers_and_advisory_steps(tmp_path):
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
     records = [
-        {"state": "Unstart", "name": "route", "tool": "ecc", "category": "PNR"},
+        {"state": "Unstart", "name": "routing", "tool": "ecc", "category": "PNR"},
         {"state": "Unstart", "name": "filler", "tool": "ecc", "category": "PNR"},
         {"state": "Unstart", "name": "drc", "tool": "ecc", "category": "CHECKER"},
         {"state": "Unstart", "name": "emir", "tool": "ecc", "category": "PNR"},
@@ -111,7 +111,7 @@ def test_latest_pnr_output_rejects_an_unregistered_step(tmp_path):
 
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="design"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             FlowStepEntry(
                 name="custom",
@@ -131,7 +131,7 @@ def test_latest_pnr_output_rejects_an_unregistered_step(tmp_path):
     ("declared", "with_synthesis", "expected"),
     [
         (True, True, "inputs/gcd_golden.v"),
-        (False, True, "Synthesis_yosys/output/gcd_Synthesis.v.gz"),
+        (False, True, "synthesis_yosys/output/gcd_synthesis.v.gz"),
         (False, False, "origin/gcd.v"),
     ],
 )
@@ -144,11 +144,11 @@ def test_post_route_lec_is_revalidated_against_the_golden_it_ran_with(
     )
     if declared:
         workspace.design.golden_verilog = tmp_path / "inputs/gcd_golden.v"
-    steps = [("filler", "ecc"), ("lvs", "ecc"), ("postRouteLec", "kepler_formal")]
+    steps = [("filler", "ecc"), ("lvs", "ecc"), ("post_route_lec", "kepler_formal")]
     if with_synthesis:
-        steps.insert(0, ("Synthesis", "yosys"))
+        steps.insert(0, ("synthesis", "yosys"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,

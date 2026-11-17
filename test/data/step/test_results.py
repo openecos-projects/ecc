@@ -17,7 +17,7 @@ def _flow(tmp_path, *steps: tuple[str, str]) -> EngineFlow:
     (tmp_path / "home").mkdir()
     flow = EngineFlow(workspace)
     flow.workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             flow.init_flow_step(name, "ecc", state, index=index)
             for index, (name, state) in enumerate(steps, start=1)
@@ -34,17 +34,17 @@ def _state_file(tmp_path, directory: str) -> dict:
 
 
 def test_saving_the_ledger_writes_each_step_results_into_its_directory(tmp_path):
-    flow = _flow(tmp_path, ("route", "Success"), ("filler", "Unstart"))
-    route = flow.get_step("route", "ecc")
+    flow = _flow(tmp_path, ("routing", "Success"), ("filler", "Unstart"))
+    route = flow.get_step("routing", "ecc")
     assert route is not None
     route["runtime"] = "0:1:5"
     route["info"] = {"execution": {"started_at": 1.0}, "golden_verilog": "kept.v"}
 
     assert flow.save()
 
-    assert _state_file(tmp_path, "01_route_ecc") == {
+    assert _state_file(tmp_path, "01_routing_ecc") == {
         "schema_version": 1,
-        "step": "route",
+        "step": "routing",
         "tool": "ecc",
         "state": "Success",
         "runtime": "0:1:5",
@@ -55,7 +55,7 @@ def test_saving_the_ledger_writes_each_step_results_into_its_directory(tmp_path)
 
 
 def test_steps_without_a_directory_keep_their_results_in_the_ledger_only(tmp_path):
-    flow = _flow(tmp_path, ("route", "Success"))
+    flow = _flow(tmp_path, ("routing", "Success"))
     flow.add_step("filler", "ecc", StateEnum.Unstart)
 
     assert not (tmp_path / "02_filler_ecc").exists()
@@ -63,9 +63,9 @@ def test_steps_without_a_directory_keep_their_results_in_the_ledger_only(tmp_pat
 
 
 def test_an_interrupted_save_resolves_to_the_step_directories(tmp_path):
-    flow = _flow(tmp_path, ("route", "Ongoing"))
+    flow = _flow(tmp_path, ("routing", "Ongoing"))
     ledger = (tmp_path / "home" / "flow.json").read_text(encoding="utf-8")
-    assert set_flow_state(flow.workspace.flow, "route", "ecc", StateEnum.Success, runtime="0:0:9")
+    assert set_flow_state(flow.workspace.flow, "routing", "ecc", StateEnum.Success, runtime="0:0:9")
     # The save wrote state.json; flow.json is put back as if the process died
     # before writing it.
     (tmp_path / "home" / "flow.json").write_text(ledger, encoding="utf-8")
@@ -76,7 +76,7 @@ def test_an_interrupted_save_resolves_to_the_step_directories(tmp_path):
 
 
 def test_a_ledger_edited_by_another_writer_keeps_its_results(tmp_path):
-    flow = _flow(tmp_path, ("route", "Success"))
+    flow = _flow(tmp_path, ("routing", "Success"))
     path = tmp_path / "home" / "flow.json"
     document = json.loads(path.read_text(encoding="utf-8"))
     document["steps"][0]["state"] = "Unstart"  # e.g. ECOS resetting a staged rerun
@@ -86,34 +86,34 @@ def test_a_ledger_edited_by_another_writer_keeps_its_results(tmp_path):
 
     assert reloaded.workspace.flow.steps()[0]["state"] == "Unstart"
     assert reloaded.save()
-    assert _state_file(tmp_path, "01_route_ecc")["state"] == "Unstart"
+    assert _state_file(tmp_path, "01_routing_ecc")["state"] == "Unstart"
 
 
 def test_a_failed_ledger_write_restores_the_step_results(tmp_path, monkeypatch):
-    flow = _flow(tmp_path, ("route", "Ongoing"))
-    before = (tmp_path / "01_route_ecc" / STATE_FILE).read_text(encoding="utf-8")
+    flow = _flow(tmp_path, ("routing", "Ongoing"))
+    before = (tmp_path / "01_routing_ecc" / STATE_FILE).read_text(encoding="utf-8")
     monkeypatch.setattr("chipcompiler.utility.json_write", lambda *_args, **_kwargs: False)
 
-    assert not set_flow_state(flow.workspace.flow, "route", "ecc", StateEnum.Success)
+    assert not set_flow_state(flow.workspace.flow, "routing", "ecc", StateEnum.Success)
 
-    assert (tmp_path / "01_route_ecc" / STATE_FILE).read_text(encoding="utf-8") == before
+    assert (tmp_path / "01_routing_ecc" / STATE_FILE).read_text(encoding="utf-8") == before
     assert flow.workspace.flow.steps()[0]["state"] == "Ongoing"
 
 
 def test_ledgers_outside_a_workspace_home_write_no_step_results(tmp_path):
     path = tmp_path / "notes" / "flow.json"
     path.parent.mkdir()
-    (tmp_path / "route_ecc").mkdir()
+    (tmp_path / "routing_ecc").mkdir()
     flow = Flow(
         path=path,
         data={
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "route",
+                    "name": "routing",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("route", "ecc"),
+                    **step_fields("routing", "ecc"),
                 }
             ],
         },
@@ -121,5 +121,5 @@ def test_ledgers_outside_a_workspace_home_write_no_step_results(tmp_path):
 
     assert save_ledger(flow)
 
-    assert not (tmp_path / "route_ecc" / STATE_FILE).exists()
+    assert not (tmp_path / "routing_ecc" / STATE_FILE).exists()
     assert "step_results_digest" not in json.loads(path.read_text(encoding="utf-8"))

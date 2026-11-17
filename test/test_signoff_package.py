@@ -71,19 +71,19 @@ def _make_signoff_workspace(
     _write_json(
         workspace_dir / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": StateEnum.Success.value,
-                    **step_fields("Synthesis", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "route",
+                    "name": "routing",
                     "tool": "ecc",
                     "state": StateEnum.Success.value,
-                    **step_fields("route", "ecc"),
+                    **step_fields("routing", "ecc"),
                 },
                 {
                     "name": "drc",
@@ -104,17 +104,17 @@ def _make_signoff_workspace(
                     **step_fields("filler", "ecc"),
                 },
                 {
-                    "name": "postRouteLec",
+                    "name": "post_route_lec",
                     "tool": "kepler_formal",
                     "input_step": "lvs",
                     "state": StateEnum.Success.value,
-                    **step_fields("postRouteLec", "kepler_formal"),
+                    **step_fields("post_route_lec", "kepler_formal"),
                 },
                 {
-                    "name": "RCX",
+                    "name": "rcx",
                     "tool": "ecc",
                     "state": StateEnum.Success.value,
-                    **step_fields("RCX", "ecc"),
+                    **step_fields("rcx", "ecc"),
                 },
                 {
                     "name": "sta",
@@ -123,16 +123,16 @@ def _make_signoff_workspace(
                     **step_fields("sta", "ecc"),
                 },
                 {
-                    "name": "powerAnalysis",
+                    "name": "power_analysis",
                     "tool": "ecc",
                     "state": StateEnum.Success.value,
-                    **step_fields("powerAnalysis", "ecc"),
+                    **step_fields("power_analysis", "ecc"),
                 },
                 {
-                    "name": "Harden",
+                    "name": "harden",
                     "tool": "ecc",
                     "state": StateEnum.Success.value,
-                    **step_fields("Harden", "ecc"),
+                    **step_fields("harden", "ecc"),
                 },
             ],
         },
@@ -152,25 +152,25 @@ def _make_signoff_workspace(
     for config_name in ("db_ecc.json", "rcx_ecc.json"):
         _write_json(workspace_dir / "config" / config_name, {})
 
-    _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.gds")
-    _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lef")
-    _write(workspace_dir / "Harden_ecc" / "output" / f"{design}_Harden.lib")
-    _write(workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz")
+    _write(workspace_dir / "harden_ecc" / "output" / f"{design}_harden.gds")
+    _write(workspace_dir / "harden_ecc" / "output" / f"{design}_harden.lef")
+    _write(workspace_dir / "harden_ecc" / "output" / f"{design}_harden.lib")
+    _write(workspace_dir / "synthesis_yosys" / "output" / f"{design}_synthesis.v.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.v.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.def.gz")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.gds")
     _write(workspace_dir / "filler_ecc" / "output" / f"{design}_filler.png")
     _write(workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz")
-    _write(workspace_dir / "RCX_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
-    golden = workspace_dir / "Synthesis_yosys" / "output" / f"{design}_Synthesis.v.gz"
+    _write(workspace_dir / "rcx_ecc" / "output" / f"{top_module}_RCworst_125C.spef")
+    golden = workspace_dir / "synthesis_yosys" / "output" / f"{design}_synthesis.v.gz"
     gate = workspace_dir / "lvs_ecc" / "output" / f"{design}_lvs.v.gz"
     golden_digest: Any = file_digest(golden)
     gate_digest: Any = file_digest(gate)
     _write_json(
         workspace_dir
-        / "postRouteLec_kepler_formal"
+        / "post_route_lec_kepler_formal"
         / "output"
-        / f"{design}_postRouteLec_result.json",
+        / f"{design}_post_route_lec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(golden),
@@ -180,19 +180,19 @@ def _make_signoff_workspace(
             "golden_size_bytes": golden_digest[1],
             "gate_size_bytes": gate_digest[1],
             "equiv_status": str(
-                workspace_dir / "postRouteLec_kepler_formal" / "report" / "equiv_status.rpt"
+                workspace_dir / "post_route_lec_kepler_formal" / "report" / "equiv_status.rpt"
             ),
             "status_report": str(
-                workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt"
+                workspace_dir / "post_route_lec_kepler_formal" / "report" / "run_lec_status.rpt"
             ),
         },
     )
     _write(
-        workspace_dir / "postRouteLec_kepler_formal" / "report" / "equiv_status.rpt",
+        workspace_dir / "post_route_lec_kepler_formal" / "report" / "equiv_status.rpt",
         "Equivalence successfully proven!\n",
     )
     _write(
-        workspace_dir / "postRouteLec_kepler_formal" / "report" / "run_lec_status.rpt",
+        workspace_dir / "post_route_lec_kepler_formal" / "report" / "run_lec_status.rpt",
         "LEC completed with proven equivalence.\n",
     )
 
@@ -208,16 +208,16 @@ def _make_signoff_workspace(
         {"schema_version": 1, "corner": "MAX_125/RCworst", "path_limit": 20, "paths": []},
     )
     _write(
-        workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt",
+        workspace_dir / "power_analysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt",
         "native power.rpt\n",
     )
     _write(
-        workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+        workspace_dir / "power_analysis_ecc" / "report" / "power_analysis.rpt",
         "published power.rpt\n",
     )
 
     _write_json(
-        workspace_dir / "route_ecc" / "analysis" / "qor_metrics.json",
+        workspace_dir / "routing_ecc" / "analysis" / "qor_metrics.json",
         {
             "schema_version": 3,
             "metrics": [],
@@ -249,7 +249,7 @@ def _make_signoff_workspace(
         _qor_summary(_qor_gate("qor.lvs.clean", "Final LVS clean")),
     )
     _write_json(
-        workspace_dir / "RCX_ecc" / "analysis" / "qor_summary.json",
+        workspace_dir / "rcx_ecc" / "analysis" / "qor_summary.json",
         _qor_summary(
             _qor_gate("qor.rcx.corner_coverage", "RCX corner coverage"),
             _qor_gate("qor.rcx.spef_parse_health", "RCX SPEF integrity"),
@@ -262,7 +262,7 @@ def _make_signoff_workspace(
             _qor_gate("qor.sta.hold_closed", "STA hold closure"),
         ),
     )
-    _write(workspace_dir / "route_ecc" / "report" / "route.db.rpt")
+    _write(workspace_dir / "routing_ecc" / "report" / "route.db.rpt")
     return workspace_dir
 
 
@@ -280,7 +280,7 @@ def _make_engine_flow(
     workspace.pdk.sdc = workspace_dir / "origin" / f"{top_module}.sdc"
     workspace.config = {
         "db": workspace_dir / "config" / "db_ecc.json",
-        "RCX": workspace_dir / "config" / "rcx_ecc.json",
+        "rcx": workspace_dir / "config" / "rcx_ecc.json",
         "sta": workspace_dir / "config" / "sta_ecc.json",
     }
     workspace.flow.path = workspace_dir / "home" / "flow.json"
@@ -308,9 +308,9 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert (package_dir / "final" / "design" / "gcd.png").is_file()
     assert (package_dir / "final" / "timing" / "spef" / "gcd_RCworst_125C.spef").is_file()
     assert (package_dir / "final" / "reports" / "flow.json").is_file()
-    assert (package_dir / "final" / "reports" / "postRouteLec" / "result.json").is_file()
+    assert (package_dir / "final" / "reports" / "post_route_lec" / "result.json").is_file()
     assert (
-        package_dir / "final" / "reports" / "postRouteLec" / "report" / "equiv_status.rpt"
+        package_dir / "final" / "reports" / "post_route_lec" / "report" / "equiv_status.rpt"
     ).is_file()
     assert not (package_dir / "signoff").exists()
     assert not (package_dir / "final" / "final").exists()
@@ -320,7 +320,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     assert summary["synthesis"]["verilog"] == "synthesis/gcd.v.gz"
     assert summary["final"]["verilog"] == "final/design/gcd.v.gz"
     assert summary["lec"]["status"] == "proven"
-    assert summary["lec"]["result"] == "final/reports/postRouteLec/result.json"
+    assert summary["lec"]["result"] == "final/reports/post_route_lec/result.json"
     assert summary["qor_metrics"]["schema_version"] == 3
     assert (
         summary["sta_matrix"][0]["report"]
@@ -339,7 +339,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
     roles = {item["destination"]: item["role"] for item in manifest["files"]}
     assert roles["synthesis/gcd.v.gz"] == "synthesis.verilog"
     assert "final/design/gcd.def.gz" in destinations
-    assert "final/reports/route/analysis/qor_metrics.json" in destinations
+    assert "final/reports/routing/analysis/qor_metrics.json" in destinations
     assert {
         f"final/timing/sta/MAX_125/RCworst/report/{report_name}" for report_name in STA_REPORT_NAMES
     }.issubset(destinations)
@@ -356,7 +356,7 @@ def test_collect_signoff_package_uses_final_design_layout(tmp_path):
 
 def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
+    (workspace_dir / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz").unlink()
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=False, materialize=False)
@@ -366,7 +366,7 @@ def test_collect_signoff_package_requires_synthesis_verilog(tmp_path):
     assert "package.synthesis.gcd.v.gz" in result.missing_required
     assert any(
         issue.label == "synthesis.verilog"
-        and issue.location == "Synthesis_yosys/output/gcd_Synthesis.v.gz"
+        and issue.location == "synthesis_yosys/output/gcd_synthesis.v.gz"
         and issue.destination == "synthesis/gcd.v.gz"
         and issue.required
         for issue in result.issues
@@ -397,7 +397,7 @@ def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
     assert result.ok is False
     assert any(
         issue.label == "lec.result"
-        and issue.destination == "final/reports/postRouteLec/result.json"
+        and issue.destination == "final/reports/post_route_lec/result.json"
         and "stale" in issue.reason
         and issue.required
         for issue in result.issues
@@ -406,16 +406,19 @@ def test_collect_signoff_package_rejects_stale_post_route_lec_proof(tmp_path):
 
 def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    old_golden = tmp_path / "old" / "gcd_Synthesis.v.gz"
+    old_golden = tmp_path / "old" / "gcd_synthesis.v.gz"
     old_gate = tmp_path / "old" / "gcd_lvs.v.gz"
-    current_golden = workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    current_golden = workspace_dir / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz"
     current_gate = workspace_dir / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
     _write(old_golden, current_golden.read_text())
     _write(old_gate, current_gate.read_text())
     golden_digest: Any = file_digest(old_golden)
     gate_digest: Any = file_digest(old_gate)
     _write_json(
-        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir
+        / "post_route_lec_kepler_formal"
+        / "output"
+        / "gcd_post_route_lec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(old_golden),
@@ -435,7 +438,7 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
     assert result.ok is False
     assert any(
         issue.label == "lec.result"
-        and issue.destination == "final/reports/postRouteLec/result.json"
+        and issue.destination == "final/reports/post_route_lec/result.json"
         and "stale" in issue.reason
         and issue.required
         for issue in result.issues
@@ -445,14 +448,14 @@ def test_collect_signoff_package_rejects_lec_proof_bound_to_copied_netlists(tmp_
 def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
-        workspace_dir / "postRouteLec_kepler_formal" / "checklist.json",
+        workspace_dir / "post_route_lec_kepler_formal" / "checklist.json",
         {
             "schema_version": 3,
             "kind": "signoff_checklist",
             "checklist": [
                 {
-                    "id": "artifact.postroutelec.result",
-                    "step": "postRouteLec",
+                    "id": "artifact.post_route_lec.result",
+                    "step": "post_route_lec",
                     "category": "artifact",
                     "owner": "checklist",
                     "policy": "block",
@@ -472,13 +475,16 @@ def test_collect_signoff_package_ignores_stale_post_route_lec_checklist(tmp_path
     )
 
     assert result.ok is True
-    assert "artifact.postroutelec.result" not in result.missing_required
+    assert "artifact.post_route_lec.result" not in result.missing_required
 
 
 def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
     _write_json(
-        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir
+        / "post_route_lec_kepler_formal"
+        / "output"
+        / "gcd_post_route_lec_result.json",
         {"status": "incomplete"},
     )
 
@@ -489,7 +495,7 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
     assert result.ok is False
     assert any(
         issue.label == "lec.result"
-        and issue.destination == "final/reports/postRouteLec/result.json"
+        and issue.destination == "final/reports/post_route_lec/result.json"
         and issue.reason == "LEC did not prove equivalence"
         and issue.required
         for issue in result.issues
@@ -497,10 +503,10 @@ def test_collect_signoff_package_requires_proven_post_route_lec(tmp_path):
 
 
 def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_path):
-    """A ledger without postRouteLec (skipped at creation) never requires it."""
+    """A ledger without post_route_lec (skipped at creation) never requires it."""
     workspace_dir = _make_signoff_workspace(tmp_path)
     flow = json.loads((workspace_dir / "home" / "flow.json").read_text())
-    flow["steps"] = [step for step in flow["steps"] if step.get("name") != "postRouteLec"]
+    flow["steps"] = [step for step in flow["steps"] if step.get("name") != "post_route_lec"]
     _write_json(workspace_dir / "home" / "flow.json", flow)
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
@@ -508,8 +514,8 @@ def test_collect_signoff_package_skips_post_route_lec_when_flow_omits_it(tmp_pat
     )
 
     assert result.ok is True
-    assert not any(issue.location == "postRouteLec" and issue.required for issue in result.issues)
-    assert not any("postRouteLec" in entry for entry in result.missing_required)
+    assert not any(issue.location == "post_route_lec" and issue.required for issue in result.issues)
+    assert not any("post_route_lec" in entry for entry in result.missing_required)
 
 
 def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> None:
@@ -520,7 +526,7 @@ def _rewrite_flow_without_synthesis(workspace_dir: Path, first_step: dict) -> No
     }
     flow["steps"] = [
         first_step,
-        *[step for step in flow["steps"] if step.get("name") != "Synthesis"],
+        *[step for step in flow["steps"] if step.get("name") != "synthesis"],
     ]
     _write_json(workspace_dir / "home" / "flow.json", flow)
 
@@ -529,7 +535,10 @@ def _bind_post_route_lec(workspace_dir: Path, golden: Path, gate: Path) -> None:
     golden_digest: Any = file_digest(golden)
     gate_digest: Any = file_digest(gate)
     _write_json(
-        workspace_dir / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json",
+        workspace_dir
+        / "post_route_lec_kepler_formal"
+        / "output"
+        / "gcd_post_route_lec_result.json",
         {
             "status": "proven",
             "golden_verilog": str(golden),
@@ -544,12 +553,12 @@ def _bind_post_route_lec(workspace_dir: Path, golden: Path, gate: Path) -> None:
 
 def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz").unlink()
+    (workspace_dir / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz").unlink()
     origin = workspace_dir / "origin" / "gcd.v"
     _write(origin, "module gcd; // original imported RTL\nendmodule\n")
     _rewrite_flow_without_synthesis(
         workspace_dir,
-        {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
+        {"name": "floorplan", "tool": "ecc", "state": StateEnum.Success.value},
     )
     engine_flow = _make_engine_flow(workspace_dir)
     engine_flow.workspace.design.origin_verilog = origin
@@ -572,13 +581,13 @@ def test_collect_signoff_package_uses_origin_rtl_for_floorplan_start(tmp_path):
 
 def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    leftover = workspace_dir / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    leftover = workspace_dir / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz"
     leftover.write_text("module gcd; leftover mapped netlist\nendmodule\n")
     origin = workspace_dir / "origin" / "gcd.v"
     _write(origin, "module gcd; // imported mapped netlist\nendmodule\n")
     _rewrite_flow_without_synthesis(
         workspace_dir,
-        {"name": "Floorplan", "tool": "ecc", "state": StateEnum.Success.value},
+        {"name": "floorplan", "tool": "ecc", "state": StateEnum.Success.value},
     )
     engine_flow = _make_engine_flow(workspace_dir)
     engine_flow.workspace.design.origin_verilog = origin
@@ -603,8 +612,8 @@ def test_collect_signoff_package_ignores_leftover_synthesis_for_floorplan_start(
 def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_path):
     # The power report remains optional for a package.
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt").unlink()
-    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
+    (workspace_dir / "power_analysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt").unlink()
+    (workspace_dir / "power_analysis_ecc" / "report" / "power_analysis.rpt").unlink()
     engine_flow = _make_engine_flow(workspace_dir)
 
     result = engine_flow.collect_signoff_package(SignoffPackageOptions(archive=True))
@@ -617,7 +626,7 @@ def test_collect_signoff_package_tolerates_missing_power_analysis_report(tmp_pat
 
 def test_collect_signoff_package_uses_legacy_power_report_when_unpublished(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt").unlink()
+    (workspace_dir / "power_analysis_ecc" / "report" / "power_analysis.rpt").unlink()
 
     result = _make_engine_flow(workspace_dir).collect_signoff_package(
         SignoffPackageOptions(archive=True)
@@ -747,17 +756,17 @@ def test_collect_signoff_package_inspection_records_missing_optional_resource(tm
 
 def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
     workspace_dir = _make_signoff_workspace(tmp_path)
-    (workspace_dir / "Harden_ecc" / "output" / "gcd_Harden.gds").unlink()
+    (workspace_dir / "harden_ecc" / "output" / "gcd_harden.gds").unlink()
     _write_json(
         workspace_dir / "home" / "flow.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "RCX",
+                    "name": "rcx",
                     "tool": "ecc",
                     "state": "Failed",
-                    **step_fields("RCX", "ecc"),
+                    **step_fields("rcx", "ecc"),
                 }
             ],
         },
@@ -771,13 +780,13 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
         "flow",
     }
     assert any(
-        issue.location == "Harden_ecc/output/gcd_Harden.gds"
+        issue.location == "harden_ecc/output/gcd_harden.gds"
         and issue.reason == "Required file is missing or empty"
         and issue.required
         for issue in result.issues
     )
     assert any(
-        issue.location == "RCX" and issue.reason == "State is Failed" for issue in result.issues
+        issue.location == "rcx" and issue.reason == "State is Failed" for issue in result.issues
     )
     assert all(str(workspace_dir) not in issue.location for issue in result.issues)
 
@@ -951,14 +960,14 @@ def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
     assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "postRouteLec",
+                "name": "post_route_lec",
                 "tool": "kepler_formal",
                 "state": "Success",
                 "category": "CHECKER",
-                **step_directory("postRouteLec", "kepler_formal"),
+                **step_directory("post_route_lec", "kepler_formal"),
             }
         ],
     }

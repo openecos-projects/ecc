@@ -22,7 +22,11 @@ _SOURCES = [
     SourceRow("old", "created", 0, 3, blocked="it has no Engineering Snapshot"),
     SourceRow("base", "success", 3, 3),
 ]
-_STEPS = [StepRow("Synthesis", "Success"), StepRow("place", "Success"), StepRow("route", "Success")]
+_STEPS = [
+    StepRow("synthesis", "Success"),
+    StepRow("placement", "Success"),
+    StepRow("routing", "Success"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -54,9 +58,9 @@ def test_a_fork_is_chosen_screen_by_screen():
     choice, screen = _choose(keys)
 
     assert "old cannot be forked: it has no Engineering Snapshot" in screen
-    assert choice == ForkChoice("base", "place", None, "base-1", edit_parameters=False)
+    assert choice == ForkChoice("base", "placement", None, "base-1", edit_parameters=False)
     assert choice is not None
-    assert choice.rerun_steps(_STEPS) == ["place", "route"]
+    assert choice.rerun_steps(_STEPS) == ["placement", "routing"]
 
 
 def test_the_last_step_bounds_the_fork_and_its_parameters():
@@ -64,9 +68,9 @@ def test_the_last_step_bounds_the_fork_and_its_parameters():
 
     choice, _screen = _choose(keys, source="base")
 
-    assert choice == ForkChoice("base", "place", "place", "trial", edit_parameters=True)
+    assert choice == ForkChoice("base", "placement", "placement", "trial", edit_parameters=True)
     assert choice is not None
-    assert choice.rerun_steps(_STEPS) == ["place"]
+    assert choice.rerun_steps(_STEPS) == ["placement"]
 
 
 def test_a_name_in_use_is_refused():
@@ -75,7 +79,7 @@ def test_a_name_in_use_is_refused():
     choice, screen = _choose(keys, source="base", taken={"base"})
 
     assert "base already exists" in screen
-    assert choice == ForkChoice("base", "Synthesis", None, "base-2", edit_parameters=False)
+    assert choice == ForkChoice("base", "synthesis", None, "base-2", edit_parameters=False)
 
 
 def test_escape_steps_back_and_a_given_target_skips_the_name():
@@ -84,7 +88,7 @@ def test_escape_steps_back_and_a_given_target_skips_the_name():
 
     choice, _screen = _choose(keys, source="base", target="given")
 
-    assert choice == ForkChoice("base", "route", None, "given", edit_parameters=False)
+    assert choice == ForkChoice("base", "routing", None, "given", edit_parameters=False)
 
 
 @pytest.mark.parametrize("keys", [["q"], [_ESC], [_ENTER, _ENTER, "n"], [_ENTER, _ENTER, "q"]])

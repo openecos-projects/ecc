@@ -56,12 +56,12 @@ def _metric_payload(root):
     for pattern in ("*/*/qor_summary.json",):
         for path in sorted((sta / "feature").glob(pattern)):
             payload[str(path.relative_to(sta))] = json.loads(path.read_text())
-    power_summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
+    power_summary = root / "power_analysis_ecc" / "feature" / "power_summary.json"
     if power_summary.is_file():
         payload[str(power_summary.relative_to(root))] = json.loads(power_summary.read_text())
     if not payload:
         raise ValueError("STA corner artifacts are absent")
-    for stage in ("sta_ecc", "Harden_ecc"):
+    for stage in ("sta_ecc", "harden_ecc"):
         qor = json.loads((root / stage / "analysis/qor_metrics.json").read_text())
         payload[f"{stage}/metrics"] = {
             item["id"]: item["value"]
@@ -105,7 +105,7 @@ def _compare(reference, candidate, path=""):
 def _run_workspace(root, workers):
     from agent.engine import AgentEngineFlow
     from agent.workspace_api import _prepare_candidate_rerun
-    from chipcompiler.data import StateEnum
+    from chipcompiler.data import StateEnum, StepEnum
     from chipcompiler.data.parameter import save_parameter
     from chipcompiler.data.workspace import load_workspace
 
@@ -116,12 +116,11 @@ def _run_workspace(root, workers):
     if not save_parameter(workspace.parameters):
         raise RuntimeError("cannot save benchmark STA parallel limit")
     flow = AgentEngineFlow(workspace)
-    flow.create_step_workspaces(initialize_config=False, executable_steps={"sta", "Harden"})
-    _prepare_candidate_rerun(
-        workspace, flow, [flow.get_workspace_step(stage) for stage in ("sta", "Harden")]
-    )
+    stages = (StepEnum.STA.value, StepEnum.HARDEN.value)
+    flow.create_step_workspaces(initialize_config=False, executable_steps=set(stages))
+    _prepare_candidate_rerun(workspace, flow, [flow.get_workspace_step(stage) for stage in stages])
     elapsed = {}
-    for stage in ("sta", "Harden"):
+    for stage in stages:
         step = flow.get_workspace_step(stage)
         if step is None:
             raise RuntimeError(f"cannot resolve benchmark step {stage}")

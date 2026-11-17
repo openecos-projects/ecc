@@ -18,7 +18,7 @@ def committed_snapshot(tmp_path):
     (root / "home").mkdir(parents=True)
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"schema_version": 2, "steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 3, "steps": []}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )

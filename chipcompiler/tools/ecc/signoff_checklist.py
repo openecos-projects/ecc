@@ -281,7 +281,7 @@ def _manual_macro_placement_items(workspace: Workspace, step: WorkspaceStep) -> 
                 else (
                     "macro.manual_placement is enabled, but macro.placements and "
                     f"{macro_location} are not ready. Place macros in Chip Viewer or run "
-                    "`ecc macro`, then rerun macroPlacement."
+                    "`ecc macro`, then rerun macro_placement."
                 )
             ),
         )
@@ -346,7 +346,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         report_state, report_summary = _file_state(report)
         return [
             _item(
-                item_id="artifact.poweranalysis.step",
+                item_id=f"artifact.{StepEnum.POWER_ANALYSIS.value}.step",
                 step=step.name,
                 category="artifact",
                 owner="checklist",
@@ -362,7 +362,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
             ),
             _item(
-                item_id="artifact.poweranalysis.report",
+                item_id=f"artifact.{StepEnum.POWER_ANALYSIS.value}.report",
                 step=step.name,
                 category="report",
                 owner="checklist",
@@ -383,7 +383,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         state, summary = _file_state(report)
         return [
             _item(
-                item_id="artifact.antennacheck.report",
+                item_id=f"artifact.{StepEnum.ANTENNA_CHECK.value}.report",
                 step=step.name,
                 category="report",
                 owner="checklist",
@@ -746,7 +746,7 @@ def rebuild_home_checklist(
     workspace_dir = Path(workspace.directory)
     items = []
     loaded_step_checklists = set()
-    # The recorded postRouteLec is recomputed fresh below.
+    # The recorded post_route_lec is recomputed fresh below.
     directories = StepDirectories.of(workspace)
     post_route_lec_dir = directories.name(SkippableStepEnum.POST_ROUTE_LEC.value)
     for directory in directories.scan_names():

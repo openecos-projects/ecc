@@ -9,9 +9,9 @@ def _config(tmp_path, **fields):
 def test_physical_entry_requires_def_and_netlist(tmp_path):
     cfg = _config(tmp_path)
 
-    assert validate_entry_inputs(cfg, "CTS") == [
-        "step_input_missing: CTS requires design.def",
-        "step_input_missing: CTS requires design.netlist",
+    assert validate_entry_inputs(cfg, "cts") == [
+        "step_input_missing: cts requires design.def",
+        "step_input_missing: cts requires design.netlist",
     ]
 
 
@@ -36,8 +36,8 @@ def test_post_route_lec_entry_requires_a_golden_netlist(tmp_path):
     netlist.write_text("module gcd; endmodule\n")
     cfg = _config(tmp_path, design_netlist=netlist.name)
 
-    assert validate_entry_inputs(cfg, "postRouteLec") == [
-        "step_input_missing: postRouteLec requires design.golden_netlist"
+    assert validate_entry_inputs(cfg, "post_route_lec") == [
+        "step_input_missing: post_route_lec requires design.golden_netlist"
     ]
 
 

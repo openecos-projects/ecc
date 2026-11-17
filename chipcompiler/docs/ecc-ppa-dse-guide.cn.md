@@ -178,7 +178,7 @@ null 表示用户未设置上限，不表示测量值为零。这里的数值不
   "acceptance": {
     "deliverable_scope": "full_rtl2gds",
     "signoff_profile": "rtl2gds",
-    "required_checkers": ["drc", "lvs", "postRouteLec", "sta"],
+    "required_checkers": ["drc", "lvs", "post_route_lec", "sta"],
     "required_artifacts": ["gds", "final_netlist", "spef"],
     "require_applicable_checklist_pass": true,
     "require_fresh_full_validation": true
@@ -199,9 +199,9 @@ AI 按阶段与预算选点；参数范围仍须经过当前 schema 和物理容
 预算耗尽或目标未达时如实总结，不自动再增加复验次数。
 
 spec 的 required_checkers 是独立验收要求，不会自动开启被 flow 默认 skip 的检查。
-若要求综合级 LEC，还需核对 flow 是否实际插入了它（`[flow] insert_steps` 中的 `lec@Synthesis`）及公开配置是否足够；
+若要求综合级 LEC，还需核对 flow 是否实际插入了它（`[flow] insert_steps` 中的 `lec@synthesis`）及公开配置是否足够；
 无法通过当前接口满足时报告能力缺口，不能把“已声明”当成“已验证”。
-postRouteLec 要检查真实 proven 证据，不能仅看该步骤执行 success。
+post_route_lec 要检查真实 proven 证据，不能仅看该步骤执行 success。
 signoff profile 也不能替代用户要求的 checker、全部 checklist 和额外物理验收。
 
 如果只要求前段 PNR DSE，将任务范围明确为检查点结果，例如到 place；
@@ -319,7 +319,7 @@ RTL 架构、频率或 corner 的探索可以另做，但要新建实验类别�
 | synthesis_cell_area | µm²，综合结果 | 可用于早筛，不代表最终面积 |
 | setup/hold WS | ns，所有要求 corner 的有符号最差 slack | 正值越大说明裕量越大；必须同时查看 TNS/NVP |
 | setup/hold TNS、NVP | ns、count | 不只看一个 worst slack；缺失不能记成 0 |
-| total/dynamic/leakage power | µW 或 W，注明活动、corner、source_kind | synthesis 与 powerAnalysis 的结果不可裸比 |
+| total/dynamic/leakage power | µW 或 W，注明活动、corner、source_kind | synthesis 与 power_analysis 的结果不可裸比 |
 | HPWL/GRWL/route wirelength/vias | 相同阶段、网络群体与单位 | 只是优化解释量，不能替代最终时序/DRC |
 | runtime/peak memory | s/MB，注明线程与设备 | 用于预算和收益判断 |
 
@@ -368,7 +368,7 @@ AI 大模型可以在外部台账按用户目标比较原始 PPA；外部权重/
 
 路径中的 dimension 分别为 timing/interconnect/area/power/robustness。
 面积、各 corner 时序等原始指标用 report step 的 metric 记录补齐。
-并非每个步骤都会输出全部指标。某个 powerAnalysis 的 analysis 未提供功耗 metric 时，
+并非每个步骤都会输出全部指标。某个 power_analysis 的 analysis 未提供功耗 metric 时，
 可检查 QoR 的 power 观测是否有有效 total_uw；核对来源一致性后使用，不能补零或推断功耗未测。
 
 ## 6. 当前可以使用的调优旋钮
@@ -378,8 +378,8 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 
 | 参数 | 当前含义/类型 | 使用场景 | 常见最早受影响阶段 |
 | --- | --- | --- | --- |
-| `floorplan.core_util` | float；die_util 模式下的规划利用率 | 面积与可布性折中 | preFloorplan |
-| `floorplan.aspect_ratio` | float；宽高比 | 长线、通道、外形 | preFloorplan |
+| `floorplan.core_util` | float；die_util 模式下的规划利用率 | 面积与可布性折中 | pre_floorplan |
+| `floorplan.aspect_ratio` | float；宽高比 | 长线、通道、外形 | pre_floorplan |
 | `floorplan.core_margin` | JSON 二元数值列表，µm | 边缘/IO/PDN空间 | floorplan |
 | `floorplan.die_builder.mode`、die_size 的 width/height_micron | 模式与固定尺寸 | 固定 die 外形实验 | floorplan |
 | `place.target_density` | float，当前范围 0.1–0.95 | 布局紧凑程度与拥塞 | place |
@@ -392,7 +392,7 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `cts.routing_layer`、`cts.buffer_type` | JSON 列表 | 工艺允许的时钟层与缓冲单元 | CTS |
 | `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | Timing optimization |
 | `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | 可能影响布局路由代理和 Sizer；以 invalidation 为准 |
-| `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macroPlacement |
+| `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macro_placement |
 
 floorplan.core_util、place.target_density 与最终 core_utilization 是三个不同概念。
 密度不直接决定 die 面积；提高 target_density 不能被直接记为面积减少。
@@ -500,7 +500,7 @@ ecc report checklist --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   -o "$PPA_EVIDENCE/baseline-checklist.txt" --json
 ecc report step sta --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   --section analysis --json > "$PPA_EVIDENCE/baseline-sta.json"
-ecc report step poweranalysis --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
+ecc report step power_analysis --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   --section feature --section analysis --json > "$PPA_EVIDENCE/baseline-power.json"
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   -o "$PPA_EVIDENCE/baseline.snapshot.json" --json
@@ -642,7 +642,7 @@ ecc compare run --baseline "$PPA_EVIDENCE/iter-before.snapshot.json" \
 
 这一例需要先创建并运行好 ppa-iter-001，不适用于未知 workspace。
 只有输出的失效范围覆盖真实配置变化，且上游前缀仍有效，才可复用前缀。
-`--only place --force` 会使下游失效；只跑 place 或 place→route 范围后必须恢复完整后缀，
+`--only placement --force` 会使下游失效；只跑 place 或 placement→routing 范围后必须恢复完整后缀，
 不能用残留 STA/power/Harden 报告当作当前最终结果。
 
 ### 11.1 compare 的当前边界
@@ -830,7 +830,7 @@ floorplan、placement、CTS 等参数组合，比较面积、互连、拥塞与�
 | sweep 的 `--from/--to`、早停与逐级晋级 | 尚无 | 用 AI 大模型 + 公开 CLI 编排，不能假定 sweep 已支持 |
 | 阶段多目标/Pareto | 用户/AI 负责 | 外部比较同口径实测指标；不冒充 ECC 总体 QoR |
 
-`fork --from place` 的含义是“place 及以后重新执行”，不是“从 place 开始复制文件”。
+`fork --from placement` 的含义是“place 及以后重新执行”，不是“从 place 开始复制文件”。
 当前实现复制源 workspace，再清除目标中选定后缀的状态、产物与 checklist，保留更早步骤。
 源保持不变，目标获得新工程身份与分叉登记。它不是硬链接缓存或零复制操作，需预算磁盘和复制时间。
 **不带 `--from` 的 fork 会准备整个 flow 重跑，不能节省综合/前段执行。**
@@ -844,8 +844,8 @@ fork 也不会证明保留前缀的有效性，调用者仍需核对输入、参
 rtl2gds 的前段常见链路是：
 
 ```text
-Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorplan → macroPlacement
-→ postFloorplan → place → CTS → legalization → Timing optimization → route → …
+Synthesis → lec@synthesis（由 [flow] insert_steps 插入时）→ pre_floorplan → macro_placement
+→ post_floorplan → place → CTS → legalization → Timing optimization → route → …
 ```
 
 建议先覆盖到 place，随后只给短名单执行 CTS/legalization；如 hold 确实是瓶颈，
@@ -853,15 +853,15 @@ Synthesis → lec@Synthesis（由 [flow] insert_steps 插入时）→ preFloorpl
 
 | 阶段 | 第一批可用变量 | 阶段结果与筛选重点 | 改变参数后的复用边界 |
 | --- | --- | --- | --- |
-| preFloorplan / postFloorplan | `floorplan.core_util`、`floorplan.aspect_ratio`；必要时 core_margin / 已支持 die_size | die 外形、面积、有效 core utilization、可用放置空间；宏/通道/PDN 证据 | 可复用固定综合；floorplan 及之后重跑 |
-| macroPlacement | 已公开的 `macro.placements` / macro 命令；合法方向与坐标 | 宏合法性、通道、pin 可达性及后续可布性 | 只能复用宏摆放之前未变更的前缀 |
-| place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 postFloorplan；place 及之后重跑 |
+| pre_floorplan / post_floorplan | `floorplan.core_util`、`floorplan.aspect_ratio`；必要时 core_margin / 已支持 die_size | die 外形、面积、有效 core utilization、可用放置空间；宏/通道/PDN 证据 | 可复用固定综合；floorplan 及之后重跑 |
+| macro_placement | 已公开的 `macro.placements` / macro 命令；合法方向与坐标 | 宏合法性、通道、pin 可达性及后续可布性 | 只能复用宏摆放之前未变更的前缀 |
+| place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 post_floorplan；place 及之后重跑 |
 | CTS / legalization | `cts.skew_bound`；有明确证据再加入 max_fanout、buffer_type、routing_layer | skew、clock wirelength、buffer count/area、时钟树深度、合法化结果 | 可复用有效 placement，但以 param 实际失效范围为准 |
 | Timing optimization | `timing_opt.hold_margin` | 当前 hold pass 的真实输出、插入代价；后续 setup/hold 风险 | 复用未失效的前缀；完整 RCX/STA 最后验证 |
 
 不要第一轮同时探索以上所有变量。先固定宏和 CTS，用一个 floorplan 变量与一个 placement
 变量找到可行区；含宏设计则先处理宏/通道，再调标准单元密度。GCD 没有对应硬宏搜索收益时
-不用为 macroPlacement 人为增加搜索维度。
+不用为 macro_placement 人为增加搜索维度。
 
 `core_util` 是 floorplan 容量/尺寸相关变量，`target_density` 是 placement 的目标密度，
 两者不能当作同一个量或假定数值必须相等。变化前需核对工具对可放置面积、宏/blockage、padding
@@ -878,7 +878,7 @@ report 的有效值、来源、单位和缺失说明。不同版本/设计/工�
 
 | 输出阶段 | 当前可查询的指标示例 | 解释边界 |
 | --- | --- | --- |
-| postFloorplan | `die_area`、`die_width`、`die_height`、`die_utilization`、`core_utilization` | 当前外形/利用率；固定 floorplan 下调整 placement 不必减少 die_area |
+| post_floorplan | `die_area`、`die_width`、`die_height`、`die_utilization`、`core_utilization` | 当前外形/利用率；固定 floorplan 下调整 placement 不必减少 die_area |
 | place | `place_hpwl`、`place_grwl`、`place_flute_wirelength` | 互连代理，通常越小越好；不等于最终 route wirelength 或时序 |
 | place | `place_congestion_egr_overflow_total/max`、`place_rudy_utilization_max`、`place_lutrudy_utilization_max` | 拥塞代理；需结合热点、图层和网络群体，不替代 routed DRC |
 | CTS | `cts_buffer_count`、`cts_buffer_area`、`clock_wirelength`、`clock_path_max_buffer` | 时钟树代价与结构代理，不等于完整时钟功耗 |
@@ -914,7 +914,7 @@ power、最终多 corner setup/hold、RC、route DRC/LVS 在前段一般没有�
    已有可信综合结果可复用；没有则生成一次。选择现有完整受管 baseline 做 fork 时，
    必须明确保留哪些步骤，以及其证据为何仍有效。
 2. **floorplan 粗筛。** 先用 core_util 的三个邻近值，aspect_ratio 固定。可先跑到
-   postFloorplan，排除容量/宏/产物问题，保留面积与利用率不同的可行区域。
+   post_floorplan，排除容量/宏/产物问题，保留面积与利用率不同的可行区域。
 3. **placement 筛选。** 将可行 floorplan 配置跑到 place，比较 HPWL、GRWL、拥塞与成本。
    只在最有希望的一两个 floorplan 上做 target_density 的局部变化，避免盲目全网格。
 4. **CTS 短名单。** 保留两个或三个非支配候选，执行 CTS/legalization；根据已发现的时钟树
@@ -954,7 +954,7 @@ ecc run --project "$DSE_PROJECT" --workspace dse-place-001 \
   --from synthesis --to placement \
   --set floorplan.core_util=0.30 --set place.target_density=0.20 --plain
 
-ecc report step postFloorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
+ecc report step post_floorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.floorplan.json"
 ecc report step place --project "$DSE_PROJECT" --workspace dse-place-001 \
@@ -985,7 +985,7 @@ fresh 范围的两个端点必须一起给出，允许新建范围别名；不�
 DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
 ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
-  --project "$DSE_PROJECT" --from place --plain
+  --project "$DSE_PROJECT" --from placement --plain
 ecc param set place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
 ecc param diff --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
@@ -997,30 +997,30 @@ ecc status --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
-  --from place --to place --plain
+  --from placement --to placement --plain
 ecc report step place --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.place.json"
 ```
 
-**floorplan 候选：复用综合，重跑前段 PNR。** 从源分叉时用 `--from preFloorplan`；
-在新候选设置 floorplan 参数，按实际失效边界跑到 postFloorplan 或 place。
+**floorplan 候选：复用综合，重跑前段 PNR。** 从源分叉时用 `--from pre_floorplan`；
+在新候选设置 floorplan 参数，按实际失效边界跑到 post_floorplan 或 place。
 如果 workspace 参数应用要求更早失效/完整 refresh，遵循其返回，不强制保留错误前缀。
-改变宏布局时也不能保留旧宏摆放后的 postFloorplan。
+改变宏布局时也不能保留旧宏摆放后的 post_floorplan。
 
 **推进 placement 短名单到 CTS/legalization。** 对前一步的实际候选操作：
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
-  --from CTS --to legalization --plain
+  --from cts --to legalization --plain
 ecc report step CTS --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.cts.json"
 ```
 
-已有 workspace 的范围端点使用持久化名称，例如 `place`、`CTS`、`legalization`、
-`Timing optimization`；不要把新建范围的所有别名都套用到已有 workspace。
-CTS 变体可以从可信 placement 候选再 fork，`--from CTS`，再设置公开 CTS 参数。
+已有 workspace 的范围端点使用持久化名称，例如 `placement`、`cts`、`legalization`、
+`timing_optimization`；不要把新建范围的所有别名都套用到已有 workspace。
+CTS 变体可以从可信 placement 候选再 fork，`--from cts`，再设置公开 CTS 参数。
 `cts.max_fanout` 还影响自动 SDC，涉及更多依赖时必须检查 param 实际失效范围；
 不能按参数名字断言一定只重跑 CTS。
 
@@ -1038,18 +1038,18 @@ PDK/资源/override、SDC 及完整固定参数；这里不把新项目的默认
 | 新范围入口 | 必需设计输入 | 可复用的来源 |
 | --- | --- | --- |
 | synthesis | `design.rtl` | 固定 RTL，不省综合 |
-| preFloorplan | `design.netlist` | 已核对综合网表，省综合 |
-| macroPlacement / postFloorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
+| pre_floorplan | `design.netlist` | 已核对综合网表，省综合 |
+| macro_placement / post_floorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
 | CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | 相应前一步完成的配套检查点 |
 | sta | 上述两项 + `design.spef` | 真实 RCX 与对应设计；不是早期 placement 的替代输入 |
-| antennaCheck / powerAnalysis / emir | 无入口输入契约 | 从更早的有效检查点开始；依赖上游链式产物 |
+| antenna_check / power_analysis / emir | 无入口输入契约 | 从更早的有效检查点开始；依赖上游链式产物 |
 
 SDC 显式声明时也会校验；其他宏模型/物理库资源同样需完整。不能把任意 DEF 与另一候选
 网表拼在一起，或给 CTS 输入仅综合网表。输入应对应同一个 owner step、候选和完成状态。
 不猜文件夹序号；先用 `report step … --section outputs --json` 查询已登记输出，核对存在性、
 类型与配套关系。该入口不扫描任意目录，旧 workspace 未登记输出时不能假装已经查到。
 
-下例假定独立物理 project 已按上述要求准备，输入为同一 postFloorplan 的配套输出，
+下例假定独立物理 project 已按上述要求准备，输入为同一 post_floorplan 的配套输出，
 可直接做不同 placement density 的 fresh 范围实验：
 
 ```bash
@@ -1062,8 +1062,8 @@ ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
   --from placement --to placement --set place.target_density=0.25 --plain
 ```
 
-要探索 floorplan，改用固定综合网表的 `preFloorplan → place` 范围，并重新生成 floorplan；
-不能输入旧 postFloorplan DEF 后只改 core_util 跑 place，就认为测试了新的 floorplan 尺寸。
+要探索 floorplan，改用固定综合网表的 `pre_floorplan → place` 范围，并重新生成 floorplan；
+不能输入旧 post_floorplan DEF 后只改 core_util 跑 place，就认为测试了新的 floorplan 尺寸。
 改变入口输入不更新已有候选快照，新候选用 fresh 名称；避免误用 refresh 清掉已保存实验。
 
 ### 17.8 阶段排名、台账与最终晋级
@@ -1262,7 +1262,7 @@ baseline：<已有 workspace 或允许生成一次>
 
 ```bash
 ecc explore promote --project ./project --name ppa-grid --pareto \
-  --objective postFloorplan/core_area:um^2:minimize \
+  --objective post_floorplan/core_area:um^2:minimize \
   --objective sta/sta_frequency_mhz:MHz:maximize
 ```
 

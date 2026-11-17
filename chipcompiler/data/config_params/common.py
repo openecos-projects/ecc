@@ -117,14 +117,6 @@ class ParamSchema:
         return self.pdk_variants.get(pdk.lower()) if pdk else None
 
 
-_CONFIG_KEYS = {
-    "cts": "CTS",
-    "floorplan": "Floorplan",
-    "routing": "route",
-    "rcx": "RCX",
-}
-
-
 def config_param(
     param: str,
     config_key: str,
@@ -149,7 +141,7 @@ def config_param(
         applies=applies,
         description=description,
         config_target=ConfigTarget(
-            config_key=_CONFIG_KEYS.get(config_key, config_key),
+            config_key=config_key,
             json_path=json_path,
         ),
         range=range,

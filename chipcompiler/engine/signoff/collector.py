@@ -143,7 +143,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             self._directories().path(StepEnum.FILLER.value) / "output"
         ) / f"{design}_filler.v.gz"
         # The gate netlist follows the flow policy's input chain. A workspace
-        # whose ledger has no postRouteLec (skipped at creation) never requires
+        # whose ledger has no post_route_lec (skipped at creation) never requires
         # it, so the gate is only resolved when the step is in the ledger.
         flow_steps = self.workspace.flow.steps()
         post_route_lec_index = next(
@@ -156,7 +156,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         )
         lec_gate = None
         if post_route_lec_index is not None:
-            # The gate netlist is the postRouteLec step's resolved input, so
+            # The gate netlist is the post_route_lec step's resolved input, so
             # its name comes from the builder contract, not from a
             # design-prefixed guess.
             try:
@@ -167,14 +167,14 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 issues.append(
                     SignoffPackageIssue(
                         kind="resource",
-                        label="final/reports/postRouteLec/result.json",
+                        label="final/reports/post_route_lec/result.json",
                         location=SkippableStepEnum.POST_ROUTE_LEC.value,
-                        reason=f"Could not resolve the postRouteLec gate netlist: {error}",
+                        reason=f"Could not resolve the post_route_lec gate netlist: {error}",
                         required=True,
-                        destination="final/reports/postRouteLec/result.json",
+                        destination="final/reports/post_route_lec/result.json",
                     )
                 )
-        # A workspace whose ledger has no postRouteLec (skipped at creation)
+        # A workspace whose ledger has no post_route_lec (skipped at creation)
         # never requires it, regardless of the artifacts on disk.
         require_lec = self.workspace.flow.has_step(
             SkippableStepEnum.POST_ROUTE_LEC
@@ -287,25 +287,25 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         harden_output = self._directories().path(StepEnum.HARDEN.value) / "output"
         add_file(
             role="harden.gds",
-            source=harden_output / f"{design}_Harden.gds",
+            source=harden_output / f"{design}_harden.gds",
             destination=f"harden/{design}.gds",
             required=True,
         )
         add_file(
             role="harden.lef",
-            source=harden_output / f"{design}_Harden.lef",
+            source=harden_output / f"{design}_harden.lef",
             destination=f"harden/{design}.lef",
             required=True,
         )
         add_file(
             role="harden.lib",
-            source=harden_output / f"{design}_Harden.lib",
+            source=harden_output / f"{design}_harden.lib",
             destination=f"harden/{design}.lib",
             required=True,
         )
         add_file(
             role="harden.image",
-            source=harden_output / f"{design}_Harden.png",
+            source=harden_output / f"{design}_harden.png",
             destination=f"harden/{design}.png",
         )
 
@@ -420,19 +420,19 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             add_file(
                 role="lec.result",
                 source=lec_result,
-                destination="final/reports/postRouteLec/result.json",
+                destination="final/reports/post_route_lec/result.json",
                 required=True,
             )
             add_file(
                 role="lec.equiv_status",
                 source=lec_dir / "report" / "equiv_status.rpt",
-                destination="final/reports/postRouteLec/report/equiv_status.rpt",
+                destination="final/reports/post_route_lec/report/equiv_status.rpt",
                 required=True,
             )
             add_file(
                 role="lec.status_report",
                 source=lec_dir / "report" / "run_lec_status.rpt",
-                destination="final/reports/postRouteLec/report/run_lec_status.rpt",
+                destination="final/reports/post_route_lec/report/run_lec_status.rpt",
                 required=True,
             )
             from chipcompiler.tools.lec_result import lec_result_status
@@ -443,7 +443,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 gate_verilog=lec_gate,
             )
             if lec_result.is_file() and lec_status != "proven":
-                missing_required.append("final/reports/postRouteLec/result.json")
+                missing_required.append("final/reports/post_route_lec/result.json")
                 issues.append(
                     SignoffPackageIssue(
                         kind="resource",
@@ -451,7 +451,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                         location=self._review_source_path(
                             workspace_dir,
                             lec_result,
-                            "final/reports/postRouteLec/result.json",
+                            "final/reports/post_route_lec/result.json",
                         ),
                         reason=(
                             "LEC proof is stale; golden or gate netlist changed"
@@ -459,7 +459,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                             else "LEC did not prove equivalence"
                         ),
                         required=True,
-                        destination="final/reports/postRouteLec/result.json",
+                        destination="final/reports/post_route_lec/result.json",
                     )
                 )
 
@@ -689,12 +689,12 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             lec_payload = self._read_json(lec_result)
             lec_summary = {
                 "status": lec_payload.get("status", ""),
-                "result": "final/reports/postRouteLec/result.json",
+                "result": "final/reports/post_route_lec/result.json",
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
-            lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
-            lec_summary["status_report"] = "final/reports/postRouteLec/report/run_lec_status.rpt"
+            lec_summary["equiv_status"] = "final/reports/post_route_lec/report/equiv_status.rpt"
+            lec_summary["status_report"] = "final/reports/post_route_lec/report/run_lec_status.rpt"
             summary["lec"] = lec_summary
         if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
@@ -737,7 +737,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 + input_verilog_description
                 + "- Harden outputs are under `harden/`.\n"
                 + "- Final physical resources are under `final/`.\n"
-                + "- Post-route LEC evidence is under `final/reports/postRouteLec/`.\n"
+                + "- Post-route LEC evidence is under `final/reports/post_route_lec/`.\n"
             )
 
             if options.archive and (ok or options.allow_incomplete):

@@ -55,12 +55,12 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"schema_version": 2, "steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"schema_version": 2, "steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 3, "steps": steps}),
         logger=Logger(),
     )
 
@@ -330,7 +330,7 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
     first_name = StepEnum.FLOORPLAN.value
     second_name = StepEnum.PLACEMENT.value
     ws.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": first_name,
@@ -385,7 +385,7 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
 def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisory, parallel):
     ws = _make_workspace(tmp_path, num_steps=2)
     ws.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": advisory,
@@ -436,7 +436,7 @@ def _make_resume_workspace(tmp_path, steps):
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,
@@ -474,7 +474,7 @@ class TestTerminalStateNormalization:
         """An Incomplete step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
+            [("synthesis", "Success"), ("floorplan", "Incomplete")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -491,7 +491,7 @@ class TestTerminalStateNormalization:
         """An Invalid step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Invalid")],
+            [("synthesis", "Success"), ("floorplan", "Invalid")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -505,7 +505,7 @@ class TestTerminalStateNormalization:
     def test_removed_warning_state_is_rejected_on_resume(self, tmp_path):
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Warning")],
+            [("synthesis", "Success"), ("floorplan", "Warning")],
         )
 
         with pytest.raises(ValueError, match="removed Warning state"):
@@ -515,7 +515,7 @@ class TestTerminalStateNormalization:
         """Ongoing step is NOT a terminal state — no normalization needed."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Ongoing")],
+            [("synthesis", "Success"), ("floorplan", "Ongoing")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -528,7 +528,7 @@ class TestTerminalStateNormalization:
         """Normal Unstart step — no normalization, normal lifecycle."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Unstart")],
+            [("synthesis", "Success"), ("floorplan", "Unstart")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -540,7 +540,7 @@ class TestTerminalStateNormalization:
         """Resetting an unfinished step logs a warning before it reruns."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
+            [("synthesis", "Success"), ("floorplan", "Incomplete")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -555,21 +555,21 @@ def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monke
     """AgentEngineFlow uses the shared step-log failure contract."""
     import agent.engine as agent_engine
 
-    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir = tmp_path / "floorplan_ecc"
     step_dir.mkdir()
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             }
         ],
     }
@@ -579,7 +579,7 @@ def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monke
     agent_flow.workspace = workspace
     agent_flow.workspace_steps = [
         EccStep(
-            name="Floorplan",
+            name="floorplan",
             tool="ecc",
             directory=step_dir,
             output=EccOutput(verilog=step_dir / "design.v"),
@@ -606,21 +606,21 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
     import agent.engine as agent_engine
 
     log_file = tmp_path / "agent_step.log"
-    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir = tmp_path / "floorplan_ecc"
     step_dir.mkdir()
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             }
         ],
     }
@@ -630,7 +630,7 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
     agent_flow.workspace = workspace
     agent_flow.workspace_steps = [
         EccStep(
-            name="Floorplan",
+            name="floorplan",
             tool="ecc",
             directory=step_dir,
             output=EccOutput(verilog=step_dir / "design.v"),

@@ -214,7 +214,7 @@ def _corner_slack(workspace, directories: StepDirectories, flow_states: dict) ->
 
 
 def _power_summary(workspace, directories: StepDirectories, flow_states: dict):
-    """Select signoff power from the current powerAnalysis or synthesis artifact."""
+    """Select signoff power from the current power_analysis or synthesis artifact."""
     power_state = flow_states.get(StepEnum.POWER_ANALYSIS.value)
     if power_state == StateEnum.Success.value:
         power_directory = directories.path(StepEnum.POWER_ANALYSIS.value)

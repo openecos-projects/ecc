@@ -24,7 +24,7 @@ from chipcompiler.utility.path import require_path
 
 
 def checks_rtl(step: KeplerFormalStep) -> bool:
-    """Whether *step* is ``lec@Synthesis``: its golden is the RTL Synthesis read.
+    """Whether *step* is ``lec@synthesis``: its golden is the RTL Synthesis read.
 
     Every other LEC compares two netlists.
     """
@@ -36,7 +36,7 @@ def checks_rtl(step: KeplerFormalStep) -> bool:
 def golden_kind(workspace: Workspace, step: KeplerFormalStep) -> str:
     """What *step*'s golden is (``lec_result.GOLDEN_KINDS``).
 
-    ``lec@Synthesis`` reads the RTL Synthesis read: its filelist (``rtl_filelist``)
+    ``lec@synthesis`` reads the RTL Synthesis read: its filelist (``rtl_filelist``)
     or its RTL file (``rtl``); every other LEC a netlist.
     """
     if not checks_rtl(step):
@@ -48,7 +48,7 @@ def golden_kind(workspace: Workspace, step: KeplerFormalStep) -> str:
 
 
 def sec_rtl_filelist(step: KeplerFormalStep) -> Path:
-    """The filelist kepler-formal reads the ``lec@Synthesis`` RTL from."""
+    """The filelist kepler-formal reads the ``lec@synthesis`` RTL from."""
     return require_path(step.data.dir, "kepler-formal data directory") / "rtl.f"
 
 
@@ -142,7 +142,7 @@ def build_lec_config_yaml(
 
     design1 is the golden and design2 the gate netlist; kepler-formal reports
     equivalence of design2 against design1. Two netlists are compared
-    combinationally (``lec``). For ``lec@Synthesis`` (:func:`checks_rtl`)
+    combinationally (``lec``). For ``lec@synthesis`` (:func:`checks_rtl`)
     design1 is the RTL, read through :func:`sec_rtl_filelist` by
     kepler-formal's SystemVerilog front end, which it supports only for
     sequential equivalence (``sv2v`` format, ``sec``). The explicit path

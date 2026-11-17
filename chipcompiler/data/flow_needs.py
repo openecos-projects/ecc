@@ -10,7 +10,7 @@ A step's ``after`` lists those producers, nearest first, minus any producer that
 every capability the step takes from it is also taken from by another producer
 of the step (that producer's own capability map names it). So ``sta`` does not
 follow ``filler`` (``RCX`` already does) but still follows ``CTS``, whose clock
-tree nothing else it follows hands on. An inserted step (``lec@CTS``) also
+tree nothing else it follows hands on. An inserted step (``lec@cts``) also
 follows the step it is inserted after, whose netlist it checks, first.
 """
 

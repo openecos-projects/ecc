@@ -3,7 +3,7 @@
 
 The plan is recomputed after every toggle and redrawn with its problems, so a
 selection that leaves a step without required design data cannot be saved.
-``i`` inserts an LEC after the step under the cursor (``lec@CTS``) and toggling
+``i`` inserts an LEC after the step under the cursor (``lec@cts``) and toggling
 an inserted row removes it. ``←``/``→`` change ``max_parallel_steps``, which
 only the legend depends on. The saved selection is then confirmed before
 ecc.toml is written.

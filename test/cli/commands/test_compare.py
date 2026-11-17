@@ -17,7 +17,7 @@ def saved_snapshots(tmp_path):
         directory=root,
         flow=SimpleNamespace(
             data={
-                "schema_version": 2,
+                "schema_version": 3,
                 "steps": [
                     {
                         "name": "sta",

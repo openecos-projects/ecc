@@ -165,7 +165,7 @@ def validate_flow_config(flow: object) -> dict:
         from chipcompiler.data.flow_plan import flow_target, preset_chain
 
         # The preset's target is its last step that is not an inserted check
-        # (synthesis_lec ends with lec@Synthesis, which skipping Synthesis
+        # (synthesis_lec ends with lec@synthesis, which skipping Synthesis
         # drops too); its first step may be skipped, the declared inputs then
         # stand in for it.
         target = flow_target(preset_chain(preset))
@@ -378,7 +378,7 @@ def ledger_flow_section(names: list[str]) -> dict:
     """The (unvalidated) [flow] section describing a ledger's step names.
 
     Its range runs from the first to the last chain step; the inserted steps
-    (``lec@CTS``) are its ``insert_steps``, since an inserted name never
+    (``lec@cts``) are its ``insert_steps``, since an inserted name never
     bounds a range.
     """
     from chipcompiler.rtl2gds import parse_inserted_step

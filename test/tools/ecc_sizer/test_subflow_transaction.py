@@ -23,19 +23,19 @@ def _workspace(tmp_path) -> Any:
     assert workspace.flow.path is not None
     workspace.flow.path.parent.mkdir(parents=True)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Timing optimization",
+                "name": "timing_optimization",
                 "tool": "sizer",
                 "state": "Success",
-                **step_fields("Timing optimization", "sizer"),
+                **step_fields("timing_optimization", "sizer"),
             },
             {
-                "name": "route",
+                "name": "routing",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("route", "ecc"),
+                **step_fields("routing", "ecc"),
             },
         ],
     }
@@ -45,7 +45,7 @@ def _workspace(tmp_path) -> Any:
 def _sizer_step(workspace) -> Any:
     step = sizer_builder.build_step(
         workspace=workspace,
-        step_name="Timing optimization",
+        step_name="timing_optimization",
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
@@ -85,7 +85,7 @@ def test_failed_ledger_write_keeps_existing_files_and_stages(tmp_path, monkeypat
     step = _sizer_step(workspace)
     workspace.flow.path.write_text(json.dumps(workspace.flow.data, indent=2), encoding="utf-8")
     old_stages = {
-        "schema_version": 2,
+        "schema_version": 3,
         "path": str(step.subflow.path),
         "steps": [{"name": "old stage", "state": "Unstart"}],
     }
@@ -109,7 +109,7 @@ def test_read_only_matching_stages_survive_output_reset_without_ledger_write(tmp
     step = _sizer_step(workspace)
     stages = [stage_template(name) for name in ("run sizer", "run legalization", "save data")]
     step.subflow.path.write_text(
-        json.dumps({"schema_version": 2, "path": str(step.subflow.path), "steps": stages}),
+        json.dumps({"schema_version": 3, "path": str(step.subflow.path), "steps": stages}),
         encoding="utf-8",
     )
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")
@@ -132,7 +132,7 @@ def test_read_only_missing_or_mismatched_stages_fail_without_writes(tmp_path, st
     step = _sizer_step(workspace)
     if stages is not None:
         step.subflow.path.write_text(
-            json.dumps({"schema_version": 2, "path": str(step.subflow.path), "steps": stages}),
+            json.dumps({"schema_version": 3, "path": str(step.subflow.path), "steps": stages}),
             encoding="utf-8",
         )
     workspace.flow.path.write_text(json.dumps(workspace.flow.data), encoding="utf-8")

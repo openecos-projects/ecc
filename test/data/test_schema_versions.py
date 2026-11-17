@@ -24,12 +24,12 @@ def test_current_params_and_flow_documents_load(tmp_path):
     workspace = Workspace(directory=workspace_dir, design=OriginDesign(name="gcd"))
     workspace.flow.path = workspace_dir / "home" / "flow.json"
     flow = EngineFlow(workspace)
-    flow.add_step("place", "dreamplace", "Unstart")
+    flow.add_step("placement", "dreamplace", "Unstart")
 
     assert load_workspace_config(workspace_dir)["design"] == "gcd"
     document = load_flow_document(workspace.flow.path)
-    assert document.get("schema_version") == 2
-    assert document.get("steps", [])[0]["directory"] == "01_place_dreamplace"
+    assert document.get("schema_version") == 3
+    assert document.get("steps", [])[0]["directory"] == "01_placement_dreamplace"
 
 
 @pytest.mark.parametrize("version", [0, 1])
@@ -58,7 +58,9 @@ def test_newer_params_and_flow_versions_fail_closed(tmp_path):
 
 def test_missing_step_metadata_fails_instead_of_being_repaired(tmp_path):
     path = tmp_path / "flow.json"
-    path.write_text(json.dumps({"schema_version": 2, "steps": [{"name": "place", "tool": "ecc"}]}))
+    path.write_text(
+        json.dumps({"schema_version": 3, "steps": [{"name": "placement", "tool": "ecc"}]})
+    )
 
     with pytest.raises(ValueError, match="missing state, directory, category"):
         load_flow_document(path)

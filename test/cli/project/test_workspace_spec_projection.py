@@ -59,7 +59,7 @@ def test_refresh_projection_uses_netlist_for_physical_entry(tmp_path, monkeypatc
     spec, bindings = workspace_update_spec(
         "workspace",
         _config(tmp_path),
-        {"start_step": "place", "end_step": "route"},
+        {"start_step": "placement", "end_step": "routing"},
     )
 
     assert spec["inputMode"] == "postSynthesis"

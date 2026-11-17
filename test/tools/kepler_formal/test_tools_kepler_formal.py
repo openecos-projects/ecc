@@ -67,7 +67,7 @@ def _workspace(tmp_path: Path) -> Workspace:
 def _write_netlist_pair(gate: Path, *, compressed: bool = False) -> tuple[Path, Path]:
     gate.parent.mkdir(parents=True, exist_ok=True)
     gcd_text = GCD_RTL.read_text()
-    golden = gate.with_name("gcd_Synthesis_golden.v")
+    golden = gate.with_name("gcd_synthesis_golden.v")
     if compressed:
         gzip_gate = gate.with_name(f"{gate.stem}.v.gz")
         gzip_gate.write_bytes(gzip.compress(gcd_text.encode()))
@@ -82,7 +82,7 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
 
     step: Any = builder.build_step(
         workspace=workspace,
@@ -94,7 +94,7 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
 
     assert step.tool == "kepler_formal"
     assert step.input.gate_verilog == gate
-    assert step.input.golden_verilog == gate.with_name("gcd_Synthesis_golden.v")
+    assert step.input.golden_verilog == gate.with_name("gcd_synthesis_golden.v")
     assert step.data.config.name == "lec_config.yaml"
     assert step.output.json.name == "gcd_lec_result.json"
     assert step.directory.name == "lec_kepler_formal"
@@ -106,7 +106,7 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
 
     step: Any = builder.build_step(
@@ -121,7 +121,7 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     config = step.data.config.read_text()
     assert "verification: lec" in config
     assert "format: verilog" in config
-    assert str(gate.with_name("gcd_Synthesis_golden.v")) in config
+    assert str(gate.with_name("gcd_synthesis_golden.v")) in config
     assert str(gate) in config
     assert str(workspace.pdk.libs[0]) in config
     assert str(step.report.miter_log) in config
@@ -148,7 +148,7 @@ def test_the_synthesis_lec_config_checks_the_rtl_against_the_netlist_with_sec(
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     rtl = GCD_RTL
     if filelist is not None:
@@ -157,7 +157,7 @@ def test_the_synthesis_lec_config_checks_the_rtl_against_the_netlist_with_sec(
         workspace.design.input_filelist = rtl
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name="lec@Synthesis",
+        step_name="lec@synthesis",
         input_def=None,
         input_verilog=gate,
         input_db=rtl,
@@ -215,11 +215,11 @@ def test_the_synthesis_lec_reads_the_sec_verdict(
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name="lec@Synthesis",
+        step_name="lec@synthesis",
         input_def=None,
         input_verilog=gate,
         input_db=GCD_RTL,
@@ -253,7 +253,7 @@ def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeyp
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     golden, gate_gz = _write_netlist_pair(gate, compressed=True)
 
     step: Any = builder.build_step(
@@ -315,7 +315,7 @@ def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypa
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
@@ -356,7 +356,7 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
@@ -398,7 +398,7 @@ def test_the_synthesis_lec_fails_when_the_files_its_rtl_reads_cannot_be_identifi
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     rtl = tmp_path / "design.f"
     # -f resolves against the reading tool's working directory.
@@ -406,7 +406,7 @@ def test_the_synthesis_lec_fails_when_the_files_its_rtl_reads_cannot_be_identifi
     workspace.design.input_filelist = rtl
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name="lec@Synthesis",
+        step_name="lec@synthesis",
         input_def=None,
         input_verilog=gate,
         input_db=rtl,
@@ -484,7 +484,7 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
         workspace.design.input_filelist = filelist_path
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.SYNTHESIS.value,
@@ -493,10 +493,10 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
                 **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
             },
             {
-                "name": "lec@Synthesis",
+                "name": "lec@synthesis",
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
-                **step_fields("lec@Synthesis", "kepler_formal"),
+                **step_fields("lec@synthesis", "kepler_formal"),
             },
             {
                 "name": StepEnum.FLOORPLAN.value,
@@ -524,11 +524,11 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
                 output=YosysOutput(
-                    verilog=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz",
+                    verilog=tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz",
                     golden_verilog=(
-                        tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_golden.v"
+                        tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis_golden.v"
                     ),
-                    db=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_db",
+                    db=tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis_db",
                 ),
             )
         if eda == "kepler_formal":
@@ -545,9 +545,9 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
             tool=eda,
             input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
             output=SimpleNamespace(
-                def_=tmp_path / "Floorplan_ecc" / "output" / "gcd.def",
-                verilog=tmp_path / "Floorplan_ecc" / "output" / "gcd.v",
-                db=tmp_path / "Floorplan_ecc" / "output" / "gcd_db",
+                def_=tmp_path / "floorplan_ecc" / "output" / "gcd.def",
+                verilog=tmp_path / "floorplan_ecc" / "output" / "gcd.v",
+                db=tmp_path / "floorplan_ecc" / "output" / "gcd_db",
             ),
         )
 
@@ -572,7 +572,7 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.SYNTHESIS.value,
@@ -651,7 +651,7 @@ def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,

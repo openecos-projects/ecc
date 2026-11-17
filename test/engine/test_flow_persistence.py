@@ -12,13 +12,13 @@ def test_flow_save_keeps_snapshot_and_persisted_ledger_identical(tmp_path):
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Synthesis",
+                "name": "synthesis",
                 "tool": "yosys",
                 "state": "Unstart",
-                **step_fields("Synthesis", "yosys"),
+                **step_fields("synthesis", "yosys"),
             }
         ],
     }
@@ -44,13 +44,13 @@ def test_failed_ledger_write_rolls_back_the_step_state(tmp_path, monkeypatch):
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Synthesis",
+                "name": "synthesis",
                 "tool": "yosys",
                 "state": "Unstart",
-                **step_fields("Synthesis", "yosys"),
+                **step_fields("synthesis", "yosys"),
             }
         ],
     }
@@ -58,7 +58,7 @@ def test_failed_ledger_write_rolls_back_the_step_state(tmp_path, monkeypatch):
 
     monkeypatch.setattr(flow_ledger, "save_ledger", lambda _flow: False)
 
-    assert flow.set_state("Synthesis", "yosys", StateEnum.Ongoing) is False
+    assert flow.set_state("synthesis", "yosys", StateEnum.Ongoing) is False
     assert workspace.flow.data["steps"][0]["state"] == "Unstart"
 
 
@@ -70,19 +70,19 @@ def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
     workspace.flow.path = tmp_path / "home" / "flow.json"
     flow = EngineFlow(workspace)
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Synthesis",
+                "name": "synthesis",
                 "tool": "yosys",
                 "state": "Success",
-                **step_fields("Synthesis", "yosys"),
+                **step_fields("synthesis", "yosys"),
             },
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": "Success",
-                **step_fields("Floorplan", "ecc"),
+                **step_fields("floorplan", "ecc"),
             },
         ],
     }
@@ -117,13 +117,13 @@ def test_state_transaction_holds_the_ledger_lock(tmp_path):
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Synthesis",
+                "name": "synthesis",
                 "tool": "yosys",
                 "state": "Unstart",
-                **step_fields("Synthesis", "yosys"),
+                **step_fields("synthesis", "yosys"),
             }
         ],
     }
@@ -137,7 +137,7 @@ def test_state_transaction_holds_the_ledger_lock(tmp_path):
 
     assert (
         flow_ledger.set_flow_state(
-            workspace.flow, "Synthesis", "yosys", StateEnum.Ongoing, persist=persist
+            workspace.flow, "synthesis", "yosys", StateEnum.Ongoing, persist=persist
         )
         is True
     )

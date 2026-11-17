@@ -84,7 +84,7 @@ def test_quality_gates_only_include_final_drc_lvs_rcx_and_sta(tmp_path):
         }
     ]
 
-    route = WorkspaceStep(name=StepEnum.ROUTING.value, directory=tmp_path / "route_ecc")
+    route = WorkspaceStep(name=StepEnum.ROUTING.value, directory=tmp_path / "routing_ecc")
     assert (
         _quality_gates(
             route,
@@ -173,7 +173,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
         ),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.FLOORPLAN.value,
@@ -195,7 +195,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
             },
         ],
     }
-    route_db = tmp_path / "route_ecc" / "feature" / "route.db.json"
+    route_db = tmp_path / "routing_ecc" / "feature" / "routing.db.json"
     route_db.parent.mkdir(parents=True)
     route_db.write_text(
         json.dumps({"Design Layout": {"die_area": 110}}),
@@ -211,7 +211,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
     gates = {
         gate["id"]: gate
         for gate in _quality_gates(
-            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "harden_ecc"),
             [],
             workspace,
         )
@@ -224,7 +224,7 @@ def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
         assert gate["evidence"] == [
             {
                 "kind": "feature",
-                "path": "route_ecc/feature/route.db.json",
+                "path": "routing_ecc/feature/routing.db.json",
                 "selector": "/Design Layout/die_area",
             }
         ]
@@ -238,7 +238,7 @@ def test_harden_mpc_area_gates_are_omitted_without_a_core_template(tmp_path):
 
     assert (
         _quality_gates(
-            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+            WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "harden_ecc"),
             [],
             workspace,
         )
@@ -261,7 +261,7 @@ def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(
         ),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.DRC.value,
@@ -273,7 +273,7 @@ def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(
     }
 
     gates = _quality_gates(
-        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "harden_ecc"),
         [],
         workspace,
     )
@@ -284,7 +284,7 @@ def test_harden_mpc_area_gates_are_unavailable_without_a_successful_physical_db(
 def test_harden_checklist_does_not_require_mpc_area_gates_without_mpc(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
-    summary_path = tmp_path / "Harden_ecc" / "analysis" / "qor_summary.json"
+    summary_path = tmp_path / "harden_ecc" / "analysis" / "qor_summary.json"
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text(
         json.dumps({"schema_version": 4, "gates": []}),
@@ -292,9 +292,9 @@ def test_harden_checklist_does_not_require_mpc_area_gates_without_mpc(tmp_path):
     )
     step = EccStep(
         name=StepEnum.HARDEN.value,
-        directory=tmp_path / "Harden_ecc",
+        directory=tmp_path / "harden_ecc",
         analysis=EccAnalysis(qor_summary=summary_path),
-        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+        checklist=ChecklistState(path=tmp_path / "harden_ecc" / "checklist.json"),
     )
 
     refresh_step_checklist(workspace, step)
@@ -318,7 +318,7 @@ def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
         ),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.ROUTING.value,
@@ -328,7 +328,7 @@ def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
             }
         ],
     }
-    route_db = tmp_path / "route_ecc" / "feature" / "route.db.json"
+    route_db = tmp_path / "routing_ecc" / "feature" / "routing.db.json"
     route_db.parent.mkdir(parents=True)
     route_db.write_text(
         json.dumps({"Design Layout": {"die_area": 110}}),
@@ -337,7 +337,7 @@ def test_harden_qor_summary_persists_mpc_area_gate_results(tmp_path):
 
     summary = build_qor_summary_payload(
         workspace,
-        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "Harden_ecc"),
+        WorkspaceStep(name=StepEnum.HARDEN.value, directory=tmp_path / "harden_ecc"),
         StepMetrics(),
     )
 
@@ -352,7 +352,7 @@ def test_step_checklist_references_v4_qor_gate_without_recomputing_it(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     (tmp_path / "home").mkdir()
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             FlowStepEntry(
                 name=step.value,
@@ -419,7 +419,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     )
     (tmp_path / "home").mkdir()
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             FlowStepEntry(
                 name=step.value,
@@ -437,7 +437,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
             )
         ],
     }
-    summary_path = tmp_path / "Harden_ecc" / "analysis" / "qor_summary.json"
+    summary_path = tmp_path / "harden_ecc" / "analysis" / "qor_summary.json"
     summary_path.parent.mkdir(parents=True)
     summary_path.write_text(
         json.dumps(
@@ -457,7 +457,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
                             }
                         ],
                         "evidence": [
-                            {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+                            {"kind": "feature", "path": "routing_ecc/feature/routing.db.json"}
                         ],
                     },
                     {
@@ -473,7 +473,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
                             }
                         ],
                         "evidence": [
-                            {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+                            {"kind": "feature", "path": "routing_ecc/feature/routing.db.json"}
                         ],
                     },
                 ],
@@ -483,9 +483,9 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     )
     step = EccStep(
         name=StepEnum.HARDEN.value,
-        directory=tmp_path / "Harden_ecc",
+        directory=tmp_path / "harden_ecc",
         analysis=EccAnalysis(qor_summary=summary_path),
-        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+        checklist=ChecklistState(path=tmp_path / "harden_ecc" / "checklist.json"),
     )
 
     assert refresh_step_checklist(workspace, step) is False
@@ -493,7 +493,7 @@ def test_harden_checklist_blocks_on_failed_mpc_area_gate_and_keeps_route_evidenc
     assert items["quality.mpc.minimum_area"]["blocked"] is False
     assert items["quality.mpc.maximum_area"]["blocked"] is True
     assert items["quality.mpc.maximum_area"]["evidence"] == [
-        {"kind": "feature", "path": "route_ecc/feature/route.db.json"}
+        {"kind": "feature", "path": "routing_ecc/feature/routing.db.json"}
     ]
 
 
@@ -612,7 +612,7 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             FlowStepEntry(
                 name=step.value,
@@ -642,8 +642,8 @@ def test_home_checklist_flow_completed_tracks_final_harden_state(tmp_path):
     workspace.flow.data.get("steps", [])[-3]["tool"] = "kepler_formal"
     step = EccStep(
         name=StepEnum.HARDEN.value,
-        directory=tmp_path / "Harden_ecc",
-        checklist=ChecklistState(path=tmp_path / "Harden_ecc" / "checklist.json"),
+        directory=tmp_path / "harden_ecc",
+        checklist=ChecklistState(path=tmp_path / "harden_ecc" / "checklist.json"),
     )
 
     refresh_step_checklist(workspace, step)
@@ -676,7 +676,7 @@ def test_home_checklist_prefers_step_gate_items_and_backfills_missing_snapshots(
     (tmp_path / "home").mkdir()
     workspace.flow.path = tmp_path / "home" / "flow.json"
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.DRC.value,
@@ -748,7 +748,7 @@ def test_home_checklist_prefers_step_gate_items_and_backfills_missing_snapshots(
 def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": StepEnum.ANTENNA_CHECK.value,
@@ -767,7 +767,7 @@ def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
 
     items = {item["id"]: item for item in _flow_items(workspace)}
 
-    for item_id in ("flow.antennacheck.completed", "flow.emir.completed"):
+    for item_id in ("flow.antenna_check.completed", "flow.emir.completed"):
         assert items[item_id]["policy"] == "warn"
         assert items[item_id]["state"] == "warning"
         assert items[item_id]["blocked"] is False
@@ -775,14 +775,14 @@ def test_advisory_flow_checks_are_attention_without_blocking(tmp_path):
     workspace.flow.data.get("steps", [])[0]["state"] = StateEnum.Success.value
     workspace.flow.data.get("steps", [])[1]["state"] = StateEnum.Success.value
     items = {item["id"]: item for item in _flow_items(workspace)}
-    assert items["flow.antennacheck.completed"]["state"] == "warning"
+    assert items["flow.antenna_check.completed"]["state"] == "warning"
     assert items["flow.emir.completed"]["state"] == "warning"
 
 
 def test_advisory_steps_have_nonblocking_detail_checklists(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,
@@ -800,8 +800,8 @@ def test_advisory_steps_have_nonblocking_detail_checklists(tmp_path):
         assert items[f"flow.{name.lower()}.completed"]["state"] == "warning"
         assert items[f"flow.{name.lower()}.completed"]["blocked"] is False
         if name == StepEnum.ANTENNA_CHECK.value:
-            assert items["artifact.antennacheck.report"]["state"] == "failed"
-            assert items["artifact.antennacheck.report"]["blocked"] is False
+            assert items["artifact.antenna_check.report"]["state"] == "failed"
+            assert items["artifact.antenna_check.report"]["blocked"] is False
         else:
             assert len(items) == 1
 
@@ -810,24 +810,24 @@ def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     power: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
-        directory=tmp_path / "powerAnalysis_ecc",
-        feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        directory=tmp_path / "power_analysis_ecc",
+        feature=EccFeature(dir=tmp_path / "power_analysis_ecc" / "feature"),
         report=EccReport(
-            dir=tmp_path / "powerAnalysis_ecc" / "report",
-            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+            dir=tmp_path / "power_analysis_ecc" / "report",
+            step=tmp_path / "power_analysis_ecc" / "report" / "power_analysis.rpt",
         ),
     )
-    power_step = power.feature.dir / "powerAnalysis.step.json"
+    power_step = power.feature.dir / "power_analysis.step.json"
     power_step.parent.mkdir(parents=True)
     power_step.write_text("{}\n", encoding="utf-8")
     power.report.step.parent.mkdir(parents=True)
     power.report.step.write_text("power\n", encoding="utf-8")
     antenna: Any = EccStep(
         name=StepEnum.ANTENNA_CHECK.value,
-        directory=tmp_path / "antennaCheck_ecc",
+        directory=tmp_path / "antenna_check_ecc",
         report=EccReport(
-            dir=tmp_path / "antennaCheck_ecc" / "report",
-            step=tmp_path / "antennaCheck_ecc" / "report" / "antennaCheck.rpt",
+            dir=tmp_path / "antenna_check_ecc" / "report",
+            step=tmp_path / "antenna_check_ecc" / "report" / "antenna_check.rpt",
         ),
     )
     antenna.report.step.parent.mkdir(parents=True)
@@ -841,42 +841,42 @@ def test_power_and_antenna_reports_are_checklist_artifacts(tmp_path):
         )
     }
 
-    assert items["artifact.poweranalysis.report"]["state"] == "pass"
-    assert items["artifact.antennacheck.report"]["state"] == "pass"
+    assert items["artifact.power_analysis.report"]["state"] == "pass"
+    assert items["artifact.antenna_check.report"]["state"] == "pass"
 
 
 def test_missing_published_power_report_blocks_checklist(tmp_path):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     power: Any = EccStep(
         name=StepEnum.POWER_ANALYSIS.value,
-        directory=tmp_path / "powerAnalysis_ecc",
-        feature=EccFeature(dir=tmp_path / "powerAnalysis_ecc" / "feature"),
+        directory=tmp_path / "power_analysis_ecc",
+        feature=EccFeature(dir=tmp_path / "power_analysis_ecc" / "feature"),
         report=EccReport(
-            dir=tmp_path / "powerAnalysis_ecc" / "report",
-            step=tmp_path / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt",
+            dir=tmp_path / "power_analysis_ecc" / "report",
+            step=tmp_path / "power_analysis_ecc" / "report" / "power_analysis.rpt",
         ),
     )
-    power_step = power.feature.dir / "powerAnalysis.step.json"
+    power_step = power.feature.dir / "power_analysis.step.json"
     power_step.parent.mkdir(parents=True)
     power_step.write_text("{}\n", encoding="utf-8")
 
     items = {item["id"]: item for item in _step_artifact_items(workspace, power)}
 
-    assert items["artifact.poweranalysis.report"]["state"] == "failed"
-    assert items["artifact.poweranalysis.report"]["blocked"] is True
+    assert items["artifact.power_analysis.report"]["state"] == "failed"
+    assert items["artifact.power_analysis.report"]["blocked"] is True
 
 
 def test_legacy_flows_do_not_gain_uncommitted_advisory_checks(tmp_path):
     workspace = Workspace(directory=tmp_path)
-    workspace.flow.data = {"schema_version": 2, "steps": []}
-    assert not any(item["step"] in ("antennaCheck", "emir") for item in _flow_items(workspace))
+    workspace.flow.data = {"schema_version": 3, "steps": []}
+    assert not any(item["step"] in ("antenna_check", "emir") for item in _flow_items(workspace))
 
 
 def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
     origin = tmp_path / "origin" / "gcd.v"
     origin.parent.mkdir()
     origin.write_text("module gcd; imported mapped netlist\nendmodule\n", encoding="utf-8")
-    leftover = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    leftover = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz"
     leftover.parent.mkdir(parents=True)
     leftover.write_text("module gcd; leftover synthesis\nendmodule\n", encoding="utf-8")
     gate = tmp_path / "lvs_ecc" / "output" / "gcd_lvs.v.gz"
@@ -887,7 +887,7 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
         design=OriginDesign(name="gcd", origin_verilog=origin),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": step.value,
@@ -912,12 +912,12 @@ def test_home_checklist_uses_origin_golden_when_flow_has_no_synthesis(tmp_path):
     workspace.flow.data.get("steps", [])[5]["input_step"] = "lvs"
 
     items = {item["id"]: item for item in _flow_items(workspace)}
-    assert "flow.postroutelec.completed" in items
-    assert items["flow.postroutelec.completed"]["state"] == "pass"
+    assert "flow.post_route_lec.completed" in items
+    assert items["flow.post_route_lec.completed"]["state"] == "pass"
 
 
 def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tmp_path):
-    leftover = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz"
+    leftover = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz"
     leftover.parent.mkdir(parents=True)
     leftover.write_text("module gcd; leftover synthesis\nendmodule\n", encoding="utf-8")
     filler = tmp_path / "filler_ecc" / "output" / "gcd_filler.v.gz"
@@ -925,7 +925,7 @@ def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tm
     filler.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": step.value,
@@ -943,7 +943,7 @@ def test_home_checklist_ignores_leftover_synthesis_dir_without_synthesis_step(tm
 
     items = {item["id"]: item for item in _flow_items(workspace)}
     assert leftover.is_file()
-    assert "flow.postroutelec.completed" not in items
+    assert "flow.post_route_lec.completed" not in items
 
 
 def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tmp_path):
@@ -954,7 +954,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
     gate.parent.mkdir(parents=True)
     gate.write_text("module gcd; filler\nendmodule\n", encoding="utf-8")
     result_json = (
-        tmp_path / "postRouteLec_kepler_formal" / "output" / "gcd_postRouteLec_result.json"
+        tmp_path / "post_route_lec_kepler_formal" / "output" / "gcd_post_route_lec_result.json"
     )
     result_json.parent.mkdir(parents=True)
     origin_digest: Any = file_digest(origin)
@@ -973,7 +973,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
         ),
         encoding="utf-8",
     )
-    stale = tmp_path / "postRouteLec_kepler_formal" / "checklist.json"
+    stale = tmp_path / "post_route_lec_kepler_formal" / "checklist.json"
     stale.write_text(
         json.dumps(
             {
@@ -981,8 +981,8 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
                 "kind": "signoff_checklist",
                 "checklist": [
                     {
-                        "id": "artifact.postroutelec.result",
-                        "step": "postRouteLec",
+                        "id": "artifact.post_route_lec.result",
+                        "step": "post_route_lec",
                         "category": "artifact",
                         "owner": "checklist",
                         "policy": "block",
@@ -1002,7 +1002,7 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
         design=OriginDesign(name="gcd", origin_verilog=origin),
     )
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": step.value,
@@ -1019,11 +1019,11 @@ def test_home_checklist_uses_current_post_route_lec_result_not_stale_snapshot(tm
         ],
     }
     workspace.flow.data.get("steps", [])[2]["tool"] = "kepler_formal"
-    workspace.flow.data.get("steps", [])[2]["directory"] = "postRouteLec_kepler_formal"
+    workspace.flow.data.get("steps", [])[2]["directory"] = "post_route_lec_kepler_formal"
 
     home_items = {item["id"]: item for item in rebuild_home_checklist(workspace)["checklist"]}
-    assert home_items["artifact.postroutelec.result"]["state"] == "pass"
-    assert home_items["artifact.postroutelec.result"]["blocked"] is False
+    assert home_items["artifact.post_route_lec.result"]["state"] == "pass"
+    assert home_items["artifact.post_route_lec.result"]["blocked"] is False
 
 
 @pytest.mark.parametrize("saved_checklist", [True, False], ids=["saved pass", "no step checklist"])
@@ -1035,12 +1035,12 @@ def test_home_checklist_revalidates_an_inserted_lec_proof(tmp_path, saved_checkl
     rtl = tmp_path / "origin" / "gcd.v"
     rtl.parent.mkdir()
     rtl.write_text("module gcd; endmodule\n", encoding="utf-8")
-    fields = step_fields("lec@Synthesis", "kepler_formal")
+    fields = step_fields("lec@synthesis", "kepler_formal")
     step_dir = tmp_path / fields["directory"]
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     gate.parent.mkdir(parents=True)
     gate.write_text("module gcd; endmodule\n", encoding="utf-8")
-    result_json = step_dir / "output" / "gcd_lec@Synthesis_result.json"
+    result_json = step_dir / "output" / "gcd_lec@synthesis_result.json"
     result_json.parent.mkdir(parents=True)
     write_step_result(
         SimpleNamespace(
@@ -1060,7 +1060,7 @@ def test_home_checklist_revalidates_an_inserted_lec_proof(tmp_path, saved_checkl
                 "checklist": [
                     {
                         "id": "artifact.lec@synthesis.result",
-                        "step": "lec@Synthesis",
+                        "step": "lec@synthesis",
                         "category": "artifact",
                         "owner": "checklist",
                         "policy": "block",
@@ -1077,7 +1077,7 @@ def test_home_checklist_revalidates_an_inserted_lec_proof(tmp_path, saved_checkl
     (tmp_path / "home").mkdir()
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", origin_verilog=rtl))
     workspace.flow.data = {
-        "schema_version": 2,
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,
@@ -1085,7 +1085,7 @@ def test_home_checklist_revalidates_an_inserted_lec_proof(tmp_path, saved_checkl
                 "state": StateEnum.Success.value,
                 **step_fields(name, tool),
             }
-            for name, tool in (("Synthesis", "yosys"), ("lec@Synthesis", "kepler_formal"))
+            for name, tool in (("synthesis", "yosys"), ("lec@synthesis", "kepler_formal"))
         ],
     }
 
@@ -1119,7 +1119,7 @@ def test_rebuild_home_checklist_uses_canonical_workspace_path(tmp_path):
 
 
 def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
-    """A ledger without postRouteLec produces no missing flow item for it."""
+    """A ledger without post_route_lec produces no missing flow item for it."""
     from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
     from chipcompiler.tools.ecc.signoff_checklist import rebuild_home_checklist
 
@@ -1158,7 +1158,7 @@ def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
         step["name"] != SkippableStepEnum.POST_ROUTE_LEC.value
         for step in ledger_without_post_route_lec
     )
-    workspace.flow.data = {"schema_version": 2, "steps": ledger_without_post_route_lec}
+    workspace.flow.data = {"schema_version": 3, "steps": ledger_without_post_route_lec}
 
     rebuild_home_checklist(workspace)
 
@@ -1168,7 +1168,7 @@ def test_home_checklist_omits_post_route_lec_when_ledger_skips_it(tmp_path):
             "checklist"
         ]
     }
-    assert "flow.postroutelec.completed" not in home_items
+    assert "flow.post_route_lec.completed" not in home_items
 
 
 def test_macro_placement_checklist_blocks_until_manual_locations_are_ready(tmp_path):
@@ -1182,8 +1182,8 @@ def test_macro_placement_checklist_blocks_until_manual_locations_are_ready(tmp_p
     (tmp_path / "home").mkdir()
     step = EccStep(
         name=StepEnum.MACRO_PLACEMENT.value,
-        directory=tmp_path / "macroPlacement_ecc",
-        checklist=ChecklistState(path=tmp_path / "macroPlacement_ecc" / "checklist.json"),
+        directory=tmp_path / "macro_placement_ecc",
+        checklist=ChecklistState(path=tmp_path / "macro_placement_ecc" / "checklist.json"),
     )
 
     assert refresh_step_checklist(workspace, step) is False

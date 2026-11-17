@@ -168,7 +168,7 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
         if step.get("name") == name:
             return index
     # Selectors accept any CLI spelling of a persisted step ("postfloorplan",
-    # "postFloorplan", "POSTFLOORPLAN", "synth", ...) — only an unambiguous
+    # "post_floorplan", "POSTFLOORPLAN", "synth", ...) — only an unambiguous
     # canonical form may not be guessed at.
     from chipcompiler.rtl2gds.builder import normalize_flow_step
 
@@ -186,7 +186,7 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
 
 def _through_index(flow: "EngineFlow", name: str) -> int:
     """The index of the step that ends a range: *name*, or the last inserted
-    step right after it (``--to CTS`` includes ``lec@CTS``, the check of CTS)."""
+    step right after it (``--to cts`` includes ``lec@cts``, the check of cts)."""
     from chipcompiler.data import inserted_step_kind
 
     steps = flow.workspace.flow.data.get("steps", [])

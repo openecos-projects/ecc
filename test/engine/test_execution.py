@@ -27,7 +27,7 @@ def test_execution_plan_dispatches_full_flow_and_selected_steps():
     assert execute(flow, ExecutionPlan(intent="run"), event_sink=observer).succeeded
     step_result = execute(
         flow,
-        ExecutionPlan(intent="rerun", step_ids=("Floorplan", "place")),
+        ExecutionPlan(intent="rerun", step_ids=("floorplan", "placement")),
         event_sink=observer,
     )
 
@@ -35,7 +35,7 @@ def test_execution_plan_dispatches_full_flow_and_selected_steps():
         succeeded=True,
         state=StateEnum.Success.value,
     )
-    assert [call[:2] for call in calls] == [(None, False), (["Floorplan", "place"], True)]
+    assert [call[:2] for call in calls] == [(None, False), (["floorplan", "placement"], True)]
     assert all(call[2].delegate is observer for call in calls)
 
 
@@ -48,11 +48,11 @@ def test_execution_of_a_single_step_reports_its_id():
             return SimpleNamespace(name=step_id)
 
     result = execute(
-        Flow(), ExecutionPlan(intent="rerun", step_id="Floorplan"), event_sink=object()
+        Flow(), ExecutionPlan(intent="rerun", step_id="floorplan"), event_sink=object()
     )
 
     assert result == ExecutionResult(
-        succeeded=True, state=StateEnum.Success.value, step_id="Floorplan"
+        succeeded=True, state=StateEnum.Success.value, step_id="floorplan"
     )
 
 
@@ -87,12 +87,12 @@ def test_execution_reports_an_interruption_and_reraises():
     with pytest.raises(Cancelled):
         execute(
             Flow(),
-            ExecutionPlan(intent="rerun", step_ids=("Synthesis", "Floorplan")),
+            ExecutionPlan(intent="rerun", step_ids=("synthesis", "floorplan")),
             event_sink=Sink(),
         )
 
     assert events == [
-        ("started", "rerun", ("Synthesis", "Floorplan")),
+        ("started", "rerun", ("synthesis", "floorplan")),
         ("finished", "interrupted", "run cancelled at a step boundary"),
     ]
 
@@ -114,7 +114,7 @@ def test_execution_of_an_unknown_step_runs_nothing_and_is_reported():
     with pytest.raises(ValueError, match="step not found: nope"):
         execute(
             Flow(),
-            ExecutionPlan(intent="rerun", step_ids=("Synthesis", "nope")),
+            ExecutionPlan(intent="rerun", step_ids=("synthesis", "nope")),
             event_sink=Sink(),
         )
 
@@ -123,11 +123,11 @@ def test_execution_of_an_unknown_step_runs_nothing_and_is_reported():
 
 @pytest.mark.parametrize("selected", [True, False], ids=["selection", "full flow"])
 def test_execution_reports_wave_steps_in_flow_order(selected):
-    names = ("lvs", "drc", "antennaCheck", "RCX")
+    names = ("lvs", "drc", "antenna_check", "rcx")
 
     class Flow:
         workspace_steps = [SimpleNamespace(name=name) for name in names]
-        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 2, "steps": []}))
+        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 3, "steps": []}))
 
         def get_workspace_step(self, step_id):
             return SimpleNamespace(name=step_id)
@@ -135,8 +135,8 @@ def test_execution_reports_wave_steps_in_flow_order(selected):
         def run_steps(self, *, rerun=False, observer: Any = None, steps=None):
             # Steps of a parallel wave complete in any order.
             for name, state in [
-                ("RCX", StateEnum.Imcomplete),
-                ("antennaCheck", StateEnum.Success),
+                ("rcx", StateEnum.Imcomplete),
+                ("antenna_check", StateEnum.Success),
                 ("drc", StateEnum.Invalid),
                 ("lvs", StateEnum.Success),
             ]:
@@ -149,14 +149,14 @@ def test_execution_reports_wave_steps_in_flow_order(selected):
     assert result == ExecutionResult(
         succeeded=False,
         state=StateEnum.Imcomplete.value,
-        executed_steps=("lvs", "antennaCheck"),
+        executed_steps=("lvs", "antenna_check"),
         failed_step="drc",
     )
 
 
 def test_execution_failure_keeps_main_blocking_semantics():
     class Flow:
-        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 2, "steps": []}))
+        workspace = SimpleNamespace(flow=SimpleNamespace(data={"schema_version": 3, "steps": []}))
 
         def run_steps(self, *, rerun=False, observer: Any = None):
             return False
@@ -171,13 +171,13 @@ def test_successful_flow_with_advisory_failure_has_no_blocking_failed_step():
     class Flow:
         def run_steps(self, *, rerun=False, observer: Any = None):
             observer.on_step_completed(SimpleNamespace(name="emir"), StateEnum.Imcomplete)
-            observer.on_step_completed(SimpleNamespace(name="Harden"), StateEnum.Success)
+            observer.on_step_completed(SimpleNamespace(name="harden"), StateEnum.Success)
             return True
 
     result = execute(Flow(), ExecutionPlan(intent="run"), event_sink=object())
     assert result.succeeded
     assert result.failed_step is None
-    assert result.executed_steps == ("Harden",)
+    assert result.executed_steps == ("harden",)
 
 
 def test_default_execution_observer_commits_completed_steps(monkeypatch, tmp_path):
@@ -213,7 +213,7 @@ def test_execution_reports_ordered_steps_and_completed_default_is_noop():
     class Flow:
         workspace = SimpleNamespace(
             flow=SimpleNamespace(
-                data={"schema_version": 2, "steps": [{"name": "synthesis", "state": "Success"}]}
+                data={"schema_version": 3, "steps": [{"name": "synthesis", "state": "Success"}]}
             )
         )
 

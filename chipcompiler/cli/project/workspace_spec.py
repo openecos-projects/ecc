@@ -47,7 +47,7 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
     from chipcompiler.rtl2gds import normalize_flow_step
 
     entry_step = fresh_entry_step(cfg, flow_config)
-    rtl_mode = normalize_flow_step(entry_step or "") == "Synthesis"
+    rtl_mode = normalize_flow_step(entry_step or "") == "synthesis"
     if rtl_mode:
         for index, path in enumerate(inputs.rtl):
             add("rtl", path, index)
