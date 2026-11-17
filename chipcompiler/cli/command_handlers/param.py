@@ -15,6 +15,7 @@ from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.params import validate_pdk_target
 from chipcompiler.data.step_parameters import (
+    is_step_scoped,
     parse_step_key,
     split_step_key,
 )
@@ -110,12 +111,18 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         if flow_steps and not s.workspace_wide and not flow_steps.intersection(s.steps):
             continue
         if rp.step is not None:
-            # Without a step, list each step value ecc.toml sets ([params.step.<step>]);
-            # a step view shows its own value in the parameter's row.
-            if not selected_step:
-                records.append(list_record(ctx, rp, pdk))
-            continue
+            continue  # step values are listed through their parameter's row(s)
         if selected_step and not s.listed_at(selected_step, first_flow_step):
+            continue
+        if not selected_step and is_step_scoped(s):
+            # Without a step, a step-scoped parameter lists one row per declared
+            # step in the flow, keyed <step>:<param> so it can be inspected.
+            for step in s.steps:
+                if flow_steps and step not in flow_steps:
+                    continue
+                shown = record_at_step(by_key, rp, step)
+                if show_all or not s.has_direct_target or shown.is_explicit:
+                    records.append(list_record(ctx, shown, pdk, step=step, qualified=True))
             continue
         shown = record_at_step(by_key, rp, selected_step or None)
         if selected_step or show_all or not s.has_direct_target or shown.is_explicit:
