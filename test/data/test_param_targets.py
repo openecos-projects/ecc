@@ -221,6 +221,27 @@ def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative() 
     ]
 
 
+def test_carried_stored_tunables_leave_old_pdk_defaults_to_the_new_template() -> None:
+    from chipcompiler.data import get_parameters
+    from chipcompiler.params import carried_parameters
+
+    parameters = get_parameters("ics55").data
+    parameters["core"]["aspect_ratio"] = 2
+    parameters["_param_sources"] = {"floorplan.core_margin": "ecc.toml"}
+    parameters["workspace_param_overrides"] = [
+        {"key": "floorplan.core_util", "baseline": 0.4, "value": 0.4}
+    ]
+
+    carried = carried_parameters(parameters)
+
+    assert carried["core"] == {
+        "utilitization": parameters["core"]["utilitization"],
+        "margin": parameters["core"]["margin"],
+        "aspect_ratio": 2,
+    }
+    assert "frequency_max" not in carried
+
+
 def test_carried_stored_tunables_are_validated_against_the_new_pdk() -> None:
     from chipcompiler.params import invalid_carried_parameters
 
