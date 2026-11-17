@@ -181,3 +181,21 @@ def test_a_rebuild_rejects_step_values_whose_step_leaves_the_flow(
         "workspace_spec_invalid",
         {"issues": ["placement:place.target_density: step placement is not in the new flow"]},
     )
+
+
+def test_the_configuration_projection_carries_each_step_value(
+    tmp_path, minimal_ics55_pdk_factory
+) -> None:
+    workspace, _bindings = _workspace(tmp_path, minimal_ics55_pdk_factory)
+    revision = read_engineering_snapshot(workspace)["workspaceRevision"]
+
+    updated = apply_workspace_parameters(
+        workspace.directory, revision, {"placement:place.target_density": 0.71}, ()
+    )
+
+    parameters = read_engineering_snapshot(updated)["workspaceSpec"]["parameters"]
+    baseline = workspace_param_value(updated, lookup_schema("place.target_density"))
+    assert {
+        key: parameters.get(key)
+        for key in ("place.target_density", "placement:place.target_density")
+    } == {"place.target_density": baseline, "placement:place.target_density": 0.71}
