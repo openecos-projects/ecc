@@ -8,6 +8,7 @@ from chipcompiler.data.step_parameters import (
     check_parameter_step,
     is_step_scoped,
     split_step_key,
+    step_key,
 )
 from chipcompiler.data.workspace import workspace_config_paths
 from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
@@ -423,23 +424,29 @@ def read_workspace_configuration(workspace: Any, *, strict: bool = False) -> dic
 def build_workspace_configuration_projection(
     workspace: Any, *, strict: bool = False
 ) -> dict[str, Any]:
-    """Build configuration fields without reading Snapshot metadata."""
+    """Build configuration fields without reading Snapshot metadata.
+
+    A step-scoped (DreamPlace) parameter is also projected at each declared
+    step in the flow under ``<step>:<param>``, with that step's value.
+    """
+    steps = workspace.flow.steps()
+    flow_names = [str(step.get("name", "")) for step in steps if step.get("name")]
     parameters = {}
     for schema in list_schemas():
         if schema.pdk_target is not None:
             continue
-        try:
-            parameters[schema.param] = workspace_param_value(
-                workspace,
-                schema,
-                strict=strict,
-            )
-        except (OSError, ValueError, JsonReadError):
-            if strict:
-                raise
-            continue
-    steps = workspace.flow.steps()
-    flow_names = [str(step.get("name", "")) for step in steps if step.get("name")]
+        scopes = [None]
+        if is_step_scoped(schema):
+            scopes += [step for step in schema.steps if step in flow_names]
+        for scope in scopes:
+            key = schema.param if scope is None else step_key(scope, schema.param)
+            try:
+                parameters[key] = workspace_param_value(
+                    workspace, schema, step=scope, strict=strict
+                )
+            except (OSError, ValueError, JsonReadError):
+                if strict:
+                    raise
     flow = {"flowId": _flow_id(flow_names)}
     if flow_names:
         flow.update({"fromStepId": flow_names[0], "throughStepId": flow_names[-1]})
