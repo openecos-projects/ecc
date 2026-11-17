@@ -25,6 +25,12 @@ from .data.candidate_materialization import (
     validate_candidate_materialization_receipt,
 )
 from .data.candidate_registry import FLOORPLAN_TARGET_FLOW_STEP
+from .data.candidate_step_values import (
+    expected_step_config_values,
+    seed_steps,
+    store_candidate_seed,
+    verify_executed_step_configs,
+)
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .floorplan_mode import (
@@ -174,7 +180,7 @@ class FlowAgentRuntimeApi:
             if not preflight_done:
                 _preflight_candidate_steps(steps)
             prepare_floorplan_mode(candidate_workspace, request)
-            _materialize_candidate_rerun(candidate_workspace, flow, request)
+            _materialize_candidate_rerun(candidate_workspace, flow, request, steps)
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
@@ -182,6 +188,12 @@ class FlowAgentRuntimeApi:
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
             _run_candidate_steps(flow, steps, observer)
+            _verify_candidate_step_configs(
+                candidate_workspace,
+                request,
+                executed_steps=steps,
+                seed_step_names=seed_steps(steps),
+            )
             if candidate_root_ref is None or parent is None:
                 raise RuntimeApiError("command_failed", "candidate rerun identity is unavailable")
             return _candidate_rerun_result(
@@ -929,7 +941,9 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     return context
 
 
-def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
+def _materialize_candidate_rerun(
+    workspace, flow, request: CandidateRerunRequest, steps: list
+) -> None:
     _remove_stale_parameter_receipts(Path(workspace.directory))
     source_step = _candidate_source_step(flow, request.target_step)
     bind_candidate_input(
@@ -939,15 +953,13 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
         source_step,
         request.candidate_id,
     )
-    dreamplace_path = Path(workspace.config["dreamplace"])
+    # The seed is a value of each rerun step that consumes it (placement); a
+    # target after those steps (cts, routing, ...) reruns no seeded step, so
+    # their stored values stay what the parent's steps ran with.
     try:
-        dreamplace_config = json.loads(dreamplace_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid") from exc
-    if not isinstance(dreamplace_config, dict):
-        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid")
-    dreamplace_config["random_seed"] = request.seed
-    write_json_atomic(dreamplace_path, dreamplace_config)
+        store_candidate_seed(workspace, seed_steps(steps), request.seed)
+    except ValueError as exc:
+        raise RuntimeApiError("command_failed", f"candidate seed is invalid: {exc}") from exc
     if request.patch:
         materialize_candidate_config(
             workspace,
@@ -1061,6 +1073,24 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
             )
         shutil.rmtree(directory)
     directory.mkdir(parents=True, exist_ok=True)
+
+
+def _verify_candidate_step_configs(
+    workspace, request, *, executed_steps: list, seed_step_names: list[str]
+) -> None:
+    """Check each executed DreamPlace step resolved the candidate seed and knob values."""
+    try:
+        written = (
+            candidate_written_patch(workspace, request.target_step, request.patch)
+            if request.patch
+            else []
+        )
+        verify_executed_step_configs(
+            executed_steps,
+            expected_step_config_values(written, seed_step_names, request.seed),
+        )
+    except ValueError as exc:
+        raise RuntimeApiError("command_failed", str(exc)) from exc
 
 
 def _run_candidate_steps(flow, steps, observer) -> None:

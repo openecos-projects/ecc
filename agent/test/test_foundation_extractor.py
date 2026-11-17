@@ -5677,3 +5677,27 @@ def test_workspace_config_path_is_params_toml(tmp_path: Path):
     (home / "params.toml").write_text('schema_version = 4\n[params]\ndesign = "gcd"\n')
 
     assert FoundationExtractor(ws)._workspace_config_path() == home / "params.toml"
+
+
+def test_control_knobs_read_the_ledger_recorded_indexed_stage_directory(tmp_path: Path):
+    flow = {
+        "steps": [
+            {"name": "placement", "tool": "dreamplace", "directory": "04_placement_dreamplace"},
+            {"name": "cts", "tool": "ecc"},
+        ]
+    }
+    config = tmp_path / "04_placement_dreamplace" / "config" / "dreamplace_ecc.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({"random_seed": 17, "num_bins_x": 64}), encoding="utf-8")
+    extractor = FoundationExtractor(tmp_path, profile="iccd_full_v1")
+
+    stages = extractor._stage_infos(flow)
+
+    assert [(stage.name, stage.directory) for stage in stages] == [
+        ("placement", tmp_path / "04_placement_dreamplace"),
+        ("cts", tmp_path / "cts_ecc"),
+    ]
+    assert extractor._collect_control_knobs(stages) == {
+        "source": "effective_tool_flow_configs",
+        "dreamplace": {"num_bins_x": 64, "random_seed": 17},
+    }

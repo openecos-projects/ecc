@@ -1,4 +1,9 @@
-"""Controlled, replayable config overlays for isolated ECC candidate workspaces."""
+"""Controlled, replayable config overlays for isolated ECC candidate workspaces.
+
+A DreamPlace knob is stored as a value of its target step in the parameter
+store (``home/params.toml``), never in the shared DreamPlace baseline; its
+receipt therefore snapshots ``params.toml``.
+"""
 
 import math
 import re
@@ -23,6 +28,12 @@ from .candidate_registry import (
     candidate_knob_registry,
     candidate_registry_digest,
     candidate_target_backend,
+)
+from .candidate_step_values import (
+    is_step_value_knob,
+    knob_step_parameter,
+    knob_store_key,
+    knob_store_value,
 )
 
 MATERIALIZATION_SCHEMA = "ecc.workspace.candidate_materialization.v1"
@@ -204,6 +215,11 @@ def _resolve_knobs(
                 f"knob {knob.knob_id} is not valid for target step {target_step}"
             )
         _validate_value(knob, item["value"], workspace)
+        if is_step_value_knob(knob):
+            try:
+                knob_step_parameter(knob)
+            except ValueError as error:
+                raise CandidateMaterializationError(str(error)) from error
         knobs.append(knob)
     return knobs
 
@@ -359,21 +375,22 @@ def _load_configs(
     config_paths: dict[str, Path] = {}
     before_hashes: dict[str, str] = {}
     for knob in knobs:
-        if knob.config_key in configs:
+        config_key = knob_store_key(knob)
+        if config_key in configs:
             continue
-        path = _config_path(workspace, knob.config_key)
-        config_paths[knob.config_key] = path
+        path = _config_path(workspace, config_key)
+        config_paths[config_key] = path
         try:
-            if knob.config_key == "parameters":
-                configs[knob.config_key] = _load_parameters_config(path)
+            if config_key == "parameters":
+                configs[config_key] = _load_parameters_config(path)
             else:
-                configs[knob.config_key] = read_json_object(path, "candidate base config")
+                configs[config_key] = read_json_object(path, "candidate base config")
         except ValueError as error:
             raise CandidateMaterializationError(str(error)) from error
         before = sha256_path(path)
         if before is None:
             raise CandidateMaterializationError(f"missing candidate base config: {path}")
-        before_hashes[knob.config_key] = before
+        before_hashes[config_key] = before
     return configs, config_paths, before_hashes
 
 
@@ -400,8 +417,18 @@ def _apply_patch(
     knobs: list[CandidateKnob],
     patch: list[dict[str, Any]],
 ) -> None:
+    from chipcompiler.data.step_parameters import set_step_value
+
     values = {item["knob_id"]: item["value"] for item in patch}
     for knob in knobs:
+        if is_step_value_knob(knob):
+            set_step_value(
+                configs[knob_store_key(knob)],
+                knob.target_step,
+                knob_step_parameter(knob).param,
+                knob_store_value(knob, values[knob.knob_id]),
+            )
+            continue
         current = configs[knob.config_key]
         for key in knob.json_path[:-1]:
             child = current.get(key)
@@ -598,7 +625,7 @@ def _validate_receipt_binding(
     knobs = _resolve_knobs(target_step, receipt["patch"], workspace)
     configs = _entries_by_config_key(receipt["configs"], "config")
     snapshots = _entries_by_config_key(receipt["snapshots"], "snapshot")
-    expected_keys = {knob.config_key for knob in knobs}
+    expected_keys = {knob_store_key(knob) for knob in knobs}
     if set(configs) != expected_keys or set(snapshots) != expected_keys:
         raise CandidateMaterializationError(
             "candidate materialization configs and snapshots are incomplete"
