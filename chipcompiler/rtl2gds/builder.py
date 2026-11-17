@@ -265,6 +265,10 @@ def normalize_flow_step(value: str | StepBaseEnum) -> str:
     token = str(value or "").strip()
     if not token:
         return ""
+    kind, mark, after = token.partition(INSERTED_STEP_MARK)
+    if mark:
+        # An inserted step (``LEC@CTS``) resolves each side: ``lec@cts``.
+        return inserted_step_name(normalize_flow_step(kind), normalize_flow_step(after))
     alias_key = token.lower().replace("_", "").replace("-", "").replace(" ", "")
     aliases = {
         "synth": StepEnum.SYNTHESIS.value,

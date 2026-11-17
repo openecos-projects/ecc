@@ -454,7 +454,7 @@ and the persisted flow determine execution.
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
 | `cts.max_fanout` | int; current range 1–200 | Clock-tree structure | CTS; may also affect generated SDC, so inspect invalidation |
 | `cts.routing_layer`, `cts.buffer_type` | JSON lists | Supported clock layers/buffer cells | CTS |
-| `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | Timing optimization |
+| `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | timing_optimization |
 | `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | May affect placement routing proxies and Sizer; inspect invalidation |
 | `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macro_placement |
 
@@ -967,8 +967,8 @@ verify inputs, parameters, successful states, and complete artifacts.
 The usual early rtl2gds sequence is:
 
 ```text
-Synthesis → lec@synthesis (when [flow] insert_steps inserts it) → pre_floorplan → macro_placement
-→ post_floorplan → place → CTS → legalization → Timing optimization → route → …
+synthesis → lec@synthesis (when [flow] insert_steps inserts it) → pre_floorplan → macro_placement
+→ post_floorplan → placement → cts → legalization → timing_optimization → routing → …
 ```
 
 Start by covering through place. Execute CTS/legalization only for a shortlist.
@@ -980,8 +980,8 @@ If hold is a real bottleneck, then explore the existing Sizer's
 | pre_floorplan / post_floorplan | `floorplan.core_util`, `floorplan.aspect_ratio`; core_margin/supported die_size when needed | Outline, area, actual core utilization, available capacity, macro/channel/PDN evidence | Reuse fixed synthesis; rerun floorplan and later stages |
 | macro_placement | Public `macro.placements` / macro commands; legal coordinates/orientations | Macro legality, channels, pin access, later routability | Reuse only the unchanged prefix before macro placement |
 | place | `place.target_density`, `place.cell_padding_x`, `place.routability_opt_flag` | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid post_floorplan; rerun place and later stages |
-| CTS / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
-| Timing optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
+| cts / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
+| timing_optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
 
 Do not explore every variable in round one. Hold macros/CTS fixed and find a feasible
 region with one floorplan and one placement variable. In macro designs, resolve
@@ -1013,7 +1013,7 @@ explanations. Coverage varies by version, design, and tools.
 | place | `place_congestion_egr_overflow_total/max`, `place_rudy_utilization_max`, `place_lutrudy_utilization_max` | Congestion proxies; interpret hotspots/layers/net population, not routed DRC |
 | CTS | `cts_buffer_count`, `cts_buffer_area`, `clock_wirelength`, `clock_path_max_buffer` | Clock-tree cost/structure proxies, not full clock power |
 | CTS | `cts_worst_optimized_skew_ns`, `cts_worst_max_insertion_latency_ns`, `cts_skew_target_unmet_count`, `cts_clock_tree_max_level` | Current CTS timing_quality evidence, not final setup/hold across all corners |
-| legalization / Timing optimization | Actual feature/analysis/checklist results from this run | Unreported legality or intermediate STA cannot be marked passed |
+| legalization / timing_optimization | Actual feature/analysis/checklist results from this run | Unreported legality or intermediate STA cannot be marked passed |
 
 Early stages generally lack final power, multi-corner setup/hold, RC, and routed
 DRC/LVS evidence. Record proxies only when tools actually provide them and identify
@@ -1199,8 +1199,8 @@ parameters. New-project defaults are not the baseline.
 | --- | --- | --- |
 | synthesis | `design.rtl` | Fixed RTL; synthesis still runs |
 | pre_floorplan | `design.netlist` | Verified synthesized netlist; skip synthesis |
-| macro_placement / post_floorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
-| CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
+| macro_placement / post_floorplan / preplace / placement / diff_sizing | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
+| cts / legalization / timing_optimization / routing / filler / lvs / drc / harden | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
 | sta | Both above + `design.spef` | Real RCX and matching design; early placement is not equivalent |
 | antenna_check / power_analysis / emir | No entry-input contract | Start from an earlier validated checkpoint; these steps rely on chained upstream artifacts |
 

@@ -1,6 +1,6 @@
-# ECC CLI 入门教程：从零跑通 RTL → Harden 并产出签核包
+# ECC CLI 入门教程：从零跑通 RTL → harden 并产出签核包
 
-本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → Harden** 全流程，最终拿到：
+本教程面向第一次接触 ECC 的用户：从一台只有 Linux 系统的机器开始，安装 `ecc` 命令行工具，把一个 Verilog RTL 设计（[gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v)，最大公约数计算单元）一路跑完 **综合 → 布局布线 → 物理验证 → 逻辑等价性检查（LEC）→ 时序签核 → harden** 全流程，最终拿到：
 
 - **Harden 交付物**：GDS 版图、抽象 LEF、时序 LIB；
 - **签核包** `gcd_signoff_package.tar.gz`（含 RTL/配置/交付物/LEC 证明/报告等）；
@@ -261,7 +261,7 @@ rc=0
 
 `ecc check` 校验配置必填项与 PDK 内容（tech LEF / LEF / liberty）；RTL 源文件的存在性由 `ecc run` 在创建 workspace 时按入口步骤校验。**先 check 再 run**——配置错误在这里就能发现，不必等到 flow 中途失败。
 
-## 4. 运行 RTL → Harden 全流程
+## 4. 运行 RTL → harden 全流程
 
 ### 4.1 启动
 

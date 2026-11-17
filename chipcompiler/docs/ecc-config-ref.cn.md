@@ -66,7 +66,7 @@ graph LR
 | 来源 | 决定的内容 | 举例 |
 |---|---|---|
 | 模板默认值 | 算法类参数的出厂值 | CTS `skew_bound=0.08` |
-| 用户参数 | 旧语义参数 + 全部已审核静态工具字段 | `floorplan.core_util` → `die_util.utilization`；`cts.skew_bound` → CTS JSON |
+| 用户参数 | 旧语义参数 + 全部已审核静态工具字段 | `floorplan.core_util` → `die_util.utilization`；`cts.skew_bound` → cts JSON |
 | PDK | 工艺相关单元与库 | `buffer_type` ← PDK buffers 列表；STA liberty corners |
 | 步骤调度 | 输入/输出路径（链式传递） | `db_ecc.json` 的 `def_path` 每步指向上一步输出 |
 
@@ -337,7 +337,7 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 
 ## 4. floorplan（ecc-tools）
 
-配置 `floorplan_ecc.json` 由 `pre_floorplan` 和 `post_floorplan` 共享。`pre_floorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macro_placement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`post_floorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
+配置 `floorplan_ecc.json` 由 `pre_floorplan` 和 `post_floorplan` 共享。`pre_floorplan` 在配置了 `clock` 时先标记时钟网络，再派生 `floorplan_ecc_simple.json`（`macro_placer.file_path` 为空），然后执行 load data → init simple floorplan → save data。`macro_placement` 执行仅宏单元摆放，并通过 `tcl_save` 写入 `config/macro_location.tcl` 形成交接检查点（设置了 `macro.placements` 参数时跳过 DreamPlace，交接文件改由配置刷新渲染，见 §1.5）。`post_floorplan` 令 `macro_placer.file_path` 指向该文件，再执行 load data → init/run floorplan → create tracks → placement IO pins → tap cells → PDN → save data → analysis。ECC 只用 `file_path` 指定宏位置来源，刷新旧配置时会移除 `macro_placer.mode`；iFP 对旧 `auto`/`file` 值的兼容不影响该规则，IO placer 的模式不变。
 
 ### ifp（iFP 布图引擎）
 
@@ -498,7 +498,7 @@ skip_steps = []  # 开启 diff_opt；默认值为 ["diff_opt"]
 
 - 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 与 workspace 创建都会拒绝，
   修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `timing_optimization` 时报
-  `route requires legal; enable Timing optimization or legalization`）。
+  `routing requires legal; enable timing_optimization or legalization`）。
 - 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告。跳过 `cts` 时警告
   `route runs with degraded results without clock_tree; enable CTS`（`sta`、`power_analysis`、
   `harden` 同理）；跳过 CTS 后的布线与 STA 使用 CTS 之前的（理想时钟）时序约束。
@@ -819,7 +819,7 @@ FF hold pass 只使用 `sta_ecc.json` 的 `MIN` Liberty 组，用于在 setup si
 
 ## 7. cts（ecc-tools）
 
-配置 `cts_ecc.json`。子阶段：load data → run CTS → save data → analysis。
+配置 `cts_ecc.json`。子阶段：load data → run cts → save data → analysis。
 
 | 参数 | 模板默认 | 示例（gcd） | 含义 |
 |---|---|---|---|

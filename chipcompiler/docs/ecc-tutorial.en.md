@@ -1,6 +1,6 @@
-# ECC CLI Tutorial: From Zero to RTL → Harden with a Signoff Package
+# ECC CLI Tutorial: From Zero to RTL → harden with a Signoff Package
 
-This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → place & route → physical verification → logic equivalence check (LEC) → timing signoff → Harden** flow, ending up with:
+This tutorial is for first-time ECC users: starting from a bare Linux machine, install the `ecc` command-line tool and drive a Verilog RTL design ([gcd](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/gcd.v), a greatest-common-divisor unit) through the full **synthesis → placement & routing → physical verification → logic equivalence check (LEC) → timing signoff → harden** flow, ending up with:
 
 - **Harden deliverables**: GDS layout, abstract LEF, and timing LIB;
 - A **signoff package** `gcd_signoff_package.tar.gz` (RTL / configs / deliverables / LEC proof / reports);
@@ -262,7 +262,7 @@ rc=0
 
 `ecc check` validates required config fields and PDK contents (tech LEF / LEF / liberty); RTL source existence is checked by `ecc run` per the entry step when it creates the workspace. **Always check before run** — config mistakes surface here instead of failing the flow halfway through.
 
-## 4. Running the RTL → Harden Flow
+## 4. Running the RTL → harden Flow
 
 ### 4.1 Start
 

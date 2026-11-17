@@ -1095,7 +1095,7 @@ data, and what it provides:
 - An enabled step that lacks required design data is a config error: `ecc check`, `ecc run`,
   and workspace creation reject it, and the fix hint names the disabled steps to re-enable
   (skipping `legalization` and `timing_optimization` gives
-  `route requires legal; enable Timing optimization or legalization`).
+  `routing requires legal; enable timing_optimization or legalization`).
 - A step that lacks only optional data runs with degraded results and is reported as a
   `flow_step_degraded` warning (skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS`, likewise for sta,
@@ -1122,7 +1122,7 @@ final layout. Repeated buffering does not need extra steps: `diff_opt` alternate
 buffering rounds itself (`place.diff_optimization_flows`).
 
 - An entry is `lec@STEP` and accepts the step aliases (`lec@timing_opt`). The inserted step is
-  named `lec@<step>`, spaces written as underscores (`lec@timing_optimization`); use that name
+  named `lec@<step>` (`lec@timing_optimization`); use that name
   with `ecc run --only`/`--from` and `ecc log`.
 - `lec@synthesis` checks synthesis: it compares the RTL Synthesis read (its filelist, else its
   RTL file) with the synthesized netlist. kepler-formal reads RTL only for sequential

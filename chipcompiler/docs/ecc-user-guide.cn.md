@@ -1104,7 +1104,7 @@ $ ecc flow list --json
 
 - 启用的步骤缺少必需的设计数据属于配置错误：`ecc check`、`ecc run` 和 workspace 创建都会拒绝，
   修复提示会列出需重新启用的被跳过步骤（同时跳过 `legalization` 与 `timing_optimization` 时报
-  `route requires legal; enable Timing optimization or legalization`）。
+  `routing requires legal; enable timing_optimization or legalization`）。
 - 步骤只缺少可选数据时以降级结果运行，并报 `flow_step_degraded` 警告（跳过 `cts` 时警告
   `route runs with degraded results without clock_tree; enable CTS`，sta、power_analysis、Harden
   同理；此后的布线/STA 使用 CTS 之前的理想时钟时序约束）。
@@ -1125,8 +1125,8 @@ $ ecc flow list --json
 `cts`、`legalization`、`timing_optimization`、`routing`）；`filler` 之后已有 `post_route_lec`。其他步骤都不能插入：构建设计的步骤各运行一次，签核分析需要最终版图。重复插 buffer
 不需要额外的步骤：`diff_opt` 自身会交替进行 sizing 与 buffering 轮次（`place.diff_optimization_flows`）。
 
-- 每一项写作 `lec@STEP`，接受步骤别名（`lec@timing_opt`）。插入的步骤命名为 `lec@<step>`，空格写成
-  下划线（`lec@timing_optimization`）；`ecc run --only`/`--from` 和 `ecc log` 使用这个名字。
+- 每一项写作 `lec@STEP`，接受步骤别名（`lec@timing_opt`）。插入的步骤命名为 `lec@<step>`
+  （`lec@timing_optimization`）；`ecc run --only`/`--from` 和 `ecc log` 使用这个名字。
 - `lec@synthesis` 检查综合本身：把 Synthesis 读取的 RTL（其 filelist，否则其 RTL 文件）与综合后的
   网表比较。kepler-formal 只在时序等价检查中读取 RTL，因此该检查以 SEC 模式运行（`format: sv2v`、
   `verification: sec`），不施加复位序列，并像 Synthesis 一样定义 `SYNTHESIS`。修改 RTL 或其读取的任何文件
@@ -2128,7 +2128,7 @@ ecc report project --project /path/to/project --plain
 | LVS | schema-v3 metrics 的 lvs_count | 单个明确非负整数 count |
 | STA | setup/hold violation count | 分项保留，不跨 corner 相加，不给混合总数 |
 | post_route_lec | 已有 result.json 的 proven 状态 | proven_saved；不验证 netlist 内容，数量和当前 has_violations 均为 null |
-| RCX / power_analysis / 自定义 checker | 执行状态 | 无通用违例计数则 not_applicable，count=null |
+| rcx / power_analysis / 自定义 checker | 执行状态 | 无通用违例计数则 not_applicable，count=null |
 
 计数必须与 step/tool、success 状态和 count 单位匹配；布尔、负数、分数、非有限数、
 重复/缺失候选或明确无效的 metric selector 不会变成零。STA 缺少一项时，已知非零

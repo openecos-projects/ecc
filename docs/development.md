@@ -119,7 +119,7 @@ uv run prek install --config .pre-commit-config.yaml --hook-type pre-commit --ho
 ## Testing
 
 The default timing optimization flow after placement is
-`place → diff_sizing → CTS → legalization → Timing optimization → route`.
+`placement → diff_sizing → cts → legalization → timing_optimization → routing`.
 Set `[flow] skip_steps = []` to insert the optional `diff_opt` step
 between `placement` and `diff_sizing`. It runs the placement-parasitic discrete sizing/buffering controller,
 The controller's ordered mode/flow tuple configuration is documented in
@@ -758,8 +758,8 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### Skippable Flow Steps
 
-The default post-route sequence is `route → filler → lvs → drc → antenna_check
-→ post_route_lec → RCX → sta → power_analysis → emir → Harden`. LVS, DRC and the
+The default post-route sequence is `routing → filler → lvs → drc → antenna_check
+→ post_route_lec → rcx → sta → power_analysis → emir → harden`. LVS, DRC and the
 antenna checker check the filled layout before post-route equivalence checking;
 RCX then provides the parasitics for
 timing and power analysis. LEC, antenna_check and emir do not supply physical artifacts to later steps.
@@ -830,12 +830,12 @@ An explicit `skip_steps = []` runs every step, `diff_opt` included.
 Entries accept the same aliases as flow ranges (e.g. `postlec`, `synth`,
 `cts`, `TimingOpt`) and are validated against the steps of the chain;
 unknown names are rejected. `lec` is no chain step any more: `resolve_skip_steps`
-drops it, so existing files that list it keep loading. project.json and the
-GUI still treat `LEC` as a skippable range step, so
-`manifest_flow.manifest_synthesis_lec` turns a workspace entry whose declared
-policy keeps `LEC` into the insertion `lec@synthesis`, and a range bounded by
-`LEC` is bounded by Synthesis plus that insertion (`manifest_flow.entry_flow_config`;
-`manifest.manifest_step_name` maps `lec@synthesis` back to `LEC`).
+drops it, so existing files that list it keep loading. A project.json skip
+policy may still name `lec`: `manifest_flow.manifest_synthesis_lec` turns a
+workspace entry whose declared policy keeps `lec` into the insertion
+`lec@synthesis`. A project.json range uses flow step names and may be bounded
+by an inserted step; a range bounded by `lec@synthesis` is bounded by
+`synthesis` plus that insertion (`manifest_flow.entry_flow_config`).
 
 Whether a selection can run is decided by step capabilities — each step's
 required design data, optional design data, and what it provides
@@ -846,7 +846,7 @@ required design data, optional design data, and what it provides
   `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
   naming the disabled steps to re-enable, e.g. skipping `legalization` and
   `timing_optimization` gives
-  `route requires legal; enable Timing optimization or legalization`.
+  `routing requires legal; enable timing_optimization or legalization`.
 - A step that lacks only optional data runs with degraded results and is
   reported as a `flow_step_degraded` warning, e.g. skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS` (likewise

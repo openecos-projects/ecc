@@ -372,6 +372,12 @@ class TestLogListingMode:
         assert rc == 0
         assert plain_records(capsys.readouterr().out)[0]["line"] == "post-route equivalence"
 
+        # An inserted step selector resolves case-insensitively on both sides.
+        rc = cli_main.run(["log", "LEC@CTS", "--plain", "--project", project_dir])
+
+        assert rc == 0
+        assert plain_records(capsys.readouterr().out)[0]["line"] == "clock-tree equivalence"
+
     def test_listing_no_logs_returns_no_log_status(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")

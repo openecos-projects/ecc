@@ -6,7 +6,7 @@ Welcome to the ChipCompiler documentation center.
 
 The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
 
-- **[CLI Tutorial](../chipcompiler/docs/ecc-tutorial.en.md)** / **[中文教程](../chipcompiler/docs/ecc-tutorial.cn.md)** - From zero to RTL → Harden with a signoff package
+- **[CLI Tutorial](../chipcompiler/docs/ecc-tutorial.en.md)** / **[中文教程](../chipcompiler/docs/ecc-tutorial.cn.md)** - From zero to RTL → harden with a signoff package
   - Installing the ecc CLI, PDK, and Yosys
   - First project, the 22-step `rtl2gds` flow (plus the synthesis check inserted as `lec@synthesis`), signoff package, and reports
   - Tuning parameters, workspaces, and rerun scenarios

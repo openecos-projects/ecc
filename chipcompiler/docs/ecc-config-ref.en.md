@@ -67,7 +67,7 @@ graph LR
 | Source | What it determines | Example |
 |---|---|---|
 | Template defaults | Factory values of algorithm parameters | CTS `skew_bound=0.08` |
-| User parameters | Legacy-semantic params + all reviewed static tool fields | `floorplan.core_util` → `die_util.utilization`; `cts.skew_bound` → CTS JSON |
+| User parameters | Legacy-semantic params + all reviewed static tool fields | `floorplan.core_util` → `die_util.utilization`; `cts.skew_bound` → cts JSON |
 | PDK | Process-specific cells and libraries | `buffer_type` ← PDK buffers list; STA liberty corners |
 | Step scheduling | Input/output paths (chained between steps) | `db_ecc.json`'s `def_path` points to the previous step's output at every step |
 
@@ -341,7 +341,7 @@ There is also the environment variable `YOSYS_SYNTH_STRATEGY` (e.g. `DELAY 4` / 
 
 ## 4. floorplan (ecc-tools)
 
-Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `post_floorplan` steps. `pre_floorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macro_placement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `post_floorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → place IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
+Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `post_floorplan` steps. `pre_floorplan` marks the `clock` net when configured, derives `floorplan_ecc_simple.json` with an empty `macro_placer.file_path`, then runs load data → init simple floorplan → save data. `macro_placement` runs macro-only placement, writes `config/macro_location.tcl` through `tcl_save`, and forms the handoff checkpoint (when the `macro.placements` parameter is set, DreamPlace is skipped and the handoff is rendered during config refresh, see §1.5). `post_floorplan` sets `macro_placer.file_path` to that path, then runs load data → init/run floorplan → create tracks → placement IO pins → tap cells → PDN → save data → analysis. ECC uses only `file_path` to select the macro-location source and removes legacy `macro_placer.mode` when refreshing older configs. iFP's compatibility support for old `auto`/`file` values does not change that rule; IO placer modes are unchanged.
 
 ### ifp (the iFP floorplan engine)
 
@@ -515,7 +515,7 @@ provides:
   `ecc check`, `ecc run`, and workspace creation reject it, with a fix hint
   naming the disabled steps to re-enable (skipping `legalization` and
   `timing_optimization` gives
-  `route requires legal; enable Timing optimization or legalization`).
+  `routing requires legal; enable timing_optimization or legalization`).
 - A step that lacks only optional data runs with degraded results and is
   reported as a `flow_step_degraded` warning. Skipping `cts` warns
   `route runs with degraded results without clock_tree; enable CTS` (likewise
@@ -884,7 +884,7 @@ The runtime root must contain `src/sizer_os.tcl`; ECC discovers it from `CHIPCOM
 
 ## 7. cts (ecc-tools)
 
-Configuration file `cts_ecc.json`. Sub-phases: load data → run CTS → save data → analysis.
+Configuration file `cts_ecc.json`. Sub-phases: load data → run cts → save data → analysis.
 
 | Parameter | Template default | Example (gcd) | Meaning |
 |---|---|---|---|

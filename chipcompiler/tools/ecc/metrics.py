@@ -2150,18 +2150,18 @@ def _metric_feature_source(
     }:
         feature_path = getattr(step.feature, "step", None)
         selector = {
-            "clock_path_max_buffer": "/CTS/clock_path_max_buffer",
-            "clock_path_min_buffer": "/CTS/clock_path_min_buffer",
-            "cts_buffer_count": "/CTS/buffer_num",
-            "cts_buffer_area": "/CTS/buffer_area",
-            "clock_wirelength": "/CTS/total_clock_wirelength",
-            "cts_clock_wirelength_max": "/CTS/max_clock_wirelength",
-            "cts_clock_tree_max_level": "/CTS/max_level_of_clock_tree",
-            "cts_worst_optimized_skew_ns": ("/CTS/timing_quality/worst_optimized_skew_ns"),
+            "clock_path_max_buffer": "/cts/clock_path_max_buffer",
+            "clock_path_min_buffer": "/cts/clock_path_min_buffer",
+            "cts_buffer_count": "/cts/buffer_num",
+            "cts_buffer_area": "/cts/buffer_area",
+            "clock_wirelength": "/cts/total_clock_wirelength",
+            "cts_clock_wirelength_max": "/cts/max_clock_wirelength",
+            "cts_clock_tree_max_level": "/cts/max_level_of_clock_tree",
+            "cts_worst_optimized_skew_ns": ("/cts/timing_quality/worst_optimized_skew_ns"),
             "cts_worst_max_insertion_latency_ns": (
-                "/CTS/timing_quality/worst_max_insertion_latency_ns"
+                "/cts/timing_quality/worst_max_insertion_latency_ns"
             ),
-            "cts_skew_target_unmet_count": ("/CTS/timing_quality/target_unmet_count"),
+            "cts_skew_target_unmet_count": ("/cts/timing_quality/target_unmet_count"),
         }.get(metric_id, "")
     elif metric_id in {"route_wirelength", "route_via_count"}:
         feature_path = getattr(step.feature, "db", None)
@@ -2173,12 +2173,12 @@ def _metric_feature_source(
         feature_path = getattr(step.feature, "step", None)
         selector = {
             "drc_count": "/drc/number",
-            "route_dr_total_violation_count": "/route/DR",
-            "route_dr_total_patch_count": "/route/DR",
-            "route_dr_total_wirelength": "/route/DR",
-            "route_dr_total_via_count": "/route/DR",
-            "route_la_total_overflow": "/route/LA",
-            "route_la_total_demand": "/route/LA",
+            "route_dr_total_violation_count": "/routing/DR",
+            "route_dr_total_patch_count": "/routing/DR",
+            "route_dr_total_wirelength": "/routing/DR",
+            "route_dr_total_via_count": "/routing/DR",
+            "route_la_total_overflow": "/routing/LA",
+            "route_la_total_demand": "/routing/LA",
         }.get(metric_id, "")
     elif metric_id == "lvs_count":
         feature_path = getattr(step.feature, "step", None)
@@ -2275,7 +2275,7 @@ def _qor_detail_records(step: WorkspaceStep, step_metrics: StepMetrics) -> list[
                     "kind": "feature",
                     "path": source_path,
                     "selector": (
-                        "/CTS/timing_quality"
+                        "/cts/timing_quality"
                         if detail_id == "cts_clock_skew_metrics"
                         else "/rcx/signoff_metrics"
                         if detail_id == "rcx_electrical_corner_metrics"

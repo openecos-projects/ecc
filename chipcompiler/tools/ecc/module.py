@@ -943,8 +943,11 @@ class ECCToolsModule:
         analysis_mode = analysis_mode.lower()
         if not design_name:
             design_name = output_lib_path.stem
-            if design_name.endswith("_Harden"):
-                design_name = design_name[: -len("_Harden")]
+            from chipcompiler.data import StepEnum
+
+            harden_suffix = f"_{StepEnum.HARDEN.value}"
+            if design_name.endswith(harden_suffix):
+                design_name = design_name[: -len(harden_suffix)]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
         if not self.ecc.lib_init(lib_paths=lib_paths):

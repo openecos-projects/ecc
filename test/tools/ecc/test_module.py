@@ -998,6 +998,18 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         record["id"]: record
         for record in json.loads(step.analysis.qor_metrics.read_text(encoding="utf-8"))["metrics"]
     }
+    # Every feature selector resolves in the payload ecc-tools wrote.
+    feature = json.loads(step.feature.step.read_text(encoding="utf-8"))
+    selectors = [
+        record["source"]["selector"]
+        for record in records.values()
+        if (record.get("source") or {}).get("kind") == "feature"
+    ]
+    assert selectors
+    for selector in selectors:
+        node = feature
+        for part in selector.strip("/").split("/"):
+            node = node[part]
     assert records["cts_clock_wirelength_max"]["value"] == 97514
     assert records["cts_clock_tree_max_level"]["value"] == 2
     assert records["cts_worst_optimized_skew_ns"] == {
@@ -1017,7 +1029,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "source": {
             "kind": "feature",
             "path": "feature/cts.step.json",
-            "selector": "/CTS/timing_quality/worst_optimized_skew_ns",
+            "selector": "/cts/timing_quality/worst_optimized_skew_ns",
         },
     }
     assert records["cts_worst_max_insertion_latency_ns"] == {
@@ -1037,7 +1049,7 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "source": {
             "kind": "feature",
             "path": "feature/cts.step.json",
-            "selector": "/CTS/timing_quality/worst_max_insertion_latency_ns",
+            "selector": "/cts/timing_quality/worst_max_insertion_latency_ns",
         },
     }
     details = {
@@ -1057,18 +1069,18 @@ def test_ecc_metrics_extract_cts_extended_qor_metrics(tmp_path):
         "feature_source": {
             "kind": "feature",
             "path": "feature/cts.step.json",
-            "selector": "/CTS/timing_quality",
+            "selector": "/cts/timing_quality",
         },
     }
     assert records["clock_path_max_buffer"]["source"] == {
         "kind": "feature",
         "path": "feature/cts.step.json",
-        "selector": "/CTS/clock_path_max_buffer",
+        "selector": "/cts/clock_path_max_buffer",
     }
     assert records["clock_path_min_buffer"]["source"] == {
         "kind": "feature",
         "path": "feature/cts.step.json",
-        "selector": "/CTS/clock_path_min_buffer",
+        "selector": "/cts/clock_path_min_buffer",
     }
 
 
@@ -1315,7 +1327,7 @@ def test_ecc_metrics_extract_route_step_qor_metrics(tmp_path):
         "source": {
             "kind": "feature",
             "path": "feature/routing.step.json",
-            "selector": "/route/LA",
+            "selector": "/routing/LA",
         },
         "description": "Route layer assignment overflow is present.",
     }
@@ -2575,3 +2587,18 @@ def test_ecc_builder_uses_mj_directory_for_filler(tmp_path):
     )
 
     assert step.data.steps[StepEnum.FILLER.value] == tmp_path / "filler_ecc" / "data" / "mj"
+
+
+def test_timing_model_infers_the_design_from_the_harden_output_name(tmp_path):
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+    timing_work_dir = tmp_path / "sta"
+    # A second characterization output makes the single-candidate fallback ambiguous.
+    other = timing_work_dir / "timing_characterizer" / "other_max.lib"
+    other.parent.mkdir(parents=True)
+    other.write_text("library (other_max) {}\n", encoding="utf-8")
+    timing_output = tmp_path / "output" / "gcd_harden.lib"
+
+    module.write_timing_model(timing_output, output_dir=timing_work_dir)
+
+    assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents

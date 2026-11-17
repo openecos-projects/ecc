@@ -390,7 +390,7 @@ workspace param 修改输出的 `from_step/invalidated_steps` 及持久化 flow 
 | `cts.skew_bound` | 当前 schema 为 str，物理量 ns | CTS skew/面积/功耗折中 | CTS |
 | `cts.max_fanout` | int，当前范围 1–200 | 时钟树结构 | CTS；还可能影响自动 SDC，需要看 invalidation |
 | `cts.routing_layer`、`cts.buffer_type` | JSON 列表 | 工艺允许的时钟层与缓冲单元 | CTS |
-| `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | Timing optimization |
+| `timing_opt.hold_margin` | float，当前默认 0.04 ns；工具拒绝负值 | Sizer hold-only 预留裕量 | timing_optimization |
 | `route.bottom_layer`、`route.top_layer` | 工艺层字符串 | 路由容量、RC、via/线长 | 可能影响布局路由代理和 Sizer；以 invalidation 为准 |
 | `macro.placements` / `ecc macro` | 合法宏位置/方向 | 宏通道和关键线长 | macro_placement |
 
@@ -844,8 +844,8 @@ fork 也不会证明保留前缀的有效性，调用者仍需核对输入、参
 rtl2gds 的前段常见链路是：
 
 ```text
-Synthesis → lec@synthesis（由 [flow] insert_steps 插入时）→ pre_floorplan → macro_placement
-→ post_floorplan → place → CTS → legalization → Timing optimization → route → …
+synthesis → lec@synthesis（由 [flow] insert_steps 插入时）→ pre_floorplan → macro_placement
+→ post_floorplan → placement → cts → legalization → timing_optimization → routing → …
 ```
 
 建议先覆盖到 place，随后只给短名单执行 CTS/legalization；如 hold 确实是瓶颈，
@@ -856,8 +856,8 @@ Synthesis → lec@synthesis（由 [flow] insert_steps 插入时）→ pre_floorp
 | pre_floorplan / post_floorplan | `floorplan.core_util`、`floorplan.aspect_ratio`；必要时 core_margin / 已支持 die_size | die 外形、面积、有效 core utilization、可用放置空间；宏/通道/PDN 证据 | 可复用固定综合；floorplan 及之后重跑 |
 | macro_placement | 已公开的 `macro.placements` / macro 命令；合法方向与坐标 | 宏合法性、通道、pin 可达性及后续可布性 | 只能复用宏摆放之前未变更的前缀 |
 | place | `place.target_density`、`place.cell_padding_x`、`place.routability_opt_flag` | HPWL、GRWL、EGR overflow、RUDY；收敛、产物与相关 checklist | 可复用同一候选有效的 post_floorplan；place 及之后重跑 |
-| CTS / legalization | `cts.skew_bound`；有明确证据再加入 max_fanout、buffer_type、routing_layer | skew、clock wirelength、buffer count/area、时钟树深度、合法化结果 | 可复用有效 placement，但以 param 实际失效范围为准 |
-| Timing optimization | `timing_opt.hold_margin` | 当前 hold pass 的真实输出、插入代价；后续 setup/hold 风险 | 复用未失效的前缀；完整 RCX/STA 最后验证 |
+| cts / legalization | `cts.skew_bound`；有明确证据再加入 max_fanout、buffer_type、routing_layer | skew、clock wirelength、buffer count/area、时钟树深度、合法化结果 | 可复用有效 placement，但以 param 实际失效范围为准 |
+| timing_optimization | `timing_opt.hold_margin` | 当前 hold pass 的真实输出、插入代价；后续 setup/hold 风险 | 复用未失效的前缀；完整 RCX/STA 最后验证 |
 
 不要第一轮同时探索以上所有变量。先固定宏和 CTS，用一个 floorplan 变量与一个 placement
 变量找到可行区；含宏设计则先处理宏/通道，再调标准单元密度。GCD 没有对应硬宏搜索收益时
@@ -883,7 +883,7 @@ report 的有效值、来源、单位和缺失说明。不同版本/设计/工�
 | place | `place_congestion_egr_overflow_total/max`、`place_rudy_utilization_max`、`place_lutrudy_utilization_max` | 拥塞代理；需结合热点、图层和网络群体，不替代 routed DRC |
 | CTS | `cts_buffer_count`、`cts_buffer_area`、`clock_wirelength`、`clock_path_max_buffer` | 时钟树代价与结构代理，不等于完整时钟功耗 |
 | CTS | `cts_worst_optimized_skew_ns`、`cts_worst_max_insertion_latency_ns`、`cts_skew_target_unmet_count`、`cts_clock_tree_max_level` | 当前 CTS timing_quality 证据；不等于最终全部 corners 的 setup/hold |
-| legalization / Timing optimization | 当前运行实际 feature/analysis/checklist 提供的结果 | 没有报告的合法性或中间 STA 不能自动记为通过 |
+| legalization / timing_optimization | 当前运行实际 feature/analysis/checklist 提供的结果 | 没有报告的合法性或中间 STA 不能自动记为通过 |
 
 power、最终多 corner setup/hold、RC、route DRC/LVS 在前段一般没有最终证据。
 只在工具确实提供相应结果时记录其代理值，并标注估算阶段/模型。当前无需接入新 EDA 工具，
@@ -1039,8 +1039,8 @@ PDK/资源/override、SDC 及完整固定参数；这里不把新项目的默认
 | --- | --- | --- |
 | synthesis | `design.rtl` | 固定 RTL，不省综合 |
 | pre_floorplan | `design.netlist` | 已核对综合网表，省综合 |
-| macro_placement / post_floorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
-| CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | 相应前一步完成的配套检查点 |
+| macro_placement / post_floorplan / preplace / placement / diff_sizing | `design.def` + `design.netlist` | 相应前一步的配套物理检查点 |
+| cts / legalization / timing_optimization / routing / filler / lvs / drc / harden | `design.def` + `design.netlist` | 相应前一步完成的配套检查点 |
 | sta | 上述两项 + `design.spef` | 真实 RCX 与对应设计；不是早期 placement 的替代输入 |
 | antenna_check / power_analysis / emir | 无入口输入契约 | 从更早的有效检查点开始；依赖上游链式产物 |
 
@@ -1062,7 +1062,7 @@ ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
   --from placement --to placement --set place.target_density=0.25 --plain
 ```
 
-要探索 floorplan，改用固定综合网表的 `pre_floorplan → place` 范围，并重新生成 floorplan；
+要探索 floorplan，改用固定综合网表的 `pre_floorplan → placement` 范围，并重新生成 floorplan；
 不能输入旧 post_floorplan DEF 后只改 core_util 跑 place，就认为测试了新的 floorplan 尺寸。
 改变入口输入不更新已有候选快照，新候选用 fresh 名称；避免误用 refresh 清掉已保存实验。
 

@@ -141,7 +141,7 @@ $$
 - `I_route` (detailed-routing inflation): pin access, via transitions, DRC avoidance;
 - With a zero/missing denominator the ratio is strictly UNKNOWN — **epsilon padding is prohibited** (it would break the algebraic identity).
 
-**Cross-stage compatibility (current degraded path)**: `I_route`/`I_total` divide quantities from different stages (place → route), and CTS inserts clock-tree nets between them. The toolchain does not yet emit a net-level mapping, therefore:
+**Cross-stage compatibility (current degraded path)**: `I_route`/`I_total` divide quantities from different stages (placement → routing), and CTS inserts clock-tree nets between them. The toolchain does not yet emit a net-level mapping, therefore:
 
 - CTS inserted buffers (or its counts are unknown) → placement→routing is `INCOMPATIBLE` and `I_route`/`I_total` are strictly UNKNOWN;
 - Q_I degrades to scoring `I_place` (intra-placement, one netlist, `EXACT_COMPATIBLE`), and the report states `INCOMPATIBLE route side` explicitly;
@@ -310,7 +310,7 @@ Intervention hypotheses are ordered by a three-tier lexicographic policy:
 2. **Tier 2 (quality limiters/bottlenecks)**: descending bottleneck severity, ahead of optimization opportunities;
 3. **Tier 3 (optimization opportunities)**: downsizing suggestions for over-provisioned margins.
 
-Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt_flag` (requires a trial reroute); area → floorplan utilization targets; robustness → CTS balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
+Example interventions and public parameter knobs (the `parameter_knob` field): interconnect bottleneck → `route.bottom_layer` / `route.top_layer` or `place.routability_opt_flag` (requires a trial reroute); area → floorplan utilization targets; robustness → cts balancing and multi-corner skew targets. These are hypotheses; `route.dr_search_depth` is not a public `ecc param` key.
 
 ## 8. User-Configurable Parameters
 

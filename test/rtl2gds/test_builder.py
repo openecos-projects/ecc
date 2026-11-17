@@ -142,6 +142,18 @@ def test_floorplan_selector_alias_targets_pre_floorplan(selector):
     assert builder_module.normalize_flow_step(selector) == StepEnum.PRE_FLOORPLAN.value
 
 
+@pytest.mark.parametrize(
+    ("selector", "expected"),
+    [
+        ("LEC@CTS", "lec@cts"),
+        ("lec@cts", "lec@cts"),
+        ("lec@timing optimization", "lec@timing_optimization"),
+    ],
+)
+def test_inserted_step_selector_resolves_both_sides(selector, expected):
+    assert builder_module.normalize_flow_step(selector) == expected
+
+
 def test_a_chain_built_check_is_filtered_with_its_step():
     chain = builder_module.build_synthesis_lec_flow()
 

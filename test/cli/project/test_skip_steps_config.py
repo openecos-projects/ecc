@@ -82,12 +82,12 @@ class TestManifestSkipSteps:
             load_manifest(str(tmp_path))
 
     def test_status_write_back_preserves_raw_spelling(self, tmp_path):
-        _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=["lec", "lec"])])
+        _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=["LEC", "lec"])])
 
         assert write_back_workspace_status(str(tmp_path), "ws_0001", "running")
 
         document = json.loads((tmp_path / "project.json").read_text())
-        assert document["workspaces"][0]["skip_steps"] == ["lec", "lec"]
+        assert document["workspaces"][0]["skip_steps"] == ["LEC", "lec"]
         assert document["workspaces"][0]["status"] == "running"
 
 

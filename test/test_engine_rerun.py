@@ -417,7 +417,7 @@ class TestRunOnly:
         flow = _make_run_flow(tmp_path, [("synthesis", "Success")])
         calls = _fake_execution(flow, monkeypatch)
 
-        result = rerun.run_only(flow, "synthesis", force=True)
+        result = rerun.run_only(flow, "synth", force=True)
 
         assert result.ok
         assert result.executed == ("synthesis",)

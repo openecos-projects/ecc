@@ -59,7 +59,7 @@ gcd_workspace/
 │   ├── flow.json          # 流程状态文件
 │   ├── params.toml        # 工作区配置文件（设计参数、流程目标）
 │   └── checklist.json     # 检查清单状态
-├── CTS_ecc                # CTS 步骤工作空间
+├── cts_ecc                # CTS 步骤工作空间
 │   ├── analysis    # 从指标数据中提取的分析数据文件
 │   ├── data        # 步骤生成的数据文件
 │   ├── feature     # 指标数据特征文件
@@ -76,25 +76,25 @@ gcd_workspace/
 │   └── script
 ├── log
 │   └── gcd.xxxx-01-22_16-05-25 # 全局日志文件
-├── macroPlacement_dreamplace
+├── macro_placement_dreamplace
 │   ...
 │   └── script
 ├── origin
 │   ├── gcd.sdc            # 约束文件
 │   └── gcd.v              # RTL 源文件
-├── place_dreamplace
+├── placement_dreamplace
 │   ...
 │   └── script
-├── postFloorplan_ecc
+├── post_floorplan_ecc
 │   ...
 │   └── script
-├── preFloorplan_ecc
+├── pre_floorplan_ecc
 │   ...
 │   └── script
-├── route_ecc
+├── routing_ecc
 │   ...
 │   └── script
-└── Synthesis_yosys
+└── synthesis_yosys
     ...
     └── script
 ```
@@ -126,21 +126,21 @@ engine_flow.run_steps()
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>Yosys] --> B[preFloorplan<br/>ECC-Tools]
-    B --> C[macroPlacement<br/>DreamPlace]
-    C --> D[postFloorplan<br/>ECC-Tools]
-    D --> E[place<br/>DreamPlace]
-    E --> F[CTS<br/>ECC-Tools]
+    A[synthesis<br/>Yosys] --> B[pre_floorplan<br/>ECC-Tools]
+    B --> C[macro_placement<br/>DreamPlace]
+    C --> D[post_floorplan<br/>ECC-Tools]
+    D --> E[placement<br/>DreamPlace]
+    E --> F[cts<br/>ECC-Tools]
     F --> G[legalization<br/>DreamPlace]
-    G --> H[route<br/>ECC-Tools]
+    G --> H[routing<br/>ECC-Tools]
     H --> I[filler<br/>ECC-Tools]
 ```
 
 随后流程引擎会按顺序执行各步骤，你可以在每个步骤工作空间中查看日志和输出结果。
 
 此示例显式定义了到 filler 为止的自定义流程。完整默认 `rtl2gds` 预设会继续
-执行 `lvs → drc → antennaCheck → postRouteLec → RCX → sta → power_analysis → emir → Harden`。
-天线步骤只检查和报告，请结合 `antennaCheck_ecc/report/antennaCheck.rpt` 与原生日志
+执行 `lvs → drc → antenna_check → post_route_lec → rcx → sta → power_analysis → emir → harden`。
+天线步骤只检查和报告，请结合 `antenna_check_ecc/report/antenna_check.rpt` 与原生日志
 确认规则覆盖情况。
 运行 EMIR 前需填写 `config/emir_ecc.json` 中的工艺文件路径。
 已有自定义流程仍保留显式指定的顺序。

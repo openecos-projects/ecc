@@ -141,7 +141,7 @@ $$
 - `I_route`（详细布线膨胀）：引脚接入、换层过孔、DRC 避让；
 - 分母为 0/缺失时比值严格为 UNKNOWN，**禁止 ε 填充**（会破坏恒等式）。
 
-**跨阶段兼容性（当前实现的降级路径）**：`I_route`/`I_total` 的分子分母来自不同阶段（place → route），CTS 会在两阶段之间插入时钟树网络。当前工具链没有输出网络级映射，因此：
+**跨阶段兼容性（当前实现的降级路径）**：`I_route`/`I_total` 的分子分母来自不同阶段（placement → routing），CTS 会在两阶段之间插入时钟树网络。当前工具链没有输出网络级映射，因此：
 
 - CTS 插入了缓冲（或计数未知）→ placement→routing 判 `INCOMPATIBLE`，`I_route`/`I_total` 严格 UNKNOWN；
 - Q_I 退化为按 `I_place`（place 阶段内部，同一网表，`EXACT_COMPATIBLE`）评分，报告中如实标注 `INCOMPATIBLE route side`；
@@ -310,7 +310,7 @@ I_E = 100 × E_integrity × E_coverage × E_consistency（乘性合成，故意�
 2. **Tier 2（质量瓶颈）**：按瓶颈严重度降序，先于优化机会；
 3. **Tier 3（优化机会）**：过约束裕量的降驱动/缩尺寸建议。
 
-示例干预与公开参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.bottom_layer` / `route.top_layer` 或 `place.routability_opt_flag`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → CTS 平衡与多 corner skew 目标。这些仍是待验证假设；`route.dr_search_depth` 不是公开的 `ecc param` 键。
+示例干预与公开参数旋钮（`parameter_knob` 字段）：互连瓶颈 → `route.bottom_layer` / `route.top_layer` 或 `place.routability_opt_flag`（需试跑重布线验证）；面积 → floorplan 利用率目标；鲁棒性 → cts 平衡与多 corner skew 目标。这些仍是待验证假设；`route.dr_search_depth` 不是公开的 `ecc param` 键。
 
 ## 8. 用户可配置参数
 
