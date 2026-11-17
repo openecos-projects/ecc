@@ -6,17 +6,26 @@ directory existence, workspace readability, and unregistered directories.
 Repair removes missing-directory entries and registers existing workspaces;
 unreadable workspace files must be restored without deleting their registration.
 
+A project directory that was renamed, moved or copied is found before the
+manifest is loaded (the loader rejects it): its root_path still names the
+former location. Repair re-anchors the project-local workspaces (their tool
+configuration, then their manifest paths) and root_path to the directory the
+manifest is in.
+
 Keep module-level imports cheap: this module sits on the CLI startup path.
 """
 
+import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
-from chipcompiler.project.manifest import ManifestError, ProjectManifest
+from chipcompiler.project.manifest import MANIFEST_FILENAME, ManifestError, ProjectManifest
 from chipcompiler.project.manifest_write import now_iso, update_manifest
 
 INVALID_WORKSPACE = "invalid-workspace"
 MISSING_DIRECTORY = "missing-directory"
+MOVED_PROJECT = "moved-project"
 UNREGISTERED_DIRECTORY = "unregistered-directory"
 
 
@@ -33,6 +42,140 @@ class FixAction:
     finding: ConsistencyFinding
     action: str  # removed | registered | existing | unchanged | failed
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class Relocation:
+    recorded_root: str
+    project_dir: str
+    # (workspace_id, path below project_dir) of every project-local workspace.
+    workspaces: tuple[tuple[str, str], ...] = ()
+
+
+def find_relocation(project_dir: str) -> Relocation | None:
+    """The root the manifest records, when it is not the directory it is in.
+
+    Returns None for a manifest that cannot be read or records no root_path:
+    those are not relocations and remain load_manifest's to report.
+    """
+    try:
+        with open(os.path.join(project_dir, MANIFEST_FILENAME), encoding="utf-8") as f:
+            document = json.load(f)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    recorded = document.get("root_path") if isinstance(document, dict) else None
+    if not isinstance(recorded, str) or not recorded:
+        return None
+    if os.path.realpath(recorded) == os.path.realpath(project_dir):
+        return None
+    return Relocation(
+        recorded, project_dir, tuple(_local_workspaces(document, recorded, project_dir))
+    )
+
+
+def relocate_project(relocation: Relocation) -> str | None:
+    """Re-anchor a moved or copied project; the failure detail, or None.
+
+    A workspace registered inside the recorded root moved (or was copied)
+    with the project: the absolute paths its tool configuration keeps under
+    the recorded root are rewritten first, then root_path and the workspace
+    paths in the manifest. The manifest goes last so that a failed run can be
+    repeated. A workspace registered elsewhere is external and is left alone.
+    """
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    project_dir = relocation.project_dir
+    for workspace_id, path in relocation.workspaces:
+        if not os.path.isdir(path):
+            continue  # reported as missing-directory once the manifest loads
+        try:
+            with workspace_lock(Path(path), blocking=False):
+                _rebase_workspace_config(path, relocation.recorded_root, project_dir)
+        except BlockingIOError:
+            return f"workspace {workspace_id} is busy"
+        except (OSError, ValueError) as exc:
+            return f"workspace {workspace_id}: {exc}"
+
+    new_root = os.path.abspath(project_dir)
+
+    def mutate(document: dict) -> None:
+        recorded = document.get("root_path")
+        if not isinstance(recorded, str) or not recorded:
+            return
+        if os.path.realpath(recorded) == os.path.realpath(new_root):
+            return
+        local = dict(_local_workspaces(document, recorded, project_dir))
+        for entry in document.get("workspaces", []):
+            if isinstance(entry, dict) and entry.get("workspace_id") in local:
+                entry["workspace_path"] = local[entry["workspace_id"]]
+        document["root_path"] = new_root
+        document["updated_at"] = now_iso()
+
+    if not update_manifest(project_dir, mutate):
+        return "manifest update failed"
+    return None
+
+
+def _local_workspaces(document: dict, recorded_root: str, project_dir: str):
+    """(workspace_id, path below project_dir) for entries registered below recorded_root."""
+    new_root = os.path.realpath(project_dir)
+    for entry in document.get("workspaces") or []:
+        if not isinstance(entry, dict):
+            continue
+        workspace_id, path = entry.get("workspace_id"), entry.get("workspace_path")
+        if not isinstance(workspace_id, str) or not isinstance(path, str):
+            continue
+        rebased = _rebased_path(path, recorded_root, new_root)
+        if rebased is not None and rebased != new_root:
+            yield workspace_id, rebased
+
+
+def _root_spellings(root: str) -> tuple[str, ...]:
+    """root_path is stored as typed while workspace paths are stored resolved."""
+    return tuple(dict.fromkeys((os.path.normpath(root), os.path.realpath(root))))
+
+
+def _rebased_path(value: str, recorded_root: str, new_root: str) -> str | None:
+    """``value`` moved from below ``recorded_root`` to ``new_root``; None when outside."""
+    if not os.path.isabs(value):
+        return None
+    normalized = os.path.normpath(value)
+    for root in _root_spellings(recorded_root):
+        if normalized == root:
+            return new_root
+        if normalized.startswith(root + os.sep):
+            return new_root + normalized[len(root) :]
+    return None
+
+
+def _rebase_workspace_config(workspace_dir: str, recorded_root: str, project_dir: str) -> None:
+    """Rewrite absolute paths below ``recorded_root`` in ``config/*.json``.
+
+    The tool configuration keeps a few absolute paths into the workspace
+    (the default timing constraints, the EMIR technology file). Left alone
+    they name files of the former location: gone after a move, the original
+    project's after a copy.
+    """
+    from chipcompiler.utility import json_write
+
+    new_root = os.path.realpath(project_dir)
+    for path in sorted(Path(workspace_dir, "config").glob("*.json")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        document = json.loads(path.read_text(encoding="utf-8"))
+        rebased = _rebase_values(document, recorded_root, new_root)
+        if rebased != document and not json_write(path, rebased):
+            raise OSError(f"cannot rewrite {path}")
+
+
+def _rebase_values(value, recorded_root: str, new_root: str):
+    if isinstance(value, dict):
+        return {key: _rebase_values(item, recorded_root, new_root) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_rebase_values(item, recorded_root, new_root) for item in value]
+    if isinstance(value, str):
+        return _rebased_path(value, recorded_root, new_root) or value
+    return value
 
 
 def find_inconsistencies(manifest: ProjectManifest) -> list[ConsistencyFinding]:

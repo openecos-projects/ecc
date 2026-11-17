@@ -4,6 +4,10 @@ Report mode is read-only and exits 1 when inconsistencies are found (the
 same "required failure" semantics as ``ecc doctor``). ``--fix`` repairs
 every finding explicitly and exits 1 only when a repair failed; each
 repair is emitted as a record for audit.
+
+A project directory that was renamed, moved or copied is reported as
+``moved-project`` before anything else: no other check can run until
+``--fix`` has re-anchored the project to its directory.
 """
 
 import os
@@ -25,15 +29,44 @@ def project_doctor(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
-    from chipcompiler.project.consistency import find_inconsistencies, repair_findings
+    from chipcompiler.project.consistency import (
+        MOVED_PROJECT,
+        find_inconsistencies,
+        find_relocation,
+        relocate_project,
+        repair_findings,
+    )
+
+    relocated: list[dict] = []
+    relocation = find_relocation(ctx.project_dir)
+    if relocation is not None:
+        record = {
+            "check": MOVED_PROJECT,
+            "status": "fail",
+            "recorded_root": relocation.recorded_root,
+            "project": relocation.project_dir,
+            "workspaces": [workspace_id for workspace_id, _path in relocation.workspaces],
+            "detail": "project.json records another directory: "
+            "the project was renamed, moved or copied",
+        }
+        summary = {"doctor": "project", "status": "failed", "checked": 0, "inconsistent": 1}
+        if not command_input.fix:
+            record["remediation"] = disclosure_cmd("ecc project doctor --fix", ctx.project)
+            return CommandResult.err([summary, record])
+        failure = relocate_project(relocation)
+        if failure is not None:
+            record.update(fix="failed", fix_detail=failure)
+            return CommandResult.err([{**summary, "fixed": 0}, record])
+        record["fix"] = "relocated"
+        relocated.append(record)
 
     try:
         manifest = load_manifest(ctx.project_dir)
     except ManifestError as exc:
-        return CommandResult.err([error_record("manifest_invalid", reason=str(exc))])
+        return CommandResult.err([*relocated, error_record("manifest_invalid", reason=str(exc))])
 
     findings = find_inconsistencies(manifest)
-    if command_input.fix and findings:
+    if command_input.fix and (findings or relocated):
         actions = repair_findings(manifest, findings)
         failed = [action for action in actions if action.action == "failed"]
         records = [
@@ -41,10 +74,11 @@ def project_doctor(command_input, ctx: CommandContext) -> CommandResult:
                 "doctor": "project",
                 "status": "failed" if failed else "fixed",
                 "checked": len(manifest.workspaces),
-                "inconsistent": len(findings),
-                "fixed": len(actions) - len(failed),
+                "inconsistent": len(findings) + len(relocated),
+                "fixed": len(actions) - len(failed) + len(relocated),
             }
         ]
+        records.extend(relocated)
         records.extend(_finding_record(action.finding, ctx, action=action) for action in actions)
         if failed:
             return CommandResult.err(records)

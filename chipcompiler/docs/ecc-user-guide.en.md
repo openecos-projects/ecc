@@ -825,6 +825,18 @@ are not compared or rewritten. It exits 1 while inconsistencies remain. `--fix` 
 missing-directory entries and registers unregistered directories; unreadable workspace
 files require manual restoration and their registrations are preserved.
 
+`project.json` records the project directory and the directory of every workspace as
+absolute paths. After the project directory is renamed, moved or copied, commands that
+read the manifest answer `manifest_invalid` (`root_path ... does not match ...`), and
+`project doctor` reports the finding `moved-project`. `project doctor --fix` re-anchors
+the project to the directory it is in: for each project-local workspace it rewrites the
+absolute paths kept in `config/*.json`, then `root_path` and the workspace paths in
+`project.json`. Workspaces registered outside the project directory are left as they are.
+A repaired copy is independent of the original. Results of steps that already ran are not
+rewritten: the post-route LEC result is bound to the netlist paths it compared, so
+`ecc signoff export` on a relocated, completed workspace asks for that step to be run
+again (`ecc run --workspace NAME --only postRouteLec --force`, then `--resume`).
+
 ### Importing RTL into a project
 
 `ecc rtl import` copies design inputs into the project-owned `rtl/`
