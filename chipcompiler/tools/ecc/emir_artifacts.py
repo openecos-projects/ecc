@@ -18,7 +18,10 @@ def discard_ir_snapshot(data_dir: str | Path, geometry_manifest: str | Path) -> 
 
 def publish_ir_snapshot(data_dir: str | Path, geometry_manifest: str | Path) -> None:
     """Bind native structured IR samples to the just-saved geometry snapshot."""
-    source = Path(data_dir) / EMIR_REPORTER_DIRECTORY / "ir_drop.json"
+    reporter = Path(data_dir) / EMIR_REPORTER_DIRECTORY
+    if any(reporter.glob("ir-*-nodes.gdisplay")):
+        return  # Native binary assets are bound by the shared geometry publisher.
+    source = reporter / "ir_drop.json"
     if not source.is_file():
         return  # Older ecc-tools runtimes still publish their textual reports.
     manifest = Path(geometry_manifest)

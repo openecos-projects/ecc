@@ -91,6 +91,13 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
                 result["geometry_unavailable"] = str(error)
     if step.name != "place" or not feature:
         return result
+    manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
+    if (
+        manifest
+        and Path(manifest).is_file()
+        and any(line.startswith("display.") for line in Path(manifest).read_text().splitlines())
+    ):
+        return result
     # Existing map CSVs carry a layout.csv with explicit DBU rectangles. Never
     # infer grid coordinates from the image size or reuse stale maps on rerun.
     relative = "subflows/run-placement/overlays/maps"

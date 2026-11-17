@@ -1177,9 +1177,7 @@ def run_power_analysis(
         sdc_path=step_tcl_path(workspace, step) or "",
         spef_path=spef_file,
         replay_geometry_dir=(
-            str(Path(step.output.geometry) / "power")
-            if step.output.geometry and os.environ.get("ECC_REPLAY_CAPTURE_DIR")
-            else ""
+            str(Path(step.output.geometry) / "power") if step.output.geometry else ""
         ),
     ):
         workspace.logger.error("Failed to initialize power analysis")

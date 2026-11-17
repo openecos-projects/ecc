@@ -38,7 +38,9 @@ def reference_geometry(source: Path) -> dict:
     text = source.read_text()
     fields = dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
     files = {source.name: fingerprint(source)}
-    for key in sorted(GEOMETRY_FILES & fields.keys()):
+    for key in sorted(
+        (GEOMETRY_FILES & fields.keys()) | {key for key in fields if key.startswith("display.")}
+    ):
         value = fields[key].strip()
         if not value:
             continue

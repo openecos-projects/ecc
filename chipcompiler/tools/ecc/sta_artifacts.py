@@ -28,7 +28,7 @@ def discard_sta_outputs(directory) -> None:
     root = Path(directory) if directory else None
     if root is None or not root.is_dir():
         return
-    for pattern in ("*.rpt", "*.json", "*.sdf"):
+    for pattern in ("*.rpt", "*.json", "*.sdf", "*.gdisplay"):
         for stale_path in root.glob(pattern):
             if stale_path.is_file():
                 stale_path.unlink()
@@ -66,8 +66,8 @@ def publish_sta_artifacts(
         )
 
     source_paths = [path for path in timing_report_dir.iterdir() if path.is_file()]
-    report_paths = [path for path in source_paths if path.suffix != ".json"]
-    structured_paths = [path for path in source_paths if path.suffix == ".json"]
+    report_paths = [path for path in source_paths if path.suffix not in {".json", ".gdisplay"}]
+    structured_paths = [path for path in source_paths if path.suffix in {".json", ".gdisplay"}]
 
     # Validate every requested mode before mutating any destination, so a
     # failed run cannot leave a partially updated artifact set behind.

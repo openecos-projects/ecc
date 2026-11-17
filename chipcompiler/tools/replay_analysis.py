@@ -172,6 +172,41 @@ def inventory(path):
 
 
 def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
+    from chipcompiler.tools.geometry_display import metadata
+
+    manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
+    if manifest and Path(manifest).is_file():
+        manifest = Path(manifest)
+        native_views = 0
+        for line in manifest.read_text().splitlines():
+            if not line.startswith("display."):
+                continue
+            asset = within(manifest.parent, manifest.parent / line.split("=", 1)[1])
+            info = metadata(asset)
+            kind = info["kind"]
+            if kind in {"power", "timing", "lvs", "antenna", "em", "rcx"} or (
+                kind == "ir" and not info.get("layer")
+            ):
+                native_views += 1
+        if step.name == "drc":
+            native_views += int(
+                any(
+                    line.startswith("drc=") and line.endswith(".gdisplay")
+                    for line in manifest.read_text().splitlines()
+                )
+            )
+        if native_views:
+            relative = "subflows/analysis/overlays/index.json"
+            atomic_json(
+                directory / relative,
+                {
+                    "schema": "ecos.replay.analysis.v2",
+                    "views": [],
+                    "unavailable": [],
+                    "geometry_display": True,
+                },
+            )
+            return {"analysis": relative, "analysis_view_count": native_views}
     patterns = {
         "drc": [("data/drc/violation_map.json", lambda p: violations(p, "drc"))],
         "lvs": [("data/lvs/lvs_reporter/ilvs.json", lambda p: violations(p, "lvs"))],
