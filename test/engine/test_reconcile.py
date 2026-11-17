@@ -450,7 +450,10 @@ def test_a_malformed_lec_engine_stays_an_invalid_workspace_config(tmp_path):
 
     result = reconcile_workspace(workspace_dir, None)
 
-    assert (result.outcome, result.error.split(":")[0]) == ("mismatch", "workspace_config_invalid")
+    assert (result.outcome, (result.error or "").split(":")[0]) == (
+        "mismatch",
+        "workspace_config_invalid",
+    )
 
 
 @pytest.mark.parametrize("anchor", ["synthesis", "cts", "diff_opt"])
