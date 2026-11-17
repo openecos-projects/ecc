@@ -64,6 +64,12 @@ timing_optimization 的内部合法化，各自由基线加 `[params.step_params
 中该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`。DreamPlace 参数
 总是带步骤设置（`<step>:<param>` 键、`param apply` 的 `--step`、`ecc.toml` 的
 `[params.step.<step>]`），只能设置在 schema 声明的步骤上，修改只从该步骤开始失效。
+步骤不在 workspace 的 flow 中报 `unknown_flow_step`，
+不带步骤的键报 `parameter_step_required`，参数未声明的步骤报
+`parameter_not_applicable`。workspace 级（非按步骤）参数从读取其任一目标配置的最早
+flow 步骤开始失效，而不只是从其声明的步骤开始：`route.bottom_layer` 还会写入 floorplan
+的 db 配置（从 pre_floorplan 开始），`route.top_layer` 供给 DreamPlace 的 gpugr 层
+（从 macro_placement/placement 开始）。
 
 每个步骤目录在 `req.json`/`rsp.json` 旁还有 `params.json`，由步骤 worker 在
 工具确定最终 config 之后写入。它列出适用于该步骤的每个参数的 `value`、

@@ -631,16 +631,16 @@ Viewer 日志保存在 `default/.chip-viewer/logs/`。
 ecc param list                          # 简明列表：旧参数与已显式覆盖项
 ecc param list --step cts               # CTS 的全部已审核字段
 ecc param list --all                    # 所有步骤的完整 schema
-ecc param show place.target_density     # 单个参数：值/默认/范围/映射到哪个工具
+ecc param show placement:place.target_density  # 单个参数：值/默认/范围/映射到哪个工具（DreamPlace 参数按步骤设置：<step>:<param>）
 ecc param diff                          # 只看与默认值不同的
-ecc param set place.target_density 0.55 # 写入 ecc.toml（保留注释与格式）
+ecc param set placement:place.target_density 0.55 # 写入 ecc.toml（保留注释与格式）
 ecc param set cts.skew_bound 0.05       # 直接修改 CTS 配置字段
 ecc param set cts.routing_layer '[4, 5]' # 列表使用 JSON 字面量
-ecc param unset place.target_density    # 恢复默认
+ecc param unset placement:place.target_density    # 恢复默认
 # workspace 局部覆盖——同样的命令加 --workspace；不改动 ecc.toml：
-ecc param set place.target_density 0.60 --workspace exp1   # 写入 exp1 的 home/params.toml
+ecc param set placement:place.target_density 0.60 --workspace exp1   # 写入 exp1 的 home/params.toml
 ecc param diff --workspace exp1                            # 与 exp1 创建时的取值对比
-ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原值
+ecc param unset placement:place.target_density --workspace exp1      # 恢复 exp1 的原值
 ```
 
 常用旧参数：`design.frequency_mhz`、`floorplan.core_util`、`place.target_density`、`route.top_layer`、`sta.max_paths`。其余静态工具字段通过每步 schema 提供，用 `--step` / `--all` 查找。workspace 的输入、输出、临时和生成路径不允许修改；PDK 路径参数可用 `ecc param set KEY VALUE` 设置：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc`/`pdk.spef` 是设计数据、相对项目目录解析，`pdk.root` 使用 `ecc pdk set-root`。完整说明见[用户指南 §9](ecc-user-guide.cn.md#9-param--参数管理)（终端：`ecc doc ug --lang cn`）。
@@ -652,7 +652,7 @@ ecc param unset place.target_density --workspace exp1      # 恢复 exp1 的原�
 创建时命名 workspace，它会自动登记到 `project.json`：
 
 ```bash
-ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.55
+ecc run --workspace exp1 --preset rtl2gds --set placement:place.target_density=0.55
 ecc status --workspace exp1
 ecc report qor --workspace exp1
 ```
@@ -675,7 +675,7 @@ ecc run --workspace default --resume
 
 ```bash
 ecc run --workspace default --overwrite            # 重建 default（有安全校验，只删真正的 ECC workspace 目录）
-ecc run --workspace default --overwrite --set place.target_density=0.55
+ecc run --workspace default --overwrite --set placement:place.target_density=0.55
 ```
 
 同样的 `--overwrite` 重跑也是已有 workspace 吸收**入口输入、PDK 路径、`flow.preset`** 变更的方式——这些改动会改变 workspace 的输入快照或 flow 结构。若只想按当前 `ecc.toml` 重建 workspace 而**不执行**，用专用命令（适合批量运行前准备）。与所有新建 workspace 一样，refresh 仍会对所选流程范围执行启动工具预检，请先安装好对应工具：
@@ -805,7 +805,7 @@ ecc report snapshot --workspace default -o comparisons/before.json   # 冻结对
 ```bash
 # ① 新开实验 workspace：--set 只记录在这次创建里，不动 ecc.toml、不动 default
 ecc run --workspace exp-area --preset rtl2gds \
-  --set floorplan.core_util=0.6 --set place.target_density=0.45
+  --set floorplan.core_util=0.6 --set placement:place.target_density=0.45
 
 # ② 分别看两个 workspace 的 QoR
 ecc report qor --workspace default
@@ -839,13 +839,13 @@ $ ecc compare run --baseline comparisons/before.json --current comparisons/after
 不想整链重建时，用 workspace 局部参数——只让参数所属步骤及其后缀失效：
 
 ```bash
-ecc param set place.target_density 0.50 --workspace exp-area   # 只失效 place 及其后缀
-ecc run --workspace exp-area                                    # 从 place 续跑
+ecc param set placement:place.target_density 0.50 --workspace exp-area   # 只失效 placement 及其后缀
+ecc run --workspace exp-area                                    # 从 placement 续跑
 ecc param diff --workspace exp-area                             # 当前覆盖 vs 创建时取值
-ecc param unset place.target_density --workspace exp-area      # 不满意就恢复原值
+ecc param unset placement:place.target_density --workspace exp-area      # 不满意就恢复原值
 ```
 
-失效范围由参数所属步骤决定（`param set` 的输出会列出 `invalidated_steps`）：`place.*` 从 place 起失效（便宜，只重跑物理后半段）；`design.frequency_mhz` 从 Synthesis 起失效（整链重跑，最贵，改它建议直接开新 workspace）。
+失效范围由参数决定（`param set` 的输出会列出 `invalidated_steps`）：`placement:place.target_density` 这类按步骤参数从键中的步骤起失效（便宜，只重跑物理后半段）；workspace 级参数从读取其任一目标配置的最早 flow 步骤起失效（`route.bottom_layer` 还会写入 floorplan 的 db 配置，因此从 pre_floorplan 起失效；`route.top_layer` 供给 DreamPlace 的 gpugr 层，因此从 macro_placement/placement 起失效）；`design.frequency_mhz` 从 Synthesis 起失效（整链重跑，最贵，改它建议直接开新 workspace）。
 
 ### 7.5 从 QoR 报告找下一个旋钮
 
@@ -863,7 +863,7 @@ ecc param unset place.target_density --workspace exp-area      # 不满意就恢
 同一个参数想一次试多个取值，用 sweep——它为每个候选建隔离 workspace，不动基线：
 
 ```bash
-ecc sweep create --name density --param place.target_density=0.30,0.45,0.60
+ecc sweep create --name density --param placement:place.target_density=0.30,0.45,0.60
 ecc sweep run --name density            # 依次执行，可续跑；--max-candidates N 先冒烟前 N 个
 ecc sweep compare --name density        # 表格对比全部候选
 ecc explore rank --name density         # passed 优先、QoR 降序排名

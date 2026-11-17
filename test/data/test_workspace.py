@@ -984,7 +984,11 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert workspace is not None
     from chipcompiler.data import save_parameter
     from chipcompiler.params import lookup_schema, update_workspace_param_value
+    from test.flow_fixture import current_flow_document
 
+    workspace.flow.data = current_flow_document(
+        [{"name": "placement", "tool": "dreamplace", "state": "Unstart"}]
+    )
     edits = {
         "cts.max_fanout": 91,
         "route.bottom_layer": "MET3",

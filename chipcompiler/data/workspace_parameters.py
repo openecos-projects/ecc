@@ -10,12 +10,14 @@ from chipcompiler.data.parameter_schema import (
     build_config_overrides,
 )
 from chipcompiler.data.step_parameters import (
+    ParameterStepError,
     check_parameter_step,
     is_step_scoped,
     set_step_value,
     step_value,
     unset_step_value,
 )
+from chipcompiler.data.workspace import step_config_keys
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
@@ -28,9 +30,12 @@ _MISSING = object()
 def workspace_param_step(schema, workspace=None, step: str | None = None) -> str | None:
     """The earliest flow step a parameter change invalidates.
 
-    A step-scoped parameter invalidates the *step* whose value changed; a
-    workspace-wide parameter invalidates the Workspace's first step; a
-    parameter naming several steps resolves against the Workspace's flow.
+    A step-scoped parameter invalidates the *step* whose value changed. Any
+    other parameter invalidates from the earliest flow step that either is
+    one of its declared steps or reads one of its target configs
+    (:func:`~chipcompiler.data.workspace.step_config_keys`): a routing layer
+    also written into the floorplan ``db`` config invalidates the floorplan.
+    A workspace-wide parameter invalidates the Workspace's first step.
     Without a Workspace the declared order decides (``"all"`` for a
     workspace-wide parameter).
     """
@@ -40,15 +45,33 @@ def workspace_param_step(schema, workspace=None, step: str | None = None) -> str
         raise ValueError(f"{schema.param} requires a full workspace refresh")
     if is_step_scoped(schema) and step is not None:
         return check_parameter_step(schema, step)
-    # Only multi-step and workspace-wide parameters need the flow to pick their step.
-    flow_names = (
-        [str(step.get("name", "")) for step in workspace.flow.steps()]
-        if workspace is not None and (schema.workspace_wide or len(schema.steps) > 1)
-        else []
-    )
+    flow = _flow_steps(workspace)
     if schema.workspace_wide:
-        return flow_names[0] if flow_names else WORKSPACE_WIDE
-    return next((name for name in flow_names if schema.applies_to(name)), schema.steps[0])
+        return flow[0][0] if flow else WORKSPACE_WIDE
+    targets = (
+        set()
+        if is_step_scoped(schema)
+        else {target.config_key.casefold() for target in schema.config_targets}
+    )
+    for name, tool in flow:
+        reads = {key.casefold() for key in step_config_keys(name, tool)}
+        if schema.applies_to(name) or targets & reads:
+            return name
+    return schema.steps[0]
+
+
+def _flow_steps(workspace) -> list[tuple[str, str | None]]:
+    """``(name, tool)`` of each step of *workspace*'s flow, in order."""
+    if workspace is None:
+        return []
+    # ``load_workspace`` keeps the flow ledger lazy; the accessor hydrates it.
+    accessor = getattr(workspace.flow, "steps", None)
+    steps = accessor() if callable(accessor) else workspace.flow.data.get("steps", [])
+    return [
+        (str(item.get("name", "")), item.get("tool"))
+        for item in steps
+        if isinstance(item, dict) and item.get("name")
+    ]
 
 
 def workspace_param_value(
@@ -125,7 +148,7 @@ def update_workspace_param_value(
     Raises :class:`~chipcompiler.data.step_parameters.ParameterStepError`
     for a missing or inapplicable step.
     """
-    scope = check_parameter_step(schema, _scope(schema, step))
+    scope = _checked_scope(workspace, schema, step)
     records = _override_records(workspace.parameters.data)
     record = _find_record(records, schema.param, scope)
     if record is None:
@@ -149,7 +172,7 @@ def update_workspace_param_value(
 def unset_workspace_param(
     workspace, schema, step: str | None = None
 ) -> tuple[object, str | None] | None:
-    scope = check_parameter_step(schema, _scope(schema, step))
+    scope = _checked_scope(workspace, schema, step)
     records = _override_records(workspace.parameters.data)
     record = _find_record(records, schema.param, scope)
     if record is None:
@@ -161,6 +184,19 @@ def unset_workspace_param(
     else:
         _apply_workspace_value(workspace, schema, record["baseline"], scope)
     return record["baseline"], workspace_param_step(schema, workspace, scope)
+
+
+def _checked_scope(workspace, schema, step: str | None) -> str | None:
+    """The validated journal scope of an edit; a step value's step must be in the flow."""
+    scope = check_parameter_step(schema, _scope(schema, step))
+    if scope is not None and scope not in {name for name, _tool in _flow_steps(workspace)}:
+        raise ParameterStepError(
+            "unknown_flow_step",
+            schema.param,
+            scope,
+            f"step {scope} is not in this workspace's flow",
+        )
+    return scope
 
 
 def _scope(schema, step: str | None) -> str | None:

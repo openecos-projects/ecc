@@ -104,6 +104,16 @@ class ParamSchema:
     # Fork the PDK-effective default out to every config target at each refresh,
     # for parameters whose shipped tool template is empty or ICS55-only.
     fork: bool = False
+    # ``applies`` parsed once (declaration order); see :attr:`steps`.
+    _steps: tuple[str, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        steps = (
+            ()
+            if self.applies in (WORKSPACE_WIDE, PDK_SCOPE)
+            else tuple(part.strip() for part in self.applies.split(","))
+        )
+        object.__setattr__(self, "_steps", steps)
 
     @property
     def has_direct_target(self) -> bool:
@@ -126,9 +136,7 @@ class ParamSchema:
         Empty for a workspace-wide or PDK parameter. Names are canonical flow
         step names; :meth:`applies_errors` rejects anything else.
         """
-        if self.applies in (WORKSPACE_WIDE, PDK_SCOPE):
-            return ()
-        return tuple(part.strip() for part in self.applies.split(","))
+        return self._steps
 
     def applies_to(self, step: str) -> bool:
         """Whether *step* (a canonical flow step name) is one of :attr:`steps`."""

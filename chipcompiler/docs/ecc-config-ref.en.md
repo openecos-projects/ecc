@@ -19,7 +19,7 @@ headroom is insufficient; other platforms remain serial. The environment variabl
 
 ### 0.1 Where the configuration files live
 
-Each run's workspace has a shared `config/` directory where the JSON configurations of all steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it):
+Each run's workspace has a shared `config/` directory where the JSON configurations of the non-DreamPlace steps land; **files with the same name are rewritten in place by whichever step runs later** (each step only updates the fields relevant to it). DreamPlace is the exception: `config/dreamplace_ecc.json` is only the workspace **baseline**, and every DreamPlace step writes and reads its own `<step dir>/config/dreamplace_ecc.json`, so no DreamPlace step shares or overwrites another's file (see §1.6):
 
 ```
 <workspace>/                 # <project>/<id> for fresh/manifest projects; runs/<id> for legacy projects
@@ -136,13 +136,13 @@ The `place.*` rows are per-step DreamPlace parameters (§1.6): set them with a s
 
 ```bash
 ecc param list --step cts
-ecc param list --step floorplan
+ecc param list --step pre_floorplan
 ecc param list --all              # full reviewed schema (pdk.* needs --all --plain in preset projects)
 ecc param list --all --plain      # complete catalog, including the pdk.* path parameters
 ecc param set cts.skew_bound 0.05
 ecc param set floorplan.phy_placer.well_tap.distance_micron 30.0
 ecc param set cts.routing_layer '[4, 5]'
-ecc run --set place.num_threads=12
+ecc run --set placement:place.num_threads=12
 ```
 
 Scalars are parsed according to the schema type; list and object values use JSON literals, and arrays are replaced wholesale. Persisted values are written to nested TOML tables, for example:
@@ -206,7 +206,7 @@ Behavior differences between the two scopes:
 |---|---|---|
 | Written to | `[params.<group>]` or `[pdk.overrides]` in `ecc.toml` (comments and formatting preserved) | `[params]` in `<workspace>/home/params.toml`, plus a `workspace_param_overrides` record |
 | When it takes effect | On the next `ecc run` that **creates** a workspace | Immediately refreshes the generated configuration; the owning step and its suffix are marked pending (`from_step` / `invalidated_steps` are reported) and a later `ecc run --workspace NAME` resumes from that step |
-| What can be changed | The full reviewed schema (including the `pdk.*` path parameters) | Not `pdk.*` (path changes require editing `ecc.toml` and running `ecc workspace refresh NAME`); the owning step must exist in the workspace's persisted flow, otherwise `workspace_param_refresh_failed` is reported |
+| What can be changed | The full reviewed schema (including the `pdk.*` path parameters) | Not `pdk.*` (path changes require editing `ecc.toml` and running `ecc workspace refresh NAME`); a step-scoped value's step must exist in the workspace's persisted flow, otherwise `unknown_flow_step` is reported (a workspace-wide parameter none of whose steps is in the flow is reported as `parameter_not_in_flow`) |
 | Precondition | The project must have an `ecc.toml`; a manifest-only project without that file is rejected with `param_requires_ecc_toml` | Must be a managed workspace declared in the manifest (otherwise `workspace_param_requires_managed_workspace`) |
 | Undo | `unset` deletes the corresponding key from `ecc.toml` | `unset` restores the `baseline` and removes the override record |
 
@@ -234,7 +234,7 @@ ecc run --set placement:place.num_threads=12
 target_density = 0.7
 ```
 
-In a workspace the values live in `params.toml` under `[params.step_params.<step>]`, journal records carry their `step`, and a change invalidates from that step only. `route.bottom_layer`/`route.top_layer` stay workspace-wide: they target the routing config and mirror into the DreamPlace baseline, so a change invalidates from placement.
+In a workspace the values live in `params.toml` under `[params.step_params.<step>]`, journal records carry their `step`, and a change invalidates from that step only. `route.bottom_layer`/`route.top_layer` stay workspace-wide (unqualified keys). A workspace-wide parameter edit invalidates from the earliest flow step that reads any of its target configs: `route.bottom_layer` also writes the floorplan db config, so it invalidates from pre_floorplan, and `route.top_layer` feeds the DreamPlace gpugr layers, so it invalidates from macro_placement/placement.
 
 ### 1.5 Manual macro placement (`ecc macro`)
 
@@ -427,7 +427,7 @@ Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `po
 
 ## 5. macro placement / placement / diff_sizing / legalization (DreamPlace)
 
-Each of these steps resolves its own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline `config/dreamplace_ecc.json` and its per-step values (§1.6), then sets `def_input`, `verilog_input`, and `result_dir`. `macro_placement` uses `macro_placement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `placement_dreamplace/data/pl`, `diff_sizing` reuses the placement configuration, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
+Each of these steps resolves its own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline `config/dreamplace_ecc.json` and its per-step values (§1.6), then sets `def_input`, `verilog_input`, and `result_dir`. `macro_placement` uses `macro_placement_dreamplace/data/macro`, placement reads the post-floorplan output and uses `placement_dreamplace/data/pl`, `diff_sizing` resolves its own step file (with its own diff-sizing defaults) like every other DreamPlace step, and legalization reads the CTS output and uses `legalization_dreamplace/data/pl`. The parameters are exactly the upstream DreamPlace JSON parameter set, explained group by group below (defaults = template values; `*` marks user-parameter mapping points).
 
 ### Inputs and outputs
 
@@ -473,7 +473,7 @@ windows. The default fixes WNS/TNS/cap/slew at 500/5/1/1 with outer timing
 weight 1. The following `ecc.toml` configuration matches the defaults:
 
 ```toml
-[params.place.timing_opt_coefficients]
+[params.step.placement.place.timing_opt_coefficients]
 mode = "fixed"
 wns = 500.0
 tns = 5.0
@@ -498,7 +498,7 @@ retain the other configured values (or their defaults); all values must be
 finite and nonnegative. For example, configure S50 independently at 1000/10/1/1:
 
 ```toml
-[params.place.diff_sizing_coefficients]
+[params.step.diff_sizing.place.diff_sizing_coefficients]
 wns = 1000.0
 tns = 10.0
 cap = 1.0
@@ -506,9 +506,9 @@ slew = 1.0
 ```
 
 For a fresh workspace, use
-`ecc run --set 'place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
+`ecc run --set 'diff_sizing:place.diff_sizing_coefficients={"tns":10.0}'` to override TNS alone.
 For an existing workspace, use
-`ecc param set place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
+`ecc param set diff_sizing:place.diff_sizing_coefficients '{"tns":10.0}' --workspace NAME`.
 S50 retains RRR=3, zero padding and final legalization. Its placement bins
 start from the placement 256×256 preset and use the adaptive calculation,
 whose cap remains 512×512. The GR route grid follows that adaptive bin count
@@ -607,7 +607,7 @@ for discrete sizing or `bf` for typed candidate buffering; `steps` is the
 number of discrete rounds and the four coefficients are WNS/TNS/slew/cap.
 
 ```toml
-[params.place]
+[params.step.diff_opt.place]
 diff_optimization_mode = "joint"
 diff_optimization_flows = [
   ["sz", 1, [500.0, 5.0, 1.0, 1.0]],
@@ -706,7 +706,7 @@ four directions. Its coefficients come from `diff_sizing_coefficients`
 (default `[500, 5, 1, 1]`). The generated step configuration is equivalent to:
 
 ```toml
-[params.place]
+[params.step.diff_sizing.place]
 diff_sizing_optimization_flows = [["quad", 50, [500, 5, 1, 1], 1.0]]
 ```
 
@@ -718,7 +718,7 @@ an action phase chain.
 Custom chain example:
 
 ```toml
-[params.place]
+[params.step.diff_sizing.place]
 diff_sizing_optimization_flows = [
   ["up", 10, [500, 5, 1, 1], 1],
   ["down", 1, [500, 5, 1, 1], 0.1],
@@ -744,10 +744,10 @@ retain their own settings.
 Inherit-mode windows read the resulting live coefficients; fixed-mode windows
 use their configured values. Standalone `diff_sizing` S50 in `size_only` mode
 skips this schedule. For a fresh workspace, configure it with
-`ecc run --set place.timing_coeff_growth_factor=1.0` or
-`timing_coeff_growth_factor = 1.0` under `[params.place]` in `ecc.toml`. For an
+`ecc run --set placement:place.timing_coeff_growth_factor=1.0` or
+`timing_coeff_growth_factor = 1.0` under `[params.step.placement.place]` in `ecc.toml`. For an
 existing workspace, use
-`ecc param set place.timing_coeff_growth_factor 1.0 --workspace NAME`.
+`ecc param set placement:place.timing_coeff_growth_factor 1.0 --workspace NAME`.
 
 `place.timing_aggregation_mode` selects aggregation for AAT/RAT propagation and
 for endpoint rise/fall and timing-check candidates: `smooth` (default) uses LSE,
@@ -765,7 +765,7 @@ that excludes recovery-only endpoints. Recovery checks remain exported by the
 STA backend in either mode.
 
 ```toml
-[params.place]
+[params.step.placement.place]
 timing_aggregation_mode = "smooth"
 timing_aggregation_tau_ps = 2.0
 timing_metric_scope = "setup_plus_recovery"
@@ -823,9 +823,10 @@ timing_metric_scope = "setup_plus_recovery"
 | `risa_weights` | 0 | Use RISA congestion weights |
 
 GPUGR inherits the workspace `bottom_layer`/`top_layer`. Explicit
-`gpugr_bottom_routing_layer`/`gpugr_top_routing_layer` entries under
-`[params.dreamplace]` take precedence. Other DreamPlace-specific options can
-also be set in that section without adding top-level ECC parameters.
+`place.gpugr_bottom_routing_layer`/`place.gpugr_top_routing_layer` values on the
+placement step (for example under `[params.step.placement.place]`) take
+precedence. Other DreamPlace-specific options are exposed as step-scoped
+`place.*` parameters (`ecc param list --step placement`).
 
 ### Cell padding and boundaries
 
@@ -1121,7 +1122,7 @@ ecc param set design.frequency_mhz VALUE
 `temp_directory_path` is generated/protected and cannot be set through the CLI. The other reviewed `floorplan_ecc.json` fields are set the same way, for example:
 
 ```bash
-ecc param list --step floorplan
+ecc param list --step pre_floorplan
 ecc param set floorplan.core_util VALUE
 ecc param set floorplan.die_builder.die_size.width_micron VALUE   # nested fields use dot paths
 ecc param set floorplan.phy_placer.well_tap.distance_micron VALUE
@@ -1133,13 +1134,15 @@ Each DreamPlace step resolves its own `<step dir>/config/dreamplace_ecc.json`, s
 
 ```bash
 ecc param list --step placement
-ecc param set place.target_density VALUE
-ecc param set place.num_threads VALUE
+ecc param set placement:place.target_density VALUE
+ecc param set placement:place.num_threads VALUE
 ```
+
+Legalization has no settable DreamPlace parameters; it uses the workspace baseline plus its own forced fields.
 
 ### 15.5 timing optimization
 
-Sizer has an ECC-owned configuration for its FF/MIN hold-only pass. Its internal DreamPlace legalization uses the `place.*` parameters in §15.4, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and generated scripts remain workflow-managed.
+Sizer has an ECC-owned configuration for its FF/MIN hold-only pass. Its internal DreamPlace legalization resolves its own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline (§1.6) and has no settable DreamPlace parameters, and its routing-layer limits use `route.bottom_layer` / `route.top_layer` from §15.6. Sizer inputs, outputs, and generated scripts remain workflow-managed.
 
 ```bash
 ecc param list --step timing_optimization
@@ -1235,12 +1238,12 @@ ecc param list --step cts                 # list all tunable CTS fields
 ecc param list --all                      # show the full reviewed schema (--all --plain also lists pdk.*)
 ecc param apply --set k=v --unset k2      # atomically apply a batch of parameter edits
 ecc param show KEY / diff                 # single parameter / diff against defaults
-ecc param set place.target_density 0.55  # change a parameter (written to ecc.toml; applies when a workspace is next created)
+ecc param set placement:place.target_density 0.55  # change a step-scoped parameter (written to ecc.toml; applies when a workspace is next created)
 ecc param set cts.skew_bound 0.05         # set a CTS JSON field directly
-ecc param unset place.target_density     # remove the override, back to the default
+ecc param unset placement:place.target_density     # remove the override, back to the default
 ecc param set cts.skew_bound 0.06 --workspace default  # change only one workspace (see §1.4)
 ecc param diff --workspace default        # that workspace's local overrides and baselines
-ecc run --set place.target_density=0.55  # one-off override: applies only to a freshly created (or --overwrite) workspace
+ecc run --set placement:place.target_density=0.55  # one-off override: applies only to a freshly created (or --overwrite) workspace
 ```
 
 Recommended practice for making changes: **use `ecc param` (and `ecc macro` for macro placement); use `--step` / `--all` to discover fields; never edit `params.toml` or managed `config/` files directly**. Step configuration derivation can overwrite mapped fields, while a full `ecc workspace refresh` refuses detected changes unless `--force` is supplied.

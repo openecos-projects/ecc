@@ -25,6 +25,7 @@ from chipcompiler.utility.path import require_path
 
 from .diff_opt import apply_diff_opt_defaults
 from .diff_opt import prepare_drive_table as prepare_diff_opt_drive_table
+from .run_modes import force_mode_config, step_geometry_mode
 from .timing_coefficients import resolve_timing_coefficients
 
 
@@ -325,6 +326,9 @@ def write_step_config(workspace: Workspace, step: EccStep) -> Path:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
+    mode = step_geometry_mode(step.name)
+    if mode is not None:
+        params = force_mode_config(params, mode)
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)

@@ -223,6 +223,17 @@ def _create_workspace_from_spec(
             raise WorkspaceLifecycleError(
                 "workspace_create_failed", f"Workspace creation failed: {target}"
             )
+        step_errors = invalid_carried_parameters(
+            backend_parameters,
+            resolved["pdk"]["familyId"],
+            [str(step.get("name", "")) for step in workspace.flow.steps()],
+        )
+        if step_errors:
+            raise WorkspaceLifecycleError(
+                "workspace_spec_invalid",
+                "Carried Workspace parameters name steps outside the new flow",
+                {"issues": step_errors},
+            )
         workspace.parameters.data["_input_mode"] = resolved["inputMode"]
         from chipcompiler.data import save_parameter
 

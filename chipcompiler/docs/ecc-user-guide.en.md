@@ -458,7 +458,7 @@ ecc run [OPTIONS]
   --force            re-execute an already successful --only step
   --preset TEXT      flow preset override for this run only (not written back to ecc.toml), e.g. --preset syn_sta
   --overwrite        overwrite an existing run (only deletes genuine ECC run directories, with safety checks)
-  --set KEY=VALUE    parameter override, repeatable (e.g. --set place.target_density=0.65), recorded in the run provenance
+  --set KEY=VALUE    parameter override, repeatable (e.g. --set placement:place.target_density=0.65), recorded in the run provenance
   --plain            key=value output for scripting
 ```
 
@@ -786,15 +786,15 @@ config=design.top scope=project value=gcd resolved=gcd source=ecc.toml
 config=pdk.name scope=project value=ics55 resolved=ics55 source=ecc.toml
 ...
 
-$ ecc config floorplan  # step level
+$ ecc config pre_floorplan  # step level
 [config]
   step:
     db_ecc.json (config)
       path: default/config/db_ecc.json
-  inspect: ecc config floorplan
+  inspect: ecc config pre_floorplan
     floorplan_ecc.json (config)
       path: default/config/floorplan_ecc.json
-  inspect: ecc config floorplan
+  inspect: ecc config pre_floorplan
 ```
 
 ## 8.5. project / workspace — edit project declarations and refresh workspaces
@@ -1283,7 +1283,8 @@ ecc param set KEY VALUE --workspace NAME   # workspace-local override; ecc.toml 
 several `set`/`unset` edits — project scope by default, or one workspace with `--workspace NAME` —
 so the whole batch lands in one atomic update and one invalidation; a mid-batch validation
 failure writes nothing. In the workspace scope `--step STEP` additionally restricts the batch to
-parameters configurable at that step (`parameter_not_applicable` otherwise), and
+parameters configurable at that step (`parameter_not_applicable` otherwise) and qualifies unqualified
+step-scoped keys with that step (`--step placement --set place.target_density=0.7`), and
 `--expected-revision`/`--command-id`/`--no-wait` carry the automation contract (§5.1).
 
 `param edit` is the interactive form of `param apply`, for the project (`ecc.toml`) or, with
@@ -1298,7 +1299,7 @@ invalidate steps exactly as the batch command does. A workspace offers only the 
 can change in place (not `pdk.*`, and only for steps in its flow). Without a terminal it fails
 with `param_edit_requires_terminal`; scripts and agents use `param apply`.
 
-Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run; a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, the parameter's owning step must exist in the workspace's persisted flow (otherwise `workspace_param_refresh_failed` — e.g. `place.*` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
+Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and `diff` also accept `--workspace NAME`. With the selector, the value is written to that workspace's `home/params.toml` (not `ecc.toml`), its generated step configuration is refreshed, and the owning step plus its suffix are marked for re-run (for a workspace-wide parameter, from the earliest flow step that reads any of its target configs); a later `ecc run --workspace NAME` continues from that step. Workspace-local values are recorded in `workspace_param_overrides` with the pre-edit `baseline` — `param diff --workspace NAME` compares against that baseline and `param unset KEY --workspace NAME` restores it. Only reviewed parameters from `ecc param list --all` can be set locally, a step-scoped value's step must exist in the workspace's persisted flow (otherwise `unknown_flow_step` — e.g. `placement:place.target_density` on a synthesis-only workspace), and `pdk.*` path fields still require changing `ecc.toml` plus `ecc workspace refresh`:
 
 ```console
 $ ecc param set design.frequency_mhz 150 --workspace default --plain
@@ -1340,8 +1341,14 @@ $ ecc param list
   sta
     sta.max_paths                  1000
 
-$ ecc param set place.target_density 0.65
-  set place.target_density = 0.65 (ecc.toml)
+$ ecc param set placement:place.target_density 0.65
+  set placement:place.target_density = 0.65 (ecc.toml)
+
+$ ecc param set place.target_density 0.65     # step-scoped parameters need their step
+[error]
+  parameter_step_required place.target_density is set per step; name one of: placement
+  param: place.target_density
+rc=1
 
 $ ecc param set cts.skew_bound 0.05
   set cts.skew_bound = 0.05 (ecc.toml)
@@ -1350,16 +1357,16 @@ $ ecc param set pdk.tech prtech/techLEF/N551P6M_ecos.lef
   set pdk.tech = prtech/techLEF/N551P6M_ecos.lef (ecc.toml)
 
 $ ecc param diff
-  place.target_density           0.65 (was 0.4, ecc.toml)
+  placement:place.target_density 0.65 (was 0.4, ecc.toml)
 
-$ ecc param show place.target_density
-  place.target_density
+$ ecc param show placement:place.target_density
+  placement:place.target_density
     value          0.65
     default        0.4
     source         ecc.toml
     type           float
     applies        placement
-    maps to        DreamPlace.target_density
+    config target  dreamplace:target_density
     description    Target placement density
     range          [0.1, 1.0]
     ...
@@ -1374,7 +1381,7 @@ rc=1
 `set` maintains the corresponding group table at the end of `ecc.toml`; `unset` cleans it up:
 
 ```toml
-[params.place]
+[params.step.placement.place]
 target_density = 0.65
 
 [params.floorplan.die_builder]
@@ -1647,7 +1654,7 @@ rc=6                        # failed or blocked diagnostics exit 6 (see the §1 
 Create a deterministic parameter sweep. Repeated `--param` options define the Cartesian product; candidates are recorded under `experiments/<name>/` and do not modify the project manifest or baseline workspace. The full sweep/explore reference — plan and results schemas, execution isolation, and ranking rules — is documented in the [Sweep Reference](ecc-sweep-ref.en.md):
 
 ```bash
-ecc sweep create --project /path/to/project --name density --param place.target_density=0.60,0.65 --param cts.skew_bound=0.08,0.10
+ecc sweep create --project /path/to/project --name density --param placement:place.target_density=0.60,0.65 --param cts.skew_bound=0.08,0.10
 ecc sweep list --project /path/to/project                  # JSON array of existing sweep names
 ecc sweep show --project /path/to/project --name density    # the sweep plan (sweep.json)
 ecc sweep run --project /path/to/project --name density [--max-candidates N]
@@ -1903,7 +1910,7 @@ $ ecc report step drc --section analysis
 The DEF and Verilog outputs registered in the Engineering Snapshot can be queried explicitly:
 
 ```bash
-ecc report step place --workspace <workspace> --section outputs
+ecc report step placement --workspace <workspace> --section outputs
 ecc report step sta --workspace <workspace> --section outputs --json
 ```
 
@@ -2115,14 +2122,14 @@ ecc run --preset rtl2gds           # run the full chain in one shot (synthesis�
 ecc run                            # run again: all successful → no_op; interrupted/failed → auto-resume
 ecc status                         # step status; on failure:
 ecc log placement                  # the failing step's log (TEXT mode highlights error lines)
-ecc param set place.target_density 0.55   # tune a parameter and re-run
+ecc param set placement:place.target_density 0.55   # tune a parameter and re-run
 ecc run --overwrite --preset rtl2gds
-ecc param set place.target_density 0.65 --workspace default   # or tweak one workspace locally, no ecc.toml change
+ecc param set placement:place.target_density 0.65 --workspace default   # or tweak one workspace locally, no ecc.toml change
 ecc run --workspace default        # continues from the invalidated step
 ecc run --workspace default --only placement --force   # or re-run a single step in place (--force needed once successful)
 ecc run --workspace default --from cts --to routing  # or re-run a range in place
 ecc workspace refresh default      # re-apply ecc.toml inputs/PDK/preset changes to the workspace without running
-ecc config place                   # config files actually in effect for that step
+ecc config placement                   # config files actually in effect for that step
 ecc signoff inspect                # signoff readiness (blocked still exits 0)
 ecc signoff export -o gcd_signoff.tar.gz    # export the signoff package once ready
 ecc report summary                 # text design summary (signoff/<design>_design_summary.txt)
@@ -2139,7 +2146,7 @@ Creating multiple managed workspaces for comparison experiments (each an indepen
 # Choose the id before the first run so the generated manifest registers it.
 ecc init gcd && cd gcd
 ecc run --workspace baseline --preset rtl2gds                 # baseline: default parameters
-ecc run --workspace exp1 --preset rtl2gds --set place.target_density=0.65
+ecc run --workspace exp1 --preset rtl2gds --set placement:place.target_density=0.65
 ecc status --workspace exp1
 ecc log --workspace exp1
 ecc report qor --workspace baseline    # compare the QoR reports of the two runs

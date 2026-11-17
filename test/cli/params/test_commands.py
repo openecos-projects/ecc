@@ -35,7 +35,9 @@ class TestParamList:
 class TestParamShow:
     def test_param_show_known_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
@@ -43,11 +45,11 @@ class TestParamShow:
     def test_param_show_records(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "placement:place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
-        assert record["param"] == "place.target_density"
+        assert record["param"] == "placement:place.target_density"
         schema = lookup_schema("place.target_density")
         assert schema is not None
         assert record["default"] == str(schema.default)
@@ -614,7 +616,9 @@ class TestPrettyOutput:
 
     def test_param_show_default_is_pretty(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
@@ -713,23 +717,25 @@ class TestParamShowDisclosureCommands:
     ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "placement:place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
         assert "inspect" in record
         assert "set" in record
         assert "run" in record
-        assert "ecc param show place.target_density" in record["inspect"]
+        assert "ecc param show placement:place.target_density" in record["inspect"]
 
     def test_show_text_has_disclosure_commands(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
-        assert "ecc param show place.target_density" in out
-        assert "ecc param set place.target_density" in out
-        assert "ecc run --set place.target_density" in out
+        assert "ecc param show placement:place.target_density" in out
+        assert "ecc param set placement:place.target_density" in out
+        assert "ecc run --set placement:place.target_density" in out
 
 
 class TestListDefaultDiffFiltering:
@@ -852,7 +858,7 @@ class TestUnreadableProjectConfig:
         [
             (["set", "placement:place.target_density", "0.5"], "config_error"),
             (["unset", "placement:place.target_density"], "config_error"),
-            (["show", "place.target_density"], "invalid_param_config"),
+            (["show", "placement:place.target_density"], "invalid_param_config"),
         ],
     )
     def test_unreadable_config_is_reported(
