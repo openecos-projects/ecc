@@ -234,7 +234,7 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
     from agent import tools
     from agent.data.candidate_materialization import materialize_candidate_config
     from agent.data.floorplan_parameter_observer import build_floorplan_report
-    from agent.test.data.test_candidate_materialization import _workspace as parameter_workspace
+    from agent.test.data.candidate_workspace import workspace as parameter_workspace
     from chipcompiler.data.parameter import load_parameter, save_parameter
     from chipcompiler.data.workspace import _refresh_floorplan_config
 
