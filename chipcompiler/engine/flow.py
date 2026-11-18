@@ -159,14 +159,14 @@ class EngineFlow:
         index: int | None = None,
     ) -> FlowStepEntry:
         """A new ledger record; *index* prefixes its step directory when given."""
-        step_value = step.value if isinstance(step, StepBaseEnum) else step
-        state_value = state.value if isinstance(state, StateEnum) else state
+        step_value = str(step)
+        state_value = str(state)
         if (
             category == FlowStepCategory.PNR
             and default_flow_step_category(step) == FlowStepCategory.CHECKER
         ):
             category = FlowStepCategory.CHECKER
-        category_value = category.value if isinstance(category, FlowStepCategory) else str(category)
+        category_value = str(category)
         result: FlowStepEntry = {
             "name": step_value,  # step name
             "tool": tool,  # eda tool name
@@ -244,7 +244,7 @@ class EngineFlow:
         return True if step state has been set
         """
         step = self.get_step(name, tool)
-        state_value = state.value if isinstance(state, StateEnum) else state
+        state_value = str(state)
         return step is not None and step.get("state") == state_value
 
     def set_state(

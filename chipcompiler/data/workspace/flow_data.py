@@ -9,7 +9,6 @@ selection, plus an optional declared skip policy) into the initial
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import (
     StateEnum,
-    StepBaseEnum,
     default_flow_step_category,
 )
 
@@ -23,9 +22,9 @@ FLOW_JSON_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[FLOW_JSON]
 def _entries_of(steps) -> list[tuple[str, str, str]]:
     return [
         (
-            step.value if isinstance(step, StepBaseEnum) else str(step),
+            str(step),
             str(tool),
-            state.value if isinstance(state, StateEnum) else str(state),
+            str(state),
         )
         for step, tool, state in steps
     ]
@@ -110,9 +109,9 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
         SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,
         "steps": [
             _flow_step_template(
-                name.value if isinstance(name, StepBaseEnum) else str(name),
+                str(name),
                 str(tool),
-                state.value if isinstance(state, StateEnum) else str(state),
+                str(state),
                 index=index,
             )
             for index, (name, tool, state) in enumerate(selected, start=1)
