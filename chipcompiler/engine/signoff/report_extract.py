@@ -5,13 +5,13 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import StepDirectories, unindexed_step_directory
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.engine.signoff.report_data import (
+    PARAMETERS_STAGE,
     DesignReportData,
     EvidenceProvenanceRecord,
     ParsedPowerMetrics,
     ParsedQorSummaryMetrics,
-    canonicalize_stage_name,
 )
 from chipcompiler.tools.ecc.power_artifacts import power_report_source_path
 from chipcompiler.utility.json import json_read
@@ -230,8 +230,7 @@ class StepMetricStore:
     def add(self, stage: str, payload: dict) -> None:
         if not _is_record(payload):
             return
-        for key in (stage, canonicalize_stage_name(stage)):
-            self._stages.setdefault(key, {}).update(payload)
+        self._stages.setdefault(stage, {}).update(payload)
 
     def stage(self, name: str) -> dict | None:
         return self._stages.get(name)
@@ -300,7 +299,7 @@ def _query(store, params, provenance, category, display_name, stage_priority, al
                             value=number,
                             unit=unit,
                             status="CONFIGURED",
-                            stage="Parameters",
+                            stage=PARAMETERS_STAGE,
                             corner=None,
                             tool="Configuration",
                             source_metric_id=alias,
@@ -308,7 +307,7 @@ def _query(store, params, provenance, category, display_name, stage_priority, al
                             timestamp=store.timestamp,
                         )
                     )
-                return number, "Parameters", alias
+                return number, PARAMETERS_STAGE, alias
     return None, "", ""
 
 
@@ -423,21 +422,21 @@ def collect_workspace_report(workspace) -> DesignReportData:
     directories = StepDirectories.from_records(
         workspace_root, flow.get("steps", []) if isinstance(flow, dict) else []
     )
+    # Report stages are the flow step names (``placement``, ``sta``).
     step_metrics: dict[str, dict] = {}
-    for dir_name in directories.scan_names():
-        step_dir = workspace_root / dir_name
+    for step_name in directories.reader_step_names():
+        step_dir = directories.path(step_name)
         if not step_dir.is_dir():
             continue
         merged: dict = {}
         for payload in _step_metric_payloads(step_dir):
             merged.update(payload)
         if merged:
-            # Stages are named after the unindexed directory (sta_ecc -> STA).
-            step_metrics[unindexed_step_directory(dir_name)] = merged
+            step_metrics[step_name] = merged
 
     corners, power_payload = _sta_corner_reports(workspace, workspace_root, directories)
     if power_payload:
-        step_metrics.setdefault("Power", {}).update(power_payload)
+        step_metrics.setdefault(StepEnum.POWER_ANALYSIS.value, {}).update(power_payload)
 
     from chipcompiler.cli.core.version_info import version_payload
     from chipcompiler.engine.signoff.report import extract_design_report_data
