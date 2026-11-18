@@ -4,6 +4,7 @@ import tomllib
 from dataclasses import dataclass, field
 
 from chipcompiler.project.manifest import CONFIG_FILENAME
+from chipcompiler.rtl2gds import NoClockDecision
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
 
 SUPPORTED_PDK_NAMES = {"ics55"}
@@ -63,8 +64,6 @@ class ProjectConfig:
     # Winning skip_steps layer recorded by effective-config resolution
     # ("project.json" / "ecc.toml"); None when never resolved.
     _skip_steps_source: str | None = field(default=None, init=False, repr=False)
-    # How effective no-clock was decided (explicit / inferred / off).
-    _no_clock_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _timing_input_error: str | None = field(default=None, init=False, repr=False)
@@ -75,6 +74,34 @@ class ProjectConfig:
     # (manifest) layer; an explicit value — even an empty/invalid one —
     # stays explicit and faces validation.
     _explicit_keys: frozenset = field(default_factory=frozenset, init=False, repr=False)
+
+    @property
+    def _no_clock_source(self) -> str | None:
+        """How effective no-clock was decided (explicit / inferred / off)."""
+        return ProjectNoClockDecisionResolver(self).resolve().source
+
+
+@dataclass(frozen=True)
+class ProjectNoClockDecisionResolver:
+    """Adapter from a parsed ``ecc.toml`` config to the generic flow resolver.
+
+    This is the one project-config-specific piece of no-clock assembly. It
+    feeds only an explicit flow flag to :func:`resolve_no_clock`, while the
+    declared ``design.clock_port`` is the sole inference material.
+    """
+
+    config: "ProjectConfig"
+
+    def resolve(self) -> NoClockDecision:
+        from chipcompiler.rtl2gds import resolve_no_clock
+
+        flow: dict = {}
+        if "flow.no_clock" in self.config._explicit_keys:
+            flow["no_clock"] = self.config.flow_no_clock
+        return resolve_no_clock(
+            flow,
+            materials={"clock_port": self.config.design_clock_port},
+        )
 
 
 def load_project_config(config_path: str) -> ProjectConfig:
@@ -261,16 +288,9 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    from chipcompiler.rtl2gds import resolve_no_clock, resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_skip_steps
 
-    no_clock_flow: dict = {}
-    if "flow.no_clock" in cfg._explicit_keys:
-        no_clock_flow["no_clock"] = cfg.flow_no_clock
-    no_clock = resolve_no_clock(
-        no_clock_flow,
-        materials={"clock_port": cfg.design_clock_port},
-    )
-    cfg._no_clock_source = no_clock.source
+    no_clock = ProjectNoClockDecisionResolver(cfg).resolve()
 
     if cfg._timing_input_error:
         errors.append(cfg._timing_input_error)

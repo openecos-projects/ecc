@@ -870,7 +870,6 @@ def _run_project(
             _attach_lec_engine,
             _attach_no_clock,
             _attach_skip_steps,
-            _project_no_clock_decision,
         )
 
         skip_steps = (
@@ -885,8 +884,9 @@ def _run_project(
             else None
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
-        no_clock_decision = _project_no_clock_decision(cfg)
-        cfg._no_clock_source = no_clock_decision.source
+        from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+        no_clock_decision = ProjectNoClockDecisionResolver(cfg).resolve()
         flow_config = _attach_no_clock(flow_config, no_clock_decision=no_clock_decision)
 
     if cfg is None:

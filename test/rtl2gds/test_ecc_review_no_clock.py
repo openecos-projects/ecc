@@ -224,8 +224,6 @@ def test_config_view_reports_inferred_no_clock(tmp_path):
         flow_preset="rtl2gds",
         project_dir=str(tmp_path),
     )
-    cfg._no_clock_source = "inferred"
-
     items, status = build_project_config_items(
         str(tmp_path),
         str(tmp_path / "run"),

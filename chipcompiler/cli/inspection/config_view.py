@@ -104,16 +104,18 @@ def build_project_config_items(
     # so an inferred empty-clock policy cannot report ``false``/``inferred``.
     from chipcompiler.rtl2gds import resolve_no_clock
 
-    resolver_input = flow_config if isinstance(flow_config, dict) else None
-    if resolver_input is None and "flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()):
+    if isinstance(flow_config, dict):
+        no_clock_decision = resolve_no_clock(
+            flow_config,
+            materials={"clock_port": getattr(cfg, "design_clock_port", "")},
+        )
+    else:
         # Standalone ecc.toml projects carry the declared flag on cfg, not on
         # an effective flow dictionary; surface it so inspection agrees with
         # validation/execution.
-        resolver_input = {"no_clock": getattr(cfg, "flow_no_clock", False)}
-    no_clock_decision = resolve_no_clock(
-        resolver_input,
-        materials={"clock_port": getattr(cfg, "design_clock_port", "")},
-    )
+        from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+        no_clock_decision = ProjectNoClockDecisionResolver(cfg).resolve()
 
     no_clock_enabled = no_clock_decision.enabled
     no_clock_source = no_clock_decision.source

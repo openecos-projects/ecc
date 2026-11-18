@@ -2,16 +2,7 @@
 
 """Effective configuration for manifest-backed projects.
 
-The single owner of manifest preparation: load the manifest once, resolve
-the selected workspace entry, assemble ``base_design + parameter_patch``,
-map ``origin_verilog`` as the RTL fallback, overlay only explicitly
-supplied ecc.toml values, validate the effective config, and compute
-divergence warnings on one canonical projection. Both ``ecc check`` and
-``ecc run`` route through this module.
-
-Imported lazily by the command handlers, so module-level imports must stay
-cheap (no chipcompiler.data imports here).
-"""
+Single owner of manifest preparation; imports stay lazy."""
 
 import os
 from typing import TYPE_CHECKING, TypeGuard
@@ -117,19 +108,6 @@ def _attach_no_clock(flow_config: dict | None, *, no_clock_decision) -> dict | N
     return flow_config
 
 
-def _project_no_clock_decision(cfg):
-    """Effective no-clock for a project config (flag + clock_port materials)."""
-    from chipcompiler.rtl2gds import resolve_no_clock
-
-    flow: dict = {}
-    if "flow.no_clock" in getattr(cfg, "_explicit_keys", frozenset()):
-        flow["no_clock"] = bool(getattr(cfg, "flow_no_clock", False))
-    return resolve_no_clock(
-        flow,
-        materials={"clock_port": getattr(cfg, "design_clock_port", "") or ""},
-    )
-
-
 def _attach_flow_key(flow_config: dict | None, key: str, value) -> dict | None:
     if value is None:
         return flow_config
@@ -195,11 +173,12 @@ def resolve_effective_config(
 
     # skip_steps follows the common precedence: an explicit ecc.toml
     # declaration outranks the manifest entry (the base layer).
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
-    no_clock = _project_no_clock_decision(cfg)
-    cfg._no_clock_source = no_clock.source
+    no_clock = ProjectNoClockDecisionResolver(cfg).resolve()
     flow_config = _attach_no_clock(flow_config, no_clock_decision=no_clock)
     # Provenance for inspection surfaces: the winning layer's name.
     if declared is not None:
