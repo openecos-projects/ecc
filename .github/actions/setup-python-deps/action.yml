@@ -88,7 +88,7 @@ runs:
           # Xplace's native libraries and lookup tables are CMake install
           # artifacts. Inplace editable builds skip installing those files.
           uv sync --frozen --all-groups --python 3.11 --managed-python \
-            --config-settings-package ecc-dreamplace=editable.mode=redirect \
+            --config-settings-package ecc-dreamplace:editable.mode=redirect \
             --no-build-isolation-package ecc-dreamplace \
             --no-build-isolation-package ecc-tools-bin \
             --verbose
