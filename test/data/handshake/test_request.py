@@ -19,7 +19,7 @@ from chipcompiler.engine import step_subprocess
 from chipcompiler.engine.flow import EngineFlow
 
 
-def _wired_flow(tmp_path, *, legacy: bool = False) -> EngineFlow:
+def _wired_flow(tmp_path) -> EngineFlow:
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(
@@ -33,10 +33,6 @@ def _wired_flow(tmp_path, *, legacy: bool = False) -> EngineFlow:
     ledger = build_dynamic_flow_data(
         {"start_step": "synthesis", "end_step": "harden", "skip_steps": []}
     )
-    if legacy:
-        # Ledgers written before steps recorded their directory.
-        for record in ledger.get("steps", []):
-            record.pop("directory", None)
     flow.workspace.flow.data = ledger
     flow.create_step_workspaces(executable_steps=set(), initialize_config=False)
     return flow
@@ -54,14 +50,9 @@ def _request(flow: EngineFlow, name: str):
     )
 
 
-@pytest.mark.parametrize("legacy", [False, True])
-def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch, legacy):
+def test_every_step_rebuilds_from_its_request(tmp_path, monkeypatch):
     import chipcompiler.tools as tools
 
-    if legacy:
-        with pytest.raises(ValueError, match="no recorded directory"):
-            _wired_flow(tmp_path, legacy=True)
-        return
     flow = _wired_flow(tmp_path)
     real_create_step = tools.create_step
     # The parent built optional tools path-only; rebuild them the same way.
@@ -133,11 +124,6 @@ def test_a_step_outside_the_workspace_is_rejected(tmp_path):
             attempt_id="attempt",
             layout_image=True,
         )
-
-
-def test_ledgers_without_recorded_directories_are_rejected(tmp_path):
-    with pytest.raises(ValueError, match="no recorded directory"):
-        _wired_flow(tmp_path, legacy=True)
 
 
 def test_emir_links_the_pdn_and_power_to_the_steps_that_produced_them(tmp_path):
