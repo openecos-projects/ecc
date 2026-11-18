@@ -3,8 +3,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from chipcompiler.data import Workspace
+from chipcompiler.data import EccStep, Workspace
+from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_completion import summarize_step_checklist
+from test.flow_fixture import step_directory
 
 
 def _step(path: Path):
@@ -150,3 +152,37 @@ def test_flow_items_ignore_steps_outside_the_ledger_range():
 
     assert not any(item["step"] == "routing" for item in items)
     assert any(item["step"] == "harden" and item["state"] == "pass" for item in items)
+
+
+def test_a_blocked_checklist_gates_the_next_step_past_an_inserted_lec(tmp_path):
+    workspace: Any = Workspace(directory=tmp_path)
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = {
+        "schema_version": 3,
+        "steps": [
+            {
+                "name": "cts",
+                "tool": "ecc",
+                "category": "PNR",
+                "checklist_status": {"status": "blocked", "blocked": True},
+                **step_directory("cts", "ecc"),
+            },
+            {
+                "name": "lec@cts",
+                "tool": "kepler_formal",
+                "category": "PNR",
+                **step_directory("lec@cts", "kepler_formal"),
+            },
+            {
+                "name": "legalization",
+                "tool": "dreamplace",
+                "category": "PNR",
+                **step_directory("legalization", "dreamplace"),
+            },
+        ],
+    }
+
+    assert [
+        flow._blocked_checklist_prerequisite(EccStep(name=name, tool=tool))
+        for name, tool in (("lec@cts", "kepler_formal"), ("legalization", "dreamplace"))
+    ] == ["cts", "cts"]

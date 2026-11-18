@@ -253,3 +253,34 @@ def test_sequential_steps_are_bracketed_by_log_sections(wave_flow, monkeypatch):
         f"{filler.tool} - begin step - filler",
         f"{filler.tool} - end step - filler",
     ]
+
+
+def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
+    from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+
+    workspace: Any = Workspace(directory=tmp_path)
+    flow: Any = EngineFlow(workspace)
+    flow.workspace.flow.data = build_dynamic_flow_data(
+        {"start_step": "filler", "end_step": "harden", "skip_steps": []}
+    )
+    flow.workspace_steps = [
+        SimpleNamespace(name=record["name"], tool=record["tool"])
+        for record in flow.workspace.flow.steps()
+    ]
+    dispatched = []
+
+    def run_wave(steps, **_kwargs):
+        dispatched.append([step.name for step in steps])
+        return [(step, StateEnum.Success) for step in steps]
+
+    monkeypatch.setattr(flow, "_run_wave", run_wave)
+    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
+
+    assert flow.run_steps() is True
+    assert dispatched == [
+        ["filler"],
+        ["lvs", "drc", "antenna_check", "post_route_lec", "rcx"],
+        ["sta", "power_analysis"],
+        ["emir"],
+        ["harden"],
+    ]
