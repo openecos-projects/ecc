@@ -13,7 +13,6 @@ from chipcompiler.data import (
     CheckPolicy,
     CheckState,
     SkippableStepEnum,
-    StepBaseEnum,
     StepEnum,
     create_workspace,
     load_workspace,
@@ -742,7 +741,7 @@ def test_step_config_keys_return_workspace_config_keys():
     )
     assert data_api.step_config_keys("placement", "ecc") == ("db",)
     assert data_api.step_config_keys(StepEnum.PLACEMENT, "ecc") == ("db",)
-    assert data_api.step_config_keys(StepEnum.DIFF_SIZING, "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys(StepEnum.DIFF_SIZING, "dreamplace") == ("dreamplace", "sta")
     assert data_api.step_config_keys("legalization", "ecc") == ("db",)
     assert data_api.step_config_keys("filler", "ecc") == (
         "db",
@@ -753,19 +752,18 @@ def test_step_config_keys_return_workspace_config_keys():
         StepEnum.RCX.value,
         StepEnum.STA.value,
     )
-    assert data_api.step_config_keys("placement", "dreamplace") == ("dreamplace",)
+    assert data_api.step_config_keys("placement", "dreamplace") == ("dreamplace", "sta")
     assert data_api.step_config_keys("legalization", "dreamplace") == ("dreamplace",)
-    assert data_api.step_config_keys("timing_optimization", "sizer") == (
-        "db",
-        "sizer",
-        "dreamplace",
-    )
     assert data_api.step_config_keys(SkippableStepEnum.TIMING_OPT, "sizer") == (
         "db",
         "sizer",
+        "sta",
+        "routing",
         "dreamplace",
     )
-    assert data_api.step_config_keys("synthesis", "yosys") == ()
+    assert data_api.step_config_keys("preplace", "sizer") == ("db", "sizer", "sta", "routing")
+    assert data_api.step_config_keys("synthesis", "yosys") == ("db",)
+    assert data_api.step_config_keys("post_route_lec", "kepler_formal") == ()
     assert data_api.step_config_keys("placement", None) == ()
 
 
@@ -810,6 +808,7 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     )
     assert data_api.step_config_paths(str(workspace_dir), "placement", "dreamplace") == (
         config_dir / "dreamplace_ecc.json",
+        config_dir / "sta_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "legalization", "dreamplace") == (
         config_dir / "dreamplace_ecc.json",
@@ -817,10 +816,11 @@ def test_step_config_paths_return_expected_and_existing_paths(tmp_path):
     assert data_api.step_config_paths(workspace_dir, SkippableStepEnum.TIMING_OPT, "sizer") == (
         config_dir / "db_ecc.json",
         config_dir / "sizer_ecc.json",
+        config_dir / "sta_ecc.json",
+        config_dir / "routing_ecc.json",
         config_dir / "dreamplace_ecc.json",
     )
     assert data_api.step_config_paths(workspace_dir, "placement", "ECC") == ()
-    assert data_api.step_config_paths(workspace_dir, "synthesis", "yosys") == ()
 
 
 def test_workspace_config_metadata_is_private_and_step_enum_keyed():
@@ -835,11 +835,6 @@ def test_workspace_config_metadata_is_private_and_step_enum_keyed():
         assert not hasattr(workspace_data, public_name)
 
     assert hasattr(workspace_data, "_WORKSPACE_CONFIG_FILENAMES")
-    assert hasattr(workspace_data, "_STEP_CONFIG_KEYS")
-    assert all(
-        isinstance(step, StepBaseEnum) and isinstance(tool, str)
-        for step, tool in workspace_data._STEP_CONFIG_KEYS
-    )
 
     step_source = "".join(path.read_text() for path in Path("chipcompiler/data/step").glob("*.py"))
     assert "STEP_CONFIG" not in step_source

@@ -18,14 +18,13 @@ from ..parameter import (
     load_parameter as load_parameter,
 )
 from ..pdk import PDK, get_pdk, invalid_io_liberty_errors
-from ..types import (
-    SkippableStepEnum,
-    StepBaseEnum,
-    StepEnum,
-    ToolName,
-)
+from ..step_config_reads import step_config_keys as step_config_keys
 from ..types import (
     StateEnum as StateEnum,
+)
+from ..types import (
+    StepBaseEnum,
+    StepEnum,
 )
 from ..workspace_config import (
     FLOW_POLICY_KEYS,
@@ -188,30 +187,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "dreamplace": "dreamplace_ecc.json",
 }
 
-_STEP_CONFIG_KEYS: Final[dict[tuple[str, str], tuple[str, ...]]] = {
-    # The shared floorplan config key also accepts parameter edits directly.
-    (StepEnum.FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN),
-    (StepEnum.PRE_FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN),
-    (StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE): ("dreamplace", "macro_location"),
-    (StepEnum.POST_FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN, "macro_location"),
-    (StepEnum.PREPLACE, ToolName.SIZER): ("db",),
-    (StepEnum.PLACEMENT, ToolName.ECC): ("db",),
-    (StepEnum.CTS, ToolName.ECC): ("db", StepEnum.CTS),
-    (StepEnum.ROUTING, ToolName.ECC): ("db", StepEnum.ROUTING),
-    (StepEnum.DRC, ToolName.ECC): ("db", StepEnum.DRC),
-    (StepEnum.ANTENNA_CHECK, ToolName.ECC): ("db",),
-    (StepEnum.LEGALIZATION, ToolName.ECC): ("db",),
-    (StepEnum.FILLER, ToolName.ECC): ("db", StepEnum.FILLER),
-    (StepEnum.RCX, ToolName.ECC): ("db", StepEnum.RCX),
-    (StepEnum.STA, ToolName.ECC): ("db", StepEnum.RCX, StepEnum.STA),
-    (StepEnum.EMIR, ToolName.ECC): ("db", StepEnum.EMIR),
-    (StepEnum.PLACEMENT, ToolName.DREAMPLACE): ("dreamplace",),
-    (SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE): ("dreamplace",),
-    (StepEnum.DIFF_SIZING, ToolName.DREAMPLACE): ("dreamplace",),
-    (StepEnum.LEGALIZATION, ToolName.DREAMPLACE): ("dreamplace",),
-    (SkippableStepEnum.TIMING_OPT, ToolName.SIZER): ("db", "sizer", "dreamplace"),
-}
-
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     config_dir = Path(workspace_dir) / "config"
@@ -226,11 +201,6 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
 
 def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Path | None:
     return workspace_config_paths(workspace_dir).get(config_key)
-
-
-def step_config_keys(step: str, tool: str | None) -> tuple[str, ...]:
-    # A StrEnum member is a str, so a step member or its plain name looks it up.
-    return () if tool is None else _STEP_CONFIG_KEYS.get((step, tool), ())
 
 
 def step_config_paths(
