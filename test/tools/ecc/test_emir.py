@@ -21,6 +21,7 @@ from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.tools.ecc import builder, runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
+from test.flow_fixture import publish_response
 
 
 def test_emir_default_technology_path_uses_workspace_config_copy(
@@ -99,7 +100,7 @@ def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
         DesignState.PDN: UpstreamResponse("post_floorplan_ecc", None),
     }
     if power:
-        upstream[AnalysisData.POWER] = UpstreamResponse("power_analysis_ecc", None)
+        upstream[AnalysisData.POWER] = publish_response(workspace_dir, "power_analysis_ecc")
     return StepRequest(
         workspace_directory=workspace_dir,
         step=StepEnum.EMIR.value,
@@ -291,7 +292,7 @@ def test_emir_without_an_upstream_power_analysis_fails_before_native_init(emir_c
     workspace, step, module, _save_data = emir_case
     write_request(_emir_request(tmp_path, power=False))
 
-    with pytest.raises(ValueError, match="no upstream power analysis"):
+    with pytest.raises(ValueError, match="no power analysis"):
         runner.run_step(workspace, step, module)
 
     module.init_emir.assert_not_called()
@@ -315,4 +316,22 @@ def test_emir_reads_the_typical_spef_a_derived_workspace_inherited(emir_case):
 
     assert emir._typical_spef_path(workspace, step, runner) == str(
         inherited / "gcd_TYPICAL_25C.spef"
+    )
+
+
+def test_emir_reads_the_power_analysis_a_derived_workspace_inherited(emir_case, tmp_path):
+    from chipcompiler.data.step import StepDirectories
+    from chipcompiler.tools.ecc import emir
+    from chipcompiler.tools.ecc.power_artifacts import instance_power_path
+
+    workspace, step, _module, _save_data = emir_case
+    write_request(_emir_request(tmp_path, power=False))
+    inherited = StepDirectories.of(workspace).path(StepEnum.POWER_ANALYSIS.value)
+    instance_power_path(inherited).parent.mkdir(parents=True)
+    instance_power_path(inherited).write_text("instance\tpower\n", encoding="utf-8")
+
+    # The grid from the post_floorplan step req.json names, power from the inherited run.
+    assert emir._upstream_directories(workspace, step) == (
+        workspace.directory / "post_floorplan_ecc",
+        inherited,
     )

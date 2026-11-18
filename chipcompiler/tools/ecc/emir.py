@@ -3,9 +3,9 @@
 from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
-from chipcompiler.data.handshake import load_request
+from chipcompiler.data.handshake import load_request, power_source
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.types import AnalysisData, DesignState
+from chipcompiler.data.types import DesignState
 from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import instance_power_path
@@ -96,18 +96,22 @@ def _upstream_directories(workspace: Workspace, step: EccStep) -> tuple[Path, Pa
     """The steps that built the power grid and analyzed power, from req.json.
 
     A grid the project declares instead of building has no upstream step; it
-    is read from the post_floorplan directory the ledger records.
+    is read from the post_floorplan directory the ledger records. Power comes
+    as :func:`power_source` resolves it, including an inherited power analysis.
     """
     if step.directory is None:
         raise ValueError(f"{step.name} step directory is not configured")
-    upstream = load_request(Path(step.directory)).upstream
-    power = upstream.get(AnalysisData.POWER)
-    if power is None:
-        raise ValueError(f"{step.name} has no upstream power analysis")
-    pdn = upstream.get(DesignState.PDN)
+    request = load_request(Path(step.directory))
+    power_directory = power_source(request)
+    if power_directory is None:
+        raise ValueError(
+            f"{step.name} has no power analysis: no successful upstream power_analysis "
+            "run and no inherited power outputs"
+        )
+    pdn = request.upstream.get(DesignState.PDN)
     pdn_directory = (
         Path(workspace.directory) / pdn.step_directory
         if pdn is not None
         else StepDirectories.of(workspace).path(StepEnum.POST_FLOORPLAN.value)
     )
-    return pdn_directory, Path(workspace.directory) / power.step_directory
+    return pdn_directory, power_directory

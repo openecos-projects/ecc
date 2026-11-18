@@ -189,7 +189,12 @@ def _execute_in_process(
 
                     write_response(
                         request.directory,
-                        build_step_response(request, workspace_step, succeeded=step_error is None),
+                        build_step_response(
+                            request,
+                            workspace_step,
+                            succeeded=step_error is None,
+                            declared_spef=None,
+                        ),
                     )
             except (Exception, SystemExit) as exc:
                 step_error = record_tool_failure(workspace.logger, step_tag, exc)

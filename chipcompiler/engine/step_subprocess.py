@@ -340,8 +340,8 @@ def run_step_worker(
     # evidence code, which still reads step states from it.
     workspace.flow.read_only = True
     step = _build_requested_step(workspace, request)
+    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
     try:
-        declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
         if missing := missing_design_data(request, step, declared_spef=declared_spef):
             raise RuntimeError(
                 f"{request.step} cannot run: missing {', '.join(sorted(missing))} "
@@ -366,14 +366,18 @@ def run_step_worker(
     except (Exception, SystemExit):
         # Downstream steps must see this attempt failed, not a missing answer.
         write_step_parameter_evidence(workspace, step, request.directory)
-        write_response(request.directory, build_step_response(request, step, succeeded=False))
+        write_response(
+            request.directory,
+            build_step_response(request, step, succeeded=False, declared_spef=declared_spef),
+        )
         raise
     # The tool has finalized its config: record the parameters that fed the step.
     write_step_parameter_evidence(workspace, step, request.directory)
     # rsp.json describes the step's design data; the layout thumbnail below is
     # not part of it, so the response is published before rendering.
     write_response(
-        request.directory, build_step_response(request, step, succeeded=outputs_complete)
+        request.directory,
+        build_step_response(request, step, succeeded=outputs_complete, declared_spef=declared_spef),
     )
     if outputs_complete and request.layout_image and not flow._is_placement_only_step(step):
         from chipcompiler.tools import save_layout_image

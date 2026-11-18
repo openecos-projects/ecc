@@ -180,3 +180,17 @@ def test_parasitics_source_names_where_the_step_reads_parasitics(tmp_path):
         ParasiticsSource(inherited),
         ParasiticsSource(tmp_path / "rcx_ecc" / "output"),
     ]
+
+
+def test_a_derived_workspace_reads_the_power_analysis_it_inherited(tmp_path):
+    from chipcompiler.data.step import StepDirectories
+    from chipcompiler.tools.ecc.power_artifacts import instance_power_path
+
+    request = _request(tmp_path, StepEnum.EMIR.value, {})
+    inherited = instance_power_path(
+        StepDirectories.at(tmp_path).path(StepEnum.POWER_ANALYSIS.value)
+    )
+    inherited.parent.mkdir(parents=True)
+    inherited.write_text("instance\tpower\n", encoding="utf-8")
+
+    assert missing_design_data(request, EccStep(name="emir"), declared_spef=None) == frozenset()

@@ -28,9 +28,11 @@ from chipcompiler.data.handshake.messages import (
 )
 from chipcompiler.data.handshake.readiness import (
     ParasiticsSource,
+    analysis_available,
     input_design_states,
     missing_design_data,
     parasitics_source,
+    power_source,
     published_upstream,
 )
 from chipcompiler.data.handshake.request import build_step_request
@@ -57,7 +59,9 @@ __all__ = [
     "load_request",
     "load_response",
     "missing_design_data",
+    "analysis_available",
     "parasitics_source",
+    "power_source",
     "published_upstream",
     "stale_steps",
     "write_request",

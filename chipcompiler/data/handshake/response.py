@@ -10,17 +10,18 @@ from chipcompiler.data.handshake.messages import (
     StepRequest,
     StepResponse,
 )
-from chipcompiler.data.handshake.readiness import input_design_states, published_upstream
+from chipcompiler.data.handshake.readiness import analysis_available, input_design_states
 from chipcompiler.data.types import AnalysisData, DesignData, flow_step_policy
 
 
 def build_step_response(
-    request: StepRequest, step: WorkspaceStep, *, succeeded: bool
+    request: StepRequest, step: WorkspaceStep, *, succeeded: bool, declared_spef: Path | None
 ) -> StepResponse:
     """The response for *step*, run from *request*.
 
     A failed step publishes no design or analysis data, so no downstream step
-    can accept its outputs.
+    can accept its outputs. A successful one warns about each design data item
+    it uses but did not have; *declared_spef* is the project's declared SPEF.
     """
     if not succeeded:
         return StepResponse(
@@ -42,8 +43,9 @@ def build_step_response(
         *input_states,
         *(
             item
-            for item in request.upstream
-            if isinstance(item, AnalysisData) and published_upstream(request, item)
+            for item in policy.uses
+            if isinstance(item, AnalysisData)
+            and analysis_available(request, item, step, declared_spef=declared_spef)
         ),
     }
     return StepResponse(

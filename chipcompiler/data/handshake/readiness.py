@@ -23,10 +23,7 @@ def missing_design_data(
     """Required design data the step has neither from upstream nor declared.
 
     Design states must be carried by the design the step reads. Analysis data
-    must be published by the upstream step the request names; only when no
-    step provides it may it come from a project declaration: parasitics as
-    :func:`parasitics_source` resolves them, the golden netlist from the
-    step's own golden input.
+    must be available as :func:`analysis_available` decides.
     """
     input_states = input_design_states(request)
     missing: set[DesignData] = set()
@@ -34,15 +31,30 @@ def missing_design_data(
         if isinstance(item, DesignState):
             if item not in input_states:
                 missing.add(item)
-        elif item is AnalysisData.PARASITICS:
-            if parasitics_source(request, declared_spef=declared_spef) is None:
-                missing.add(item)
-        elif item in request.upstream:
-            if not published_upstream(request, item):
-                missing.add(item)
-        elif not _declared(item, step):
+        elif not analysis_available(request, item, step, declared_spef=declared_spef):
             missing.add(item)
     return frozenset(missing)
+
+
+def analysis_available(
+    request: StepRequest, item: AnalysisData, step: WorkspaceStep, *, declared_spef: Path | None
+) -> bool:
+    """Whether the step has *item*.
+
+    An upstream step the request names supplies it only through its successful
+    response for the accepted run. Without one, parasitics and power fall back
+    as :func:`parasitics_source` and :func:`power_source` resolve them, and the
+    golden netlist comes from the step's own golden input.
+    """
+    match item:
+        case AnalysisData.PARASITICS:
+            return parasitics_source(request, declared_spef=declared_spef) is not None
+        case AnalysisData.POWER:
+            return power_source(request) is not None
+        case AnalysisData.GOLDEN_NETLIST:
+            if item in request.upstream:
+                return published_upstream(request, item)
+            return getattr(step.input, "golden_verilog", None) is not None
 
 
 class ParasiticsSource(NamedTuple):
@@ -76,6 +88,24 @@ def parasitics_source(
     return None
 
 
+def power_source(request: StepRequest) -> Path | None:
+    """The power analysis directory the step reads instance power from, or None.
+
+    An upstream power analysis the request names supplies it only through its
+    successful response for the accepted run. Without one, a derived workspace
+    reads the power analysis it inherited from its source.
+    """
+    link = request.upstream.get(AnalysisData.POWER)
+    if link is not None:
+        if not published_upstream(request, AnalysisData.POWER):
+            return None
+        return request.workspace_directory / link.step_directory
+    from chipcompiler.tools.ecc.power_artifacts import instance_power_path
+
+    inherited = StepDirectories.at(request.workspace_directory).path(StepEnum.POWER_ANALYSIS.value)
+    return inherited if instance_power_path(inherited).is_file() else None
+
+
 def published_upstream(request: StepRequest, item: AnalysisData) -> bool:
     """Whether the upstream step the request names for *item* published it.
 
@@ -91,13 +121,6 @@ def published_upstream(request: StepRequest, item: AnalysisData) -> bool:
         and response.attempt_id == link.attempt_id
         and response.status is ResponseStatus.SUCCESS
         and bool(response.outputs.get(item))
-    )
-
-
-def _declared(item: AnalysisData, step: WorkspaceStep) -> bool:
-    """Whether the project declares *item* for the step; parasitics resolve apart."""
-    return item is AnalysisData.GOLDEN_NETLIST and (
-        getattr(step.input, "golden_verilog", None) is not None
     )
 
 
