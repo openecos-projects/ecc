@@ -2,6 +2,7 @@
 
 from chipcompiler.data.step.directories import (
     STEP_DIRECTORIES,
+    STEP_TOOLS,
     StepDirectories,
     all_step_directories,
     flow_step_directory,
@@ -17,6 +18,7 @@ from chipcompiler.data.step.metrics import StepMetrics, load_metrics, save_metri
 
 __all__ = [
     "STEP_DIRECTORIES",
+    "STEP_TOOLS",
     "StepDirectories",
     "StepMetrics",
     "all_step_directories",

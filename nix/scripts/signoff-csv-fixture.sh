@@ -48,14 +48,14 @@ write_json "$workspace/home/flow.json" <<'JSON'
 {
   "schema_version": 2,
   "steps": [
-    {"name": "synthesis", "tool": "yosys", "state": "Success"},
-    {"name": "post_floorplan", "tool": "ecc", "state": "Success"},
-    {"name": "placement", "tool": "dreamplace", "state": "Success"},
-    {"name": "drc", "tool": "ecc", "state": "Success"},
-    {"name": "lvs", "tool": "ecc", "state": "Success"},
-    {"name": "sta", "tool": "ecc", "state": "Success"},
-    {"name": "post_route_lec", "tool": "kepler_formal", "state": "Success"},
-    {"name": "harden", "tool": "ecc", "state": "Success"}
+    {"name": "synthesis", "tool": "yosys", "directory": "synthesis_yosys", "state": "Success"},
+    {"name": "post_floorplan", "tool": "ecc", "directory": "post_floorplan_ecc", "state": "Success"},
+    {"name": "placement", "tool": "dreamplace", "directory": "placement_dreamplace", "state": "Success"},
+    {"name": "drc", "tool": "ecc", "directory": "drc_ecc", "state": "Success"},
+    {"name": "lvs", "tool": "ecc", "directory": "lvs_ecc", "state": "Success"},
+    {"name": "sta", "tool": "ecc", "directory": "sta_ecc", "state": "Success"},
+    {"name": "post_route_lec", "tool": "kepler_formal", "directory": "post_route_lec_kepler_formal", "state": "Success"},
+    {"name": "harden", "tool": "ecc", "directory": "harden_ecc", "state": "Success"}
   ]
 }
 JSON

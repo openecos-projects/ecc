@@ -7,7 +7,7 @@ from chipcompiler.cli.core.output import (
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.data.step import recorded_step_directory, unindexed_step_directory
+from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories
 
 CORRUPT_FLOW_JSON = "CORRUPT"
 
@@ -61,45 +61,18 @@ def get_run_status(flow_data: dict) -> str:
 
 
 def discover_step_dirs(run_dir: str) -> dict[str, str]:
-    result = {}
+    """Step name -> directory of each step whose artifacts *run_dir* holds.
+
+    Ledger steps use their recorded directory; a step absent from a bounded
+    ledger uses its inherited, else its base ``<step>_<tool>``, directory.
+    """
     if not os.path.isdir(run_dir):
-        return result
-
+        return {}
     flow_data = read_flow_json(run_dir)
-    flow_dir_tokens = {}
-    if isinstance(flow_data, dict):
-        flow_dir_tokens = {
-            recorded_step_directory(step): step["name"]
-            for step in _safe_steps(flow_data)
-            if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
-        }
-
-    for entry in os.listdir(run_dir):
-        full = os.path.join(run_dir, entry)
-        if not os.path.isdir(full):
-            continue
-        token = flow_dir_tokens.get(entry)
-        if token is None:
-            name = step_dir_step_name(full)
-            if name is None:
-                continue
-            token = name
-        result[token] = full
-    return result
-
-
-def step_dir_step_name(step_path: str) -> str | None:
-    entry = unindexed_step_directory(os.path.basename(step_path))
-    if "_" not in entry:
-        return None
-    return entry.rpartition("_")[0]
-
-
-def step_dir_tool(step_path: str) -> str | None:
-    entry = unindexed_step_directory(os.path.basename(step_path))
-    if "_" not in entry:
-        return None
-    return entry.rpartition("_")[2]
+    steps = _safe_steps(flow_data) if isinstance(flow_data, dict) else []
+    directories = StepDirectories.from_records(Path(run_dir), steps)
+    names = dict.fromkeys([*directories.reader_step_names(), *STEP_DIRECTORIES])
+    return {step: str(directories.path(step)) for step in names if directories.path(step).is_dir()}
 
 
 def get_flow_step_names(run_dir: str) -> set[str]:

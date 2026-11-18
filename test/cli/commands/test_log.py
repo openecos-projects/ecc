@@ -2,6 +2,7 @@ import json
 import os
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.data.step import STEP_TOOLS
 from test.flow_fixture import step_fields
 
 
@@ -564,21 +565,12 @@ class TestLogListingFlowOrder:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(
-            run_dir, steps=[{"name": n, "tool": "ecc", "state": "Success"} for n in step_names]
+            run_dir,
+            steps=[{"name": n, "tool": STEP_TOOLS[n], "state": "Success"} for n in step_names],
         )
         all_dirs = list(step_names) + (extra_dirs or [])
-        tool_map = {
-            "synthesis": "yosys",
-            "floorplan": "ecc",
-            "placement": "ecc",
-            "cts": "ecc",
-            "legalization": "ecc",
-            "routing": "ecc",
-            "drc": "ecc",
-            "filler": "ecc",
-        }
         for name in all_dirs:
-            tool = tool_map.get(name, "ecc")
+            tool = STEP_TOOLS[name]
             step_dir = os.path.join(run_dir, f"{name}_{tool}", "log")
             os.makedirs(step_dir, exist_ok=True)
             with open(os.path.join(step_dir, f"{name.lower()}.log"), "w") as f:
@@ -597,13 +589,13 @@ class TestLogListingFlowOrder:
             tmp_path,
             create_cli_project,
             create_flow_json,
-            ["synthesis", "floorplan", "cts"],
+            ["synthesis", "pre_floorplan", "cts"],
         )
         rc = cli_main.run(["log", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         steps = [r.get("step") for r in records if "step" in r]
-        assert steps == ["synthesis", "floorplan", "cts"]
+        assert steps == ["synthesis", "pre_floorplan", "cts"]
 
     def test_run_level_logs_before_step_logs(
         self,
@@ -646,7 +638,7 @@ class TestLogListingFlowOrder:
             create_cli_project,
             create_flow_json,
             ["synthesis", "cts"],
-            extra_dirs=["floorplan"],
+            extra_dirs=["pre_floorplan"],
         )
         rc = cli_main.run(["log", "--plain", "--project", project_dir])
         assert rc == 0
@@ -654,7 +646,7 @@ class TestLogListingFlowOrder:
         steps = [r.get("step") for r in records if "step" in r]
         synth_idx = steps.index("synthesis")
         cts_idx = steps.index("cts")
-        fp_idx = steps.index("floorplan")
+        fp_idx = steps.index("pre_floorplan")
         assert synth_idx < cts_idx
         assert cts_idx < fp_idx
 
@@ -671,7 +663,7 @@ class TestLogListingFlowOrder:
             create_cli_project,
             create_flow_json,
             ["synthesis"],
-            extra_dirs=["floorplan", "cts"],
+            extra_dirs=["pre_floorplan", "cts"],
         )
         rc = cli_main.run(["log", "--plain", "--project", project_dir])
         assert rc == 0

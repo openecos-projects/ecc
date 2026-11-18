@@ -115,14 +115,6 @@ relative_path() {
   printf '%s' "$p"
 }
 
-step_tool() {
-  local name="$1"
-  [[ -f "${flow_file}" ]] || return 0
-  jq -r --arg name "${name}" \
-    '([.steps[]? | select(.name == $name) | .tool // ""] | .[0]) // ""' \
-    "${flow_file}" 2>/dev/null || true
-}
-
 step_state() {
   local name="$1"
   [[ -f "${flow_file}" ]] || return 0
@@ -131,29 +123,17 @@ step_state() {
     "${flow_file}" 2>/dev/null || true
 }
 
+# The directory the flow ledger records for a step; empty when it records none.
 step_directory() {
   local name="$1"
-  local recorded tool
-  if [[ -f "${flow_file}" ]]; then
-    recorded="$(jq -r --arg name "${name}" \
-      '([.steps[]? | select(.name == $name) | .directory // empty] | .[0]) // ""' \
-      "${flow_file}" 2>/dev/null || true)"
-    if [[ -n "${recorded}" && "${recorded}" != */* && "${recorded}" != . && "${recorded}" != .. ]]; then
-      printf '%s' "${recorded}"
-      return 0
-    fi
+  local recorded
+  [[ -f "${flow_file}" ]] || return 0
+  recorded="$(jq -r --arg name "${name}" \
+    '([.steps[]? | select(.name == $name) | .directory // empty] | .[0]) // ""' \
+    "${flow_file}" 2>/dev/null || true)"
+  if [[ -n "${recorded}" && "${recorded}" != */* && "${recorded}" != . && "${recorded}" != .. ]]; then
+    printf '%s' "${recorded}"
   fi
-  case "$name" in
-    synthesis) printf 'synthesis_yosys' ;;
-    post_route_lec)
-      tool="$(step_tool post_route_lec)"
-      tool="${tool,,}"
-      # The engine's own <step>_<tool> directory: a ledger naming another
-      # engine never borrows kepler-formal's result.
-      printf 'post_route_lec_%s' "${tool:-kepler_formal}"
-      ;;
-    *) printf '%s_ecc' "$name" ;;
-  esac
 }
 
 json_metric_value() {
