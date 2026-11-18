@@ -13,6 +13,11 @@ HEADER = struct.Struct("<8sIIIIQQ")
 MAX_METADATA = 1024 * 1024
 
 
+def belongs_to_step(step_name: str, kind: str) -> bool:
+    """Clock-tree helper extraction does not make Filler an RCX result stage."""
+    return kind != "rcx" or step_name.casefold() == "rcx"
+
+
 def metadata(path: Path, *, validate_index: bool = False) -> dict:
     """Read only the small catalog; sample/marker/path data stays native binary."""
     with path.open("rb") as stream:
@@ -124,6 +129,8 @@ def publish(step, started_ns: int) -> None:
         if source.stat().st_mtime_ns < started_ns:
             continue
         info = metadata(source, validate_index=True)
+        if not belongs_to_step(step.name, info["kind"]):
+            continue
         key = info["key"]
         if key in keys:
             if filecmp.cmp(keys[key], source, shallow=False):

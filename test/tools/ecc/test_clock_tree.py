@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -66,7 +67,13 @@ def test_select_typical_spef_requires_exact_corner_and_temperature(tmp_path):
     assert _select_typical_spef(tmp_path, 25.0) == expected
 
 
-def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tmp_path):
+@pytest.mark.parametrize("capture_enabled", [False, True])
+def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(
+    tmp_path, monkeypatch, capture_enabled
+):
+    monkeypatch.delenv("ECC_REPLAY_CAPTURE_DIR", raising=False)
+    if capture_enabled:
+        monkeypatch.setenv("ECC_REPLAY_CAPTURE_DIR", str(tmp_path / "capture"))
     sta_config, _liberty = _sta_config(tmp_path)
     sdc = tmp_path / "gcd.sdc"
     sdc.write_text("create_clock -period 10 clk\n", encoding="utf-8")
@@ -108,6 +115,7 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
             return True
 
         def run_sta(self):
+            assert "ECC_REPLAY_CAPTURE_DIR" not in os.environ
             self.calls.append(("run_sta",))
             return True
 
@@ -134,6 +142,7 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
             return True
 
         def run_rcx(self):
+            assert "ECC_REPLAY_CAPTURE_DIR" not in os.environ
             self.calls.append(("run_rcx",))
             return True
 
@@ -144,6 +153,9 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
     module = FakeModule()
 
     graph = capture_filler_clock_tree(workspace, step, module)
+    assert os.environ.get("ECC_REPLAY_CAPTURE_DIR") == (
+        str(tmp_path / "capture") if capture_enabled else None
+    )
 
     assert module.calls == [
         (

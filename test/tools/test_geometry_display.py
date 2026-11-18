@@ -12,9 +12,9 @@ from chipcompiler.tools.geometry_display import HEADER, begin, invalidate, metad
 from chipcompiler.tools.replay_artifacts import reference_geometry
 
 
-def asset(path, *, key="power:total", dbu=1000, records=False):
+def asset(path, *, key="power:total", kind="power", dbu=1000, records=False):
     path.parent.mkdir(parents=True, exist_ok=True)
-    info = {"kind": "power", "key": key, "label": "Total power", "dbu_per_micron": dbu}
+    info = {"kind": kind, "key": key, "label": "Total power", "dbu_per_micron": dbu}
     data = json.dumps(info).encode()
     if records:
         # Independent MessagePack maps; publisher validates offsets, never decodes samples.
@@ -32,7 +32,9 @@ def step_at(root):
     manifest.parent.mkdir(parents=True)
     manifest.write_text("schema_version=1\ndbu_per_micron=1000\n")
     return SimpleNamespace(
-        directory=str(root), output=SimpleNamespace(geometry_manifest=str(manifest))
+        name="powerAnalysis",
+        directory=str(root),
+        output=SimpleNamespace(geometry_manifest=str(manifest)),
     )
 
 
@@ -174,3 +176,26 @@ def test_begin_uses_filesystem_clock_and_invalidates_drc_binding(tmp_path, monke
     assert begin(step) == 123456
     assert "drc=" not in manifest.read_text()
     assert list((tmp_path / "data").iterdir()) == []
+
+
+def test_helper_rcx_assets_are_not_published_or_replayed_as_filler_results(tmp_path):
+    from chipcompiler.tools.replay_analysis import collect_analysis
+
+    step = step_at(tmp_path)
+    source = tmp_path / "data/clock_tree/rcx/result.gdisplay"
+    asset(source, key="rcx:typical", kind="rcx", records=True)
+    step.name = "filler"
+    publish(step, 0)
+    assert published(step) == []
+    assert collect_analysis(step, tmp_path / "attempt-filler", 0) == {}
+    # The owning RCX stage still publishes and reuses exactly the same data.
+    step.name = "RCX"
+    publish(step, 0)
+    assert [metadata(path)["kind"] for path in published(step)] == ["rcx"]
+    assert collect_analysis(step, tmp_path / "attempt-rcx", 0) == {
+        "analysis": "subflows/analysis/overlays/index.json",
+        "analysis_view_count": 1,
+    }
+    # An already-bound auxiliary dataset must not leak into a new Replay index.
+    step.name = "filler"
+    assert collect_analysis(step, tmp_path / "attempt-existing", 0) == {}

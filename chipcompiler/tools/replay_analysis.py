@@ -172,7 +172,7 @@ def inventory(path):
 
 
 def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
-    from chipcompiler.tools.geometry_display import metadata
+    from chipcompiler.tools.geometry_display import belongs_to_step, metadata
 
     manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
     if manifest and Path(manifest).is_file():
@@ -184,6 +184,8 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
             asset = within(manifest.parent, manifest.parent / line.split("=", 1)[1])
             info = metadata(asset)
             kind = info["kind"]
+            if not belongs_to_step(step.name, kind):
+                continue
             if kind in {"power", "timing", "lvs", "antenna", "em", "rcx"} or (
                 kind == "ir" and not info.get("layer")
             ):
