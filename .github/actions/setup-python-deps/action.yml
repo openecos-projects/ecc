@@ -85,7 +85,10 @@ runs:
         if [ "${{ inputs.build-all }}" = "true" ]; then
           export SCCACHE_GHA_ENABLED="true"
           export CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_PREFIX_PATH=${ECC_BOOST_ROOT}"
+          # Xplace's native libraries and lookup tables are CMake install
+          # artifacts. Inplace editable builds skip installing those files.
           uv sync --frozen --all-groups --python 3.11 --managed-python \
+            --config-settings-package ecc-dreamplace=editable.mode=redirect \
             --no-build-isolation-package ecc-dreamplace \
             --no-build-isolation-package ecc-tools-bin \
             --verbose
