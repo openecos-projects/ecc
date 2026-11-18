@@ -190,3 +190,59 @@ def test_import_verilog_reports_no_include_directories(tmp_path):
     result = import_project_rtl(str(project), verilog=(str(source),))
 
     assert result["include_dirs"] is None
+
+
+def _project_with_headers_to_import(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A project, a filelist with ``+incdir+inc`` and a directory outside the project."""
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "inc" / "nested").mkdir(parents=True)
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    (source_root / "inc" / "nested" / "defs.vh").write_text("`define DEMO 1\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+inc\ndemo.v\n")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    return project, filelist, outside
+
+
+def test_import_filelist_keeps_include_files_inside_rtl_behind_a_directory_link(tmp_path):
+    project, filelist, outside = _project_with_headers_to_import(tmp_path)
+    (project / "rtl" / "inc").mkdir()
+    (project / "rtl" / "inc" / "nested").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist))
+
+    assert error.value.code == "rtl_path_escape"
+    assert list(outside.iterdir()) == []
+    # Refused before anything is copied: the listed source is not there either.
+    assert _files(project / "rtl") == []
+
+
+def test_import_filelist_does_not_replace_a_file_outside_rtl_through_a_link(tmp_path):
+    project, filelist, outside = _project_with_headers_to_import(tmp_path)
+    victim = outside / "victim.vh"
+    victim.write_text("keep me\n")
+    (project / "rtl" / "inc" / "nested").mkdir(parents=True)
+    (project / "rtl" / "inc" / "nested" / "defs.vh").symlink_to(victim)
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist), force=True)
+
+    assert error.value.code == "rtl_path_escape"
+    assert victim.read_text() == "keep me\n"
+
+
+def test_import_filelist_follows_a_link_that_stays_inside_rtl(tmp_path):
+    project, filelist, _outside = _project_with_headers_to_import(tmp_path)
+    (project / "rtl" / "headers").mkdir()
+    (project / "rtl" / "inc").mkdir()
+    (project / "rtl" / "inc" / "nested").symlink_to(
+        project / "rtl" / "headers", target_is_directory=True
+    )
+
+    import_project_rtl(str(project), filelist=str(filelist))
+
+    assert (project / "rtl" / "headers" / "defs.vh").read_text() == "`define DEMO 1\n"

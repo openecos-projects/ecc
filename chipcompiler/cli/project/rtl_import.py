@@ -70,7 +70,7 @@ def import_project_rtl(
         rtl_config = [str(list_target.relative_to(root))]
         sources = copied[1:]
         include_dirs = _include_directories(source_list, rtl_root)
-        copied.extend(_include_files(include_dirs, root, copied))
+        copied.extend(_include_files(include_dirs, root, rtl_root, copied))
     else:
         if not verilog:
             raise RtlImportError("rtl_inputs_missing", "no RTL input was provided")
@@ -119,7 +119,16 @@ def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
         relative = source.relative_to(base)
     except ValueError:
         relative = Path(source.name)
-    target = (rtl_root / relative).resolve()
+    return _contained(rtl_root / relative, rtl_root, source)
+
+
+def _contained(target: Path, rtl_root: Path, source: Path) -> Path:
+    """The resolved *target*, refused when it is not below the project's ``rtl/``.
+
+    Resolving follows the symlinks already present under ``rtl/``, so a link
+    that points out of the project cannot redirect a copy.
+    """
+    target = target.resolve()
     if target != rtl_root and rtl_root not in target.parents:
         raise RtlImportError(
             "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
@@ -155,14 +164,18 @@ def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
 
 
 def _include_files(
-    include_dirs: dict[Path, Path], project_root: Path, copied: list[tuple[Path, Path]]
+    include_dirs: dict[Path, Path],
+    project_root: Path,
+    rtl_root: Path,
+    copied: list[tuple[Path, Path]],
 ) -> list[tuple[Path, Path]]:
     """The files below the include directories that still have to be copied.
 
     Every file is taken, as workspace creation does for a filelist: an
     ``include`` may name a path below the directory. Files the filelist
     already lists, and the project itself when it lies inside an include
-    directory, are left out.
+    directory, are left out. Each destination is checked like the target of a
+    listed source: it has to stay below ``rtl/``.
     """
     known = set(copied)
     files: list[tuple[Path, Path]] = []
@@ -173,7 +186,8 @@ def _include_files(
             )
             for name in sorted(names):
                 source = Path(current) / name
-                pair = (source, target_dir / source.relative_to(source_dir))
+                target = _contained(target_dir / source.relative_to(source_dir), rtl_root, source)
+                pair = (source, target)
                 if pair in known or source.resolve() == pair[1]:
                     continue
                 known.add(pair)
