@@ -57,6 +57,28 @@ Wheel and source distributions are written to `dist/`.
 To build the installable PyInstaller CLI bundle yourself, see
 [README - Build from source](../README.md#build-from-source).
 
+### Native dependencies in hosted CI
+
+The default CI mode downloads native wheels from successful `ci.yml` runs for
+the exact ecc-tools and DreamPlace gitlink commits. If a matching run is still
+queued or running, `.github/scripts/download-native-wheel.py` waits up to 45
+minutes. Failed/missing runs and expired/missing artifacts fail explicitly;
+the resolver never substitutes another revision. Build each native repository's
+pinned commit before triggering ECC when there is no run to wait for.
+
+Manual `build-all=true` builds native dependencies from source. The manylinux
+distribution's `boost-devel` does not satisfy ecc-tools' exact Boost 1.91.0
+requirement. `.github/scripts/install-ci-boost.sh` installs the SHA-256-verified
+1.91.0 headers and CMake package into a dedicated prefix, following ecc-tools'
+wheel build, and the action passes that prefix through `CMAKE_ARGS` to both
+native builds. Do not relax the native version check to accommodate a CI image.
+
+The 2026-11-17 failure occurred before pytest, lint, or PyInstaller ran: the
+source-build jobs lacked pinned Boost, and the wheel-based lint job queried
+ecc-tools while its CI was still building. Reproduce dependency setup in the
+same manylinux image and mode before diagnosing a test or packaging regression.
+The resolver's regression tests are in `test/packaging/test_native_wheel_ci.py`.
+
 ## Debugging
 
 For normal debugging:

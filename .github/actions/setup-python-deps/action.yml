@@ -38,6 +38,16 @@ runs:
           metis-devel gmp-devel tcl-devel \
           unzip zip gh jq bzip2
 
+    - name: Install pinned Boost 1.91 for source builds
+      if: ${{ inputs.build-all == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        boost_prefix="${RUNNER_TEMP}/ecc-boost-1.91.0"
+        bash .github/scripts/install-ci-boost.sh "$boost_prefix"
+        echo "ECC_BOOST_ROOT=${boost_prefix}" >> "$GITHUB_ENV"
+
     - name: Setup Rust
       if: ${{ inputs.build-all == 'true' }}
       uses: dtolnay/rust-toolchain@stable
@@ -57,40 +67,15 @@ runs:
         mkdir -p dist/native-wheels
         uv venv --python 3.11 --managed-python
 
-        download_wheel_artifact() {
-          local repo="$1"
-          local submodule_path="$2"
-          local artifact_name="$3"
-          local commit
-          local run_id
-
-          commit="$(git rev-parse "HEAD:${submodule_path}")"
-          run_id="$(
-            gh api "repos/${repo}/actions/workflows/ci.yml/runs?head_sha=${commit}&per_page=20" \
-              --jq '[.workflow_runs[] | select(.conclusion == "success") | .id][0] // empty'
-          )"
-
-          if [ -z "$run_id" ]; then
-            echo "::error::No successful CI artifact found for ${repo} at submodule commit ${commit}"
-            exit 1
-          fi
-
-          echo "Downloading ${artifact_name} from ${repo} CI run ${run_id} (${commit})"
-          gh run download "$run_id" \
-            --repo "$repo" \
-            --name "$artifact_name" \
-            --dir dist/native-wheels
-        }
-
-        download_wheel_artifact \
+        .venv/bin/python .github/scripts/download-native-wheel.py \
           "openecos-projects/ecc-dreamplace" \
           "chipcompiler/thirdparty/ecc-dreamplace" \
-          "ecc-dreamplace-wheel"
+          "ecc-dreamplace-wheel" dist/native-wheels
 
-        download_wheel_artifact \
+        .venv/bin/python .github/scripts/download-native-wheel.py \
           "openecos-projects/ecc-tools" \
           "chipcompiler/thirdparty/ecc-tools" \
-          "ecc-tools-wheel"
+          "ecc-tools-wheel" dist/native-wheels
 
         uv pip install --python .venv/bin/python --no-deps dist/native-wheels/*.whl
 
@@ -99,7 +84,7 @@ runs:
       run: |
         if [ "${{ inputs.build-all }}" = "true" ]; then
           export SCCACHE_GHA_ENABLED="true"
-          export CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          export CMAKE_ARGS="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DCMAKE_PREFIX_PATH=${ECC_BOOST_ROOT}"
           uv sync --frozen --all-groups --python 3.11 --managed-python \
             --no-build-isolation-package ecc-dreamplace \
             --no-build-isolation-package ecc-tools-bin \

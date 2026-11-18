@@ -232,7 +232,10 @@ jobs:
 
       - name: Prune test fixture symlinks before log upload
         if: failure()
-        run: find pytest-tmp -type l -delete
+        run: |
+          if [ -d pytest-tmp ]; then
+            find pytest-tmp -type l -delete
+          fi
 
       - name: Upload integration flow logs on failure
         if: failure()
