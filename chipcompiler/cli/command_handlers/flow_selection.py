@@ -500,10 +500,12 @@ def _cancelled() -> CommandResult:
 
 
 def _flow_label(cfg: "ProjectConfig", flow_config: "FlowConfig | None") -> str:
+    from chipcompiler.data import StepEnum
+
     start = flow_config.get("start_step") if flow_config is not None else None
     if isinstance(start, str) and start:
         end = flow_config.get("end_step") if flow_config is not None else None
-        return f"{start}..{end if isinstance(end, str) and end else 'Harden'}"
+        return f"{start}..{end if isinstance(end, str) and end else StepEnum.HARDEN.value}"
     return cfg.flow_preset
 
 

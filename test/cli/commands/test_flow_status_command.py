@@ -225,3 +225,13 @@ def test_plain_records_name_the_missing_design_data(capsys, create_cli_project):
         'enable cts"'
         for step in ("routing", "sta", "power_analysis", "harden")
     ]
+
+
+def test_a_start_only_range_ends_at_the_canonical_target_name():
+    from types import SimpleNamespace
+
+    from chipcompiler.cli.command_handlers.flow_selection import _flow_label
+
+    cfg = SimpleNamespace(flow_preset="rtl2gds")
+
+    assert _flow_label(cfg, {"start_step": "filler"}) == "filler..harden"  # pyright: ignore[reportArgumentType]
