@@ -79,21 +79,21 @@ graph LR
 
 ### 0.3 每个步骤用到哪些配置
 
-`ecc config <step>` 的真实输出归纳（映射源码 `_STEP_CONFIG_KEYS`，位于 [chipcompiler/data/workspace/__init__.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/workspace/__init__.py)）：
+`ecc config <step>` 的真实输出归纳。每个工具包在 `STEP_CONFIG_READS`（`chipcompiler/tools/<tool>/__init__.py`）中声明其步骤读取的 workspace 配置；只读取共享配置一部分的步骤精确到字段。参数失效从读取该参数所写字段的最早步骤开始重跑：
 
 | 步骤 | db_ecc | 专属配置 | 说明 |
 |---|---|---|---|
-| synthesis | — | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON |
+| synthesis | ✓（仅 `INPUT.lib_path`） | `global_var.tcl`（Tcl） | Yosys 用 Tcl 变量驱动，不走 JSON；从 `db_ecc.json` 读取额外 Liberty 文件 |
 | lec@&lt;step&gt; | — | 引擎生成配置 | 插入的 LEC 检查（`[flow] insert_steps`）；`lec@synthesis` 比较 RTL 与综合后网表，其他插入检查比较该步骤网表与综合网表；kepler-formal（YAML）；未证明时步骤失败并终止后续流程，见 §11 |
 | pre_floorplan | ✓ | `floorplan_ecc.json` | 自动宏布局 |
 | macro_placement | — | 步骤 `config/dreamplace_ecc.json` + `macro_location.tcl` | 写入 Tcl 宏摆放交接文件（设置了 `macro.placements` 时跳过 DreamPlace，见 §1.5） |
 | post_floorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | 读取 Tcl 宏摆放交接文件 |
-| preplace | ✓ | 无 | Sizer 的布局前准备读取 `db_ecc.json` |
-| placement | — | 步骤 `config/dreamplace_ecc.json` | 由 workspace 基线加该步骤自己的值解析而来 |
-| diff_sizing | — | 步骤 `config/dreamplace_ecc.json` | 独立可微 sizing，使用自己的 DreamPlace 取值 |
+| preplace | ✓ | `sizer_ecc.json` + `sta_ecc.json`（`liberty`）+ `routing_ecc.json`（层范围） | Sizer 读取 MIN corner Liberty、布线层范围和 hold 阶段设置 |
+| placement | — | 步骤 `config/dreamplace_ecc.json` + `sta_ecc.json` | 由 workspace 基线加该步骤自己的值解析而来；时序驱动布局把 `sta_ecc.json` 交给原生时序引擎 |
+| diff_sizing | — | 步骤 `config/dreamplace_ecc.json` + `sta_ecc.json` | 独立可微 sizing，使用自己的 DreamPlace 取值 |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | 步骤 `config/dreamplace_ecc.json` | 基线加合法化强制项；无可设置参数 |
-| timing optimization | ✓ | `sizer_ecc.json` + 步骤 `config/dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后用自己的步骤配置做内部 DreamPlace 合法化；见 §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `sta_ecc.json`（`liberty`）+ `routing_ecc.json`（层范围）+ 步骤 `config/dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后用自己的步骤配置做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | 无 | 工具默认行为 |
@@ -102,9 +102,9 @@ graph LR
 | post_route_lec | — | 引擎生成配置 | 对 `filler` 网表做布线后 LEC（kepler-formal），见 §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner 由 PDK 决定（见 §12） |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | 读 rcx 配置以对齐 SPEF |
-| power_analysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，不在 `_STEP_CONFIG_KEYS` 中 |
+| power_analysis | — | 无显式步骤配置 | 运行器内部复用 `db_ecc.json`，未在 `STEP_CONFIG_READS` 中声明 |
 | emir | ✓ | `emir_ecc.json` | iEMIR 工艺文件；advisory 步骤，见 §13.5 |
-| harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但不在 `_STEP_CONFIG_KEYS` 中；`ecc config harden` 会明确显示该步骤没有配置 |
+| harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但未在 `STEP_CONFIG_READS` 中声明；`ecc config harden` 会明确显示该步骤没有配置 |
 
 ## 1. 参数传递链（用户可调参数）
 

@@ -524,7 +524,8 @@ def test_a_fork_offers_only_the_parameters_of_the_steps_it_reruns(completed_sour
 
     assert isinstance(rows, list)
     keys = [split_step_key(row.param) for row in rows]
-    affected = {workspace_param_step(lookup_schema(param), None, step) for step, param in keys}
+    branch = load_workspace(project / "branch")
+    affected = {workspace_param_step(lookup_schema(param), branch, step) for step, param in keys}
     assert affected <= {"placement", "cts", None}
     assert {"placement:place.target_density", "cts.max_fanout"} <= {row.param for row in rows}
 

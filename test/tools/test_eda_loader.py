@@ -24,6 +24,7 @@ def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics
         build_step_space=lambda step: None,
         build_step_config=lambda workspace, step: None,
         run_step=lambda workspace, step, ecc_module=None: True,
+        STEP_CONFIG_READS={},
         build_step_metrics=build_metrics
         or (lambda workspace, step: StepMetrics(path="metrics.json", data={"tool": step.tool})),
     )

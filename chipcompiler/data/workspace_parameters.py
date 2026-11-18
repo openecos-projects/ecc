@@ -9,6 +9,7 @@ from chipcompiler.data.parameter_schema import (
     build_backend_overrides,
     build_config_overrides,
 )
+from chipcompiler.data.step_config_reads import step_config_reads
 from chipcompiler.data.step_parameters import (
     ParameterStepError,
     check_parameter_step,
@@ -17,7 +18,6 @@ from chipcompiler.data.step_parameters import (
     step_value,
     unset_step_value,
 )
-from chipcompiler.data.workspace import step_config_keys
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
@@ -32,9 +32,10 @@ def workspace_param_step(schema, workspace=None, step: str | None = None) -> str
 
     A step-scoped parameter invalidates the *step* whose value changed. Any
     other parameter invalidates from the earliest flow step that either is
-    one of its declared steps or reads one of its target configs
-    (:func:`~chipcompiler.data.workspace.step_config_keys`): a routing layer
-    also written into the floorplan ``db`` config invalidates the floorplan.
+    one of its declared steps or reads a field it writes
+    (:func:`~chipcompiler.data.step_config_reads.step_config_reads`): a routing
+    layer also written into the floorplan ``db`` config invalidates the
+    floorplan, while a router thread count invalidates only routing.
     A workspace-wide parameter invalidates the Workspace's first step.
     Without a Workspace the declared order decides (``"all"`` for a
     workspace-wide parameter).
@@ -48,14 +49,14 @@ def workspace_param_step(schema, workspace=None, step: str | None = None) -> str
     flow = _flow_steps(workspace)
     if schema.workspace_wide:
         return flow[0][0] if flow else WORKSPACE_WIDE
-    targets = (
-        set()
-        if is_step_scoped(schema)
-        else {target.config_key.casefold() for target in schema.config_targets}
-    )
+    targets = () if is_step_scoped(schema) else schema.config_targets
     for name, tool in flow:
-        reads = {key.casefold() for key in step_config_keys(name, tool)}
-        if schema.applies_to(name) or targets & reads:
+        reads = step_config_reads(name, tool)
+        if schema.applies_to(name) or any(
+            read.overlaps(target.config_key, target.json_path)
+            for read in reads
+            for target in targets
+        ):
             return name
     return schema.steps[0]
 
