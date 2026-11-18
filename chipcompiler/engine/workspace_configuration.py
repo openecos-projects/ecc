@@ -621,16 +621,14 @@ def _update_workspace_step_configuration(
         )
         return _load_committed_workspace(target)
     # A workspace-wide value edited from this step's view may feed earlier steps.
-    first_step = earliest_flow_step(
-        workspace,
-        [
-            step,
-            *(
-                workspace_param_step(schema, workspace, step if is_step_scoped(schema) else None)
-                for schema in changed_schemas
-            ),
-        ],
-    )
+    affected = [
+        step,
+        *(
+            workspace_param_step(schema, workspace, step if is_step_scoped(schema) else None)
+            for schema in changed_schemas
+        ),
+    ]
+    first_step = earliest_flow_step(workspace, [name for name in affected if name is not None])
     invalidate_from(EngineFlow(workspace), first_step)
     updated = invalidate_engineering_snapshot(
         workspace,

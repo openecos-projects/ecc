@@ -36,7 +36,7 @@ def _workspace(tmp_path, pdk_factory, *, diff_opt: bool = False):
     bindings["pdk"]["root"] = str(pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
     flow = EngineFlow(workspace)
-    steps = flow.workspace.flow.data["steps"]
+    steps = flow.workspace.flow.steps()
     if diff_opt:
         index = next(i for i, step in enumerate(steps) if step["name"] == "placement")
         steps.insert(
@@ -89,7 +89,7 @@ def test_a_diff_opt_value_invalidates_from_diff_opt_and_keeps_placement(
     schema = lookup_schema("place.timing_sizing_action")
     assert schema is not None
     baseline = workspace_param_value(workspace, schema, step="placement")
-    other = next(choice for choice in schema.choices if choice != baseline)
+    other = next(choice for choice in schema.choices or () if choice != baseline)
 
     updated = apply_workspace_parameters(
         workspace.directory, 1, {"diff_opt:place.timing_sizing_action": other}, ()

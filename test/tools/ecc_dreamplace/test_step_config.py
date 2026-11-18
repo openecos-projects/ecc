@@ -56,7 +56,7 @@ def test_step_builds_write_their_own_configs_and_leave_the_baseline_alone(
         builder.build_step_config(workspace, step)
 
     configs = {
-        step.name: json_read(step.directory / "config" / "dreamplace_ecc.json")["result_dir"]
+        step.name: json_read(builder.step_config_path(workspace, step))["result_dir"]
         for step in steps
     }
 
@@ -73,6 +73,7 @@ def test_an_inner_legalization_owner_resolves_its_own_config(
 
     path = builder.write_step_config(workspace, owner)
 
+    assert owner.directory is not None
     assert path == owner.directory / "config" / "dreamplace_ecc.json"
     assert path.is_file()
     assert workspace.config["dreamplace"].read_bytes() == baseline
@@ -194,6 +195,7 @@ def test_an_inner_legalization_runs_on_its_owner_step_file(
     monkeypatch.setattr(runner.ecc_runner, "create_db_engine", lambda *_args: engine)
     monkeypatch.setattr(DreamplaceModule, "run_legalization", record_legalization)
 
+    assert owner.directory is not None
     path = owner.directory / "config" / "dreamplace_ecc.json"
     assert not path.exists()
     record_derived_config(workspace)

@@ -65,8 +65,8 @@ def _flow_steps(workspace) -> list[tuple[str, str | None]]:
     if workspace is None:
         return []
     # ``load_workspace`` keeps the flow ledger lazy; the accessor hydrates it.
-    accessor = getattr(workspace.flow, "steps", None)
-    steps = accessor() if callable(accessor) else workspace.flow.data.get("steps", [])
+    flow = workspace.flow
+    steps = flow.steps() if hasattr(flow, "steps") else flow.data.get("steps", [])
     return [
         (str(item.get("name", "")), item.get("tool"))
         for item in steps
