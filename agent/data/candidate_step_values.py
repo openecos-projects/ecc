@@ -60,10 +60,15 @@ def knob_store_value(knob: CandidateKnob, value: Any) -> Any:
 
 
 def seed_steps(steps: Iterable[Any]) -> list[str]:
-    """Names of the *steps* that consume the DreamPlace random seed."""
+    """Names of the DreamPlace *steps* that consume the DreamPlace random seed."""
     schema = _seed_schema()
-    names = (_step_name(step) for step in steps)
-    return [name for name in names if name and schema.applies_to(name)]
+    return [
+        name
+        for step in steps
+        if (name := _step_name(step))
+        and _step_tool(step) == "dreamplace"
+        and schema.applies_to(name)
+    ]
 
 
 def store_candidate_seed(workspace: Any, step_names: list[str], seed: int) -> None:
@@ -147,6 +152,10 @@ def _nested(config: object, path: tuple[str, ...]) -> object:
 def _step_name(step: Any) -> str | None:
     name = step.get("name") if isinstance(step, dict) else getattr(step, "name", None)
     return name if isinstance(name, str) else None
+
+
+def _step_tool(step: Any) -> str | None:
+    return step.get("tool") if isinstance(step, dict) else getattr(step, "tool", None)
 
 
 def _seed_schema() -> ParamSchema:

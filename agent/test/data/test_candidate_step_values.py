@@ -22,9 +22,19 @@ def _step(root: Path, name: str, tool: str, config: dict | None = None) -> Simpl
 
 
 def test_seed_steps_are_the_steps_consuming_the_dreamplace_seed():
-    steps = [SimpleNamespace(name=name) for name in ("floorplan", "placement", "legalization")]
+    steps = [
+        SimpleNamespace(name=name, tool=tool)
+        for name, tool in (
+            ("pre_floorplan", "ecc"),
+            ("macro_placement", "dreamplace"),
+            ("placement", "dreamplace"),
+            ("legalization", "dreamplace"),
+        )
+    ]
 
-    assert seed_steps(steps) == ["placement"]
+    assert seed_steps(steps) == ["macro_placement", "placement"]
+    # A macro placement run by another tool reads no DreamPlace config.
+    assert seed_steps([SimpleNamespace(name="macro_placement", tool="ecc")]) == []
 
 
 def test_expected_step_config_values_bind_seed_and_knob_to_their_step():
