@@ -463,11 +463,13 @@ def parse_cli_overrides(pairs, pdk: str | None = None):
             errors.append(f"malformed override: '{pair}' (expected key=value)")
             continue
         key, raw = (part.strip() for part in pair.split("=", 1))
-        _step, schema, key_error = parse_step_key(key)
+        step, schema, key_error = parse_step_key(key)
         if key_error is not None:
             errors.append(key_error)
             continue
         assert schema is not None  # an unknown parameter is a key error
+        # Store the spelling ``resolve_parameters`` looks up (``placement:place.x``).
+        key = schema.param if step is None else step_key(step, schema.param)
         try:
             value = parse_value(raw, schema)
         except ValueError as exc:
