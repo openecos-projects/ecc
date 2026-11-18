@@ -849,7 +849,7 @@ def test_config_resolved_pdk_overrides_present(
     keys = [item["config"] for item in records]
     assert "pdk.overrides" in keys
     overrides_item = next(i for i in records if i["config"] == "pdk.overrides")
-    assert overrides_item["value"] == "{'dont_use': ['ICG*', 'DFFSRQX*']}"
+    assert overrides_item["value"] == '{"dont_use":["ICG*","DFFSRQX*"]}'
 
 
 def test_config_resolved_pdk_overrides_absent(

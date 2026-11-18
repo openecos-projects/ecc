@@ -33,7 +33,18 @@ def render_plain(records: tuple[dict, ...], file=None) -> None:
 
 
 def _plain_value(value) -> str:
-    s = str(value)
+    if isinstance(value, bool):
+        # Plain output spells booleans the way flow list and --json do (#398).
+        return "true" if value else "false"
+    # Containers are JSON so a consumer never has to evaluate Python
+    # literals; the quoting below keeps the record on one line. The encoding
+    # stays local so generic --plain rendering does not depend on the
+    # line-record protocol module.
+    s = (
+        json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        if isinstance(value, (list, tuple, dict))
+        else str(value)
+    )
     if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
         # Plain output is one record per line: line breaks and tabs are
         # written as escapes, matching serialize_line_records (#407).

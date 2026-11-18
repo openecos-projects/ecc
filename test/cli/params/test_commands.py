@@ -728,7 +728,7 @@ class TestListDefaultDiffFiltering:
         assert len(records) >= 1
         margin = next((r for r in records if r.get("param") == "floorplan.core_margin"), None)
         assert margin is not None
-        assert margin["value"] == "[4, 4]"
+        assert margin["value"] == "[4,4]"
 
 
 class TestDesignFrequencySeeded:

@@ -245,7 +245,7 @@ class TestMultilineTomlValues:
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert records[0]["value"] == "[4, 4]"
+        assert records[0]["value"] == "[4,4]"
 
     def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()

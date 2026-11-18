@@ -53,7 +53,7 @@ class TestHybridManifestFallbacks:
         assert rc == 0
         records = manifest_stubs.records()
         assert records[0]["status"] == "success"
-        assert records[0]["no_op"] == "True"
+        assert records[0]["no_op"] == "true"
 
     def test_multi_rtl_manifest_materializes_filelist(
         self, tmp_path, capsys, flow_mocks, monkeypatch, manifest_stubs
