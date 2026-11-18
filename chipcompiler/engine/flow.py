@@ -53,6 +53,7 @@ from chipcompiler.engine.flow_completion import (
 from chipcompiler.engine.flow_completion import (
     reset_unfinished_terminal_state as _reset_unfinished_terminal_state,
 )
+from chipcompiler.engine.flow_completion import save_step_qor_facts as _save_step_qor_facts
 from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
 from chipcompiler.engine.memory import read_memory_status
 from chipcompiler.engine.observers import (
@@ -930,7 +931,8 @@ class EngineFlow:
                     # QoR facts persist only after the ledger commits: a refresh
                     # failure degrades to a warning, never a state rollback attempt.
                     if state == StateEnum.Success:
-                        self._save_step_qor_facts(
+                        _save_step_qor_facts(
+                            self,
                             workspace_step,
                             step_tag,
                             elapsed=elapsed,
@@ -992,52 +994,6 @@ class EngineFlow:
             peak_memory_mb,
         )
         return state
-
-    def _save_step_qor_facts(
-        self,
-        workspace_step: WorkspaceStep,
-        step_tag: str,
-        *,
-        elapsed: float,
-        peak_memory_mb: float,
-        timing_constraints: dict,
-        placement_only: bool,
-    ) -> None:
-        """Save a succeeded step's run facts and refresh its analysis; failures only warn."""
-        try:
-            if not self.save_step_flow_facts(
-                workspace_step=workspace_step,
-                state=StateEnum.Success,
-                runtime_seconds=elapsed,
-                peak_memory_mb=peak_memory_mb,
-                timing_constraints=timing_constraints,
-            ):
-                self.workspace.logger.warning(
-                    "[QOR] %s has no step feature path; run facts were not saved",
-                    step_tag,
-                )
-                return
-        except Exception:
-            self.workspace.logger.exception(
-                "[QOR] %s failed to save run facts after the step succeeded",
-                step_tag,
-            )
-            return
-        try:
-            from chipcompiler.tools import build_step_metrics
-
-            if not placement_only and (
-                build_step_metrics(workspace=self.workspace, step=workspace_step) is None
-            ):
-                self.workspace.logger.warning(
-                    "[QOR] %s run facts saved; analysis refresh unavailable",
-                    step_tag,
-                )
-        except Exception:
-            self.workspace.logger.exception(
-                "[QOR] %s failed to refresh analysis after saving run facts",
-                step_tag,
-            )
 
     def init_db_engine_for_step(self, workspace_step: WorkspaceStep) -> bool:
         """Initialize the native DB engine from an explicitly selected step."""

@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Literal
 
+from chipcompiler.data import StateEnum
 from chipcompiler.data.workspace.flow_types import ChecklistStatus
 
 logger = logging.getLogger(__name__)
@@ -142,3 +143,54 @@ def refresh_qor_report(workspace, step_tag: str) -> None:
         refresh_workspace_qor_report(workspace)
     except Exception:
         workspace.logger.exception("[QOR] %s failed to refresh the workspace QoR report", step_tag)
+
+
+def save_step_qor_facts(
+    flow,
+    workspace_step,
+    step_tag: str,
+    *,
+    elapsed: float,
+    peak_memory_mb: float,
+    timing_constraints: dict,
+    placement_only: bool,
+) -> None:
+    """Save a succeeded step's run facts and refresh its analysis; failures only warn.
+
+    Runs after the ledger commits the step's Success, so a failure here never
+    rolls the state back.
+    """
+    try:
+        if not flow.save_step_flow_facts(
+            workspace_step=workspace_step,
+            state=StateEnum.Success,
+            runtime_seconds=elapsed,
+            peak_memory_mb=peak_memory_mb,
+            timing_constraints=timing_constraints,
+        ):
+            flow.workspace.logger.warning(
+                "[QOR] %s has no step feature path; run facts were not saved",
+                step_tag,
+            )
+            return
+    except Exception:
+        flow.workspace.logger.exception(
+            "[QOR] %s failed to save run facts after the step succeeded",
+            step_tag,
+        )
+        return
+    try:
+        from chipcompiler.tools import build_step_metrics
+
+        if not placement_only and (
+            build_step_metrics(workspace=flow.workspace, step=workspace_step) is None
+        ):
+            flow.workspace.logger.warning(
+                "[QOR] %s run facts saved; analysis refresh unavailable",
+                step_tag,
+            )
+    except Exception:
+        flow.workspace.logger.exception(
+            "[QOR] %s failed to refresh analysis after saving run facts",
+            step_tag,
+        )
