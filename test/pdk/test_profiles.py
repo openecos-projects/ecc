@@ -93,6 +93,19 @@ def test_missing_description_requires_explicit_profile_selection(bundled):
     assert not (root / "ecc-pdk.json").exists()
 
 
+def test_direct_python_loading_resolves_defaults_without_replacing_explicit_snapshot(bundled):
+    from chipcompiler.data.pdk import get_pdk
+
+    root, expected, _ = bundled
+    source = root / "ecc-pdk.json"
+    source.write_text(expected.description.model_dump_json())
+    assert get_pdk("example", root, validate=False).description == expected.resolved().model_dump()
+    assert not configuration_path(root).exists()
+    # An explicitly supplied snapshot is authoritative, even if it is empty policy.
+    snapshot = get_pdk("example", root, pdk_config=source, validate=False)
+    assert snapshot.description["parameters"] == {}
+
+
 @pytest.mark.parametrize("change", ["release", "content", "corrupt"])
 def test_no_name_or_version_fallback(bundled, change):
     root, expected, _ = bundled

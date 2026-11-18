@@ -8,6 +8,13 @@ from .manifest import Descriptor, DescriptorError, load_descriptor, resource_pat
 def resolve_pdk(root: Path, *, name: str = "", descriptor_path: Path | None = None):
     root = root.expanduser().resolve()
     descriptor = load_descriptor(root, descriptor_path)
+    if descriptor_path is None:
+        from .documents import split_descriptor
+        from .managed import configuration_path
+        from .profiles import default_for
+
+        if not configuration_path(root).exists():
+            descriptor = default_for(root, split_descriptor(descriptor)).resolved()
     if name and descriptor.family_id.casefold() != name.casefold():
         raise DescriptorError(
             "family_mismatch", f"requested {name}, description declares {descriptor.family_id}"

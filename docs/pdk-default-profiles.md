@@ -39,6 +39,9 @@ runtime compatibility and physical signoff are separate claims.
    ECC looks for an exact catalog match, verifies all resource hashes and copies
    the reviewed defaults into ECC management. It never guesses from `ics55`, a
    directory name or a version prefix.
+   Direct Python `get_pdk` loading also resolves a matching default in memory when
+   no managed configuration exists. Explicit snapshots remain authoritative and
+   read-only loading does not create management files.
 3. Already managed defaults, including drafts and user edits, are preserved.
    Importing an explicit adaptation also preserves that policy.
 4. A missing or unknown description requires configuration through CLI/Studio.
