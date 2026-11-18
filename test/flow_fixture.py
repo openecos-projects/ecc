@@ -46,3 +46,46 @@ def step_directory(name, tool) -> StepDirectory:
     """Return only the directory field, preserving an explicit category."""
     step_name = name.value if hasattr(name, "value") else str(name)
     return {"directory": new_step_directory(step_name, str(tool))}
+
+
+def publish_response(workspace_directory, step_directory: str):
+    """Publish the successful rsp.json a run of the step in *step_directory* writes.
+
+    The design carries every design state, and each analysis item the step
+    provides names one file. Returns the link a downstream request accepts.
+    """
+    from chipcompiler.data.handshake import (
+        DesignFiles,
+        ResponseStatus,
+        StepResponse,
+        UpstreamResponse,
+        write_response,
+    )
+    from chipcompiler.data.step import unindexed_step_directory
+    from chipcompiler.data.types import AnalysisData, DesignState, ToolName, flow_step_policy
+
+    name = unindexed_step_directory(step_directory)
+    tool = next(tool.value for tool in ToolName if name.endswith(f"_{tool.value}"))
+    step = name.removesuffix(f"_{tool}")
+    directory = workspace_directory / step_directory
+    attempt_id = f"attempt-{step}"
+    write_response(
+        directory,
+        StepResponse(
+            step=step,
+            tool=tool,
+            attempt_id=attempt_id,
+            status=ResponseStatus.SUCCESS,
+            design=DesignFiles(),
+            design_states=frozenset(DesignState),
+            outputs={
+                item: (directory / "output" / item.value,)
+                for item in flow_step_policy(step).provides
+                if isinstance(item, AnalysisData)
+            },
+            design_source=None,
+            upstream={},
+            warnings=frozenset(),
+        ),
+    )
+    return UpstreamResponse(step_directory, attempt_id)

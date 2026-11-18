@@ -311,6 +311,7 @@ def test_emir_reads_the_typical_spef_a_derived_workspace_inherited(emir_case):
     )
     inherited = StepDirectories.of(workspace).path(StepEnum.RCX.value) / "output"
     inherited.mkdir(parents=True)
+    (inherited / "gcd_TYPICAL_25C.spef").write_text("*SPEF\n", encoding="utf-8")
 
     assert emir._typical_spef_path(workspace, step, runner) == str(
         inherited / "gcd_TYPICAL_25C.spef"

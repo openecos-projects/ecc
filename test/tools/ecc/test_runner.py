@@ -914,12 +914,8 @@ def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
 
 
 def _sta_step_with_request(workspace_dir, upstream):
-    from chipcompiler.data.handshake import (
-        StepInputs,
-        StepRequest,
-        UpstreamResponse,
-        write_request,
-    )
+    from chipcompiler.data.handshake import StepInputs, StepRequest, write_request
+    from test.flow_fixture import publish_response
 
     request = StepRequest(
         workspace_directory=workspace_dir,
@@ -929,7 +925,9 @@ def _sta_step_with_request(workspace_dir, upstream):
         attempt_id="attempt-sta",
         inputs=StepInputs(),
         design_source=None,
-        upstream={item: UpstreamResponse(directory, None) for item, directory in upstream.items()},
+        upstream={
+            item: publish_response(workspace_dir, directory) for item, directory in upstream.items()
+        },
         final_step=False,
         layout_image=False,
     )

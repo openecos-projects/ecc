@@ -17,6 +17,7 @@ from chipcompiler.data.handshake import build_step_request, write_request
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.step_subprocess import run_step_worker
+from test.flow_fixture import publish_response
 
 
 def _new_flow(workspace, names):
@@ -59,35 +60,6 @@ def _write_request(flow, step_name: str, attempt_id: str) -> dict:
     return {"step_directory": str(request.directory), "attempt_id": attempt_id}
 
 
-def _answer_filler(flow) -> None:
-    """Publish filler's response, as its run would, so DRC reads a filled design."""
-    from chipcompiler.data.handshake import (
-        DesignFiles,
-        ResponseStatus,
-        StepResponse,
-        write_response,
-    )
-    from chipcompiler.data.types import DesignState
-
-    filler = flow.get_workspace_step("filler")
-    assert filler is not None
-    write_response(
-        Path(filler.directory),
-        StepResponse(
-            step="filler",
-            tool="ecc",
-            attempt_id="attempt-filler",
-            status=ResponseStatus.SUCCESS,
-            design=DesignFiles(),
-            design_states=frozenset(DesignState),
-            outputs={},
-            design_source=None,
-            upstream={},
-            warnings=frozenset(),
-        ),
-    )
-
-
 def test_agent_worker_runs_the_persisted_drc_step_from_its_request(monkeypatch, tmp_path):
     root = tmp_path / ".agent" / "candidates" / "candidate-1"
     (root / "home").mkdir(parents=True)
@@ -95,7 +67,9 @@ def test_agent_worker_runs_the_persisted_drc_step_from_its_request(monkeypatch, 
     workspace.parameters = _write_parameters(root)
     parent_flow = _new_flow(workspace, ("filler", "drc"))
     parent_flow.create_step_workspaces(initialize_config=False)
-    _answer_filler(parent_flow)
+    filler = parent_flow.get_workspace_step("filler")
+    assert filler is not None and filler.directory is not None
+    publish_response(Path(workspace.directory), Path(filler.directory).name)
     payload = _write_request(parent_flow, "drc", "attempt-drc")
     drc = parent_flow.get_workspace_step("drc")
     assert drc is not None

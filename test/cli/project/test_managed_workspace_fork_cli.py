@@ -8,6 +8,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data import EccStep, load_workspace
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.engine import create_workspace_from_spec
 from chipcompiler.engine.snapshot import (
     create_engineering_snapshot,
@@ -15,6 +16,7 @@ from chipcompiler.engine.snapshot import (
 )
 from chipcompiler.engine.workspace_reset import build_flow_for_workspace
 from chipcompiler.project import load_project_manifest, mutate_project_manifest
+from test.flow_fixture import publish_response
 
 
 @pytest.fixture
@@ -33,6 +35,7 @@ def completed_source(tmp_path, minimal_ics55_pdk_factory):
     flow = build_flow_for_workspace(workspace)
     for record in workspace.flow.steps():
         record["state"] = "Success"
+        publish_response(Path(workspace.directory), recorded_step_directory(record))
     assert flow.save()
     for step in flow.workspace_steps:
         (step.output.dir / "retained-output").write_text(step.name, encoding="utf-8")

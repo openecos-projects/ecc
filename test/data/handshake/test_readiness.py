@@ -150,3 +150,33 @@ def test_a_declared_design_entering_mid_chain_carries_the_states_built_before_it
     )
 
     assert missing_design_data(request, EccStep(name="emir"), declared_spef=None) == frozenset()
+
+
+def test_parasitics_source_names_where_the_step_reads_parasitics(tmp_path):
+    from chipcompiler.data.handshake import ParasiticsSource, parasitics_source
+    from chipcompiler.data.step import StepDirectories
+
+    request = _request(tmp_path, StepEnum.STA.value, {})
+    declared = tmp_path / "gcd.spef"
+    inherited = StepDirectories.at(tmp_path).path(StepEnum.RCX.value) / "output"
+    before_inheriting = [
+        parasitics_source(request, declared_spef=None),
+        parasitics_source(request, declared_spef=declared),
+    ]
+    inherited.mkdir(parents=True)
+    (inherited / "gcd_TYPICAL_25C.spef").write_text("*SPEF\n", encoding="utf-8")
+    rcx = _answer(tmp_path, "rcx_ecc", outputs={AnalysisData.PARASITICS: (inherited / "gcd.spef",)})
+    from_rcx = _request(tmp_path, StepEnum.STA.value, {AnalysisData.PARASITICS: rcx})
+
+    assert [
+        *before_inheriting,
+        parasitics_source(request, declared_spef=declared),
+        parasitics_source(request, declared_spef=None),
+        parasitics_source(from_rcx, declared_spef=declared),
+    ] == [
+        None,
+        ParasiticsSource(None),
+        ParasiticsSource(None),
+        ParasiticsSource(inherited),
+        ParasiticsSource(tmp_path / "rcx_ecc" / "output"),
+    ]

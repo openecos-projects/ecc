@@ -26,7 +26,13 @@ from chipcompiler.data.handshake.messages import (
     StepResponse,
     UpstreamResponse,
 )
-from chipcompiler.data.handshake.readiness import input_design_states, missing_design_data
+from chipcompiler.data.handshake.readiness import (
+    ParasiticsSource,
+    input_design_states,
+    missing_design_data,
+    parasitics_source,
+    published_upstream,
+)
 from chipcompiler.data.handshake.request import build_step_request
 from chipcompiler.data.handshake.response import build_step_response
 from chipcompiler.data.handshake.stale import ChangedInput, StaleStep, stale_steps
@@ -37,6 +43,7 @@ __all__ = [
     "ChangedInput",
     "DesignFiles",
     "HandshakeError",
+    "ParasiticsSource",
     "ResponseStatus",
     "StaleStep",
     "StepInputs",
@@ -50,6 +57,8 @@ __all__ = [
     "load_request",
     "load_response",
     "missing_design_data",
+    "parasitics_source",
+    "published_upstream",
     "stale_steps",
     "write_request",
     "write_response",

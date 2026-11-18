@@ -19,7 +19,7 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_flow import iter_workspace_steps
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
-from test.flow_fixture import step_directory
+from test.flow_fixture import publish_response, step_directory
 
 _ROUTE_TO_HARDEN = (
     "routing",
@@ -263,38 +263,10 @@ def _worker_payload(workspace, ledger, step_name) -> dict:
 
 def _answer_earlier_steps(workspace, ledger, step_name) -> None:
     """Publish a successful response for every step before *step_name*, as runs do."""
-    from chipcompiler.data.handshake import (
-        DesignFiles,
-        ResponseStatus,
-        StepResponse,
-        write_response,
-    )
-    from chipcompiler.data.types import AnalysisData, DesignState, flow_step_policy
-
     for record in ledger.get("steps", []):
         if record["name"] == step_name:
             return
-        directory = workspace.directory / recorded_step_directory(record)
-        provides = flow_step_policy(record["name"]).provides
-        write_response(
-            directory,
-            StepResponse(
-                step=record["name"],
-                tool=record["tool"],
-                attempt_id=f"attempt-{record['name']}",
-                status=ResponseStatus.SUCCESS,
-                design=DesignFiles(),
-                design_states=frozenset(DesignState),
-                outputs={
-                    item: (directory / "output" / item.value,)
-                    for item in provides
-                    if isinstance(item, AnalysisData)
-                },
-                design_source=None,
-                upstream={},
-                warnings=frozenset(),
-            ),
-        )
+        publish_response(workspace.directory, recorded_step_directory(record))
 
 
 def _run_worker(monkeypatch, workspace, payload, run_step):

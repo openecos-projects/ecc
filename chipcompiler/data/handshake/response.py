@@ -10,7 +10,7 @@ from chipcompiler.data.handshake.messages import (
     StepRequest,
     StepResponse,
 )
-from chipcompiler.data.handshake.readiness import input_design_states
+from chipcompiler.data.handshake.readiness import input_design_states, published_upstream
 from chipcompiler.data.types import AnalysisData, DesignData, flow_step_policy
 
 
@@ -40,7 +40,11 @@ def build_step_response(
     # Design states come with the design read; analysis data from an upstream step.
     available: set[DesignData] = {
         *input_states,
-        *(item for item in request.upstream if isinstance(item, AnalysisData)),
+        *(
+            item
+            for item in request.upstream
+            if isinstance(item, AnalysisData) and published_upstream(request, item)
+        ),
     }
     return StepResponse(
         step=request.step,

@@ -23,6 +23,7 @@ from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
+from test.flow_fixture import publish_response
 
 
 @pytest.fixture
@@ -196,7 +197,7 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
             attempt_id="attempt-sta",
             inputs=StepInputs(),
             design_source=None,
-            upstream={AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
+            upstream={AnalysisData.PARASITICS: publish_response(workspace.directory, "rcx_ecc")},
             final_step=False,
             layout_image=False,
         )
@@ -245,7 +246,7 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
             attempt_id="attempt-harden",
             inputs=StepInputs(),
             design_source=None,
-            upstream={AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
+            upstream={AnalysisData.PARASITICS: publish_response(workspace.directory, "rcx_ecc")},
             final_step=False,
             layout_image=False,
         )

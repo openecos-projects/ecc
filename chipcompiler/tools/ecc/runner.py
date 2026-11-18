@@ -13,9 +13,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     workspace_config_key_path,
 )
-from chipcompiler.data.handshake import load_request
-from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.types import AnalysisData
+from chipcompiler.data.handshake import ParasiticsSource, load_request, parasitics_source
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
@@ -116,28 +114,17 @@ def copy_lvs_outputs(workspace: Workspace, step: EccStep):
 
 
 def has_parasitics(workspace: Workspace, step: EccStep) -> bool:
-    """Whether *step* has an upstream RCX step, inherited RCX outputs or a declared SPEF."""
+    """Whether *step* has parasitics to read; see :func:`parasitics_source`."""
     return _parasitics_source(workspace, step) is not None
 
 
-def _parasitics_source(workspace: Workspace, step: EccStep) -> tuple[bool, Path] | None:
-    """Whether the parasitics come from an upstream RCX step, and its output directory.
-
-    The step's req.json names the upstream step its parasitics come from.
-    Without an upstream RCX step, STA-entry workspaces read their declared
-    parasitics (design.spef), and a derived workspace reads the RCX outputs it
-    inherited from its source. None when there are no parasitics at all.
-    """
+def _parasitics_source(workspace: Workspace, step: EccStep) -> ParasiticsSource | None:
     if step.directory is None:
         raise ValueError(f"{step.name} step directory is not configured")
-    rcx = load_request(Path(step.directory)).upstream.get(AnalysisData.PARASITICS)
-    if rcx is not None:
-        return True, workspace.directory / rcx.step_directory / "output"
-    rcx_output_dir = StepDirectories.of(workspace).path(StepEnum.RCX.value) / "output"
-    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
-    if not declared_spef and not rcx_output_dir.is_dir():
-        return None
-    return False, rcx_output_dir
+    return parasitics_source(
+        load_request(Path(step.directory)),
+        declared_spef=getattr(getattr(workspace, "pdk", None), "spef", None),
+    )
 
 
 def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]:
@@ -148,10 +135,9 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
     source = _parasitics_source(workspace, step)
     if source is None:
         raise ValueError(
-            f"{step.name} has no parasitics: no upstream RCX step, no inherited RCX "
+            f"{step.name} has no parasitics: no successful upstream RCX run, no inherited RCX "
             "outputs and no declared design.spef"
         )
-    from_rcx, rcx_output_dir = source
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
@@ -176,8 +162,8 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
                 )
                 spef_file = (
                     str(declared_spef)
-                    if not from_rcx and declared_spef
-                    else str(rcx_output_dir / spef_name)
+                    if source.rcx_output_dir is None
+                    else str(source.rcx_output_dir / spef_name)
                 )
                 items.append(
                     {

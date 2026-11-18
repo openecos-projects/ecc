@@ -104,3 +104,26 @@ def test_synthesis_publishes_the_golden_netlist(tmp_path):
     response = build_step_response(request, step, succeeded=True)
 
     assert response.outputs == {AnalysisData.GOLDEN_NETLIST: (golden,)}
+
+
+def test_emir_after_a_failed_rcx_is_published_with_a_parasitics_warning(tmp_path):
+    from chipcompiler.data.handshake import UpstreamResponse
+    from test.data.handshake.helpers import answer
+    from test.flow_fixture import publish_response
+
+    answer(tmp_path, "rcx_ecc", "attempt-rcx", status=ResponseStatus.FAILED)
+    power = publish_response(tmp_path, "power_analysis_ecc")
+    request = _request(
+        tmp_path,
+        StepEnum.EMIR.value,
+        {
+            DesignState.FILLED: power,
+            AnalysisData.POWER: power,
+            AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", "attempt-rcx"),
+        },
+        design_source=power,
+    )
+
+    response = build_step_response(request, EccStep(name="emir"), succeeded=True)
+
+    assert response.warnings == frozenset({AnalysisData.PARASITICS})
