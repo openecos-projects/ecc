@@ -36,7 +36,7 @@ def _workspace(tmp_path, pdk_factory, *, diff_opt: bool = False):
     bindings["pdk"]["root"] = str(pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
     flow = EngineFlow(workspace)
-    steps = flow.workspace.flow.steps()
+    steps = flow.workspace.flow.data.get("steps", [])
     if diff_opt:
         index = next(i for i, step in enumerate(steps) if step["name"] == "placement")
         steps.insert(
