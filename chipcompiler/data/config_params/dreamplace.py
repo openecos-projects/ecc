@@ -198,13 +198,14 @@ def _place(
     *,
     type: str | None = None,
     choices: tuple[str, ...] | None = None,
+    applies: str = "placement",
 ):
     return config_param(
         f"place.{param}",
         "dreamplace",
         (param,),
         default,
-        applies="placement",
+        applies=applies,
         description=DREAMPLACE_PARAMETER_DESCRIPTIONS[param],
         type=type,
         choices=choices,
@@ -325,7 +326,8 @@ SCHEMAS = (
     _place("place_io_engine", "ecc", choices=("ieda", "ecc", "openroad")),
     _place("placement_initial_learning_rate_max", None, type="float"),
     _place("random_center_init_flag", 1),
-    _place("random_seed", 3000),
+    # Macro placement also seeds DreamPlace's PlacementEngine.
+    _place("random_seed", 3000, applies="macro_placement,placement"),
     _place(
         "real_size_execution_mode",
         "continuous_only",

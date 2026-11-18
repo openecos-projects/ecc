@@ -951,7 +951,10 @@ def test_candidate_rerun_removes_stale_top_level_parameter_receipts(monkeypatch,
     monkeypatch.setattr("agent.workspace_api.bind_candidate_input", lambda *_args: None)
     monkeypatch.setattr("agent.workspace_api.materialize_candidate_config", lambda *_args: None)
 
-    steps = [SimpleNamespace(name=name) for name in ("placement", "cts", "harden")]
+    steps = [
+        SimpleNamespace(name=name, tool=tool)
+        for name, tool in (("placement", "dreamplace"), ("cts", "ecc"), ("harden", "ecc"))
+    ]
 
     _materialize_candidate_rerun(workspace, flow, request, steps)
 
