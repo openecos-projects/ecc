@@ -5,7 +5,7 @@ from chipcompiler.analysis.qor.metric_registry import METRIC_REGISTRY
 from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.data import LEC_STEP_TOOLS
-from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories, recorded_step_directory
+from chipcompiler.data.step import STEP_TOOLS, StepDirectories, recorded_step_directory
 from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
 
 _VIOLATION_METRICS = {
@@ -28,11 +28,7 @@ def checker_evidence(root: Path, step: dict, design: str) -> dict:
         return record
     name, tool = step["name"], step["tool"]
     # Checker evidence is only read for the tool each step canonically runs.
-    if (
-        name in STEP_DIRECTORIES
-        and tool not in LEC_STEP_TOOLS
-        and not STEP_DIRECTORIES[name].endswith(f"_{tool}")
-    ):
+    if name in STEP_TOOLS and tool not in LEC_STEP_TOOLS and STEP_TOOLS[name] != tool:
         record["availability"] = "unsupported_tool"
         return record
     step_root = root / (

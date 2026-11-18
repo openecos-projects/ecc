@@ -7293,7 +7293,7 @@ def _overlap_patch_ids(patches: list[dict[str, Any]], bbox: dict[str, Any]) -> l
 def _strip_stage_prefix_from_density_maps(
     maps: dict[str, MapMatrix], stage: str
 ) -> dict[str, MapMatrix]:
-    prefix = f"{stage.lower()}_"
+    prefix = f"{stage}_"
     stripped = {key.removeprefix(prefix): matrix for key, matrix in maps.items()}
     return {
         key: stripped[key]

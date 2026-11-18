@@ -327,10 +327,9 @@ def build_step_config_items(
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
-        step_dir_step_name,
-        step_dir_tool,
     )
     from chipcompiler.data import step_config_paths
+    from chipcompiler.data.step import STEP_TOOLS
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     requested_step_token = step_token or ""
@@ -352,10 +351,10 @@ def build_step_config_items(
     data_step = step_info.get("name")
     tool = step_info.get("tool")
     step_dir = step_dirs.get(step_token)
-    if tool is None and step_dir is not None:
-        tool = step_dir_tool(step_dir)
     if data_step is None and step_dir is not None:
-        data_step = step_dir_step_name(step_dir)
+        # A step the ledger does not record runs its canonical tool.
+        data_step = step_token
+        tool = STEP_TOOLS.get(step_token)
 
     items = []
     display_run = run_id or "default"

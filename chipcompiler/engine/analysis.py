@@ -55,9 +55,6 @@ def collect_workspace_projections(workspace: Any, workspace_id: str) -> dict[str
         tool_id = raw_step.get("tool")
         if not _safe_segment(step_id) or not _safe_segment(tool_id):
             continue
-        identity = "".join(character for character in step_id.casefold() if character.isalnum())
-        if identity == "fixfanout":
-            continue
         step_dir = root / recorded_step_directory(raw_step)
         analysis_dir = step_dir / "analysis"
         for kind, filename, required in _ANALYSIS_FILES:
