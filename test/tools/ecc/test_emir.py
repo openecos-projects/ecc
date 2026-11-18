@@ -295,3 +295,23 @@ def test_emir_without_an_upstream_power_analysis_fails_before_native_init(emir_c
         runner.run_step(workspace, step, module)
 
     module.init_emir.assert_not_called()
+
+
+def test_emir_reads_the_typical_spef_a_derived_workspace_inherited(emir_case):
+    from chipcompiler.data.step import StepDirectories
+    from chipcompiler.tools.ecc import emir
+
+    workspace, step, _module, _save_data = emir_case
+    assert json_write(
+        workspace.config[StepEnum.STA.value],
+        {
+            "liberty": [{"corner": "TYP", "temperature": 25, "path": ["typ.lib"]}],
+            "signoff": [{"TYP": ["TYPICAL"]}],
+        },
+    )
+    inherited = StepDirectories.of(workspace).path(StepEnum.RCX.value) / "output"
+    inherited.mkdir(parents=True)
+
+    assert emir._typical_spef_path(workspace, step, runner) == str(
+        inherited / "gcd_TYPICAL_25C.spef"
+    )

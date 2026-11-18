@@ -85,12 +85,8 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
 
 def _typical_spef_path(workspace: Workspace, step: EccStep, runner) -> str:
-    """The typical corner's SPEF, or "" when no RCX ran and none is declared."""
-    if step.directory is None:
-        raise ValueError(f"{step.name} step directory is not configured")
-    upstream = load_request(Path(step.directory)).upstream
-    declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
-    if AnalysisData.PARASITICS not in upstream and not declared_spef:
+    """The typical corner's SPEF, or "" when the step has no parasitics."""
+    if not runner.has_parasitics(workspace, step):
         return ""
     item = runner.typical_signoff_item(runner.collect_sta_signoff_items(workspace, step))
     return item["spef_file"] if item is not None else ""
