@@ -87,7 +87,7 @@ def extract_design_report_data(inputs) -> DesignReportData:
         for stage, payload in (inputs.get(source) or {}).items():
             store.add(stage, payload)
     if _is_record(inputs.get("sta_timing_issues")):
-        store.add(StepEnum.STA.value, inputs["sta_timing_issues"])
+        store.add(StepEnum.STA, inputs["sta_timing_issues"])
     if params:
         store.add(PARAMETERS_STAGE, params)
 

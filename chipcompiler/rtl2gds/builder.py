@@ -191,9 +191,7 @@ def insert_flow_steps(
         if parsed is None:
             raise ValueError(f"not an inserted step: {name!r}")
         following[parsed[1]] = name
-    names = [
-        entry[0].value if isinstance(entry[0], StepBaseEnum) else str(entry[0]) for entry in steps
-    ]
+    names = [str(entry[0]) for entry in steps]
     result = []
     for name, entry in zip(names, steps, strict=True):
         result.append(entry)
@@ -211,7 +209,7 @@ def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
     excluded = set(skip)
 
     def kept(entry) -> bool:
-        name = entry[0].value if isinstance(entry[0], StepBaseEnum) else str(entry[0])
+        name = str(entry[0])
         parsed = parse_inserted_step(name)
         return name not in excluded and (parsed is None or parsed[1] not in excluded)
 
@@ -231,7 +229,7 @@ def substitute_lec_engine(
     lec_tool = LECEngineEnum.from_value(lec_engine).value
 
     def is_lec(step: StepBaseEnum | str) -> bool:
-        name = step.value if isinstance(step, StepBaseEnum) else str(step)
+        name = str(step)
         return (
             name == SkippableStepEnum.POST_ROUTE_LEC.value
             or inserted_step_kind(name) == StepEnum.LEC.value
@@ -274,9 +272,7 @@ def build_flow_range(
     steps follow their step inside the range, the range's last step included.
     """
     steps = build_rtl2gds_flow(skip=skip, lec_engine=lec_engine)
-    names = [
-        step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
-    ]
+    names = [str(step) for step, _tool, _state in steps]
     first = str(from_step)
     last = str(to_step)
     if first not in names or last not in names:

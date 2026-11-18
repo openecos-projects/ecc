@@ -1335,7 +1335,7 @@ class TestCreateStepFailureBreaksChain:
         engine_flow: Any = EngineFlow(workspace)
 
         # Only create SYNTHESIS
-        engine_flow.workspace_steps = [EccStep(name="SYNTHESIS", directory=tmp_path, tool="yosys")]
+        engine_flow.workspace_steps = [EccStep(name="synthesis", directory=tmp_path, tool="yosys")]
 
         # run_steps: only 1 of 2 steps created
         monkeypatch.setattr(engine_flow, "run_step", lambda ws, **kw: StateEnum.Success)
@@ -1396,16 +1396,16 @@ class TestMandatoryArtifactFailure:
             "schema_version": 3,
             "steps": [
                 {
-                    "name": "SYNTHESIS",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Unstart",
-                    **step_fields("SYNTHESIS", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 }
             ],
         }
         engine_flow: Any = EngineFlow(workspace)
         ws_step = YosysStep(
-            name="SYNTHESIS",
+            name="synthesis",
             directory=tmp_path,
             tool="yosys",
             output=YosysOutput(verilog=tmp_path / "missing.v"),

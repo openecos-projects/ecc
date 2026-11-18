@@ -217,12 +217,11 @@ def flow_range_for_preset(preset: str) -> tuple[str, str]:
     steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
-    from chipcompiler.data.types import StepBaseEnum
 
     first, last = steps[0][0], steps[-1][0]
     return (
-        first.value if isinstance(first, StepBaseEnum) else str(first),
-        last.value if isinstance(last, StepBaseEnum) else str(last),
+        str(first),
+        str(last),
     )
 
 

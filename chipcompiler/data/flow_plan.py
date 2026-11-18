@@ -24,7 +24,6 @@ from chipcompiler.data.types import (
     DesignState,
     LECEngineEnum,
     SkippableStepEnum,
-    StepBaseEnum,
 )
 
 #: The design data a preset chain starts from.
@@ -112,7 +111,7 @@ def preset_chain(
     if builder is None:
         raise ValueError(f"unknown flow preset: {preset!r}")
     return tuple(
-        (step.value if isinstance(step, StepBaseEnum) else str(step), str(tool))
+        (str(step), str(tool))
         for step, tool, _state in rtl2gds_api.substitute_lec_engine(builder(), lec_engine)
     )
 

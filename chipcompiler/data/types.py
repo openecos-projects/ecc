@@ -345,12 +345,21 @@ def inserted_step_kind(name: str) -> str | None:
     return None if parsed is None else parsed[0]
 
 
+def flow_step_kind(name: str) -> StepBaseEnum:
+    """The step a ledger step *name* runs (``StepEnum.LEC`` for ``lec@cts``).
+
+    Raises ValueError for a name that is neither a flow step nor a canonical
+    inserted step.
+    """
+    return step_from_value(inserted_step_kind(name) or name)
+
+
 def flow_step_policy(step: StepBaseEnum | str) -> FlowStepPolicy:
     """The registered policy for a flow step; unknown names raise.
 
     An inserted step (``lec@cts``) has the policy of the step it copies.
     """
-    value = step.value if isinstance(step, StepBaseEnum) else str(step)
+    value = str(step)
     try:
         return FLOW_STEP_POLICIES[inserted_step_kind(value) or value]
     except KeyError:
@@ -363,7 +372,7 @@ def default_flow_step_category(step: StepBaseEnum | str) -> FlowStepCategory:
     Ledger walks use :func:`flow_step_policy` instead, so a step added
     without a policy fails loudly rather than silently inheriting PNR.
     """
-    value = step.value if isinstance(step, StepBaseEnum) else str(step)
+    value = str(step)
     policy = FLOW_STEP_POLICIES.get(inserted_step_kind(value) or value)
     return policy.category if policy is not None else FlowStepCategory.PNR
 

@@ -33,13 +33,13 @@ class AgentEngineFlow(EngineFlow):
     def build_default_steps(self):
         super().build_default_steps()
         steps = self.workspace.flow.data.get("steps", [])
-        if any(step["name"] == StepEnum.DRC.value for step in steps):
+        if any(step["name"] == StepEnum.DRC for step in steps):
             return
         filler_index = next(index for index, step in enumerate(steps) if step["name"] == "filler")
         steps.insert(
             filler_index,
             self.init_flow_step(
-                StepEnum.DRC.value, "ecc", StateEnum.Unstart, index=next_step_index(steps)
+                StepEnum.DRC, "ecc", StateEnum.Unstart, index=next_step_index(steps)
             ),
         )
         self.save()

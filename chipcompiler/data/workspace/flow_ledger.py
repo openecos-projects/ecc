@@ -213,7 +213,7 @@ def set_flow_state(
     callers can substitute persistence); it defaults to :func:`save_ledger`.
     """
     write = persist if persist is not None else (lambda: save_ledger(flow))
-    state_value = state.value if isinstance(state, StateEnum) else state
+    state_value = str(state)
     with ledger_lock(flow):
         steps = flow.data.get("steps", [])
         for index, step in enumerate(steps):
