@@ -2,7 +2,7 @@
 
 import re
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from chipcompiler.utility import json_read, json_write
@@ -17,25 +17,13 @@ def workspace_checklist_path(workspace_dir: Path | str | None) -> Path:
     return Path(workspace_dir) / "home" / "checklist.json"
 
 
-class CheckState(Enum):
-    """States retained for tool code that constructs checklist records."""
+class CheckState(StrEnum):
+    """Checklist item states, spelled as the checklist stores them."""
 
-    Unstart = "Unstart"
-    Passed = "Passed"
-    Failed = "Failed"
-    Warning = "Warning"
-
-
-_STATE_MAP = {
-    CheckState.Unstart.value: "unavailable",
-    CheckState.Passed.value: "pass",
-    CheckState.Failed.value: "failed",
-    CheckState.Warning.value: "warning",
-    "pass": "pass",
-    "failed": "failed",
-    "warning": "warning",
-    "unavailable": "unavailable",
-}
+    UNAVAILABLE = "unavailable"
+    PASS = "pass"
+    FAILED = "failed"
+    WARNING = "warning"
 
 
 class Checklist:
@@ -102,9 +90,11 @@ class Checklist:
         return data
 
     @staticmethod
-    def state_value(state: str | CheckState) -> str:
-        raw = state.value if isinstance(state, CheckState) else str(state)
-        return _STATE_MAP.get(raw, "unavailable")
+    def state_value(state: str | CheckState) -> CheckState:
+        try:
+            return CheckState(state)
+        except ValueError:
+            return CheckState.UNAVAILABLE
 
     @staticmethod
     def _identifier(value: str) -> str:

@@ -254,10 +254,10 @@ class TestFlowSetStatePersistence:
                     "schema_version": 3,
                     "steps": [
                         {
-                            "name": "SYNTHESIS",
+                            "name": "synthesis",
                             "tool": "yosys",
                             "state": "Unstart",
-                            **step_fields("SYNTHESIS", "yosys"),
+                            **step_fields("synthesis", "yosys"),
                         }
                     ],
                 }
@@ -290,7 +290,7 @@ class TestFlowSetStatePersistence:
 
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
 
-        result = flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
+        result = flow.set_state("synthesis", "yosys", StateEnum.Ongoing)
         assert result is False
         assert workspace.flow.data["steps"][0]["state"] == StateEnum.Unstart.value
 
@@ -305,16 +305,16 @@ class TestFlowSetStatePersistence:
             "schema_version": 3,
             "steps": [
                 {
-                    "name": "SYNTHESIS",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Unstart",
-                    **step_fields("SYNTHESIS", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "FLOORPLAN",
+                    "name": "pre_floorplan",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("FLOORPLAN", "ecc"),
+                    **step_fields("pre_floorplan", "ecc"),
                 },
             ],
         }
@@ -326,11 +326,11 @@ class TestFlowSetStatePersistence:
         workspace.flow.data = json.loads(json.dumps(flow_data))
         engine_flow = EngineFlow(workspace)
         engine_flow.workspace_steps = [
-            EccStep(name="SYNTHESIS", directory=tmp_path, tool="yosys"),
-            EccStep(name="FLOORPLAN", directory=tmp_path, tool="ecc"),
+            EccStep(name="synthesis", directory=tmp_path, tool="yosys"),
+            EccStep(name="pre_floorplan", directory=tmp_path, tool="ecc"),
         ]
         monkeypatch.setattr("chipcompiler.utility.json_write", lambda *a, **kw: False)
-        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
+        engine_flow.set_state("synthesis", "yosys", StateEnum.Ongoing)
         # File is still Unstart (save failed)
 
         # Simulate resume: fresh load from disk (what production does)
@@ -339,8 +339,8 @@ class TestFlowSetStatePersistence:
         engine_flow2 = EngineFlow(workspace2)
         # workspace2.flow.data was loaded from stale file
         selected = rerun.selected_step_names(engine_flow2)
-        assert "SYNTHESIS" in selected
-        assert "FLOORPLAN" in selected
+        assert "synthesis" in selected
+        assert "pre_floorplan" in selected
 
     def test_persisted_success_skips_on_resume(self, tmp_path):
         """When save() succeeds, resume correctly skips successful steps."""
@@ -353,16 +353,16 @@ class TestFlowSetStatePersistence:
             "schema_version": 3,
             "steps": [
                 {
-                    "name": "SYNTHESIS",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Unstart",
-                    **step_fields("SYNTHESIS", "yosys"),
+                    **step_fields("synthesis", "yosys"),
                 },
                 {
-                    "name": "FLOORPLAN",
+                    "name": "pre_floorplan",
                     "tool": "ecc",
                     "state": "Unstart",
-                    **step_fields("FLOORPLAN", "ecc"),
+                    **step_fields("pre_floorplan", "ecc"),
                 },
             ],
         }
@@ -375,8 +375,8 @@ class TestFlowSetStatePersistence:
         engine_flow = EngineFlow(workspace)
 
         # Mark SYNTHESIS as Success — save() succeeds
-        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Ongoing)
-        engine_flow.set_state("SYNTHESIS", "yosys", StateEnum.Success)
+        engine_flow.set_state("synthesis", "yosys", StateEnum.Ongoing)
+        engine_flow.set_state("synthesis", "yosys", StateEnum.Success)
 
         # Verify file was updated
         persisted = json.loads(flow_path.read_text())
@@ -384,4 +384,4 @@ class TestFlowSetStatePersistence:
 
         # resume: only FLOORPLAN should be selected
         selected = rerun.selected_step_names(engine_flow)
-        assert selected == ["FLOORPLAN"]
+        assert selected == ["pre_floorplan"]

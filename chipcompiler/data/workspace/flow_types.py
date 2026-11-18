@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
+from chipcompiler.data.types import flow_step_kind
+
 #: flow.json field with the digest of the step results it was generated from.
 STEP_RESULTS_DIGEST_FIELD: Final = "step_results_digest"
 
@@ -84,7 +86,7 @@ def ledger_workspace_directory(path: Path | str) -> Path | None:
 
 
 def _validate_step_records(document: dict) -> None:
-    """Reject records missing fields introduced by the current ledger contract."""
+    """Reject records missing current ledger fields or naming an unknown flow step."""
     if "steps" not in document:
         return
     steps = document.get("steps")
@@ -102,3 +104,7 @@ def _validate_step_records(document: dict) -> None:
             raise ValueError(
                 f"flow step {name} is missing {', '.join(missing)}; create a new workspace"
             )
+        try:
+            flow_step_kind(step["name"])
+        except ValueError as exc:
+            raise ValueError(f"flow.json: {exc}; create a new workspace") from exc

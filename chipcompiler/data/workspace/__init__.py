@@ -22,6 +22,7 @@ from ..types import (
     SkippableStepEnum,
     StepBaseEnum,
     StepEnum,
+    ToolName,
 )
 from ..types import (
     StateEnum as StateEnum,
@@ -88,7 +89,7 @@ class Flow:
         return [step for step in raw_steps if isinstance(step, dict)]
 
     def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> FlowStepEntry | None:
-        step_name = name.value if isinstance(name, StepBaseEnum) else name
+        step_name = str(name)
         for step in self.steps():
             if step.get("name") != step_name:
                 continue
@@ -187,39 +188,29 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     "dreamplace": "dreamplace_ecc.json",
 }
 
-_STEP_BY_VALUE: Final[dict[str, StepBaseEnum]] = {
-    step.value: step for step in (*StepEnum, *SkippableStepEnum)
-}
-
-_STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
+_STEP_CONFIG_KEYS: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     # The shared floorplan config key also accepts parameter edits directly.
-    (StepEnum.FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
-    (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
-    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
-    (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
-    (StepEnum.PREPLACE, "sizer"): ("db",),
-    (StepEnum.PLACEMENT, "ecc"): ("db",),
-    (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
-    (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
-    (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
-    (StepEnum.ANTENNA_CHECK, "ecc"): ("db",),
-    (StepEnum.LEGALIZATION, "ecc"): ("db",),
-    (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
-    (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
-    (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
-    (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
-    (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.DIFF_OPT, "dreamplace"): ("dreamplace",),
-    (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
-    (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
+    (StepEnum.FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN),
+    (StepEnum.PRE_FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN),
+    (StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE): ("dreamplace", "macro_location"),
+    (StepEnum.POST_FLOORPLAN, ToolName.ECC): ("db", StepEnum.FLOORPLAN, "macro_location"),
+    (StepEnum.PREPLACE, ToolName.SIZER): ("db",),
+    (StepEnum.PLACEMENT, ToolName.ECC): ("db",),
+    (StepEnum.CTS, ToolName.ECC): ("db", StepEnum.CTS),
+    (StepEnum.ROUTING, ToolName.ECC): ("db", StepEnum.ROUTING),
+    (StepEnum.DRC, ToolName.ECC): ("db", StepEnum.DRC),
+    (StepEnum.ANTENNA_CHECK, ToolName.ECC): ("db",),
+    (StepEnum.LEGALIZATION, ToolName.ECC): ("db",),
+    (StepEnum.FILLER, ToolName.ECC): ("db", StepEnum.FILLER),
+    (StepEnum.RCX, ToolName.ECC): ("db", StepEnum.RCX),
+    (StepEnum.STA, ToolName.ECC): ("db", StepEnum.RCX, StepEnum.STA),
+    (StepEnum.EMIR, ToolName.ECC): ("db", StepEnum.EMIR),
+    (StepEnum.PLACEMENT, ToolName.DREAMPLACE): ("dreamplace",),
+    (SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE): ("dreamplace",),
+    (StepEnum.DIFF_SIZING, ToolName.DREAMPLACE): ("dreamplace",),
+    (StepEnum.LEGALIZATION, ToolName.DREAMPLACE): ("dreamplace",),
+    (SkippableStepEnum.TIMING_OPT, ToolName.SIZER): ("db", "sizer", "dreamplace"),
 }
-
-
-def _workspace_step_enum(step: str | StepBaseEnum) -> StepBaseEnum | None:
-    if isinstance(step, StepBaseEnum):
-        return step
-    return _STEP_BY_VALUE.get(step)
 
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
@@ -237,11 +228,9 @@ def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Pat
     return workspace_config_paths(workspace_dir).get(config_key)
 
 
-def step_config_keys(step: str | StepBaseEnum, tool: str | None) -> tuple[str, ...]:
-    step_enum = _workspace_step_enum(step)
-    if step_enum is None or tool is None:
-        return ()
-    return _STEP_CONFIG_KEYS.get((step_enum, tool), ())
+def step_config_keys(step: str, tool: str | None) -> tuple[str, ...]:
+    # A StrEnum member is a str, so a step member or its plain name looks it up.
+    return () if tool is None else _STEP_CONFIG_KEYS.get((step, tool), ())
 
 
 def step_config_paths(

@@ -361,8 +361,8 @@ def _sta_corner_reports(
 
     corners: dict[str, dict] = {}
     power_payload = None
-    feature_root = directories.path(StepEnum.STA.value) / "feature"
-    report_root = directories.path(StepEnum.STA.value) / "report"
+    feature_root = directories.path(StepEnum.STA) / "feature"
+    report_root = directories.path(StepEnum.STA) / "report"
     for label, feature_dir in sta_qor.configured_sta_artifact_directories(workspace, feature_root):
         payload = json_read(feature_dir / "qor_summary.json")
         report_dir = report_root / label
@@ -379,14 +379,14 @@ def _sta_corner_reports(
         if payload:
             corners[label] = payload
     power_rpt = parse_power_rpt(
-        _read_text(power_report_source_path(directories.path(StepEnum.POWER_ANALYSIS.value)))
+        _read_text(power_report_source_path(directories.path(StepEnum.POWER_ANALYSIS)))
     )
     if power_rpt.total_power_mw is not None:
         power_payload = dataclasses.asdict(power_rpt)
 
     if not corners:
         # syn_sta-style workspace: post-synthesis STA lives in synthesis_yosys.
-        synth_report = directories.path(StepEnum.SYNTHESIS.value) / "report"
+        synth_report = directories.path(StepEnum.SYNTHESIS) / "report"
         rpt = parse_qor_summary_rpt(_read_text(synth_report / "qor_summary.rpt"))
         power_rpt = parse_power_rpt(_read_text(synth_report / "power.rpt"))
         if rpt.wns is not None or power_rpt.total_power_mw is not None:
@@ -436,7 +436,7 @@ def collect_workspace_report(workspace) -> DesignReportData:
 
     corners, power_payload = _sta_corner_reports(workspace, workspace_root, directories)
     if power_payload:
-        step_metrics.setdefault(StepEnum.POWER_ANALYSIS.value, {}).update(power_payload)
+        step_metrics.setdefault(StepEnum.POWER_ANALYSIS, {}).update(power_payload)
 
     from chipcompiler.cli.core.version_info import version_payload
     from chipcompiler.engine.signoff.report import extract_design_report_data

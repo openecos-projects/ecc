@@ -11,39 +11,42 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from types import MappingProxyType
-from typing import Protocol, cast, runtime_checkable
+from typing import Final, Protocol, cast, runtime_checkable
 
-from chipcompiler.data.types import SkippableStepEnum, StepEnum
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, ToolName
 
 # The tool each step runs along the canonical rtl2gds chain, and the base
 # ``<step>_<tool>`` directory names derived from it. They identify inherited
 # directories and steps absent from a bounded derived ledger. Timing
 # optimization owns no artifact directory any consumer reads through these tables.
-STEP_TOOLS = {
-    StepEnum.SYNTHESIS.value: "yosys",
-    StepEnum.PRE_FLOORPLAN.value: "ecc",
-    StepEnum.MACRO_PLACEMENT.value: "dreamplace",
-    StepEnum.POST_FLOORPLAN.value: "ecc",
-    StepEnum.PREPLACE.value: "sizer",
-    StepEnum.PLACEMENT.value: "dreamplace",
-    SkippableStepEnum.DIFF_OPT.value: "dreamplace",
-    StepEnum.DIFF_SIZING.value: "dreamplace",
-    StepEnum.CTS.value: "ecc",
-    StepEnum.LEGALIZATION.value: "dreamplace",
-    StepEnum.ROUTING.value: "ecc",
-    StepEnum.FILLER.value: "ecc",
-    StepEnum.RCX.value: "ecc",
-    StepEnum.STA.value: "ecc",
-    StepEnum.POWER_ANALYSIS.value: "ecc",
-    StepEnum.EMIR.value: "ecc",
-    StepEnum.LVS.value: "ecc",
-    SkippableStepEnum.POST_ROUTE_LEC.value: "kepler_formal",
-    StepEnum.DRC.value: "ecc",
-    StepEnum.ANTENNA_CHECK.value: "ecc",
-    StepEnum.HARDEN.value: "ecc",
-    StepEnum.DEFVIEW.value: "ecc",
+# Keyed by step members; a member is a str, so a plain step name looks it up.
+STEP_TOOLS: Final[dict[str, ToolName]] = {
+    StepEnum.SYNTHESIS: ToolName.YOSYS,
+    StepEnum.PRE_FLOORPLAN: ToolName.ECC,
+    StepEnum.MACRO_PLACEMENT: ToolName.DREAMPLACE,
+    StepEnum.POST_FLOORPLAN: ToolName.ECC,
+    StepEnum.PREPLACE: ToolName.SIZER,
+    StepEnum.PLACEMENT: ToolName.DREAMPLACE,
+    SkippableStepEnum.DIFF_OPT: ToolName.DREAMPLACE,
+    StepEnum.DIFF_SIZING: ToolName.DREAMPLACE,
+    StepEnum.CTS: ToolName.ECC,
+    StepEnum.LEGALIZATION: ToolName.DREAMPLACE,
+    StepEnum.ROUTING: ToolName.ECC,
+    StepEnum.FILLER: ToolName.ECC,
+    StepEnum.RCX: ToolName.ECC,
+    StepEnum.STA: ToolName.ECC,
+    StepEnum.POWER_ANALYSIS: ToolName.ECC,
+    StepEnum.EMIR: ToolName.ECC,
+    StepEnum.LVS: ToolName.ECC,
+    SkippableStepEnum.POST_ROUTE_LEC: ToolName.KEPLER_FORMAL,
+    StepEnum.DRC: ToolName.ECC,
+    StepEnum.ANTENNA_CHECK: ToolName.ECC,
+    StepEnum.HARDEN: ToolName.ECC,
+    StepEnum.DEFVIEW: ToolName.ECC,
 }
-STEP_DIRECTORIES = {step: f"{step}_{tool}" for step, tool in STEP_TOOLS.items()}
+STEP_DIRECTORIES: Final[dict[str, str]] = {
+    step: f"{step}_{tool}" for step, tool in STEP_TOOLS.items()
+}
 
 
 def step_directory_for_tool(step_name: str, tool: str | None) -> str:
