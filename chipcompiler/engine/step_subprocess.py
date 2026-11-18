@@ -189,6 +189,14 @@ def execute_step_subprocess(
     if step_error is None and response is None:
         step_error = f"{step_tag} worker did not publish {RSP_FILE} for this attempt."
     if (
+        step_error is None
+        and response is not None
+        and response.status is not ResponseStatus.SUCCESS
+    ):
+        # The worker found the step's outputs incomplete; files left by an
+        # earlier run must not pass the parent's own output check.
+        step_error = f"{step_tag} did not produce the required outputs."
+    if (
         response is not None
         and response.status is ResponseStatus.SUCCESS
         and result is not None
