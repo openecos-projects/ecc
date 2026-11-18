@@ -76,7 +76,7 @@ def test_workspace_configuration_update_is_revision_aware_and_idempotent(
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
 
-def _target_density(workspace: Any) -> float:
+def _target_density(workspace: Any) -> object:
     """The placement step's target density, as its DreamPlace config build will see it."""
     return workspace_param_value(workspace, lookup_schema("place.target_density"), step="placement")
 

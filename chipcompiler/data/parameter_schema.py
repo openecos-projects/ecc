@@ -467,6 +467,7 @@ def parse_cli_overrides(pairs, pdk: str | None = None):
         if key_error is not None:
             errors.append(key_error)
             continue
+        assert schema is not None  # an unknown parameter is a key error
         try:
             value = parse_value(raw, schema)
         except ValueError as exc:
