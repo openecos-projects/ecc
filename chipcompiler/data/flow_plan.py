@@ -224,6 +224,22 @@ def _available_before(chain_names: Sequence[str], entry: str) -> frozenset[Desig
     return design_data_after(chain_names[: chain_names.index(entry)], available=_CHAIN_INPUT)
 
 
+def entry_design_states(entry: str) -> frozenset[DesignState]:
+    """The design states a declared design entering the rtl2gds chain at *entry* carries.
+
+    As the plan assumes, they are the states the chain builds before *entry*;
+    none for a step outside the chain.
+    """
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
+
+    names = rtl2gds_step_names()
+    if entry not in names:
+        return frozenset()
+    return frozenset(
+        item for item in _available_before(names, entry) if isinstance(item, DesignState)
+    )
+
+
 def _check(enabled: Sequence[str], chain_names: Sequence[str]) -> tuple[FlowViolation, ...]:
     return check_flow(enabled, available=_available_before(chain_names, enabled[0]))
 

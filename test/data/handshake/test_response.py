@@ -36,13 +36,26 @@ def test_routing_without_a_clock_tree_is_published_with_a_warning(tmp_path):
     )
 
 
-def test_a_design_from_before_responses_is_trusted_to_carry_what_the_step_uses(tmp_path):
+def test_a_design_from_before_responses_is_trusted_to_carry_what_the_chain_built(tmp_path):
     request = _route_request(tmp_path, None)
 
     response = build_step_response(request, EccStep(name="routing"), succeeded=True)
 
+    # Every state the rtl2gds chain builds before routing, as the flow plan assumes.
     assert (response.design_states, response.warnings) == (
-        frozenset({DesignState.LEGAL, DesignState.CLOCK_TREE, DesignState.ROUTED}),
+        frozenset(
+            {
+                DesignState.RTL,
+                DesignState.NETLIST,
+                DesignState.FLOORPLAN,
+                DesignState.MACROS_PLACED,
+                DesignState.PDN,
+                DesignState.PLACED,
+                DesignState.LEGAL,
+                DesignState.CLOCK_TREE,
+                DesignState.ROUTED,
+            }
+        ),
         frozenset(),
     )
 
