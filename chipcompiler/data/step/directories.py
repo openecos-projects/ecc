@@ -15,33 +15,35 @@ from typing import Protocol, cast, runtime_checkable
 
 from chipcompiler.data.types import SkippableStepEnum, StepEnum
 
-# Base step-directory names along the canonical rtl2gds chain. They identify
-# inherited directories and steps absent from a bounded derived ledger. Timing
+# The tool each step runs along the canonical rtl2gds chain, and the base
+# ``<step>_<tool>`` directory names derived from it. They identify inherited
+# directories and steps absent from a bounded derived ledger. Timing
 # optimization owns no artifact directory any consumer reads through these tables.
-STEP_DIRECTORIES = {
-    StepEnum.SYNTHESIS.value: "synthesis_yosys",
-    StepEnum.PRE_FLOORPLAN.value: "pre_floorplan_ecc",
-    StepEnum.MACRO_PLACEMENT.value: "macro_placement_dreamplace",
-    StepEnum.POST_FLOORPLAN.value: "post_floorplan_ecc",
-    StepEnum.PREPLACE.value: "preplace_sizer",
-    StepEnum.PLACEMENT.value: "placement_dreamplace",
-    SkippableStepEnum.DIFF_OPT.value: "diff_opt_dreamplace",
-    StepEnum.DIFF_SIZING.value: "diff_sizing_dreamplace",
-    StepEnum.CTS.value: "cts_ecc",
-    StepEnum.LEGALIZATION.value: "legalization_dreamplace",
-    StepEnum.ROUTING.value: "routing_ecc",
-    StepEnum.FILLER.value: "filler_ecc",
-    StepEnum.RCX.value: "rcx_ecc",
-    StepEnum.STA.value: "sta_ecc",
-    StepEnum.POWER_ANALYSIS.value: "power_analysis_ecc",
-    StepEnum.EMIR.value: "emir_ecc",
-    StepEnum.LVS.value: "lvs_ecc",
-    SkippableStepEnum.POST_ROUTE_LEC.value: "post_route_lec_kepler_formal",
-    StepEnum.DRC.value: "drc_ecc",
-    StepEnum.ANTENNA_CHECK.value: "antenna_check_ecc",
-    StepEnum.HARDEN.value: "harden_ecc",
-    StepEnum.DEFVIEW.value: "defview_ecc",
+STEP_TOOLS = {
+    StepEnum.SYNTHESIS.value: "yosys",
+    StepEnum.PRE_FLOORPLAN.value: "ecc",
+    StepEnum.MACRO_PLACEMENT.value: "dreamplace",
+    StepEnum.POST_FLOORPLAN.value: "ecc",
+    StepEnum.PREPLACE.value: "sizer",
+    StepEnum.PLACEMENT.value: "dreamplace",
+    SkippableStepEnum.DIFF_OPT.value: "dreamplace",
+    StepEnum.DIFF_SIZING.value: "dreamplace",
+    StepEnum.CTS.value: "ecc",
+    StepEnum.LEGALIZATION.value: "dreamplace",
+    StepEnum.ROUTING.value: "ecc",
+    StepEnum.FILLER.value: "ecc",
+    StepEnum.RCX.value: "ecc",
+    StepEnum.STA.value: "ecc",
+    StepEnum.POWER_ANALYSIS.value: "ecc",
+    StepEnum.EMIR.value: "ecc",
+    StepEnum.LVS.value: "ecc",
+    SkippableStepEnum.POST_ROUTE_LEC.value: "kepler_formal",
+    StepEnum.DRC.value: "ecc",
+    StepEnum.ANTENNA_CHECK.value: "ecc",
+    StepEnum.HARDEN.value: "ecc",
+    StepEnum.DEFVIEW.value: "ecc",
 }
+STEP_DIRECTORIES = {step: f"{step}_{tool}" for step, tool in STEP_TOOLS.items()}
 
 
 def step_directory_for_tool(step_name: str, tool: str | None) -> str:

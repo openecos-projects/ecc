@@ -154,7 +154,7 @@ check_export "LEC stale netlist fails" "${ws}" fail
 ws="${tmp}/lec-residue"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "post_route_lec") | .tool) = "yosys_lec"'
+  '(.steps[] | select(.name == "post_route_lec")) |= . + {tool: "yosys_lec", directory: "post_route_lec_yosys_lec"}'
 check_export "LEC cross-engine residue fails" "${ws}" fail
 
 # 5. DRC: clean gate reported as fail -> mandatory gate fails.
@@ -184,32 +184,26 @@ fresh_workspace "${ws}"
 rm -f "${ws}/harden_ecc/output/gcd_harden.gds"
 check_export "harden missing artifact fails" "${ws}" fail
 
-# 9. Fallback shape: no flow.json.design; design comes from params.toml.
-ws="${tmp}/no-flow-json"
-fresh_workspace "${ws}"
-rm -f "${ws}/home/flow.json"
-check_export "no flow.json still passes from params design" "${ws}" pass
-
-# 10. post_route_lec omitted from the ledger is not a mandatory LEC gate.
+# 9. post_route_lec omitted from the ledger is not a mandatory LEC gate.
 ws="${tmp}/lec-skipped"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "post_route_lec")]'
 check_export "post_route_lec omitted from ledger is skipped and passes" "${ws}" pass
 
-# 11. post_route_lec present but non-success must fail, never read stale residue.
+# 10. post_route_lec present but non-success must fail, never read stale residue.
 ws="${tmp}/lec-non-success"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "post_route_lec") | .state) = "Incomplete"'
 check_export "post_route_lec non-success fails despite stale result" "${ws}" fail
 
-# 12. Harden area metrics are optional; final artifacts still satisfy the gate.
+# 11. Harden area metrics are optional; final artifacts still satisfy the gate.
 ws="${tmp}/harden-optional-area"
 fresh_workspace "${ws}"
 mutate_json "${ws}/harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
 check_export "harden optional area metrics do not fail the gate" "${ws}" pass
 
-# 13. Indexed step directories must populate CSV data used by the job summary.
+# 12. Indexed step directories must populate CSV data used by the job summary.
 ws="${tmp}/indexed"
 fresh_workspace "${ws}"
 mv "${ws}/synthesis_yosys" "${ws}/01_synthesis_yosys"

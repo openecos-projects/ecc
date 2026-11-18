@@ -12,6 +12,7 @@ import json
 import os
 from dataclasses import dataclass
 
+from chipcompiler.data.step import STEP_TOOLS
 from chipcompiler.utility.json import JsonObject, json_read
 
 SECTIONS = ("feature", "analysis", "checklist", "outputs")
@@ -72,14 +73,9 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     for flow_step in flow_steps:
         name = str(flow_step["name"])
         token = name
-        matched = None
-        for dir_token in dir_tokens:
-            if dir_token in taken_dirs:
-                continue
-            if dir_token == token or dir_token.startswith(f"{token}_"):
-                matched = dir_token
-                taken_dirs.add(dir_token)
-                break
+        matched = token if token in dir_tokens and token not in taken_dirs else None
+        if matched:
+            taken_dirs.add(matched)
         entries.append(
             _StepEntry(
                 token=matched or token,
@@ -96,7 +92,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                 _StepEntry(
                     token=dir_token,
                     display=dir_token,
-                    tool=os.path.basename(dir_path).rpartition("_")[2],
+                    tool=STEP_TOOLS.get(dir_token, ""),
                     directory=dir_path,
                     flow=None,
                     selectors=frozenset({dir_token}),

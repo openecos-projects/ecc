@@ -247,8 +247,7 @@ def invalidate_engineering_snapshot(
             (
                 index
                 for index, step in enumerate(steps)
-                if isinstance(step, dict)
-                and str(step.get("name", "")).casefold() == first_invalidated_step.casefold()
+                if isinstance(step, dict) and step.get("name") == first_invalidated_step
             ),
             -1,
         )
