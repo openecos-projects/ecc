@@ -127,7 +127,7 @@ class TestReconcile:
         assert result.outcome == "no_op"
 
     def test_equal_with_non_success_is_resume(self, tmp_path):
-        states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Imcomplete"]
+        states = ["Success"] * (len(RTL2GDS_STEPS) - 1) + ["Incomplete"]
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
         )
@@ -136,16 +136,29 @@ class TestReconcile:
 
         assert result.outcome == "resume"
 
-    def test_equal_with_legacy_warned_lec_resumes(self, tmp_path):
-        # The removed terminal Warning state is not finished: a persisted
-        # warned LEC reconciles to a resume that re-runs it and its suffix.
-        lec_index = next(
-            index for index, (name, _tool) in enumerate(RTL2GDS_STEPS) if name == "post_route_lec"
-        )
-        states = ["Success"] * len(RTL2GDS_STEPS)
-        states[lec_index] = "Warning"
+    def test_a_step_its_results_reset_after_an_interrupted_save_resumes(self, tmp_path):
+        from chipcompiler.data.step.results import STATE_FILE, results_digest
+        from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
+
         workspace_dir = _write_workspace(
-            tmp_path, RTL2GDS_STEPS, states=states, flow_section={"preset": "rtl2gds"}
+            tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
+        )
+        flow_path = workspace_dir / "home" / "flow.json"
+        ledger = json.loads(flow_path.read_text())
+        ledger[STEP_RESULTS_DIGEST_FIELD] = results_digest(ledger["steps"])
+        flow_path.write_text(json.dumps(ledger))
+        # A reset committed the last step's results; the ledger save never ran.
+        harden = ledger["steps"][-1]
+        (workspace_dir / harden["directory"]).mkdir()
+        (workspace_dir / harden["directory"] / STATE_FILE).write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "step": harden["name"],
+                    "tool": harden["tool"],
+                    "state": "Unstart",
+                }
+            )
         )
 
         result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})

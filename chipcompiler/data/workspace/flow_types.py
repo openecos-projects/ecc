@@ -76,6 +76,9 @@ def load_flow_document(path: Path | None) -> FlowDocument:
         from chipcompiler.data.step.results import apply_step_results
 
         apply_step_results(raw, workspace_directory, digest_field=STEP_RESULTS_DIGEST_FIELD)
+    if path.exists():
+        # The states the steps' results hold, which replace the ledger's own.
+        _validate_step_states(raw)
     return cast(FlowDocument, raw)  # Shape guards stay in the readers, not the loader.
 
 
@@ -88,7 +91,7 @@ def ledger_workspace_directory(path: Path | str) -> Path | None:
 
 
 def _validate_step_records(document: dict) -> None:
-    """Reject records missing current ledger fields or naming an unknown step or state."""
+    """Reject records missing current ledger fields or naming an unknown flow step."""
     if "steps" not in document:
         return
     steps = document.get("steps")
@@ -110,8 +113,13 @@ def _validate_step_records(document: dict) -> None:
             flow_step_kind(step["name"])
         except ValueError as exc:
             raise ValueError(f"flow.json: {exc}; create a new workspace") from exc
-        if step["state"] not in _STEP_STATES:
+
+
+def _validate_step_states(document: dict) -> None:
+    """Reject a step whose state is not a current step state."""
+    for step in document.get("steps", []):
+        state = step.get("state")
+        if state not in _STEP_STATES:
             raise ValueError(
-                f"flow step {step['name']} has unknown state {step['state']!r}; "
-                "create a new workspace"
+                f"flow step {step['name']} has unknown state {state!r}; create a new workspace"
             )

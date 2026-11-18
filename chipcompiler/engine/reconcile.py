@@ -259,9 +259,11 @@ def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
     return ledger_flow_section([name for name, _tool in persisted])
 
 
-def _persisted_flow_data(workspace_dir: Path, json_read) -> dict:
-    flow_data = json_read(workspace_dir / "home" / "flow.json")
-    return flow_data if isinstance(flow_data, dict) else {}
+def _persisted_flow_data(workspace_dir: Path) -> dict:
+    """The ledger as the workspace loads it, step results included."""
+    from chipcompiler.data.workspace.flow_types import load_flow_document
+
+    return dict(load_flow_document(workspace_dir / "home" / "flow.json"))
 
 
 def resolve_target_section(project_flow: dict | None, workspace_flow: dict | None) -> dict:
@@ -283,9 +285,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     initialization, no ledger rewrite.
     """
     from chipcompiler.data.schema_versions import (
-        FLOW_JSON,
         UnsupportedSchemaVersionError,
-        ensure_supported_schema_version,
     )
     from chipcompiler.data.workspace_config import (
         WorkspaceConfigError,
@@ -293,14 +293,13 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
         flow_range_of,
         load_workspace_config,
     )
-    from chipcompiler.utility import json_read
 
-    flow_data = _persisted_flow_data(workspace_dir, json_read)
-    flow_path = workspace_dir / "home" / "flow.json"
     try:
-        ensure_supported_schema_version(FLOW_JSON, flow_path, flow_data)
+        flow_data = _persisted_flow_data(workspace_dir)
     except UnsupportedSchemaVersionError as exc:
         return ReconcileResult(outcome="mismatch", error=f"unsupported_schema_version: {exc}"), {}
+    except ValueError as exc:
+        return ReconcileResult(outcome="mismatch", error=f"workspace_config_invalid: {exc}"), {}
     persisted = _persisted_entries(flow_data)
     if _built_with_removed_lec(workspace_dir, persisted):
         return (
@@ -484,7 +483,7 @@ def reconcile_workspace(
 def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) -> ReconcileResult:
     """Append/adopt under the workspace lock for a pending classification."""
     from chipcompiler.data.workspace_config import save_workspace_config
-    from chipcompiler.utility import json_read, json_write
+    from chipcompiler.utility import json_write
 
     persisted = context["persisted"]
     target = context["target"]
@@ -555,11 +554,11 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
         if relation == "target_prefix":
             # The persisted flow already covers the target: no-op only
             # when every step within the requested target range finished.
-            flow_data = _persisted_flow_data(workspace_dir, json_read)
+            flow_data = _persisted_flow_data(workspace_dir)
             target_states = _target_step_states(flow_data, target)
             outcome = "no_op" if target_states <= FINISHED_STEP_STATES else "resume"
         else:
-            flow_data = _persisted_flow_data(workspace_dir, json_read)
+            flow_data = _persisted_flow_data(workspace_dir)
             states = {
                 str(step.get("state", ""))
                 for step in flow_data.get("steps", [])

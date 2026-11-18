@@ -78,6 +78,28 @@ def test_a_step_with_an_unknown_state_fails_to_load(tmp_path):
         load_flow_document(path)
 
 
+def test_a_step_whose_results_hold_an_unknown_state_fails_to_load(tmp_path):
+    from chipcompiler.data.step.results import STATE_FILE, results_digest
+    from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
+    from test.flow_fixture import current_flow_document
+
+    steps = current_flow_document([{"name": "placement", "tool": "ecc", "state": "Success"}]).get(
+        "steps", []
+    )
+    ledger = {"schema_version": 3, "steps": steps, STEP_RESULTS_DIGEST_FIELD: results_digest(steps)}
+    path = tmp_path / "home" / "flow.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps(ledger))
+    step_directory = tmp_path / steps[0]["directory"]
+    step_directory.mkdir()
+    (step_directory / STATE_FILE).write_text(
+        json.dumps({"schema_version": 1, "step": "placement", "tool": "ecc", "state": "Done"})
+    )
+
+    with pytest.raises(ValueError, match="placement has unknown state 'Done'"):
+        load_flow_document(path)
+
+
 def test_legacy_parameters_json_is_not_used(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
