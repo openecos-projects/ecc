@@ -84,7 +84,7 @@ def test_rejected_run_identity_creates_nothing(fresh_project, capsys, options, c
 
 
 def test_fresh_run_still_accepts_set_after_a_rejected_run_id(fresh_project, capsys):
-    target = ["--workspace", "w1", "--set", "place.target_density=0.55"]
+    target = ["--workspace", "w1", "--set", "placement:place.target_density=0.55"]
     project = ["--project", str(fresh_project), "--plain"]
 
     assert cli_main.run(["run", *target, "--run-id", "not-a-uuid", *project]) == 1
