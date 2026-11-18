@@ -13,7 +13,7 @@ from typing import Any
 
 from chipcompiler.data import FlowStepCategory, SkippableStepEnum, StateEnum
 from chipcompiler.data.workspace.flow_ledger import validate_transition
-from chipcompiler.data.workspace.flow_policy import flow_category
+from chipcompiler.data.workspace.flow_policy import ledger_category
 
 
 def _step_record(flow, name: str) -> dict:
@@ -96,7 +96,7 @@ def waive_checklist(workspace: Any, name: str, reason: str) -> dict:
         raise ValueError("a waiver reason is required")
     flow = workspace.flow
     step = _step_record(flow, name)
-    if flow_category(step) != FlowStepCategory.CHECKER:
+    if ledger_category(step) != FlowStepCategory.CHECKER:
         raise ValueError(f"only checker steps can be waived: {name}")
     previous_step = deepcopy(step)
     step["checklist_waiver"] = {"reason": reason, "created_at": _timestamp()}

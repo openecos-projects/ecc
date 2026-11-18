@@ -52,14 +52,6 @@ def _real_ledger(*, skip_steps=None) -> FlowDocument:
     return build_dynamic_flow_data(flow_config)
 
 
-def _legacy_ledger() -> FlowDocument:
-    """The same chain with the category keys removed (pre-#344 ledgers)."""
-    data = _real_ledger()
-    for step in data.get("steps", []):
-        step.pop("category")
-    return data
-
-
 def _build(
     workspace,
     step_name,
@@ -572,13 +564,6 @@ def _checklist_prerequisite_sources(workspace, ledger) -> dict[str, str]:
         for step in flow.workspace.flow.data.get("steps", [])
     }
     return {name: source for name, source in prerequisite.items() if source is not None}
-
-
-def test_flow_category_rejects_a_ledger_without_categories():
-    from chipcompiler.data.workspace.flow_policy import flow_category
-
-    with pytest.raises(ValueError, match="no declared category"):
-        flow_category(_legacy_ledger().get("steps", [])[0])
 
 
 def test_skipped_and_waived_checkers_do_not_gate_downstream(tmp_path):

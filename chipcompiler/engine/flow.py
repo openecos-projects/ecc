@@ -35,7 +35,6 @@ from chipcompiler.data.workspace.flow_policy import (
     FlowInputResolver,
     analysis_wave_end,
     explicit_input_step,
-    flow_category,
     is_lec_record,
     ledger_category,
 )
@@ -690,7 +689,7 @@ class EngineFlow:
         if current_index is None:
             return None
         current = steps[current_index]
-        if flow_category(current) == FlowStepCategory.CHECKER:
+        if ledger_category(current) == FlowStepCategory.CHECKER:
             return None
 
         prerequisite_name = explicit_input_step(current)
@@ -708,7 +707,7 @@ class EngineFlow:
                 if not isinstance(step, dict):
                     continue
                 prerequisites.append(step)
-                if flow_category(step) != FlowStepCategory.CHECKER and not is_lec_record(step):
+                if ledger_category(step) != FlowStepCategory.CHECKER and not is_lec_record(step):
                     break
 
         for prerequisite in prerequisites:

@@ -72,18 +72,11 @@ def ledger_category(record: Mapping[str, object]) -> FlowStepCategory:
     return _declared_category(record)
 
 
-def flow_category(record: Mapping[str, object]) -> FlowStepCategory:
-    """The declared category for classification."""
-    flow_step_policy(step_name(record))
-    return _declared_category(record)
-
-
 def is_checker_batch_step(record: Mapping[str, object]) -> bool:
     """Whether the step belongs to the parallel checker batch.
 
     Only steps whose policy declares the batch input source run concurrently;
-    the batch is anchored at ``filler``. A ledger without categories keeps the
-    historical all-PNR chaining.
+    the batch is anchored at ``filler``.
     """
     try:
         category = ledger_category(record)

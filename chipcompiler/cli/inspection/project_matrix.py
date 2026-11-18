@@ -6,7 +6,7 @@ from chipcompiler.cli.inspection.discovery import get_run_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
 from chipcompiler.data.types import FlowStepCategory
-from chipcompiler.data.workspace.flow_policy import flow_category
+from chipcompiler.data.workspace.flow_policy import ledger_category
 from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 from chipcompiler.project.manifest import ProjectManifest
 
@@ -106,7 +106,7 @@ def build_project_matrix(manifest: ProjectManifest) -> dict:
                     "tool": step["tool"],
                 },
             )
-            category = flow_category(step).value
+            category = ledger_category(step).value
             state = flow_step_status(step["state"])
             checker = (
                 checker_evidence(root, step, manifest.design_name)
