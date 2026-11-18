@@ -189,8 +189,8 @@ def create_command_spec(command_input, run_name: str) -> dict:
         "to": command_input.to_step,
         "parameters": list(command_input.param_set),
         **(
-            {"stepSubprocess": command_input.step_subprocess}
-            if command_input.step_subprocess is not None
+            {"stepSubprocess": step_subprocess}
+            if (step_subprocess := getattr(command_input, "step_subprocess", None)) is not None
             else {}
         ),
     }
