@@ -1010,7 +1010,10 @@ the command fails with `workspace_fork_requires_terminal`. Scripts, agents and E
 SOURCE and TARGET; the former name `ecc workspace derive` still works for them.
 `archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
-unregisters it and optionally removes the directory. The automation flags apply where
+unregisters it and optionally removes the directory. A directory that `delete` kept is
+still a workspace on disk: `create` or `ecc run` under the same name registers it again
+with its saved state. To start from an empty workspace instead, delete with
+`--delete-directory` or run with `--overwrite`. The automation flags apply where
 relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
 on the creating/branching subcommands; §5.1), and a mutation on an in-use workspace fails
 with `workspace_busy` (exit 20).
