@@ -80,21 +80,21 @@ graph LR
 
 ### 0.3 Which configurations each step uses
 
-Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG_KEYS` in [chipcompiler/data/workspace/__init__.py](https://github.com/openecos-projects/ecc/blob/main/chipcompiler/data/workspace/__init__.py)):
+Distilled from real `ecc config <step>` output. Each tool package declares the workspace configs its steps read in `STEP_CONFIG_READS` (`chipcompiler/tools/<tool>/__init__.py`), narrowed to fields where a step reads only part of a shared config; parameter invalidation reruns from the earliest step that reads a field the parameter writes:
 
 | Step | db_ecc | Step-specific config | Notes |
 |---|---|---|---|
-| synthesis | — | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON |
+| synthesis | ✓ (`INPUT.lib_path` only) | `global_var.tcl` (Tcl) | Yosys is driven by Tcl variables, not JSON; reads extra Liberty files from `db_ecc.json` |
 | lec@&lt;step&gt; | — | engine-generated config | Inserted LEC check (`[flow] insert_steps`); `lec@synthesis` compares the RTL with the synthesized netlist, any other compares the step's netlist with the synthesis one; kepler-formal (YAML); an unproven result fails the step and stops the flow, see §11 |
 | pre_floorplan | ✓ | `floorplan_ecc.json` | automatic macro floorplanning |
 | macro_placement | — | step `config/dreamplace_ecc.json` + `macro_location.tcl` | writes the Tcl macro-placement handoff (skips DreamPlace when `macro.placements` is set, see §1.5) |
 | post_floorplan | ✓ | `floorplan_ecc.json` + `macro_location.tcl` | reads the Tcl macro-placement handoff |
-| preplace | ✓ | none | Sizer's pre-placement preparation reads `db_ecc.json` |
-| placement | — | step `config/dreamplace_ecc.json` | resolved from the workspace baseline plus the step's own values |
-| diff_sizing | — | step `config/dreamplace_ecc.json` | standalone differentiable sizing with its own DreamPlace values |
+| preplace | ✓ | `sizer_ecc.json` + `sta_ecc.json` (`liberty`) + `routing_ecc.json` (layer bounds) | Sizer reads the MIN-corner Liberty files, the routing layer bounds and its hold-stage settings |
+| placement | — | step `config/dreamplace_ecc.json` + `sta_ecc.json` | resolved from the workspace baseline plus the step's own values; timing-driven placement hands `sta_ecc.json` to the native timer |
+| diff_sizing | — | step `config/dreamplace_ecc.json` + `sta_ecc.json` | standalone differentiable sizing with its own DreamPlace values |
 | cts | ✓ | `cts_ecc.json` | |
 | legalization | — | step `config/dreamplace_ecc.json` | baseline plus legalization forcing; no settable parameters |
-| timing optimization | ✓ | `sizer_ecc.json` + step `config/dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization from its own step config; see §6 |
+| timing optimization | ✓ | `sizer_ecc.json` + `sta_ecc.json` (`liberty`) + `routing_ecc.json` (layer bounds) + step `config/dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization from its own step config; see §6 |
 | routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
 | lvs | — | none | tool default behavior |
@@ -103,9 +103,9 @@ Distilled from real `ecc config <step>` output (maps to the source `_STEP_CONFIG
 | post_route_lec | — | engine-generated config | Post-route LEC on the `filler` netlist (kepler-formal), see §11 |
 | rcx | ✓ | `rcx_ecc.json` | corner set decided by the PDK (see §12) |
 | sta | ✓ | `sta_ecc.json` + `rcx_ecc.json` | reads the rcx config to align SPEFs |
-| power_analysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not present in `_STEP_CONFIG_KEYS` |
+| power_analysis | — | no explicit step config | the runner reuses `db_ecc.json` internally; not declared in `STEP_CONFIG_READS` |
 | emir | ✓ | `emir_ecc.json` | iEMIR technology file; advisory step, see §13.5 |
-| harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not in `_STEP_CONFIG_KEYS`; `ecc config harden` explicitly reports that the step has no configuration |
+| harden | — | no step-specific config | the tool reuses `db_ecc.json` internally to locate inputs/outputs, but it is not declared in `STEP_CONFIG_READS`; `ecc config harden` explicitly reports that the step has no configuration |
 
 ## 1. The Parameter Chain (user-tunable parameters)
 

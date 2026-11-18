@@ -121,6 +121,7 @@ def _conforming_fake_module() -> ModuleType:
         build_step_space=lambda step: None,
         build_step_config=lambda workspace, step: None,
         run_step=run_step,
+        STEP_CONFIG_READS={},
     )
     return module
 

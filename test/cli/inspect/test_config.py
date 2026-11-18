@@ -425,7 +425,7 @@ class TestConfigStepResolved:
         ]
         assert all(item["source"] == "workspace_config" for item in records)
 
-    def test_config_yosys_synthesis_does_not_report_ecc_workspace_configs(
+    def test_config_yosys_synthesis_reports_the_db_config_it_reads(
         self,
         tmp_path,
         capsys,
@@ -454,10 +454,9 @@ class TestConfigStepResolved:
         rc = cli_main.run(["config", "synthesis", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert len(records) == 1
-        assert records[0]["step"] == "synthesis"
-        assert records[0]["config_status"] == "none"
-        assert "path" not in records[0]
+        assert [(record["source"], os.path.basename(record["path"])) for record in records] == [
+            ("workspace_config", "db_ecc.json")
+        ]
 
 
 class TestEmptyStepConfigSentinel:
