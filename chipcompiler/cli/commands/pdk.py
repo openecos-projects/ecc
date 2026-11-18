@@ -20,10 +20,12 @@ from chipcompiler.cli.core.options import (
 
 from .pdk_configure import configure_app
 from .pdk_library import library_app
+from .pdk_profiles import profiles_app
 
 pdk_app = create_app(help="Show and configure the PDK path used by this project")
 pdk_app.add_typer(configure_app, name="configure")
 pdk_app.add_typer(library_app, name="library")
+pdk_app.add_typer(profiles_app, name="profiles")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:

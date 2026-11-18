@@ -52,6 +52,19 @@ def verify_lock(root: Path, lock: PdkLock) -> None:
         raise DescriptorError("content_mismatch", "PDK resources differ from the project lock")
 
 
+def resolve_project_lock(project: Path, root: Path, family: str):
+    """Validate the immutable snapshot without consulting mutable managed defaults."""
+    from .resolver import resolve_descriptor
+
+    lock = read_lock(project / "pdk.lock.json")
+    verify_lock(root, lock)
+    if lock.descriptor.family_id.casefold() != family.casefold():
+        raise DescriptorError("family_mismatch", "project and locked PDK families differ")
+    pdk = resolve_descriptor(root, lock.descriptor)
+    pdk.validate()
+    return pdk
+
+
 def bind_project(project: Path, root: Path, descriptor: Descriptor) -> PdkLock:
     lock = build_lock(root, descriptor)
     path = project / "pdk.lock.json"

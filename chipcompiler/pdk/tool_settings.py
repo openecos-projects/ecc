@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .compatibility import Compatibility
+
 
 class ToolModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
@@ -60,6 +62,7 @@ class SynthesisSettings(ToolModel):
 
 
 class ToolSettings(ToolModel):
+    compatibility: Compatibility = Field(default_factory=Compatibility)
     configs: dict[str, dict] = Field(default_factory=dict)
     timing: TimingSettings = Field(default_factory=TimingSettings)
     extraction: ExtractionSettings = Field(default_factory=ExtractionSettings)

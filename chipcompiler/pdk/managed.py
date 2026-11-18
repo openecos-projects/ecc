@@ -95,6 +95,10 @@ def import_configuration(
             description=configuration.description,
             adaptation=EccAdaptation.model_validate_json(adaptation.read_bytes()),
         )
+    else:
+        from .profiles import default_for
+
+        configuration = default_for(root, configuration)
     destination = configuration_path(root)
     if destination.exists():
         raise DescriptorError(
@@ -107,9 +111,13 @@ def adopt_configuration(root: Path) -> Path:
     """Copy an upstream description into ECC management once, without rewriting it."""
     destination = configuration_path(root)
     if not destination.exists():
-        configuration = read_configuration(root / DESCRIPTOR_FILENAME)
+        from .profiles import default_for
+
+        source = root / DESCRIPTOR_FILENAME
+        revision = file_digest(source) if source.exists() else None
+        configuration = default_for(root, read_configuration(source))
         try:
-            save_configuration(root, configuration, import_new=True)
+            save_configuration(root, configuration, import_new=True, expected_revision=revision)
         except DescriptorError as exc:
             if exc.code != "already_exists":
                 raise

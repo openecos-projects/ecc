@@ -41,6 +41,7 @@ REQUIRED_DISTRIBUTION_METADATA = (
 )
 
 ECC_PACKAGE_RESOURCES = (
+    "chipcompiler/pdk/profiles",
     "chipcompiler/tools/ecc/configs",
     "chipcompiler/tools/yosys/scripts",
     "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json",

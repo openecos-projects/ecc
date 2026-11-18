@@ -36,7 +36,13 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
             )
         ]
     try:
-        pdk = get_pdk(cfg.pdk_name, root, overrides=resolve_pdk_overrides(cfg))
+        project = Path(cfg.project_dir)
+        if (project / "pdk.lock.json").is_file():
+            from chipcompiler.pdk.locking import resolve_project_lock
+
+            pdk = resolve_project_lock(project, Path(root), cfg.pdk_name)
+        else:
+            pdk = get_pdk(cfg.pdk_name, root, overrides=resolve_pdk_overrides(cfg))
     except (OSError, ValueError) as exc:
         return [_issue("pdk", root, str(exc))]
     # SDC is generated during workspace creation, so only the PDK contents
@@ -65,6 +71,10 @@ def pdk_issues(
         issues.append(_issue("pdk", root, str(exc)))
 
     from chipcompiler.pdk.capabilities import stage_diagnostics
+    from chipcompiler.pdk.compatibility import runtime_issues
+
+    for message in runtime_issues(pdk.description.get("tools", {}), step_names):
+        issues.append(_issue("pdk-tool-compatibility", root, message))
 
     for diagnostic in stage_diagnostics(pdk, step_names, emir_config=emir_config):
         issues.append(

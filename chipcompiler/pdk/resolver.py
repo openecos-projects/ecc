@@ -18,6 +18,10 @@ def resolve_pdk(root: Path, *, name: str = "", descriptor_path: Path | None = No
 def resolve_descriptor(root: Path, descriptor: Descriptor):
     from chipcompiler.data.pdk import PDK
 
+    from .compatibility import ecc_compatible
+
+    ecc_compatible(descriptor.tools)
+
     by_role: dict[str, list[Path]] = {}
     for resource in descriptor.resources.values():
         by_role.setdefault(resource.role, []).append(resource_path(root, resource))
