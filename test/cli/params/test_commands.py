@@ -547,6 +547,7 @@ class TestConfigResolved:
         expected = []
         for param in semantic_parameter_ids:
             schema = lookup_schema(param)
+            assert schema is not None
             if is_step_scoped(schema):
                 expected.extend(step_key(s, param) for s in schema.steps if s in flow_steps)
             else:

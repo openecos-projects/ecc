@@ -73,6 +73,7 @@ def test_all_step_views_agree_on_the_parameters_of_each_step(
     flow = [(step["name"], step["tool"]) for step in workspace.flow.steps()]
     first = flow[0][0]
     rows = workspace_rows(ctx)
+    assert isinstance(rows, list)
     workspace_wide = {
         schema.param
         for schema in list_schemas()

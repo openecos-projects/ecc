@@ -46,7 +46,7 @@ def test_each_declared_step_holds_its_own_value(tmp_path) -> None:
     workspace = _workspace(tmp_path)
     schema = _schema("place.timing_sizing_action")
     baseline = workspace_param_value(workspace, schema)
-    other = next(choice for choice in schema.choices if choice != baseline)
+    other = next(choice for choice in schema.choices or () if choice != baseline)
 
     update_workspace_param_value(workspace, schema, other, step="diff_opt")
 

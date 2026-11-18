@@ -5,6 +5,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 
 if TYPE_CHECKING:
     from chipcompiler.cli.project.config import ProjectConfig
+    from chipcompiler.data.parameter_schema import ResolvedParam
 
 
 def build_project_config_items(
@@ -233,7 +234,7 @@ def build_project_config_items(
 
     by_key = {rp.key: rp for rp in resolved_params}
     flow_steps = _flow_step_names(cfg, flow_config)
-    shown_params: list[tuple[str, object]] = []
+    shown_params: list[tuple[str, ResolvedParam]] = []
     for rp in resolved_params:
         if rp.step is not None:
             continue  # step values are shown through their parameter's step rows
