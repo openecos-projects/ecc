@@ -1110,7 +1110,7 @@ def test_rebuild_home_checklist_uses_canonical_workspace_path(tmp_path):
     assert persisted["checklist"] == data["checklist"]
 
     Checklist(checklist_file).update(
-        step="STA", type="Timing", item="check setup timing", state="Passed"
+        step="STA", type="Timing", item="check setup timing", state="pass"
     )
     healed = json.loads(checklist_file.read_text(encoding="utf-8"))
     assert [item["id"] for item in healed["checklist"] if item["step"] == "STA"] == [

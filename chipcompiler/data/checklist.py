@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -26,6 +28,91 @@ class CheckState(StrEnum):
     WARNING = "warning"
 
 
+class CheckPolicy(StrEnum):
+    """Whether a failed or unavailable item blocks signoff."""
+
+    BLOCK = "block"
+    WARN = "warn"
+
+
+class CheckOwner(StrEnum):
+    """The producer of a checklist item."""
+
+    QOR = "qor"
+    CHECKLIST = "checklist"
+
+
+@dataclass(frozen=True)
+class ChecklistItem:
+    """One checklist requirement; its record is the stored JSON object."""
+
+    id: str
+    step: str
+    category: str
+    owner: CheckOwner
+    policy: CheckPolicy
+    state: CheckState
+    title: str
+    summary: str = ""
+    source: dict = field(default_factory=dict)
+    evidence: list[dict] = field(default_factory=list)
+
+    @property
+    def blocked(self) -> bool:
+        return self.policy is CheckPolicy.BLOCK and self.state in {
+            CheckState.FAILED,
+            CheckState.UNAVAILABLE,
+        }
+
+    @classmethod
+    def from_record(cls, record: Mapping) -> "ChecklistItem":
+        """Parse a stored item; a missing field or unknown value raises ValueError."""
+        try:
+            item = cls(
+                id=record["id"],
+                step=record["step"],
+                category=record["category"],
+                owner=CheckOwner(record["owner"]),
+                policy=CheckPolicy(record["policy"]),
+                state=CheckState(record["state"]),
+                title=record["title"],
+                summary=record.get("summary", ""),
+                source=record.get("source", {}),
+                evidence=record.get("evidence", []),
+            )
+        except KeyError as exc:
+            raise ValueError(f"checklist item is missing {exc.args[0]!r}") from None
+        texts = (item.id, item.step, item.category, item.title, item.summary)
+        if not all(isinstance(text, str) for text in texts) or not item.id:
+            raise ValueError(f"invalid checklist item: {record.get('id')!r}")
+        if not isinstance(item.source, dict) or not isinstance(item.evidence, list):
+            raise ValueError(f"invalid checklist item evidence: {item.id!r}")
+        return item
+
+    def to_record(self) -> dict:
+        return {
+            "id": self.id,
+            "step": self.step,
+            "category": self.category,
+            "owner": str(self.owner),
+            "policy": str(self.policy),
+            "state": str(self.state),
+            "blocked": self.blocked,
+            "title": self.title,
+            "summary": self.summary,
+            "source": self.source,
+            "evidence": self.evidence,
+        }
+
+
+def checklist_records(items: Iterable["ChecklistItem | Mapping"]) -> list[dict]:
+    """Stored records of *items*, each validated and its ``blocked`` derived."""
+    return [
+        (item if isinstance(item, ChecklistItem) else ChecklistItem.from_record(item)).to_record()
+        for item in items
+    ]
+
+
 class Checklist:
     """Persist the workspace signoff checklist contract.
 
@@ -46,9 +133,7 @@ class Checklist:
         checklist = cls.__new__(cls)
         checklist.path = Path(path)
         checklist.data = checklist._default_data()
-        checklist.data["checklist"] = [
-            cls._normalize_item(item) for item in items if isinstance(item, dict)
-        ]
+        checklist.data["checklist"] = checklist_records(items)
         cls._refresh_summary(checklist.data)
         return checklist.data
 
@@ -90,50 +175,13 @@ class Checklist:
         return data
 
     @staticmethod
-    def state_value(state: str | CheckState) -> CheckState:
-        try:
-            return CheckState(state)
-        except ValueError:
-            return CheckState.UNAVAILABLE
-
-    @staticmethod
     def _identifier(value: str) -> str:
         token = re.sub(r"[^a-z0-9]+", ".", value.lower()).strip(".")
         return token or "item"
 
     @classmethod
-    def _normalize_item(cls, item: dict) -> dict:
-        state = cls.state_value(item.get("state", "unavailable"))
-        policy = item.get("policy") if item.get("policy") in {"block", "warn"} else "warn"
-        normalized = {
-            "id": str(
-                item.get("id")
-                or cls._identifier(
-                    f"{item.get('step', 'workspace')}.{item.get('title', item.get('item', 'item'))}"
-                )
-            ),
-            "step": str(item.get("step") or "workspace"),
-            "category": str(item.get("category") or item.get("type") or "report"),
-            "owner": (
-                item.get("owner") if item.get("owner") in {"qor", "checklist"} else "checklist"
-            ),
-            "policy": policy,
-            "state": state,
-            "blocked": policy == "block" and state in {"failed", "unavailable"},
-            "title": str(item.get("title") or item.get("item") or "Checklist item"),
-            "summary": str(item.get("summary") or item.get("info") or ""),
-            "source": item.get("source") if isinstance(item.get("source"), dict) else {},
-            "evidence": item.get("evidence") if isinstance(item.get("evidence"), list) else [],
-        }
-        return normalized
-
-    @classmethod
     def _refresh_summary(cls, data: dict) -> None:
-        items = [
-            cls._normalize_item(item)
-            for item in data.get("checklist", [])
-            if isinstance(item, dict)
-        ]
+        items = checklist_records(data.get("checklist", []))
         data["checklist"] = items
         summary = {"passed": 0, "blocked": 0, "attention": 0, "unavailable": 0}
         for item in items:
@@ -155,11 +203,9 @@ class Checklist:
             else "ready"
         )
 
-    def replace(self, items: list[dict]) -> list[dict]:
+    def replace(self, items: Iterable[ChecklistItem | Mapping]) -> list[dict]:
         self.data = self._default_data()
-        self.data["checklist"] = [
-            self._normalize_item(item) for item in items if isinstance(item, dict)
-        ]
+        self.data["checklist"] = checklist_records(items)
         self.save()
         return self.data["checklist"]
 
@@ -192,18 +238,7 @@ class Checklist:
         ):
             return
         self.data["checklist"].append(
-            {
-                "id": item_id,
-                "step": step,
-                "category": type.lower().replace(" ", "_"),
-                "owner": "checklist",
-                "policy": "warn",
-                "state": self.state_value(state),
-                "title": item,
-                "summary": info,
-                "source": evidence or {},
-                "evidence": [evidence] if evidence else [],
-            }
+            self._tool_item(item_id, step, type, item, state, info, evidence).to_record()
         )
         self.save()
 
@@ -218,25 +253,26 @@ class Checklist:
     ) -> None:
         item_id = self._identifier(f"{step}.{item}")
         items = [
-            existing
-            for existing in self.data.get("checklist", [])
-            if isinstance(existing, dict) and existing.get("id") != item_id
+            existing for existing in self.data.get("checklist", []) if existing.get("id") != item_id
         ]
-        items.append(
-            {
-                "id": item_id,
-                "step": step,
-                "category": type.lower().replace(" ", "_"),
-                "owner": "checklist",
-                "policy": "warn",
-                "state": self.state_value(state),
-                "title": item,
-                "summary": info,
-                "source": evidence or {},
-                "evidence": [evidence] if evidence else [],
-            }
-        )
+        items.append(self._tool_item(item_id, step, type, item, state, info, evidence))
         self.replace(items)
+
+    @staticmethod
+    def _tool_item(item_id, step, type, item, state, info, evidence) -> ChecklistItem:
+        """A warn-policy item a tool reports through :meth:`add` or :meth:`update`."""
+        return ChecklistItem(
+            id=item_id,
+            step=step,
+            category=type.lower().replace(" ", "_"),
+            owner=CheckOwner.CHECKLIST,
+            policy=CheckPolicy.WARN,
+            state=CheckState(state),
+            title=item,
+            summary=info,
+            source=evidence or {},
+            evidence=[evidence] if evidence else [],
+        )
 
     def state_statistics(self) -> dict:
         self._refresh_summary(self.data)

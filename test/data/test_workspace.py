@@ -8,6 +8,10 @@ import pytest
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
 from chipcompiler.data import (
+    ChecklistItem,
+    CheckOwner,
+    CheckPolicy,
+    CheckState,
     SkippableStepEnum,
     StepBaseEnum,
     StepEnum,
@@ -1454,12 +1458,15 @@ def test_prepare_workspace_for_rerun_deletes_old_artifacts_and_resets_runtime_st
             "kind": "signoff_checklist",
             "path": str(checklist_path),
             "checklist": [
-                {
-                    "step": "floorplan",
-                    "type": "area",
-                    "item": "check DIE area",
-                    "state": "Success",
-                }
+                ChecklistItem(
+                    id="pre_floorplan.check.die.area",
+                    step="pre_floorplan",
+                    category="area",
+                    owner=CheckOwner.CHECKLIST,
+                    policy=CheckPolicy.WARN,
+                    state=CheckState.PASS,
+                    title="check DIE area",
+                ).to_record()
             ],
         },
     )
