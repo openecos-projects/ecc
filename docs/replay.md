@@ -170,6 +170,33 @@ Otherwise the parent loses `placement_only` and rejects a successful terminal
 Place for lacking the ordinary geometry snapshot. Replay does not bypass the
 flow completion check: terminal Place still requires saved DEF and Verilog.
 
+## Filler helper analysis ownership (2026-11-18)
+
+Filler inserts cells, saves DEF/DB/GDS/native geometry and records result metrics.
+With geometry.clock_tree enabled it also invokes RCX, selects the TYPICAL/25°C
+SPEF, and runs iSTA with TYP/25°C Liberty to obtain real clock-tree delays. This
+is a clock visualization helper, not execution of the flow's independent RCX or
+STA stage. The current RCX helper emits multiple corners before that selection.
+
+Previously those helper runs leaked run-rcx events into the Filler capture, and
+geometry_display.publish recursively bound their RCX datasets to Filler. The
+Replay index then counted all datasets without checking their owning stage.
+AES ws_0007 consequently presented nine SPEF extraction views under Filler.
+This was incorrect result ownership, not evidence of incorrect parasitic values.
+
+The helper now suspends ECC_REPLAY_CAPTURE_DIR while RCX/STA run and restores it
+even on failure. Its computation, clock-tree provenance and capture opt-in remain
+unchanged. RCX display assets may be bound/published as analysis only by the RCX
+step. Native Replay applies the same ownership rule to existing captures and
+their planned durations, and skips old auxiliary run-rcx animation clips after
+applying their deltas. Immutable old captures are never edited in place.
+
+Regression coverage lives in test/tools/test_geometry_display.py,
+test/tools/test_replay_events.py and test/tools/ecc/test_clock_tree.py. Both enabled
+and disabled capture preserve the clock helper's RCX → iSTA operation sequence;
+nested/error paths restore the opt-in flag. The same RCX asset must remain visible
+and counted in RCX while being excluded from Filler publication and Replay.
+
 ## Historical validation
 
 ```sh

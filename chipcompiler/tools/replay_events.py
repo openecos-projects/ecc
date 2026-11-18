@@ -13,6 +13,17 @@ _sequence = itertools.count()
 logger = logging.getLogger(__name__)
 
 
+@contextmanager
+def suspend_capture():
+    """Keep helper analyses out of the enclosing step's native Replay stream."""
+    directory = os.environ.pop("ECC_REPLAY_CAPTURE_DIR", None)
+    try:
+        yield
+    finally:
+        if directory is not None:
+            os.environ["ECC_REPLAY_CAPTURE_DIR"] = directory
+
+
 def analysis_event(phase: str, subflow: str, metrics: dict | None = None) -> None:
     directory = os.environ.get("ECC_REPLAY_CAPTURE_DIR")
     if not directory:

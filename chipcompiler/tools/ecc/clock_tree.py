@@ -10,6 +10,7 @@ from typing import Any, Final
 from chipcompiler.data import StepEnum
 from chipcompiler.data.flow.options import clock_tree_requested
 from chipcompiler.data.step import StepDirectories
+from chipcompiler.tools.replay_events import suspend_capture
 
 # Steps whose clock network ecc-tools can capture into the geometry snapshot.
 CLOCK_TREE_STEPS: Final = frozenset(
@@ -197,16 +198,17 @@ def capture_filler_clock_tree(workspace, step, ecc_module) -> dict[str, Any] | N
         raise ClockTreeCaptureError(f"filler clock-tree SDC does not exist: {sdc_path}")
 
     rcx_config, rcx_dir = _prepare_rcx_config(clock_tree_dir)
-    _run_rcx(workspace, ecc_module, rcx_config)
-    spef_path = _select_typical_spef(rcx_dir, temperature_c)
-    graph = _run_ista_clock_graph(
-        ecc_module,
-        sta_config=sta_config,
-        liberty_paths=liberty_paths,
-        sdc_path=sdc_path,
-        spef_path=spef_path,
-        work_dir=clock_tree_dir / "sta",
-    )
+    with suspend_capture():
+        _run_rcx(workspace, ecc_module, rcx_config)
+        spef_path = _select_typical_spef(rcx_dir, temperature_c)
+        graph = _run_ista_clock_graph(
+            ecc_module,
+            sta_config=sta_config,
+            liberty_paths=liberty_paths,
+            sdc_path=sdc_path,
+            spef_path=spef_path,
+            work_dir=clock_tree_dir / "sta",
+        )
 
     diagnostics = list(graph.get("diagnostics", []))
     diagnostics.append(
