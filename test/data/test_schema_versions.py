@@ -66,6 +66,18 @@ def test_missing_step_metadata_fails_instead_of_being_repaired(tmp_path):
         load_flow_document(path)
 
 
+def test_a_step_with_an_unknown_state_fails_to_load(tmp_path):
+    from test.flow_fixture import current_flow_document
+
+    path = tmp_path / "flow.json"
+    path.write_text(
+        json.dumps(current_flow_document([{"name": "placement", "tool": "ecc", "state": "Done"}]))
+    )
+
+    with pytest.raises(ValueError, match="placement has unknown state 'Done'"):
+        load_flow_document(path)
+
+
 def test_legacy_parameters_json_is_not_used(tmp_path):
     home = tmp_path / "home"
     home.mkdir()

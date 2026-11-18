@@ -239,7 +239,7 @@ class TestCornerLoading:
 
     def test_failed_sta_does_not_load_stale_corner_files(self, tmp_path):
         steps = dict(_FULL_FLOW)
-        steps["sta"] = "Imcomplete"
+        steps["sta"] = "Incomplete"
         workspace = _make_workspace(tmp_path, steps)
         _write(
             os.path.join(

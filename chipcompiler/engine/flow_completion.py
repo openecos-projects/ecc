@@ -94,8 +94,6 @@ def reset_unfinished_terminal_state(flow, workspace_step, step_tag) -> None:
     old_step = flow.get_step(name=workspace_step.name, tool=workspace_step.tool)
     if old_step is None:
         return
-    if old_step.get("state") == "Warning":
-        raise ValueError(f"{step_tag} uses the removed Warning state; create a new workspace")
     persisted = old_step.get("state")
     if persisted in {"Incomplete", "Invalid"}:
         logger.warning(

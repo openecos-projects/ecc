@@ -782,7 +782,7 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
                 {
                     "name": "rcx",
                     "tool": "ecc",
-                    "state": "Failed",
+                    "state": "Incomplete",
                     **step_fields("rcx", "ecc"),
                 }
             ],
@@ -803,7 +803,7 @@ def test_collect_signoff_package_reports_actionable_inspection_issues(tmp_path):
         for issue in result.issues
     )
     assert any(
-        issue.location == "rcx" and issue.reason == "State is Failed" for issue in result.issues
+        issue.location == "rcx" and issue.reason == "State is Incomplete" for issue in result.issues
     )
     assert all(str(workspace_dir) not in issue.location for issue in result.issues)
 

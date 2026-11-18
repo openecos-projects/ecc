@@ -505,15 +505,6 @@ class TestTerminalStateNormalization:
         persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
-    def test_removed_warning_state_is_rejected_on_resume(self, tmp_path):
-        flow = _make_resume_workspace(
-            tmp_path,
-            [("synthesis", "Success"), ("floorplan", "Warning")],
-        )
-
-        with pytest.raises(ValueError, match="removed Warning state"):
-            flow.run_step(flow.workspace_steps[1], rerun=False)
-
     def test_ongoing_step_not_normalized(self, tmp_path, monkeypatch):
         """Ongoing step is NOT a terminal state — no normalization needed."""
         flow = _make_resume_workspace(

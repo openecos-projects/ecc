@@ -3,7 +3,9 @@
 from pathlib import Path
 from typing import Final, Literal, NotRequired, Required, TypedDict, cast
 
-from chipcompiler.data.types import flow_step_kind
+from chipcompiler.data.types import StateEnum, flow_step_kind
+
+_STEP_STATES: Final = frozenset(state.value for state in StateEnum)
 
 #: flow.json field with the digest of the step results it was generated from.
 STEP_RESULTS_DIGEST_FIELD: Final = "step_results_digest"
@@ -86,7 +88,7 @@ def ledger_workspace_directory(path: Path | str) -> Path | None:
 
 
 def _validate_step_records(document: dict) -> None:
-    """Reject records missing current ledger fields or naming an unknown flow step."""
+    """Reject records missing current ledger fields or naming an unknown step or state."""
     if "steps" not in document:
         return
     steps = document.get("steps")
@@ -108,3 +110,8 @@ def _validate_step_records(document: dict) -> None:
             flow_step_kind(step["name"])
         except ValueError as exc:
             raise ValueError(f"flow.json: {exc}; create a new workspace") from exc
+        if step["state"] not in _STEP_STATES:
+            raise ValueError(
+                f"flow step {step['name']} has unknown state {step['state']!r}; "
+                "create a new workspace"
+            )
