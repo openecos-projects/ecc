@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-from chipcompiler.data.step.directories import recorded_step_directory, step_directory_for_tool
+from chipcompiler.data.step.directories import recorded_step_directory
 from chipcompiler.data.types import StepEnum
 
 from .grid.canonical_grid import build_gcell_patch_grid, build_patch_grid, resize_nearest
@@ -547,12 +547,8 @@ class FoundationExtractor:
             if not name or not tool:
                 continue
             # The ledger records each step's directory (index-prefixed, e.g.
-            # 04_placement_dreamplace); older ledgers fall back to <step>_<tool>.
-            directory = self.workspace_dir / (
-                recorded_step_directory(item)
-                if "directory" in item
-                else step_directory_for_tool(name, tool)
-            )
+            # 04_placement_dreamplace).
+            directory = self.workspace_dir / recorded_step_directory(item)
             stages.append(
                 StageInfo(
                     name=name, tool=tool, state=str(item.get("state", "")), directory=directory

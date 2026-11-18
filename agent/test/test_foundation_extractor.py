@@ -5683,7 +5683,7 @@ def test_control_knobs_read_the_ledger_recorded_indexed_stage_directory(tmp_path
     flow = {
         "steps": [
             {"name": "placement", "tool": "dreamplace", "directory": "04_placement_dreamplace"},
-            {"name": "cts", "tool": "ecc"},
+            {"name": "cts", "tool": "ecc", "directory": "05_cts_ecc"},
         ]
     }
     config = tmp_path / "04_placement_dreamplace" / "config" / "dreamplace_ecc.json"
@@ -5695,7 +5695,7 @@ def test_control_knobs_read_the_ledger_recorded_indexed_stage_directory(tmp_path
 
     assert [(stage.name, stage.directory) for stage in stages] == [
         ("placement", tmp_path / "04_placement_dreamplace"),
-        ("cts", tmp_path / "cts_ecc"),
+        ("cts", tmp_path / "05_cts_ecc"),
     ]
     assert extractor._collect_control_knobs(stages) == {
         "source": "effective_tool_flow_configs",
