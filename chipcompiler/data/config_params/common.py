@@ -21,21 +21,6 @@ FLOW_STEP_NAMES: Final = frozenset(
 )
 
 
-def flag_to_int(value: object) -> int:
-    """Coerce a boolean-like flag (``True``, ``"on"``, ``"0"``...) to 0 or 1."""
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "yes", "on"}:
-            return 1
-        if normalized in {"false", "no", "off", ""}:
-            return 0
-        try:
-            return int(float(normalized))
-        except ValueError:
-            return 1
-    return int(bool(value))
-
-
 @dataclass(frozen=True)
 class ConfigTarget:
     """One destination of a parameter inside a managed tool config JSON.

@@ -12,7 +12,6 @@ from chipcompiler.data.config_params.common import (
     ConfigTarget,
     ParamSchema,
     PdkVariant,
-    flag_to_int,
 )
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
@@ -22,6 +21,11 @@ from chipcompiler.data.parameter_schema import (
     validate_value,
 )
 from chipcompiler.data.workspace_parameters import workspace_param_value
+
+
+def _on_to_int(value: object) -> int:
+    return int(value in {"on", "yes", 1})
+
 
 _LAYER = ParamSchema(
     param="route.layer",
@@ -44,7 +48,7 @@ _FLAG = ParamSchema(
     default=1,
     applies="placement",
     description="boolean flag stored as an int",
-    config_target=ConfigTarget("dreamplace", ("flag",), flag_to_int, flag_to_int),
+    config_target=ConfigTarget("dreamplace", ("flag",), _on_to_int, _on_to_int),
 )
 _MARGIN = ParamSchema(
     param="floorplan.margin",
