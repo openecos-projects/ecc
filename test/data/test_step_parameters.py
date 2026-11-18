@@ -104,6 +104,13 @@ def test_project_inputs_name_the_step_in_the_key() -> None:
     )
 
 
+def test_a_cli_override_is_stored_under_the_key_the_resolver_reads() -> None:
+    assert parse_cli_overrides(["placement: place.target_density =0.6"]) == (
+        {"placement:place.target_density": 0.6},
+        [],
+    )
+
+
 def test_a_step_view_replays_the_step_values_as_its_config_patch() -> None:
     parameters = {
         "config_overrides": {"routing": {"RT": {"-thread_number": 4}}},
