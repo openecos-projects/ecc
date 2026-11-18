@@ -2,15 +2,15 @@
 
 A required design state must be carried by the design the step reads, as its
 design source's response publishes it. Required analysis data must be
-published by an upstream step's successful response or come from a project
-declaration.
+published by the successful response of the upstream step the request names
+or, when no step provides it, come from a project declaration.
 """
 
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, WorkspaceStep
 from chipcompiler.data.flow_plan import entry_design_states
-from chipcompiler.data.handshake.files import REQ_FILE, load_response
+from chipcompiler.data.handshake.files import load_response
 from chipcompiler.data.handshake.messages import ResponseStatus, StepRequest, UpstreamResponse
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import AnalysisData, DesignData, DesignState, flow_step_policy
@@ -22,10 +22,10 @@ def missing_design_data(
     """Required design data the step has neither from upstream nor declared.
 
     Design states must be carried by the design the step reads. Analysis data
-    must be published by the upstream step the request names, or come from a
-    project declaration: parasitics
-    from ``design.spef`` (or a SPEF wired onto the step), the golden netlist
-    from the step's own golden input.
+    must be published by the upstream step the request names; only when no
+    step provides it may it come from a project declaration: parasitics from
+    ``design.spef`` (or a SPEF wired onto the step), the golden netlist from
+    the step's own golden input.
     """
     input_states = input_design_states(request)
     missing: set[DesignData] = set()
@@ -33,7 +33,10 @@ def missing_design_data(
         if isinstance(item, DesignState):
             if item not in input_states:
                 missing.add(item)
-        elif not _published(request, item) and not _declared(item, request, step, declared_spef):
+        elif item in request.upstream:
+            if not _published(request, item):
+                missing.add(item)
+        elif not _declared(item, request, step, declared_spef):
             missing.add(item)
     return frozenset(missing)
 
@@ -42,16 +45,10 @@ def _published(request: StepRequest, item: AnalysisData) -> bool:
     """Whether the upstream step the request names for *item* published it.
 
     Its response must be the run the request accepted, have succeeded and
-    name the files. A step that ran before responses existed is trusted; one
-    that was asked to run but has no matching response published nothing.
+    name the files; a step that has not answered published nothing.
     """
-    link: UpstreamResponse | None = request.upstream.get(item)
-    if link is None:
-        return False
-    directory = request.workspace_directory / link.step_directory
-    if link.attempt_id is None and not (directory / REQ_FILE).is_file():
-        return True
-    response = load_response(directory)
+    link: UpstreamResponse = request.upstream[item]
+    response = load_response(request.workspace_directory / link.step_directory)
     return (
         response is not None
         and response.attempt_id == link.attempt_id
@@ -85,21 +82,18 @@ def _has_inherited_spef(workspace_directory: Path) -> bool:
 def input_design_states(request: StepRequest) -> frozenset[DesignState]:
     """The design states of the design the step read.
 
-    They come from the response of the step that supplied the design. A design
-    declared by the project, or supplied by a step that ran before responses
-    existed, is trusted to carry every design state the step requires or uses
-    and, as the flow plan assumes, every state the chain builds before the
-    step. A source that was asked to run (it has a req.json) but has no
-    matching response carries none.
+    They come from the response of the step that supplied the design; a source
+    that has not answered for the accepted run carries none. A design declared
+    by the project is trusted to carry every design state the step requires or
+    uses and, as the flow plan assumes, every state the chain builds before
+    the step.
     """
     source = request.design_source
     if source is not None:
-        source_directory = request.workspace_directory / source.step_directory
-        response = load_response(source_directory)
-        if source.attempt_id is not None or (source_directory / REQ_FILE).is_file():
-            if response is not None and response.attempt_id == source.attempt_id:
-                return response.design_states
-            return frozenset()
+        response = load_response(request.workspace_directory / source.step_directory)
+        if response is not None and response.attempt_id == source.attempt_id:
+            return response.design_states
+        return frozenset()
     policy = flow_step_policy(request.step)
     return entry_design_states(request.step) | frozenset(
         item for item in policy.requires | policy.uses if isinstance(item, DesignState)

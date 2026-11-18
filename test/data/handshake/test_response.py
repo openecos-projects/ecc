@@ -36,8 +36,8 @@ def test_routing_without_a_clock_tree_is_published_with_a_warning(tmp_path):
     )
 
 
-def test_a_design_from_before_responses_is_trusted_to_carry_what_the_chain_built(tmp_path):
-    request = _route_request(tmp_path, None)
+def test_a_declared_design_is_trusted_to_carry_what_the_chain_built(tmp_path):
+    request = _request(tmp_path, StepEnum.ROUTING.value, {})
 
     response = build_step_response(request, EccStep(name="routing"), succeeded=True)
 

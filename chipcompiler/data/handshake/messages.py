@@ -24,8 +24,8 @@ class ResponseStatus(StrEnum):
 class UpstreamResponse:
     """An upstream step whose output a step accepts, and the run accepted.
 
-    ``attempt_id`` is None when the upstream step ran before steps wrote
-    ``rsp.json``; such an input can never be reported stale.
+    ``attempt_id`` is None when the upstream step had not answered when the
+    request was written; nothing was read from it, so it is never stale.
     """
 
     step_directory: str

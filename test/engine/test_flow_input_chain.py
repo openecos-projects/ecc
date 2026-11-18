@@ -249,6 +249,7 @@ def _worker_payload(workspace, ledger, step_name) -> dict:
     flow.create_step_workspaces(initialize_config=False)
     step = flow.get_workspace_step(step_name)
     assert step is not None
+    _answer_earlier_steps(workspace, ledger, step_name)
     request = build_step_request(
         workspace.directory,
         ledger.get("steps", []),
@@ -258,6 +259,42 @@ def _worker_payload(workspace, ledger, step_name) -> dict:
     )
     write_request(request)
     return {"step_directory": str(request.directory), "attempt_id": request.attempt_id}
+
+
+def _answer_earlier_steps(workspace, ledger, step_name) -> None:
+    """Publish a successful response for every step before *step_name*, as runs do."""
+    from chipcompiler.data.handshake import (
+        DesignFiles,
+        ResponseStatus,
+        StepResponse,
+        write_response,
+    )
+    from chipcompiler.data.types import AnalysisData, DesignState, flow_step_policy
+
+    for record in ledger.get("steps", []):
+        if record["name"] == step_name:
+            return
+        directory = workspace.directory / recorded_step_directory(record)
+        provides = flow_step_policy(record["name"]).provides
+        write_response(
+            directory,
+            StepResponse(
+                step=record["name"],
+                tool=record["tool"],
+                attempt_id=f"attempt-{record['name']}",
+                status=ResponseStatus.SUCCESS,
+                design=DesignFiles(),
+                design_states=frozenset(DesignState),
+                outputs={
+                    item: (directory / "output" / item.value,)
+                    for item in provides
+                    if isinstance(item, AnalysisData)
+                },
+                design_source=None,
+                upstream={},
+                warnings=frozenset(),
+            ),
+        )
 
 
 def _run_worker(monkeypatch, workspace, payload, run_step):

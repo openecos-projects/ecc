@@ -1,11 +1,15 @@
 """A step runs only with the design data it requires."""
 
+from dataclasses import replace
+from pathlib import Path
+
 import pytest
 
 from chipcompiler.data import EccStep, StepEnum
 from chipcompiler.data.handshake import (
     DesignFiles,
     ResponseStatus,
+    StepInputs,
     StepResponse,
     UpstreamResponse,
     missing_design_data,
@@ -15,9 +19,35 @@ from chipcompiler.data.types import AnalysisData, DesignState
 from test.data.handshake.helpers import _LEGALIZED, _publish, _request, _route_request
 
 
-def test_an_upstream_step_that_was_asked_to_run_but_never_answered_carries_nothing(tmp_path):
-    (tmp_path / "legalization_dreamplace").mkdir()
-    (tmp_path / "legalization_dreamplace" / "req.json").write_text("{}", encoding="utf-8")
+def _answer(
+    workspace,
+    directory: str,
+    *,
+    status: ResponseStatus = ResponseStatus.SUCCESS,
+    states: frozenset[DesignState] = frozenset(),
+    outputs: dict[AnalysisData, tuple[Path, ...]] | None = None,
+) -> UpstreamResponse:
+    """Publish the response of the step in *directory*; return the link accepting it."""
+    step, _separator, tool = directory.rpartition("_")
+    write_response(
+        workspace / directory,
+        StepResponse(
+            step=step,
+            tool=tool,
+            attempt_id=f"attempt-{step}",
+            status=status,
+            design=DesignFiles(),
+            design_states=states,
+            outputs=outputs or {},
+            design_source=None,
+            upstream={},
+            warnings=frozenset(),
+        ),
+    )
+    return UpstreamResponse(directory, f"attempt-{step}")
+
+
+def test_an_upstream_step_that_has_not_answered_carries_nothing(tmp_path):
     request = _route_request(tmp_path, None)
 
     missing = missing_design_data(request, EccStep(name="routing"), declared_spef=None)
@@ -35,49 +65,14 @@ def test_routing_after_cts_without_legalization_is_missing_a_legal_placement(tmp
     assert missing == frozenset({DesignState.LEGAL})
 
 
-def test_parasitics_come_from_rcx_or_a_declared_spef(tmp_path):
-    filled = {DesignState.FILLED: UpstreamResponse("filler_ecc", None)}
-    without_rcx = _request(tmp_path, StepEnum.STA.value, filled)
-    with_rcx = _request(
-        tmp_path,
-        StepEnum.STA.value,
-        {**filled, AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", None)},
-    )
+def test_without_an_rcx_step_parasitics_come_from_a_declared_spef(tmp_path):
+    request = _request(tmp_path, StepEnum.STA.value, {})
     step = EccStep(name="sta")
 
     assert [
-        missing_design_data(without_rcx, step, declared_spef=None),
-        missing_design_data(without_rcx, step, declared_spef=tmp_path / "gcd.spef"),
-        missing_design_data(with_rcx, step, declared_spef=None),
-    ] == [frozenset({AnalysisData.PARASITICS}), frozenset(), frozenset()]
-
-
-def test_emir_needs_power_from_an_upstream_step(tmp_path):
-    request = _request(
-        tmp_path, StepEnum.EMIR.value, {DesignState.FILLED: UpstreamResponse("filler_ecc", None)}
-    )
-
-    missing = missing_design_data(request, EccStep(name="emir"), declared_spef=None)
-
-    assert missing == frozenset({AnalysisData.POWER})
-
-
-def _publish_rcx(workspace, *, status: ResponseStatus, spef: tuple) -> None:
-    write_response(
-        workspace / "rcx_ecc",
-        StepResponse(
-            step="rcx",
-            tool="ecc",
-            attempt_id="attempt-rcx",
-            status=status,
-            design=DesignFiles(),
-            design_states=frozenset(),
-            outputs={AnalysisData.PARASITICS: spef},
-            design_source=None,
-            upstream={},
-            warnings=frozenset(),
-        ),
-    )
+        missing_design_data(request, step, declared_spef=None),
+        missing_design_data(request, step, declared_spef=tmp_path / "gcd.spef"),
+    ] == [frozenset({AnalysisData.PARASITICS}), frozenset()]
 
 
 @pytest.mark.parametrize(
@@ -93,17 +88,43 @@ def _publish_rcx(workspace, *, status: ResponseStatus, spef: tuple) -> None:
 def test_parasitics_from_rcx_need_its_successful_response_for_the_accepted_run(
     tmp_path, status, spef, accepted_attempt, missing
 ):
-    _publish_rcx(tmp_path, status=status, spef=tuple(tmp_path / name for name in spef))
-    request = _request(
-        tmp_path,
-        StepEnum.STA.value,
-        {
-            DesignState.FILLED: UpstreamResponse("filler_ecc", None),
-            AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", accepted_attempt),
-        },
+    spef_files = tuple(tmp_path / "rcx_ecc" / "output" / name for name in spef)
+    _answer(tmp_path, "rcx_ecc", status=status, outputs={AnalysisData.PARASITICS: spef_files})
+    # The SPEF files a failed RCX left behind, wired onto STA as the parent does.
+    for path in spef_files:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("*SPEF\n", encoding="utf-8")
+    request = replace(
+        _request(
+            tmp_path,
+            StepEnum.STA.value,
+            {AnalysisData.PARASITICS: UpstreamResponse("rcx_ecc", accepted_attempt)},
+        ),
+        inputs=StepInputs(spef=spef_files),
     )
 
     assert missing_design_data(request, EccStep(name="sta"), declared_spef=None) == missing
+
+
+def test_emir_needs_power_published_by_an_upstream_step(tmp_path):
+    never_ran = _request(
+        tmp_path,
+        StepEnum.EMIR.value,
+        {AnalysisData.POWER: UpstreamResponse("power_analysis_ecc", None)},
+    )
+    power = _answer(
+        tmp_path,
+        "power_analysis_ecc",
+        outputs={AnalysisData.POWER: (tmp_path / "instance_power.tsv",)},
+    )
+    analyzed = _request(tmp_path, StepEnum.EMIR.value, {AnalysisData.POWER: power})
+    step = EccStep(name="emir")
+
+    assert [
+        missing_design_data(_request(tmp_path, StepEnum.EMIR.value, {}), step, declared_spef=None),
+        missing_design_data(never_ran, step, declared_spef=None),
+        missing_design_data(analyzed, step, declared_spef=None),
+    ] == [frozenset({AnalysisData.POWER}), frozenset({AnalysisData.POWER}), frozenset()]
 
 
 def test_a_declared_design_entering_mid_chain_carries_the_states_built_before_it(tmp_path):
@@ -115,15 +136,16 @@ def test_a_declared_design_entering_mid_chain_carries_the_states_built_before_it
     states = design_states_after(
         StepEnum.POWER_ANALYSIS.value, design_states_after(StepEnum.STA.value, entry)
     )
-    _publish(tmp_path, "power_analysis_ecc", states)
-    power = UpstreamResponse("power_analysis_ecc", "attempt-legal")
+    power = _answer(
+        tmp_path,
+        "power_analysis_ecc",
+        states=states,
+        outputs={AnalysisData.POWER: (tmp_path / "instance_power.tsv",)},
+    )
     request = _request(
         tmp_path,
         StepEnum.EMIR.value,
-        {
-            DesignState.FILLED: power,
-            AnalysisData.POWER: UpstreamResponse("power_analysis_ecc", None),
-        },
+        {DesignState.FILLED: power, AnalysisData.POWER: power},
         design_source=power,
     )
 

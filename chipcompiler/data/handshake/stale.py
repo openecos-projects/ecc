@@ -43,8 +43,8 @@ def stale_steps(
 
     Only steps with a successful response are checked: a step that has not run,
     or whose last run failed, has no outputs to be stale. Links that carry no
-    attempt id come from steps that ran before responses existed and never count
-    as changed.
+    attempt id name steps that had not answered when the step ran; nothing was
+    read from them, so they never count as changed.
     """
     stale: dict[str, StaleStep] = {}
     for directory in step_directories:
