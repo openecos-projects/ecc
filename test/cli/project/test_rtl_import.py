@@ -1,7 +1,9 @@
 import json
 from pathlib import Path
 
-from chipcompiler.cli.project.rtl_import import import_project_rtl
+import pytest
+
+from chipcompiler.cli.project.rtl_import import RtlImportError, import_project_rtl
 
 
 def _project(root: Path) -> None:
@@ -48,3 +50,143 @@ def test_import_verilog_updates_project_inputs(tmp_path):
 
     assert (project / "rtl/demo.v").is_file()
     assert 'rtl = ["rtl/demo.v"]' in (project / "ecc.toml").read_text()
+
+
+def _files(root: Path) -> list[str]:
+    return sorted(str(path.relative_to(root)) for path in root.rglob("*") if path.is_file())
+
+
+def test_import_filelist_brings_its_include_directories_along(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "inc" / "bus").mkdir(parents=True)
+    (source_root / "demo.v").write_text('`include "defs.vh"\nmodule demo; endmodule\n')
+    (source_root / "inc" / "defs.vh").write_text("`define DEMO 1\n")
+    (source_root / "inc" / "bus" / "axi.vh").write_text("`define AXI 1\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+inc  // headers\ndemo.v\n")
+
+    result = import_project_rtl(str(project), filelist=str(filelist))
+
+    assert _files(project / "rtl") == ["demo.v", "inc/bus/axi.vh", "inc/defs.vh", "sources.f"]
+    # The directive already names the project-local directory: kept as written.
+    assert (project / "rtl/sources.f").read_text() == "+incdir+inc  // headers\ndemo.v\n"
+    assert result["include_dirs"] == ["rtl/inc"]
+    # Headers are not sources.
+    assert result["rtl"] == ["rtl/demo.v"]
+    manifest = json.loads((project / "project.json").read_text())
+    assert manifest["base_design"]["rtl_list"] == ["rtl/demo.v"]
+
+
+def test_import_filelist_localizes_include_directories_outside_its_directory(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "top").mkdir(parents=True)
+    (source_root / "shared").mkdir()
+    vendor = tmp_path / "vendor" / "include"
+    vendor.mkdir(parents=True)
+    (source_root / "top" / "demo.v").write_text("module demo; endmodule\n")
+    (source_root / "shared" / "defs.vh").write_text("`define DEMO 1\n")
+    (vendor / "cells.vh").write_text("`define CELLS 1\n")
+    filelist = source_root / "top" / "sources.f"
+    filelist.write_text(f'+incdir+../shared\n+incdir+"{vendor}"  # vendor\ndemo.v\n')
+
+    result = import_project_rtl(str(project), filelist=str(filelist))
+
+    assert _files(project / "rtl") == [
+        "demo.v",
+        "include/cells.vh",
+        "shared/defs.vh",
+        "sources.f",
+    ]
+    assert (project / "rtl/sources.f").read_text() == (
+        '+incdir+shared\n+incdir+"include"  # vendor\ndemo.v\n'
+    )
+    assert result["include_dirs"] == ["rtl/shared", "rtl/include"]
+
+
+def test_import_filelist_copies_a_header_once_when_it_is_also_listed(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "common").mkdir(parents=True)
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    (source_root / "common" / "defs.vh").write_text("`define DEMO 1\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+common\n+incdir+./common\ndemo.v\ncommon/defs.vh\n")
+
+    result = import_project_rtl(str(project), filelist=str(filelist))
+
+    assert _files(project / "rtl") == ["common/defs.vh", "demo.v", "sources.f"]
+    assert result["include_dirs"] == ["rtl/common"]
+    assert result["rtl"] == ["rtl/demo.v", "rtl/common/defs.vh"]
+
+
+def test_import_filelist_with_its_own_directory_as_include_directory(tmp_path):
+    # `+incdir+.` takes the whole source directory; a project created inside
+    # it must not be copied into itself.
+    source_root = tmp_path / "sources"
+    project = source_root / "project"
+    _project(project)
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    (source_root / "defs.vh").write_text("`define DEMO 1\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+.\ndemo.v\n")
+
+    result = import_project_rtl(str(project), filelist=str(filelist))
+
+    assert _files(project / "rtl") == ["defs.vh", "demo.v", "sources.f"]
+    assert (project / "rtl/sources.f").read_text() == "+incdir+.\ndemo.v\n"
+    assert result["include_dirs"] == ["rtl"]
+
+
+def test_import_filelist_rejects_a_missing_include_directory(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+missing\ndemo.v\n")
+    config = (project / "ecc.toml").read_text()
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist))
+
+    assert error.value.code == "rtl_incdir_not_found"
+    assert error.value.path == str(source_root / "missing")
+    # Nothing was imported.
+    assert _files(project / "rtl") == []
+    assert (project / "ecc.toml").read_text() == config
+
+
+def test_import_filelist_rejects_include_directories_that_would_merge(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    source_root.mkdir()
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    for owner in ("a", "b"):
+        (tmp_path / owner / "include").mkdir(parents=True)
+        (tmp_path / owner / "include" / "defs.vh").write_text(f"`define OWNER_{owner} 1\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text(f"+incdir+{tmp_path}/a/include\n+incdir+{tmp_path}/b/include\ndemo.v\n")
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist))
+
+    assert error.value.code == "rtl_target_collision"
+    assert _files(project / "rtl") == []
+
+
+def test_import_verilog_reports_no_include_directories(tmp_path):
+    project = tmp_path / "project"
+    _project(project)
+    source = tmp_path / "demo.v"
+    source.write_text("module demo; endmodule\n")
+
+    result = import_project_rtl(str(project), verilog=(str(source),))
+
+    assert result["include_dirs"] is None
