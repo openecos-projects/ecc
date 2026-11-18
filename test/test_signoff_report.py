@@ -8,7 +8,6 @@ from chipcompiler.engine.signoff import SignoffPackageCollector, generate_text_r
 from chipcompiler.engine.signoff.report import (
     DesignReportData,
     StepMetricStore,
-    canonicalize_stage_name,
     collect_workspace_report,
     extract_design_report_data,
     format_duration,
@@ -34,19 +33,6 @@ class TestParsers:
         assert format_duration(18.0) == "18s"
         assert format_duration(3723.0) == "1h 2m 3s"
         assert format_duration(None) is None
-
-    def test_canonicalize_stage_name(self):
-        assert canonicalize_stage_name("synthesis_yosys") == "Synth"
-        assert canonicalize_stage_name("post_floorplan_ecc") == "PostFloorplan"
-        assert canonicalize_stage_name("legalization_dreamplace") == "Legal"
-        assert canonicalize_stage_name("custom_step") == "custom_step"
-
-    def test_canonicalize_stage_name_covers_every_lec_engine_directory(self):
-        for directory in (
-            "lec_kepler_formal",
-            "post_route_lec_kepler_formal",
-        ):
-            assert canonicalize_stage_name(directory) == "LEC"
 
     def test_parse_power_rpt(self):
         text = (
@@ -84,26 +70,26 @@ class TestParsers:
 class TestStepMetricStore:
     def test_query_schema3_metrics_array(self):
         store = StepMetricStore()
-        store.add("routing_ecc", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
+        store.add("routing", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
         value, stage, key = store.query(
-            "Routing", "Via Count", ["Route"], ["route_dr_total_via_count"]
+            "Routing", "Via Count", ["routing"], ["route_dr_total_via_count"]
         )
         assert value == 42.0
         assert key == "route_dr_total_via_count"
 
     def test_query_dotted_path_and_normalized_key(self):
         store = StepMetricStore()
-        store.add("post_floorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
+        store.add("post_floorplan", {"Design Layout": {"die_area": 1234.5}})
         value, _, _ = store.query(
-            "Physical", "Die Area", ["PostFloorplan"], ["Design Layout.die_area"]
+            "Physical", "Die Area", ["post_floorplan"], ["Design Layout.die_area"]
         )
         assert value == 1234.5
-        store.add("routing_ecc", {"RouteDrTotalViaCount": 7})
-        assert store.query("Routing", "Via", ["Route"], ["route_dr_total_via_count"])[0] == 7.0
+        store.add("routing", {"RouteDrTotalViaCount": 7})
+        assert store.query("Routing", "Via", ["routing"], ["route_dr_total_via_count"])[0] == 7.0
 
     def test_query_miss_returns_none(self):
         store = StepMetricStore()
-        assert store.query("Physical", "Die Area", ["PostFloorplan"], ["die_area"])[0] is None
+        assert store.query("Physical", "Die Area", ["post_floorplan"], ["die_area"])[0] is None
 
 
 class TestExtractDesignReportData:
@@ -144,7 +130,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "harden_ecc": {
+                    "harden": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_area", "value": 0.30},
@@ -163,7 +149,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_summaries={
-                    "sta_ecc": {"setup_wns": -0.25},
+                    "sta": {"setup_wns": -0.25},
                 }
             )
         )
@@ -207,7 +193,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "drc_ecc": {"metrics": [{"id": "drc_count", "value": 0}]},
+                    "drc": {"metrics": [{"id": "drc_count", "value": 0}]},
                 }
             )
         )
@@ -215,7 +201,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "drc_ecc": {"drc_count": 5},
+                    "drc": {"drc_count": 5},
                 }
             )
         )
@@ -224,7 +210,7 @@ class TestExtractDesignReportData:
 
     def test_execution_stages_built_from_flow(self):
         data = extract_design_report_data(self._inputs())
-        assert [s.stage for s in data.execution.stages] == ["Synth", "Route"]
+        assert [s.stage for s in data.execution.stages] == ["synthesis", "routing"]
         assert data.execution.stages[0].runtime_seconds == 18.0
         assert data.execution.stages[0].runtime_formatted == "18s"
         assert data.execution.stages[0].peak_memory_mb == 512.0
@@ -235,7 +221,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "harden_ecc": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
+                    "harden": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
                 }
             )
         )
@@ -263,13 +249,13 @@ class TestFormatTextReport:
                     ],
                 },
                 "step_metrics": {
-                    "harden_ecc": {
+                    "harden": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_usage", "value": 0.62},
                         ]
                     },
-                    "drc_ecc": {"drc_count": 0},
+                    "drc": {"drc_count": 0},
                 },
                 "sta_corner_reports": {"MAX_125/RCworst": {"setup_wns": 0.01, "hold_wns": 0.02}},
                 "version_info": {"gui": "1.2.3"},

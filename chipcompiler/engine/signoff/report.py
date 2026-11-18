@@ -14,7 +14,9 @@ from datetime import UTC, datetime
 
 # Data contract, parsers, and lookup helpers live in sibling modules to keep
 # each under the repo's file-size bar; re-exported here as the public surface.
+from chipcompiler.data import StepEnum
 from chipcompiler.engine.signoff.report_data import (  # noqa: F401
+    PARAMETERS_STAGE,
     ClockMetrics,
     CongestionMetrics,
     CornerTimingRecord,
@@ -29,7 +31,6 @@ from chipcompiler.engine.signoff.report_data import (  # noqa: F401
     StageExecutionRecord,
     TimingMetrics,
     VerificationMetrics,
-    canonicalize_stage_name,
 )
 from chipcompiler.engine.signoff.report_extract import (  # noqa: F401
     StepMetricStore,
@@ -86,9 +87,9 @@ def extract_design_report_data(inputs) -> DesignReportData:
         for stage, payload in (inputs.get(source) or {}).items():
             store.add(stage, payload)
     if _is_record(inputs.get("sta_timing_issues")):
-        store.add("STA", inputs["sta_timing_issues"])
+        store.add(StepEnum.STA.value, inputs["sta_timing_issues"])
     if params:
-        store.add("Parameters", params)
+        store.add(PARAMETERS_STAGE, params)
 
     def q(category, display_name, stage_priority, aliases, unit=""):
         return _query(

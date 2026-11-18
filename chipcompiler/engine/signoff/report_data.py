@@ -1,55 +1,13 @@
 """Data contract for the design-summary report.
 
-Mirrors ecos/gui/packages/shared/src/contracts/designReport.ts (snake_case)
-plus the table mapping flow step names and step directories to the
-report's stage labels, shared by extraction and formatting.
+Mirrors ecos/gui/packages/shared/src/contracts/designReport.ts (snake_case).
+Report stages are flow step names (``placement``, ``sta``).
 """
 
 import dataclasses
 
-STAGE_CANONICAL_NAMES = {
-    "synthesis": "Synth",
-    "synthesis_yosys": "Synth",
-    "pre_floorplan": "PreFloorplan",
-    "pre_floorplan_ecc": "PreFloorplan",
-    "macro_placement": "MacroPlacement",
-    "macro_placement_dreamplace": "MacroPlacement",
-    "post_floorplan": "PostFloorplan",
-    "post_floorplan_ecc": "PostFloorplan",
-    "lec": "LEC",
-    "lec_kepler_formal": "LEC",
-    "post_route_lec": "LEC",
-    "post_route_lec_kepler_formal": "LEC",
-    "placement": "Place",
-    "placement_dreamplace": "Place",
-    "diff_sizing": "DiffSizing",
-    "diff_opt": "DiffOpt",
-    "diff_opt_dreamplace": "DiffOpt",
-    "cts": "CTS",
-    "cts_ecc": "CTS",
-    "legalization": "Legal",
-    "legalization_dreamplace": "Legal",
-    "routing": "Route",
-    "routing_ecc": "Route",
-    "drc": "DRC",
-    "drc_ecc": "DRC",
-    "lvs": "LVS",
-    "lvs_ecc": "LVS",
-    "filler": "Filler",
-    "filler_ecc": "Filler",
-    "rcx": "RCX",
-    "rcx_ecc": "RCX",
-    "sta": "STA",
-    "sta_ecc": "STA",
-    "sta_signoff": "STA",
-    "signoff": "STA",
-    "sta_corner": "STA",
-    "sta_power": "Power",
-    "power_analysis": "Power",
-    "power_analysis_ecc": "Power",
-    "harden": "Harden",
-    "harden_ecc": "Harden",
-}
+#: The report stage of values taken from the workspace parameters, not a step.
+PARAMETERS_STAGE = "parameters"
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +220,3 @@ class ParsedQorSummaryMetrics:
     hold_wns: float | None = None
     hold_tns: float | None = None
     hold_nvp: float | None = None
-
-
-def canonicalize_stage_name(name: str) -> str:
-    return STAGE_CANONICAL_NAMES.get(name, name)
