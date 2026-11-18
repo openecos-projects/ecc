@@ -7,6 +7,7 @@ from typing import Protocol, TypeVar
 import typer
 
 from chipcompiler.cli.core.inputs import (
+    CheckInput,
     InitInput,
     OutputOptions,
     ProjectOptions,
@@ -50,6 +51,7 @@ def _resolve_manifest_workspace(
     workspace_name: str | None,
     *,
     allow_create: bool,
+    allow_bare_project: bool = False,
     workspace_path: str | None = None,
     path_selector: bool = False,
 ) -> tuple[str, str | None, str | None]:
@@ -57,7 +59,9 @@ def _resolve_manifest_workspace(
 
     Returns (workspace_dir, workspace_id, error). A run may name a new
     single-segment workspace or select an absolute path; read-only commands
-    may only select declarations.
+    may only select declarations. ``allow_bare_project`` is for a command
+    that also works on the project itself: with no selector and no active
+    workspace it gets no workspace id instead of a selection error.
     """
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
     from chipcompiler.project.manifest import load_manifest
@@ -84,6 +88,8 @@ def _resolve_manifest_workspace(
         ids = ", ".join(w.workspace_id for w in active) or "(none)"
         if allow_create and not active:
             return os.path.join(project_dir, "default"), "default", None
+        if allow_bare_project and not active:
+            return os.path.join(project_dir, "default"), None, None
         return (
             os.path.join(project_dir, "default"),
             None,
@@ -226,6 +232,9 @@ def build_context(command_input: CommandInput) -> CommandContext:
                     allow_create=isinstance(
                         command_input, (RunInput, WorkspaceCreateInput, WorkspaceImportInput)
                     ),
+                    # `ecc check` runs before the first workspace exists
+                    # (`ecc init` hints it): it then validates the project.
+                    allow_bare_project=isinstance(command_input, CheckInput),
                     workspace_path=workspace_path,
                     path_selector=workspace_path_selector,
                 )
