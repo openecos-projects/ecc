@@ -72,6 +72,13 @@ requirement. `.github/scripts/install-ci-boost.sh` installs the SHA-256-verified
 1.91.0 headers and CMake package into a dedicated prefix, following ecc-tools'
 wheel build, and the action passes that prefix through `CMAKE_ARGS` to both
 native builds. Do not relax the native version check to accommodate a CI image.
+The CI action overrides DreamPlace's editable mode to `redirect`: `inplace`
+builds its Xplace external project but skips CMake's installation of the native
+libraries and Flute tables into the runtime package. Without that installation,
+ordinary DreamPlace imports pass but placement fails with missing `cpp_to_py`.
+The packaging smoke check and test load the CPU routing backend and resolve
+its lookup tables before exercising a design. This does not change placement
+parameters or disable routing optimization.
 
 The 2026-11-17 failure occurred before pytest, lint, or PyInstaller ran: the
 source-build jobs lacked pinned Boost, and the wheel-based lint job queried

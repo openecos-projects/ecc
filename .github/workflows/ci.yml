@@ -281,9 +281,13 @@ jobs:
           from chipcompiler.tools.ecc.module import ECCToolsModule
           from dreamplace.Params import Params  # noqa: F401
           from dreamplace.Placer import PlacementEngine  # noqa: F401
+          from dreamplace.ops.gpugr.xplace_backend import XplaceGPUGR
 
           assert ECCToolsModule().get_ecc() is not None
-          print("ecc-tools wrapper and ecc-dreamplace imports passed")
+          routing = XplaceGPUGR(Params(), None)
+          routing._import_xplace_modules(resolved_backend="cpu_pr_maze")
+          routing._resolve_flute_lut_paths()
+          print("ecc-tools, DreamPlace and Xplace native runtime imports passed")
           PY
 
       - name: Build PyInstaller bundle

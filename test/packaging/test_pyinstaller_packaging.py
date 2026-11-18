@@ -38,6 +38,27 @@ def test_ecc_tools_native_import_coexists_with_matplotlib():
     assert result.returncode == 0, result.stderr
 
 
+def test_dreamplace_cpu_routing_runtime_is_installed():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "faulthandler",
+            "-c",
+            "from dreamplace.Params import Params; "
+            "from dreamplace.ops.gpugr.xplace_backend import XplaceGPUGR; "
+            "routing = XplaceGPUGR(Params(), None); "
+            "routing._import_xplace_modules(resolved_backend='cpu_pr_maze'); "
+            "routing._resolve_flute_lut_paths()",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_collect_package_extension_binaries_checks_sibling_bin(tmp_path):
     package_dir = tmp_path / "ecc_tools_bin"
     package_dir.mkdir()
