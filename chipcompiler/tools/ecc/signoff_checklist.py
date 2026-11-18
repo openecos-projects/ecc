@@ -13,6 +13,10 @@ from chipcompiler.analysis.qor.summary_contract import summary_gates
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
     Checklist,
+    ChecklistItem,
+    CheckOwner,
+    CheckPolicy,
+    CheckState,
     SkippableStepEnum,
     StateEnum,
     StepEnum,
@@ -115,19 +119,18 @@ def _item(
     source: dict | None = None,
     evidence: list[dict] | None = None,
 ) -> dict:
-    return {
-        "id": item_id,
-        "step": step,
-        "category": category,
-        "owner": owner,
-        "policy": policy,
-        "state": state,
-        "blocked": policy == "block" and state in {"failed", "unavailable"},
-        "title": title,
-        "summary": summary,
-        "source": source or {},
-        "evidence": evidence or [],
-    }
+    return ChecklistItem(
+        id=item_id,
+        step=step,
+        category=category,
+        owner=CheckOwner(owner),
+        policy=CheckPolicy(policy),
+        state=CheckState(state),
+        title=title,
+        summary=summary,
+        source=source or {},
+        evidence=evidence or [],
+    ).to_record()
 
 
 def _prefixed_evidence(

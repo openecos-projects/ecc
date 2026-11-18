@@ -109,7 +109,7 @@ def test_checker_gate_reports_failed_checklist_evidence(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "checklist.json").write_text(
-        json.dumps({"checklist": [{"category": "drc", "state": "fail"}]}),
+        json.dumps({"checklist": [{"category": "drc", "state": "failed"}]}),
         encoding="utf-8",
     )
 
@@ -215,7 +215,7 @@ def test_sta_gate_separates_setup_and_hold(tmp_path):
                         "id": "sta.hold",
                         "title": "STA hold closure",
                         "category": "quality_gate",
-                        "state": "fail",
+                        "state": "failed",
                     },
                 ]
             }
@@ -244,7 +244,7 @@ def test_checker_gate_reports_drc_failure(tmp_path):
         json.dumps(
             {
                 "checklist": [
-                    {"category": "quality_gate", "state": "fail", "title": "DRC violations"}
+                    {"category": "quality_gate", "state": "failed", "title": "DRC violations"}
                 ]
             }
         ),

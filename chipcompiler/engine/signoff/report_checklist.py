@@ -10,15 +10,16 @@ reports the checklist as unavailable instead.
 import dataclasses
 from pathlib import Path
 
+from chipcompiler.data import ChecklistItem, CheckState
 from chipcompiler.utility.json import JsonObject, json_read
 
 CHECKLIST_PATH = ("home", "checklist.json")
 
 STATE_MARKS = {
-    "pass": "[PASS]    ",
-    "failed": "[BLOCK]   ",
-    "warning": "[WARN]    ",
-    "unavailable": "[N/A]     ",
+    CheckState.PASS: "[PASS]    ",
+    CheckState.FAILED: "[BLOCK]   ",
+    CheckState.WARNING: "[WARN]    ",
+    CheckState.UNAVAILABLE: "[N/A]     ",
 }
 
 
@@ -75,36 +76,26 @@ def build_checklist_report(workspace) -> ChecklistReport:
     ):
         return report
 
-    items = []
-    for raw in data["checklist"]:
-        if not isinstance(raw, dict):
-            continue
-        raw_state = raw.get("state")
-        state = (
-            raw_state if isinstance(raw_state, str) and raw_state in STATE_MARKS else "unavailable"
+    try:
+        parsed = [ChecklistItem.from_record(raw) for raw in data["checklist"]]
+    except (TypeError, ValueError, AttributeError):
+        return report
+    items = [
+        ChecklistItemView(
+            id=item.id,
+            step=item.step,
+            category=item.category,
+            title=item.title,
+            state=item.state,
+            policy=item.policy,
+            blocked=item.blocked,
+            summary=item.summary,
+            evidence=tuple(
+                entry for entry in (_evidence_path(e) for e in item.evidence) if entry is not None
+            ),
         )
-        raw_policy = raw.get("policy")
-        policy = raw_policy if raw_policy in ("block", "warn") else "warn"
-        evidence = raw.get("evidence")
-        items.append(
-            ChecklistItemView(
-                id=str(raw.get("id") or ""),
-                step=str(raw.get("step") or "workspace"),
-                category=str(raw.get("category") or "report"),
-                title=str(raw.get("title") or raw.get("item") or "Checklist item"),
-                state=state,
-                policy=policy,
-                blocked=bool(
-                    raw.get("blocked", policy == "block" and state in ("failed", "unavailable"))
-                ),
-                summary=str(raw.get("summary") or raw.get("info") or ""),
-                evidence=tuple(
-                    entry for entry in (_evidence_path(e) for e in evidence) if entry is not None
-                )
-                if isinstance(evidence, list)
-                else (),
-            )
-        )
+        for item in parsed
+    ]
 
     report.available = True
     fields = JsonObject(data)

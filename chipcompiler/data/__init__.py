@@ -1,4 +1,11 @@
-from .checklist import Checklist, CheckState, workspace_checklist_path
+from .checklist import (
+    Checklist,
+    ChecklistItem,
+    CheckOwner,
+    CheckPolicy,
+    CheckState,
+    workspace_checklist_path,
+)
 from .parameter import (
     Parameters,
     get_design_parameters,
@@ -186,7 +193,10 @@ __all__ = [
     "StepBaseEnum",
     "StateEnum",
     "step_from_value",
+    "CheckOwner",
+    "CheckPolicy",
     "CheckState",
+    "ChecklistItem",
     "StepMetrics",
     "load_metrics",
     "save_metrics",
