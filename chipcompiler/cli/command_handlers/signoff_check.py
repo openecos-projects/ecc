@@ -11,7 +11,7 @@ from chipcompiler.cli.inspection.discovery import (
 )
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
-from chipcompiler.data import SkippableStepEnum, StateEnum, StepEnum
+from chipcompiler.data import CheckState, SkippableStepEnum, StateEnum, StepEnum
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.utility import JsonObject
 
@@ -190,9 +190,11 @@ def _checker_gate(root: Path, checker: str) -> dict:
     failed_items = [
         item.get("title", "")
         for item in matching
-        if item.get("state") == "fail" or item.get("blocked") is True
+        if item.get("state") == CheckState.FAILED or item.get("blocked") is True
     ]
-    if any(item.get("state") == "fail" or item.get("blocked") is True for item in matching):
+    if any(
+        item.get("state") == CheckState.FAILED or item.get("blocked") is True for item in matching
+    ):
         return {
             "status": "fail",
             "reason": f"{checker}_violations",
@@ -279,7 +281,9 @@ def _sta_gate(root: Path, analysis: str) -> dict:
             "source": source,
             "failed_items": [],
         }
-    failed_items = [item.get("title", "") for item in matching if item.get("state") != "pass"]
+    failed_items = [
+        item.get("title", "") for item in matching if item.get("state") != CheckState.PASS
+    ]
     return {
         "status": "fail" if failed_items else "pass",
         "reason": f"sta_{analysis}_{'violations' if failed_items else 'clean'}",
@@ -339,7 +343,7 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     evidence = inspect_artifact(root, relative, include_hash=True)
     if evidence["availability"] != "available" or evidence["bytes"] == 0:
         return {"status": "unknown", "reason": "artifact_unavailable", "source": relative}
-    if item.get("state") != "pass" or item.get("blocked") is True:
+    if item.get("state") != CheckState.PASS or item.get("blocked") is True:
         return {"status": "fail", "reason": "artifact_checklist_failed", "source": relative}
     return {
         "status": "pass",
