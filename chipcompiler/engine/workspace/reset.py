@@ -12,6 +12,7 @@ from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
     command_retry_matches,
+    request_revision,
     workspace_command_fingerprint,
     write_workspace_command,
 )
@@ -90,12 +91,18 @@ def reset_workspace_flow(
     *,
     command_id: str = "",
     blocking: bool = True,
+    revision_pinned: bool = True,
 ):
     target = Path(target_directory).expanduser().resolve()
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     with workspace_lock(target, blocking=blocking):
-        return _reset_workspace_flow(target, expected_workspace_revision, command_id=command_id)
+        return _reset_workspace_flow(
+            target,
+            expected_workspace_revision,
+            command_id=command_id,
+            revision_pinned=revision_pinned,
+        )
 
 
 def _reset_workspace_flow(
@@ -103,9 +110,13 @@ def _reset_workspace_flow(
     expected_workspace_revision: int,
     *,
     command_id: str,
+    revision_pinned: bool = True,
 ):
     fingerprint = workspace_command_fingerprint(
-        "reset_flow", {"directory": str(target)}, {}, expected_workspace_revision
+        "reset_flow",
+        {"directory": str(target)},
+        {},
+        request_revision(expected_workspace_revision, pinned=revision_pinned),
     )
     if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)

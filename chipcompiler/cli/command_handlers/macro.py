@@ -243,6 +243,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                 step_id="macro_placement" if args.commit_step_output else None,
                 commit_step_output=args.commit_step_output,
                 command_id=args.command_id or str(uuid.uuid4()),
+                revision_pinned=bool(args.expected_revision),
             )
             committed = read_engineering_snapshot_from_directory(ctx.run_dir)
     except BlockingIOError:

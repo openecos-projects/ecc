@@ -292,6 +292,7 @@ def update_workspace_from_spec(
     *,
     blocking: bool = True,
     retain_backup: bool = False,
+    revision_pinned: bool = True,
 ):
     target = Path(target_directory).expanduser().resolve()
     if not target.is_dir():
@@ -306,6 +307,7 @@ def update_workspace_from_spec(
             bindings,
             command_id,
             retain_backup=retain_backup,
+            revision_pinned=revision_pinned,
         )
 
 
@@ -317,6 +319,7 @@ def _update_workspace_from_spec(
     command_id: str = "",
     *,
     retain_backup: bool = False,
+    revision_pinned: bool = True,
 ) -> WorkspaceUpdateResult:
     from chipcompiler.engine.snapshot.store import (
         EngineeringSnapshotError,
@@ -329,7 +332,10 @@ def _update_workspace_from_spec(
     # workspace lock held by the caller guarantees any leftover is orphaned.
     _sweep_staging_siblings(target)
     fingerprint = workspace_command_fingerprint(
-        "update", spec, bindings, expected_workspace_revision
+        "update",
+        spec,
+        bindings,
+        request_revision(expected_workspace_revision, pinned=revision_pinned),
     )
     if command_id and command_retry_matches(target, command_id, fingerprint):
         # An idempotent retry re-reads the committed generation; the backup
@@ -568,6 +574,17 @@ def _remove_refresh_staging(staging: Path) -> None:
         shutil.rmtree(staging)
     if not staging.exists() and not staging.is_symlink():
         Path(f"{staging}.lock").unlink(missing_ok=True)
+
+
+def request_revision(expected_revision: int, *, pinned: bool) -> int | None:
+    """The revision that belongs to the identity of a command.
+
+    A caller that names the revision it expects makes it part of the request.
+    A caller that names none is given the current revision for the check only:
+    that number changes when the command succeeds, so it must not tell a retry
+    of the same command apart from its first execution.
+    """
+    return expected_revision if pinned else None
 
 
 def workspace_command_fingerprint(
