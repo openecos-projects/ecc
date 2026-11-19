@@ -21,7 +21,7 @@ _ALLOWLIST = {
     ("chipcompiler.engine.db", "create_db_engine"): "worker-side DB wrapper",
     ("chipcompiler.engine.flow", "init_db_engine_for_step"): "worker rebuilds one step DB",
     (
-        "chipcompiler.engine.workspace_flow",
+        "chipcompiler.engine.step_chain",
         "init_db_engine_for_workspace_step",
     ): "worker-side workspace DB helper",
     ("chipcompiler.tools.ecc.runner", "create_db_engine.load_data"): "worker DB snapshot load",
@@ -221,7 +221,7 @@ def test_guard_resolves_agent_import_aliases(tmp_path):
     _write(
         tmp_path,
         "agent/workspace_api.py",
-        "from chipcompiler.engine.workspace_flow import (\n"
+        "from chipcompiler.engine.step_chain import (\n"
         "    init_db_engine_for_workspace_step as _init_db,\n"
         ")\n"
         "def candidate(flow, step):\n"

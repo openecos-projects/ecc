@@ -1,4 +1,4 @@
-from chipcompiler.engine.workspace_flow import build_flow_for_workspace
+from chipcompiler.engine.step_chain import build_flow_for_workspace
 
 
 def test_build_flow_requires_committed_flow(tmp_path):
