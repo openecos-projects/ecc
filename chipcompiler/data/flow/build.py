@@ -13,7 +13,7 @@ from chipcompiler.data.types import (
 )
 
 from ..schema_versions import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
-from .flow_types import FlowDocument, FlowStepEntry
+from .document import FlowDocument, FlowStepEntry
 
 #: The schema_version written into home/flow.json ledgers.
 FLOW_JSON_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[FLOW_JSON]
@@ -63,7 +63,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     policy and inserted steps are resolved here: skipped steps never enter
     the ledger, an inserted step follows the step it is inserted after, and
     a selection whose remaining steps lack required design data
-    (:func:`~chipcompiler.data.flow_plan.plan_flow`) raises ``ValueError``.
+    (:func:`~chipcompiler.data.flow.plan.plan_flow`) raises ``ValueError``.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
@@ -83,7 +83,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
         start, end = selected_names[0], selected_names[-1]
 
     import chipcompiler.rtl2gds as rtl2gds_api
-    from chipcompiler.data.flow_plan import inserted_chain, plan_flow
+    from chipcompiler.data.flow.plan import inserted_chain, plan_flow
 
     skip = rtl2gds_api.resolve_skip_steps(flow_config)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)

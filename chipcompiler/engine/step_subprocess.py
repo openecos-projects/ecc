@@ -15,6 +15,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     is_sta_step,
 )
+from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.handshake import (
     REQ_FILE,
     RSP_FILE,
@@ -31,7 +32,6 @@ from chipcompiler.data.handshake import (
     write_response,
 )
 from chipcompiler.data.types import AnalysisData
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (

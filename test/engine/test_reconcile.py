@@ -137,8 +137,8 @@ class TestReconcile:
         assert result.outcome == "resume"
 
     def test_a_step_its_results_reset_after_an_interrupted_save_resumes(self, tmp_path):
+        from chipcompiler.data.flow.document import STEP_RESULTS_DIGEST_FIELD
         from chipcompiler.data.step.results import STATE_FILE, results_digest
-        from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
 
         workspace_dir = _write_workspace(
             tmp_path, RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}

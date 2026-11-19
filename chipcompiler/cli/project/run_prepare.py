@@ -527,7 +527,7 @@ def execute_fresh_run(
             # add_step saves the ledger without the options projection.
             # Write it once here, so the first workspace load finds a
             # complete flow.json and has nothing to rewrite.
-            from chipcompiler.data.workspace.flow_options import (
+            from chipcompiler.data.flow.options import (
                 sync_flow_options_projection,
             )
 

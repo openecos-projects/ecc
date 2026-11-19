@@ -12,7 +12,8 @@ from pathlib import Path
 from types import MappingProxyType
 
 from chipcompiler.data import LEC_STEP_TOOLS, EccOutput, LecInput, StepEnum, WorkspaceStep
-from chipcompiler.data.flow_check import step_provides
+from chipcompiler.data.flow.check import step_provides
+from chipcompiler.data.flow.policy import FlowInputResolver
 from chipcompiler.data.handshake.files import load_response
 from chipcompiler.data.handshake.messages import (
     DesignFiles,
@@ -22,7 +23,6 @@ from chipcompiler.data.handshake.messages import (
 )
 from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.data.types import DesignData, flow_step_policy
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 
 
 def build_step_request(

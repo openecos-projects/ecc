@@ -2,7 +2,7 @@
 
 from copy import deepcopy
 
-from .flow_types import FlowDocument
+from .document import FlowDocument
 
 OPTIONS_KEY = "options"
 GEOMETRY_KEY = "geometry"
@@ -50,7 +50,7 @@ def sync_flow_options_projection(workspace, *, persist: bool = False) -> bool:
     data[OPTIONS_KEY] = options
 
     if persist and changed:
-        from .flow_ledger import save_ledger
+        from .ledger import save_ledger
 
         if not save_ledger(flow):
             raise OSError("Failed to persist flow options projection")

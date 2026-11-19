@@ -225,7 +225,7 @@ def _apply_workspace_value(workspace, schema, value: object, step: str | None = 
     if config_overrides:
         update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, workspace.parameters.data)
     if schema.output_only:
-        from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
+        from chipcompiler.data.flow.options import sync_flow_options_projection
 
         sync_flow_options_projection(workspace)
 

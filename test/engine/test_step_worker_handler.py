@@ -172,7 +172,7 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
 def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
     from contextlib import nullcontext
 
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
+    from chipcompiler.data.flow.ledger import save_ledger
 
     step = _workspace_step(tmp_path)
     result_path = tmp_path / "out" / "result.json"

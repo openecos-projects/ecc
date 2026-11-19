@@ -10,7 +10,7 @@ import pytest
 
 import chipcompiler.engine.flow as engine_flow
 from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS, StateEnum, Workspace
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.engine import EngineFlow
 
 _WAVE = ["lvs", "drc", "antenna_check", "post_route_lec", "rcx"]
@@ -256,7 +256,7 @@ def test_sequential_steps_are_bracketed_by_log_sections(wave_flow, monkeypatch):
 
 
 def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
-    from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+    from chipcompiler.data.flow.build import build_dynamic_flow_data
 
     workspace: Any = Workspace(directory=tmp_path)
     flow: Any = EngineFlow(workspace)

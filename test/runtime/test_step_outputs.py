@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from chipcompiler.data.flow.document import FlowDocument
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_types import FlowDocument
 from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
 
 _STEPS: list[dict[str, str]] = [

@@ -1,6 +1,6 @@
 from typing import Any
 
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver
+from chipcompiler.data.flow.policy import FlowInputResolver
 from chipcompiler.engine.step_chain import build_workspace_step_for_info
 
 

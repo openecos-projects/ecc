@@ -163,7 +163,7 @@ def validate_flow_config(flow: object) -> dict:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
         flow_range_for_preset(preset)  # raises on unknown presets
-        from chipcompiler.data.flow_plan import flow_target, preset_chain
+        from chipcompiler.data.flow.plan import flow_target, preset_chain
 
         # The preset's target is its last step that is not an inserted check
         # (synthesis_lec ends with lec@synthesis, which skipping Synthesis

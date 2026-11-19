@@ -24,8 +24,8 @@ from chipcompiler.data import (
     StepEnum,
     Workspace,
 )
+from chipcompiler.data.flow.ledger import _VALID_TRANSITIONS
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_ledger import _VALID_TRANSITIONS
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger

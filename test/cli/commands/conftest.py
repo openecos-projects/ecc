@@ -53,7 +53,7 @@ def flow_mocks(monkeypatch):
     flow options projections requested for the stub workspace) and `flow`
     (the DummyFlow class, for instance/state assertions).
     """
-    from chipcompiler.data.workspace import flow_options
+    from chipcompiler.data.flow import options as flow_options
 
     capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}
     workspace_obj = SimpleNamespace(

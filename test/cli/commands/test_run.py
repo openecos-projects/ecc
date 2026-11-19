@@ -35,7 +35,7 @@ class TestRun:
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", lambda **_kwargs: workspace)
         monkeypatch.setattr(
-            "chipcompiler.data.workspace.flow_options.sync_flow_options_projection",
+            "chipcompiler.data.flow.options.sync_flow_options_projection",
             lambda _workspace, **_kwargs: False,
         )
         monkeypatch.setattr(

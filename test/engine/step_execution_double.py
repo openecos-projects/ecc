@@ -7,8 +7,8 @@ from copy import copy, deepcopy
 from threading import Event, RLock, Thread
 
 from chipcompiler.data import is_sta_step
+from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
 from chipcompiler.engine.step_execution import (
     StepExecutionResult,

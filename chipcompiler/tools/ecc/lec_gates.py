@@ -17,12 +17,12 @@ from chipcompiler.data import (
     Workspace,
     inserted_step_kind,
 )
-from chipcompiler.data.step import StepDirectories, recorded_step_directory
-from chipcompiler.data.workspace.flow_policy import (
+from chipcompiler.data.flow.policy import (
     FlowInputResolver,
     ledger_category,
     step_name,
 )
+from chipcompiler.data.step import StepDirectories, recorded_step_directory
 
 
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:

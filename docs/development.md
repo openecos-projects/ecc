@@ -839,8 +839,8 @@ by an inserted step; a range bounded by `lec@synthesis` is bounded by
 
 Whether a selection can run is decided by step capabilities — each step's
 required design data, optional design data, and what it provides
-(`plan_flow` in `chipcompiler/data/flow_plan.py`, checked by `check_flow` in
-`chipcompiler/data/flow_check.py`):
+(`plan_flow` in `chipcompiler/data/flow/plan.py`, checked by `check_flow` in
+`chipcompiler/data/flow/check.py`):
 
 - An enabled step that lacks required design data is a configuration error;
   `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
@@ -866,7 +866,7 @@ step, any of `rtl2gds.lec_insert_anchors()` (`synthesis` .. `routing`). LEC
 is the only entry of `data.types.INSERTABLE_FLOW_STEPS`: it changes nothing,
 provides nothing, and `FlowInputResolver` already skips LEC records, so the
 chain after it is unchanged. Other steps are not insertable: the capability
-check (`data/flow_check.py`) never takes design data away, so a second
+check (`data/flow/check.py`) never takes design data away, so a second
 netlist-changing step after `routing` would pass the check while breaking the
 routing, and the tool wrappers branch on the step name. An inserted step's
 ledger name is `lec@<step>` (`rtl2gds.inserted_step_name`

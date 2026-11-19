@@ -408,7 +408,7 @@ def collect_workspace_report(workspace) -> DesignReportData:
     """Walk an ECC workspace (Workspace or duck-typed stand-in) and extract."""
     workspace_root = Path(workspace.directory)
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
-    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.flow.document import load_flow_document
     from chipcompiler.data.workspace_config import load_workspace_config
 
     flow = load_flow_document(workspace_root / "home" / "flow.json") or flow_data

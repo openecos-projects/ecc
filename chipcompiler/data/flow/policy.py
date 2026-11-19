@@ -15,7 +15,7 @@ read ``filler`` directly, and the parallel checker batch immediately after
 
 from collections.abc import Mapping, Sequence
 
-from chipcompiler.data.flow_check import step_provides
+from chipcompiler.data.flow.check import step_provides
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     LEC_STEP_TOOLS,

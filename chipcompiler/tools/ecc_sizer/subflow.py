@@ -2,7 +2,7 @@ from copy import deepcopy
 from enum import Enum
 
 from chipcompiler.data import StateEnum, StepEnum
-from chipcompiler.data.workspace.flow_ledger import ledger_lock, save_ledger
+from chipcompiler.data.flow.ledger import ledger_lock, save_ledger
 from chipcompiler.tools.subflow import SubFlow, stage_template
 
 

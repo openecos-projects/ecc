@@ -1,7 +1,7 @@
 """``plan_stages``: which enabled steps the engine may run in parallel.
 
 The enabled steps are grouped with the engine's own analysis-wave rule
-(:func:`~chipcompiler.data.workspace.flow_policy.analysis_wave_end`), applied to
+(:func:`~chipcompiler.data.flow.policy.analysis_wave_end`), applied to
 records built like the ledger's, so the stages shown are the ones a fresh run of
 the selection gets. A disabled step never enters the ledger and has no stage:
 toggling a step renumbers the stages after it, and ``position`` stays the
@@ -12,9 +12,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from string import ascii_lowercase
 
-from chipcompiler.data.flow_plan import PlannedStep
+from chipcompiler.data.flow.plan import PlannedStep
+from chipcompiler.data.flow.policy import analysis_wave_end
 from chipcompiler.data.types import flow_step_policy
-from chipcompiler.data.workspace.flow_policy import analysis_wave_end
 
 
 @dataclass(frozen=True, slots=True)

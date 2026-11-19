@@ -17,6 +17,7 @@ from chipcompiler.data import (
     create_workspace,
     load_workspace,
 )
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace import (
     Flow,
@@ -27,7 +28,6 @@ from chipcompiler.data.workspace import (
     refresh_workspace_config,
     update_step_config,
 )
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 from test.flow_fixture import step_fields

@@ -17,8 +17,8 @@ from chipcompiler.data import (
     WorkspaceStep,
     default_flow_step_category,
 )
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 
 
 class CollectorDiscoveryMixin:

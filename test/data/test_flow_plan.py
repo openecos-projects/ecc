@@ -3,9 +3,9 @@
 import pytest
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_check import Severity
-from chipcompiler.data.flow_needs import StepNeeds, plan_needs
-from chipcompiler.data.flow_plan import (
+from chipcompiler.data.flow.check import Severity
+from chipcompiler.data.flow.needs import StepNeeds, plan_needs
+from chipcompiler.data.flow.plan import (
     FlowPlan,
     PlannedStep,
     PlanViolation,

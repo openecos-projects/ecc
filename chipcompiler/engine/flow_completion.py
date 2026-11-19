@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from chipcompiler.data import StateEnum
-from chipcompiler.data.workspace.flow_types import ChecklistStatus
+from chipcompiler.data.flow.document import ChecklistStatus
 
 logger = logging.getLogger(__name__)
 

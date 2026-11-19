@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.registry import load_builder
 
 

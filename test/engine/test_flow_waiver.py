@@ -142,7 +142,7 @@ def test_waive_checklist_rolls_back_when_persistence_fails():
 
 
 def test_skipped_timing_optimization_is_transparent_to_route_input():
-    from chipcompiler.data.workspace.flow_policy import FlowInputResolver
+    from chipcompiler.data.flow.policy import FlowInputResolver
 
     workspace = _Workspace(
         [

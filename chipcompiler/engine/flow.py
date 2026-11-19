@@ -25,20 +25,20 @@ from chipcompiler.data import (
     is_finished_step_state,
     log_flow,
 )
-from chipcompiler.data.step import (
-    new_step_directory,
-    next_step_index,
-    recorded_step_directory,
-)
-from chipcompiler.data.workspace.flow_ledger import ledger_lock, validate_transition
-from chipcompiler.data.workspace.flow_policy import (
+from chipcompiler.data.flow.document import FlowStepEntry, load_flow_document
+from chipcompiler.data.flow.ledger import ledger_lock, validate_transition
+from chipcompiler.data.flow.policy import (
     FlowInputResolver,
     analysis_wave_end,
     explicit_input_step,
     is_lec_record,
     ledger_category,
 )
-from chipcompiler.data.workspace.flow_types import FlowStepEntry, load_flow_document
+from chipcompiler.data.step import (
+    new_step_directory,
+    next_step_index,
+    recorded_step_directory,
+)
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow_completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -226,7 +226,7 @@ class EngineFlow:
         """
         save flow to workspace json
         """
-        from chipcompiler.data.workspace.flow_ledger import save_ledger
+        from chipcompiler.data.flow.ledger import save_ledger
 
         return save_ledger(self.workspace.flow)
 
@@ -258,7 +258,7 @@ class EngineFlow:
         *,
         clear_runtime_operation: bool = False,
     ) -> bool:
-        from chipcompiler.data.workspace.flow_ledger import set_flow_state
+        from chipcompiler.data.flow.ledger import set_flow_state
 
         return set_flow_state(
             self.workspace.flow,
@@ -272,7 +272,7 @@ class EngineFlow:
         )
 
     def clear_states(self) -> bool:
-        from chipcompiler.data.workspace.flow_ledger import clear_flow_states
+        from chipcompiler.data.flow.ledger import clear_flow_states
 
         return clear_flow_states(self.workspace.flow, persist=self.save)
 

@@ -17,14 +17,14 @@ from contextlib import contextmanager
 from copy import deepcopy
 from typing import cast
 
-from chipcompiler.data.schema_versions import SCHEMA_VERSION_FIELD
-from chipcompiler.data.types import StateEnum
-from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
-from chipcompiler.data.workspace.flow_types import (
+from chipcompiler.data.flow.build import FLOW_JSON_SCHEMA_VERSION
+from chipcompiler.data.flow.document import (
     STEP_RESULTS_DIGEST_FIELD,
     FlowStepEntry,
     ledger_workspace_directory,
 )
+from chipcompiler.data.schema_versions import SCHEMA_VERSION_FIELD
+from chipcompiler.data.types import StateEnum
 
 logger = logging.getLogger(__name__)
 

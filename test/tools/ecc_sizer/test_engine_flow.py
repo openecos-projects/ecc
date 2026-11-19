@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
-from chipcompiler.data.workspace.flow_types import FlowDocument
+from chipcompiler.data.flow.document import FlowDocument
 from test.flow_fixture import step_fields
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace

@@ -5,12 +5,12 @@ import json
 import pytest
 
 from chipcompiler.data import Workspace, load_workspace
+from chipcompiler.data.flow.document import load_flow_document
 from chipcompiler.data.schema_versions import (
     PARAMS_TOML,
     UnsupportedSchemaVersionError,
     ensure_supported_schema_version,
 )
-from chipcompiler.data.workspace.flow_types import load_flow_document
 from chipcompiler.data.workspace_config import load_workspace_config
 
 
@@ -79,8 +79,8 @@ def test_a_step_with_an_unknown_state_fails_to_load(tmp_path):
 
 
 def test_a_step_whose_results_hold_an_unknown_state_fails_to_load(tmp_path):
+    from chipcompiler.data.flow.document import STEP_RESULTS_DIGEST_FIELD
     from chipcompiler.data.step.results import STATE_FILE, results_digest
-    from chipcompiler.data.workspace.flow_types import STEP_RESULTS_DIGEST_FIELD
     from test.flow_fixture import current_flow_document
 
     steps = current_flow_document([{"name": "placement", "tool": "ecc", "state": "Success"}]).get(

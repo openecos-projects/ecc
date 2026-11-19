@@ -21,8 +21,8 @@ from copy import deepcopy
 from typing import Any
 
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StateEnum, is_finished_step_state
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
+from chipcompiler.data.flow.document import FlowStepEntry
+from chipcompiler.data.flow.ledger import ledger_lock
 
 logger = logging.getLogger(__name__)
 

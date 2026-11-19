@@ -274,7 +274,7 @@ def _mutate(
                 )
             try:
                 refresh_workspace_config(workspace)
-                from chipcompiler.data.workspace.flow_options import (
+                from chipcompiler.data.flow.options import (
                     sync_flow_options_projection,
                 )
 

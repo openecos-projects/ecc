@@ -84,7 +84,7 @@ _ARTIFACT_ALLOWLIST = {
 # the other two are recovery paths that intentionally do not load
 # a Workspace (the plan's explicit exceptions).
 _FLOW_WRITE_OWNERS = {
-    "data/workspace/flow_ledger.py": "the schema-aware ledger writer",
+    "data/flow/ledger.py": "the schema-aware ledger writer",
     "engine/reconcile.py": "recovery path without a loaded Workspace",
     "engine/interrupted_run.py": "recovery path without a loaded Workspace",
 }
@@ -273,7 +273,7 @@ _ARTIFACT_ALLOWLIST_CEILING = frozenset(
 )
 _FLOW_WRITE_OWNERS_CEILING = frozenset(
     {
-        "data/workspace/flow_ledger.py",
+        "data/flow/ledger.py",
         "engine/reconcile.py",
         "engine/interrupted_run.py",
     }

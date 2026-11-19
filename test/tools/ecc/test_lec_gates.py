@@ -3,7 +3,7 @@ from typing import cast
 import pytest
 
 from chipcompiler.data import OriginDesign, StateEnum, Workspace
-from chipcompiler.data.workspace.flow_types import FlowDocument, FlowStepEntry
+from chipcompiler.data.flow.document import FlowDocument, FlowStepEntry
 from chipcompiler.tools.ecc.lec_gates import post_route_lec_netlists
 from test.flow_fixture import step_fields
 

@@ -206,7 +206,7 @@ class StepDirectories:
     def at(cls, root: Path | str) -> "StepDirectories":
         """The directories recorded in ``home/flow.json`` under *root*."""
         # The ledger reader lives in the workspace package, which imports this one.
-        from chipcompiler.data.workspace.flow_types import load_flow_document
+        from chipcompiler.data.flow.document import load_flow_document
 
         document = load_flow_document(Path(root) / "home" / "flow.json")
         return cls.from_records(Path(root), document.get("steps", []))

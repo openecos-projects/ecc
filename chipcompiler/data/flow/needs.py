@@ -17,8 +17,8 @@ follows the step it is inserted after, whose netlist it checks, first.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from chipcompiler.data.flow_check import step_provides
-from chipcompiler.data.flow_plan import PlannedStep
+from chipcompiler.data.flow.check import step_provides
+from chipcompiler.data.flow.plan import PlannedStep
 from chipcompiler.data.types import DesignData, flow_step_policy
 
 

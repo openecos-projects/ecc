@@ -128,7 +128,7 @@ def test_emir_needs_power_published_by_an_upstream_step(tmp_path):
 
 
 def test_a_declared_design_entering_mid_chain_carries_the_states_built_before_it(tmp_path):
-    from chipcompiler.data.flow_check import design_states_after
+    from chipcompiler.data.flow.check import design_states_after
     from chipcompiler.data.handshake import input_design_states
 
     # An STA-entry flow: STA and power analysis run on the declared routed design.

@@ -238,7 +238,7 @@ def _apply_workspace_parameters(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
-    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
+    from chipcompiler.data.flow.options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
     sync_flow_options_projection(workspace, persist=True)
@@ -373,7 +373,7 @@ def _update_workspace_configuration(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
-    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
+    from chipcompiler.data.flow.options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
     sync_flow_options_projection(workspace, persist=True)
@@ -601,7 +601,7 @@ def _update_workspace_step_configuration(
     if not save_parameter(workspace.parameters):
         raise OSError("Failed to save Workspace parameters")
     from chipcompiler.data import refresh_workspace_config
-    from chipcompiler.data.workspace.flow_options import sync_flow_options_projection
+    from chipcompiler.data.flow.options import sync_flow_options_projection
 
     refresh_workspace_config(workspace)
     sync_flow_options_projection(workspace, persist=True)

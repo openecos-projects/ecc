@@ -2,6 +2,8 @@
 
 import pytest
 
+from chipcompiler.data.flow.build import build_dynamic_flow_data
+from chipcompiler.data.flow.policy import FlowInputResolver
 from chipcompiler.data.types import (
     ADVISORY_FLOW_STEPS,
     FLOW_STEP_CATEGORIES,
@@ -10,8 +12,6 @@ from chipcompiler.data.types import (
     StepEnum,
     flow_step_policy,
 )
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.data.workspace.flow_policy import FlowInputResolver
 
 
 def _flow_step_values() -> set[str]:
@@ -42,7 +42,7 @@ def test_category_and_advisory_views_derive_from_the_policy_table():
 
 
 def _waves(records):
-    from chipcompiler.data.workspace.flow_policy import analysis_wave_end
+    from chipcompiler.data.flow.policy import analysis_wave_end
 
     waves, index = [], 0
     while index < len(records):
@@ -53,7 +53,7 @@ def _waves(records):
 
 
 def test_independent_signoff_analyses_form_parallel_waves():
-    from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+    from chipcompiler.data.flow.build import build_dynamic_flow_data
 
     ledger = build_dynamic_flow_data(
         {"start_step": "routing", "end_step": "harden", "skip_steps": []}
@@ -70,7 +70,7 @@ def test_independent_signoff_analyses_form_parallel_waves():
 
 
 def test_an_explicit_input_inside_a_wave_starts_a_new_wave():
-    from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
+    from chipcompiler.data.flow.build import build_dynamic_flow_data
 
     ledger = build_dynamic_flow_data({"start_step": "filler", "end_step": "rcx", "skip_steps": []})
     steps = ledger.get("steps", [])

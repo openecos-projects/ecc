@@ -22,8 +22,8 @@ from chipcompiler.data import (
     Workspace,
     workspace_checklist_path,
 )
+from chipcompiler.data.flow.policy import FlowInputStepError, is_skipped_record
 from chipcompiler.data.step import StepDirectories, flow_step_directory
-from chipcompiler.data.workspace.flow_policy import FlowInputStepError, is_skipped_record
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (

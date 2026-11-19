@@ -118,7 +118,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         workspace.design.input_filelist = filelist_path
 
     workspace.flow.path = home_dir / "flow.json"
-    from .flow_options import sync_flow_options_projection
+    from ..flow.options import sync_flow_options_projection
 
     sync_flow_options_projection(workspace, persist=not read_only)
     if read_only:

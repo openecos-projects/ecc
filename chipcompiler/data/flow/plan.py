@@ -17,7 +17,7 @@ for the steps before it.
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
-from chipcompiler.data.flow_check import FlowViolation, Severity, check_flow, design_data_after
+from chipcompiler.data.flow.check import FlowViolation, Severity, check_flow, design_data_after
 from chipcompiler.data.types import (
     DEFAULT_LEC_ENGINE,
     DesignData,

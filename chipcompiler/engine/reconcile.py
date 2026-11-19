@@ -218,8 +218,8 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     the workspace excludes; its inserted steps follow their steps inside the
     range, run by the section's LEC engine.
     """
+    from chipcompiler.data.flow.build import _flow_entries_for_config
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
-    from chipcompiler.data.workspace.flow_data import _flow_entries_for_config
     from chipcompiler.data.workspace_config import flow_range_of
     from chipcompiler.rtl2gds import (
         filter_flow_steps,
@@ -261,7 +261,7 @@ def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
 
 def _persisted_flow_data(workspace_dir: Path) -> dict:
     """The ledger as the workspace loads it, step results included."""
-    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.flow.document import load_flow_document
 
     return dict(load_flow_document(workspace_dir / "home" / "flow.json"))
 

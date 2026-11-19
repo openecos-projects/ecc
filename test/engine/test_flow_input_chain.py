@@ -12,9 +12,9 @@ from typing import Any, cast
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.flow.build import build_dynamic_flow_data
+from chipcompiler.data.flow.document import FlowDocument
 from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.data.workspace.flow_types import FlowDocument
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_flow import iter_workspace_steps
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
@@ -367,7 +367,7 @@ def test_worker_builds_only_its_requested_step(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("input_step", ["does_not_exist", "sta"])
 def test_explicit_input_step_must_already_exist(tmp_path, input_step):
-    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+    from chipcompiler.data.flow.policy import FlowInputStepError
 
     ledger = _real_ledger()
     next(step for step in ledger.get("steps", []) if step["name"] == "rcx")["input_step"] = (
@@ -432,7 +432,7 @@ def test_every_consumer_resolves_the_same_input_sources(tmp_path, monkeypatch):
 
 
 def test_execution_rejects_a_missing_explicit_input(tmp_path, monkeypatch):
-    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+    from chipcompiler.data.flow.policy import FlowInputStepError
 
     ledger = _real_ledger()
     next(step for step in ledger.get("steps", []) if step["name"] == "rcx")["input_step"] = (
@@ -513,7 +513,7 @@ def test_checker_batch_and_filler_sources_are_independent_policies(tmp_path, mon
 
 
 def test_an_unregistered_step_fails_loudly(tmp_path):
-    from chipcompiler.data.workspace.flow_policy import FlowInputStepError
+    from chipcompiler.data.flow.policy import FlowInputStepError
 
     ledger = {
         "schema_version": 3,

@@ -76,7 +76,7 @@ def resolve_skip_steps(flow_config: Mapping[str, object] | None) -> tuple[str, .
     existing ecc.toml, project.json and params.toml files still list it;
     an LEC is inserted with ``insert_steps`` instead. Whether the remaining
     steps can run is decided by their capabilities
-    (:func:`chipcompiler.data.flow_plan.plan_flow`), not here.
+    (:func:`chipcompiler.data.flow.plan.plan_flow`), not here.
     """
     if not isinstance(flow_config, Mapping) or "skip_steps" not in flow_config:
         return DEFAULT_SKIP_STEPS

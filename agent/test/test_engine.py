@@ -5,8 +5,8 @@ import pytest
 
 from agent.engine import AgentEngineFlow
 from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Workspace
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow_completion import sync_step_checklist
 from chipcompiler.engine.step_execution import StepExecutionResult
 from test.flow_fixture import step_directory, step_fields

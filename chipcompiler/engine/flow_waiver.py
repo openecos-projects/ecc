@@ -12,8 +12,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from chipcompiler.data import FlowStepCategory, SkippableStepEnum, StateEnum
-from chipcompiler.data.workspace.flow_ledger import validate_transition
-from chipcompiler.data.workspace.flow_policy import ledger_category
+from chipcompiler.data.flow.ledger import validate_transition
+from chipcompiler.data.flow.policy import ledger_category
 
 
 def _step_record(flow, name: str) -> dict:
@@ -31,7 +31,7 @@ def _persist(flow) -> bool:
     save = getattr(flow, "save", None)
     if callable(save):
         return bool(save())
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
+    from chipcompiler.data.flow.ledger import save_ledger
 
     return save_ledger(flow)
 
