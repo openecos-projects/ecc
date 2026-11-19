@@ -187,7 +187,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
     record = plain_records(capsys.readouterr().out)[0]
     assert record["value"] == "0.65"
     assert record["from_step"] == "placement"
-    assert record["invalidated_steps"] == "['placement', 'routing']"
+    assert record["invalidated_steps"] == '["placement", "routing"]'
     assert workspace.parameters.data["step_params"] == {"placement": {"place.target_density": 0.65}}
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",

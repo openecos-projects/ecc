@@ -404,7 +404,7 @@ class TestStepDetail:
         assert head["view"] == "detail"
         assert head["step"] == "floorplan"
         assert head["step_name"] == "floorplan"
-        assert head["sections"] == "[feature]"
+        assert head["sections"] == '["feature"]'
         assert section == [
             {
                 "step": "floorplan",
@@ -497,7 +497,7 @@ class TestStepDetail:
 
         assert rc == 0
         head, summary, metric, gate = records
-        assert head["sections"] == "[analysis]"
+        assert head["sections"] == '["analysis"]'
         assert summary == {
             "step": "drc",
             "section": "analysis",
@@ -520,8 +520,8 @@ class TestStepDetail:
             "category": "clock_robustness_dfm",
             "direction": "lower_is_better",
             "role": "gate",
-            "gate": "True",
-            "score": "True",
+            "gate": "true",
+            "score": "true",
             "source": "drc_ecc/feature/drc.step.json#/drc/number",
         }
         assert gate == {
@@ -531,8 +531,8 @@ class TestStepDetail:
             "gate": "qor.drc.clean",
             "title": "Final DRC clean",
             "state": "failed",
-            "blocking": "True",
-            "checks": "[{'metric': 'drc_count', 'actual': 336, 'operator': '==', 'expected': 0}]",
+            "blocking": "true",
+            "checks": '[{"metric": "drc_count", "actual": 336, "operator": "==", "expected": 0}]',
         }
 
     def test_detail_checklist_from_step_file(self, tmp_path, capsys, plain_records):
@@ -566,9 +566,9 @@ class TestStepDetail:
             "title": "Floorplan DEF",
             "state": "pass",
             "policy": "block",
-            "blocked": "False",
+            "blocked": "false",
             "summary": "Current output is present and non-empty.",
-            "evidence": "[floorplan_ecc/output/gcd_Floorplan.def.gz]",
+            "evidence": '["floorplan_ecc/output/gcd_Floorplan.def.gz"]',
         }
 
     def test_detail_checklist_falls_back_to_home(self, tmp_path, capsys, plain_records):
@@ -629,7 +629,7 @@ class TestStepErrors:
                 "kind": "error",
                 "error": "unknown_step",
                 "step": "nope",
-                "available": "['floorplan', 'timing_optimization']",
+                "available": '["floorplan", "timing_optimization"]',
                 "inspect": f"ecc report step --project {tmp_path} --workspace ws",
             }
         ]
@@ -643,7 +643,7 @@ class TestStepErrors:
 
         assert rc == 1
         assert records[0]["error"] == "invalid_section"
-        assert records[0]["sections"] == "['feature', 'analysis', 'checklist', 'outputs']"
+        assert records[0]["sections"] == '["feature", "analysis", "checklist", "outputs"]'
 
     def test_section_requires_step(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path, with_drc=False)

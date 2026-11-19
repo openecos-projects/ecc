@@ -38,6 +38,44 @@ class TestPlainQuoting:
     def test_plain_value_escapes_quotes(self):
         assert _plain_value('say "hi"') == '"say \\"hi\\""'
 
+    def test_plain_value_writes_booleans_as_json(self):
+        assert _plain_value(value=True) == "true"
+        assert _plain_value(value=False) == "false"
+        # A string that merely looks like a Python literal is left alone.
+        assert _plain_value("True") == "True"
+
+    def test_plain_value_writes_a_list_as_json(self):
+        assert _plain_value(["Synthesis"]) == '"[\\"Synthesis\\"]"'
+        assert _plain_value([4, 4]) == '"[4, 4]"'
+        assert _plain_value([]) == "[]"
+
+    def test_plain_value_writes_a_tuple_as_a_json_array(self):
+        assert _plain_value(("design.top",)) == '"[\\"design.top\\"]"'
+
+    def test_plain_value_writes_a_mapping_as_json(self):
+        value = {"score": None, "gate": True, "name": "a b"}
+        assert _plain_value(value) == (
+            '"{\\"score\\": null, \\"gate\\": true, \\"name\\": \\"a b\\"}"'
+        )
+
+    def test_plain_collections_round_trip_through_a_json_parser(self, plain_records):
+        import json
+
+        values = {
+            "steps": ["place", "Timing optimization"],
+            "changed": ("design.top", "design.rtl"),
+            "placements": [{"instance": "u0", "x": 1.0, "orientation": None, "fixed": True}],
+            "counts": {"passed": 5, "note": 'say "hi" = ok'},
+        }
+        buf = StringIO()
+        render_plain(({"kind": "probe", **values},), file=buf)
+
+        (record,) = plain_records(buf.getvalue())
+        assert json.loads(record["steps"]) == ["place", "Timing optimization"]
+        assert json.loads(record["changed"]) == ["design.top", "design.rtl"]
+        assert json.loads(record["placements"]) == values["placements"]
+        assert json.loads(record["counts"]) == values["counts"]
+
     def test_plain_value_numeric(self):
         assert _plain_value(42) == "42"
 

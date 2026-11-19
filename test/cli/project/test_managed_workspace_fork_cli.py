@@ -431,7 +431,7 @@ def test_bounded_fork_run_preserves_range_with_explicit_project_preset(
         assert any(record.get("error") == "flow_mismatch" for record in records)
     else:
         assert result == 0
-        assert any(record.get("no_op") == "True" for record in records)
+        assert any(record.get("no_op") == "true" for record in records)
     assert path.read_bytes() == before
     if not corrupt_ledger:
         # An explicit invocation target still overrides the saved range.
