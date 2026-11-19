@@ -28,6 +28,7 @@ _ALLOWLIST = {
     ("chipcompiler.tools.ecc.runner", "create_db_engine.load_design"): "worker DB design load",
     ("chipcompiler.tools.ecc.runner", "get_eda_instance"): "tool execution inside worker",
     ("chipcompiler.tools.ecc.runner", "run_sta_without_spef"): "post-synthesis STA in worker",
+    ("chipcompiler.tools.lec_layout", "save_checked_layout"): "checker geometry export inside worker",
     ("chipcompiler.tools.ecc.sta_parallel", "_run_corner"): "multiprocessing STA corner child",
     (
         "chipcompiler.tools.ecc.timing_constraints",

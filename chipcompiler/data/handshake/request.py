@@ -87,7 +87,7 @@ def step_inputs(workspace_step: WorkspaceStep) -> StepInputs:
     step_input = workspace_step.input
     if workspace_step.tool in LEC_STEP_TOOLS and isinstance(step_input, LecInput):
         return StepInputs(
-            design=DesignFiles(verilog=step_input.gate_verilog),
+            design=DesignFiles(def_=step_input.def_, verilog=step_input.gate_verilog),
             golden_verilog=_path(step_input.db),
         )
     return StepInputs(
