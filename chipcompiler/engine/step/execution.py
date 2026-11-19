@@ -68,16 +68,15 @@ def execute_tool_step(
     layout_image: bool = True,
     replay_attempt: str | None = None,
 ) -> StepExecutionResult:
-    return _execute_in_worker(
-        workspace,
-        workspace_step,
-        engine_db,
-        observer=observer,
-        started_at=started_at,
-        worker_module=worker_module,
-        layout_image=layout_image,
-        replay_attempt=replay_attempt,
-    )
+    kwargs = {
+        "observer": observer,
+        "started_at": started_at,
+        "worker_module": worker_module,
+        "layout_image": layout_image,
+    }
+    if replay_attempt is not None:
+        kwargs["replay_attempt"] = replay_attempt
+    return _execute_in_worker(workspace, workspace_step, engine_db, **kwargs)
 
 
 def record_tool_failure(

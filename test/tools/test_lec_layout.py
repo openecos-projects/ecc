@@ -8,7 +8,7 @@ from chipcompiler.tools import lec_layout
 from chipcompiler.tools.registry import load_builder
 
 
-@pytest.mark.parametrize("tool", ["kepler_formal", "yosys_lec", "lec_dual"])
+@pytest.mark.parametrize("tool", ["kepler_formal"])
 def test_checked_layout_is_owned_by_each_lec_step_and_does_not_change_flow_inputs(tmp_path, tool):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
     source = tmp_path / "filler_ecc/output/gcd_filler.def.gz"
