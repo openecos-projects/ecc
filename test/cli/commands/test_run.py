@@ -39,7 +39,7 @@ class TestRun:
             lambda _workspace, **_kwargs: False,
         )
         monkeypatch.setattr(
-            "chipcompiler.engine.snapshot.create_engineering_snapshot",
+            "chipcompiler.engine.snapshot.store.create_engineering_snapshot",
             lambda _workspace, **kwargs: captured.update(kwargs)
             or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
         )

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from chipcompiler.cli.inspection.artifact_evidence import inspect_artifact
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     EngineeringSnapshotError,
     read_engineering_snapshot_from_directory,
 )

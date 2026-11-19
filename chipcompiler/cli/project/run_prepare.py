@@ -537,7 +537,7 @@ def execute_fresh_run(
             # The previous workspace's backup is obsolete (or retained as an
             # archived replace-backup under --keep-backup), the new tree owns
             # the target, and later failures are a normal failed run.
-            from chipcompiler.engine.snapshot import create_engineering_snapshot
+            from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 
             if getattr(workspace, "directory", None):
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)

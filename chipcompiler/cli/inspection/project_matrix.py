@@ -7,7 +7,7 @@ from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifac
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
 from chipcompiler.data.flow.policy import ledger_category
 from chipcompiler.data.types import FlowStepCategory
-from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
+from chipcompiler.engine.snapshot.limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 from chipcompiler.project.manifest import ProjectManifest
 
 

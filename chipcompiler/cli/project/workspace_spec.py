@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from chipcompiler.cli.project.config import resolve_pdk_root
 from chipcompiler.cli.project.design_inputs import resolve_design_inputs
-from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
 
 def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):

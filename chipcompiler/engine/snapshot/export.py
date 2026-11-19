@@ -4,12 +4,12 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.limits import ENGINEERING_SNAPSHOT_MAX_BYTES
+from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     EngineeringSnapshotError,
     read_engineering_snapshot_from_directory,
 )
-from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 
 
 class SnapshotDestinationError(ValueError):

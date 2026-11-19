@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from chipcompiler.engine.signoff.assessment import build_signoff_assessment
 from chipcompiler.engine.signoff.export import SignoffExportError, _additional_file_path
-from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
+from chipcompiler.engine.snapshot.limits import CHECKLIST_READ_MAX_BYTES
 
 
 def test_stale_checklist_cannot_make_incomplete_flow_ready(tmp_path):

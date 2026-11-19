@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.export import SnapshotDestinationError, save_engineering_snapshot
+from chipcompiler.engine.snapshot.store import (
     EngineeringSnapshotError,
     create_engineering_snapshot,
     read_engineering_snapshot_file,
 )
-from chipcompiler.engine.snapshot_export import SnapshotDestinationError, save_engineering_snapshot
 
 
 @pytest.fixture
@@ -167,12 +167,12 @@ def test_export_checks_workspace_identity(committed_snapshot, tmp_path):
     assert not (tmp_path / "saved.json").exists()
 
 
-@pytest.mark.parametrize("module", ["snapshot", "snapshot_export"])
+@pytest.mark.parametrize("module", ["store", "export"])
 def test_read_and_write_size_limits_create_no_output(
     committed_snapshot, tmp_path, monkeypatch, module
 ):
     root, _snapshot = committed_snapshot
-    monkeypatch.setattr(f"chipcompiler.engine.{module}.ENGINEERING_SNAPSHOT_MAX_BYTES", 16)
+    monkeypatch.setattr(f"chipcompiler.engine.snapshot.{module}.ENGINEERING_SNAPSHOT_MAX_BYTES", 16)
 
     with pytest.raises(EngineeringSnapshotError, match="oversized|size limit"):
         save_engineering_snapshot(root, tmp_path / "saved.json")
@@ -215,7 +215,7 @@ def test_io_failures_remove_temporary_files(committed_snapshot, tmp_path, monkey
         raise OSError("injected failure")
 
     module = "tempfile" if operation == "mkstemp" else "os"
-    monkeypatch.setattr(f"chipcompiler.engine.snapshot_export.{module}.{operation}", fail)
+    monkeypatch.setattr(f"chipcompiler.engine.snapshot.export.{module}.{operation}", fail)
 
     with pytest.raises(OSError, match="injected failure"):
         save_engineering_snapshot(root, tmp_path / "saved.json")
@@ -234,7 +234,7 @@ def test_concurrently_created_destination_is_preserved(committed_snapshot, tmp_p
         destination.write_text("created concurrently")
         return real_link(source, target)
 
-    monkeypatch.setattr("chipcompiler.engine.snapshot_export.os.link", race)
+    monkeypatch.setattr("chipcompiler.engine.snapshot.export.os.link", race)
 
     with pytest.raises(FileExistsError):
         save_engineering_snapshot(root, destination)

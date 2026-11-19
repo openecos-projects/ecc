@@ -8,13 +8,13 @@ from uuid import uuid4
 from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.data.flow.document import STEP_RESULTS_DIGEST_FIELD
 from chipcompiler.data.schema_versions import ENGINEERING_SNAPSHOT, supported_schema_version
-from chipcompiler.engine.snapshot_limits import (
+from chipcompiler.engine.snapshot.limits import (
     CHECKLIST_READ_MAX_BYTES,
     ENGINEERING_SNAPSHOT_MAX_BYTES,
     encoded_json_size,
     read_bounded_json_object,
 )
-from chipcompiler.engine.snapshot_qor import (
+from chipcompiler.engine.snapshot.qor import (
     build_qor_snapshot_extension,
     unavailable_qor_snapshot_extension,
     validate_qor_snapshot_extension,
@@ -341,8 +341,8 @@ def _build_snapshot(
         CHECKLIST_READ_MAX_BYTES,
     )
     checklist = checklist_result.data if checklist_result.status == "available" else {}
-    from chipcompiler.engine.analysis import collect_workspace_projections
     from chipcompiler.engine.signoff.assessment import build_signoff_assessment
+    from chipcompiler.engine.snapshot.projections import collect_workspace_projections
 
     projections = collect_workspace_projections(workspace, workspace_id)
     artifacts = projections["artifacts"]

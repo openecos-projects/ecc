@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
     create_engineering_snapshot,

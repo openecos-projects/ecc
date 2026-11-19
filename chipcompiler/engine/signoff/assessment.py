@@ -3,7 +3,7 @@ from typing import Any, TypedDict
 from chipcompiler.data import ADVISORY_FLOW_STEPS, StepEnum
 from chipcompiler.data.checklist import workspace_checklist_path
 from chipcompiler.data.step import STEP_DIRECTORIES, unindexed_step_directory
-from chipcompiler.engine.snapshot_limits import (
+from chipcompiler.engine.snapshot.limits import (
     CHECKLIST_READ_MAX_BYTES,
     read_bounded_json_object,
 )

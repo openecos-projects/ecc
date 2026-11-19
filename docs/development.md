@@ -652,7 +652,7 @@ required by doctor.
   the GUI or CLI.
 - `engine/qor_report.py`: the CLI `ecc report qor` facade. It delegates to
   `analysis.qor` and does not own a second scoring implementation.
-- `engine/qor.py`: the Snapshot `qorAssessment` collector — validated metric
+- `engine/snapshot/metrics.py`: the Snapshot `qorAssessment` collector — validated metric
   records and Success-step summaries only, no scoring. Scores reach the
   Snapshot exclusively through `qorSnapshotExtension` from `analysis/qor/`
   (the legacy `qor_scoring.py` scorer was removed).

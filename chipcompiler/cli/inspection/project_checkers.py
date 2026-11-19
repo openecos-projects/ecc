@@ -6,7 +6,7 @@ from chipcompiler.cli.core.output import flow_step_status
 from chipcompiler.cli.inspection.project_artifacts import read_workspace_artifact
 from chipcompiler.data import LEC_STEP_TOOLS
 from chipcompiler.data.step import STEP_TOOLS, StepDirectories, recorded_step_directory
-from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
+from chipcompiler.engine.snapshot.limits import CHECKLIST_READ_MAX_BYTES
 
 _VIOLATION_METRICS = {
     "drc": ("drc_count",),

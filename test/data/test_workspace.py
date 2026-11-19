@@ -657,7 +657,7 @@ def test_worker_can_hydrate_while_parent_owns_workspace_lock(
 def test_derived_snapshot_inputs_bind_to_final_workspace(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         create_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )

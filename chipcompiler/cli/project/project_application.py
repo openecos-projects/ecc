@@ -198,7 +198,7 @@ def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> Proje
 
 
 def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: bool) -> str:
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace.lifecycle import (
         WorkspaceLifecycleError,
         workspace_command_fingerprint,
@@ -374,7 +374,7 @@ def _reconcile_workspace_state(
 
 def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
     """Recover one provable Workspace refresh exchange while its lock is held."""
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace.lifecycle import (
         WorkspaceLifecycleError,
         exchange_directories,
@@ -425,7 +425,7 @@ def _reconcile_workspace_refresh_exchange(workspace: Path) -> bool:
 
 def _recover_missing_workspace_refresh_exchange(workspace: Path) -> bool:
     """Roll forward the portable exchange state after its first rename."""
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 
     if workspace.exists() or workspace.is_symlink():

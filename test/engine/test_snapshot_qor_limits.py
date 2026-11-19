@@ -9,7 +9,7 @@ from chipcompiler.analysis.qor.schema import (
     GATE_STATES,
     SCALAR_STATUSES,
 )
-from chipcompiler.engine.snapshot_qor import (
+from chipcompiler.engine.snapshot.qor import (
     _MAX_DIMENSION_FEATURE_IDS,
     _MAX_FEASIBILITY_GATES,
     _MAX_GATE_METRICS,

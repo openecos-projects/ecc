@@ -72,7 +72,9 @@ _ARTIFACT_ALLOWLIST = {
     "engine/signoff/report_checklist.py": "design-report renders the workspace checklist",
     "engine/signoff/analysis.py": "signoff analysis reads QoR summaries",
     "engine/signoff/collector.py": "signoff collector packages LEC/QoR artifacts",
-    "engine/analysis.py": "snapshot artifact index reads builder-owned leaves without steps",
+    "engine/snapshot/projections.py": (
+        "snapshot artifact index reads builder-owned leaves without steps"
+    ),
     "analysis/qor/loader.py": "QoR loader reads the analysis directory",
     "tools/ecc/signoff_checklist.py": "ECC checklist aggregates its analysis artifacts",
     "tools/ecc/sta_artifacts.py": "STA artifact publication names its own outputs",
@@ -263,7 +265,7 @@ _ARTIFACT_ALLOWLIST_CEILING = frozenset(
         "engine/signoff/report_checklist.py",
         "engine/signoff/analysis.py",
         "engine/signoff/collector.py",
-        "engine/analysis.py",
+        "engine/snapshot/projections.py",
         "analysis/qor/loader.py",
         "tools/ecc/signoff_checklist.py",
         "tools/ecc/sta_artifacts.py",

@@ -76,7 +76,7 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
             return failure
     try:
         from chipcompiler.engine.signoff.export import export_signoff_package_archive
-        from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+        from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
         from chipcompiler.utility.workspace_lock import workspace_lock
 
         with workspace_lock(Path(ctx.run_dir), blocking=not command_input.no_wait):

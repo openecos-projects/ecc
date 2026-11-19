@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from test.flow_fixture import step_fields
 
 
@@ -67,7 +67,9 @@ def test_compare_json_is_read_only_and_does_not_load_workspace(
         pytest.fail("offline compare must not load a workspace or generate a snapshot")
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", unexpected)
-    monkeypatch.setattr("chipcompiler.engine.snapshot.create_engineering_snapshot", unexpected)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.store.create_engineering_snapshot", unexpected
+    )
 
     assert cli_main.run(_arguments(saved_snapshots, "--json")) == 0
 

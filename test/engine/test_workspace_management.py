@@ -125,7 +125,7 @@ def test_lifecycle_refuses_registered_runtime_process(tmp_path, minimal_ics55_pd
 
 
 def _stage_delete(project: Path, workspace: Path, workspace_id: str, command_id: str) -> Path:
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace.lifecycle import (
         workspace_command_fingerprint,
         write_workspace_command,

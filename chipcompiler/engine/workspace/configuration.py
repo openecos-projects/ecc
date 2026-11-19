@@ -14,7 +14,7 @@ from chipcompiler.data.workspace import workspace_config_paths
 from chipcompiler.data.workspace.transaction import WorkspaceFileTransaction
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.rerun import invalidate_after, invalidate_from
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
     EngineeringSnapshotError,

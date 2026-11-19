@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from test.flow_fixture import step_fields
 
 

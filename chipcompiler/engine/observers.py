@@ -158,13 +158,13 @@ class _EngineeringCommitSink:
     fatal_observer = True
 
     def __init__(self, workspace: Any):
-        from chipcompiler.engine.snapshot import ensure_engineering_snapshot
+        from chipcompiler.engine.snapshot.store import ensure_engineering_snapshot
 
         self.workspace = workspace
         self.snapshot = ensure_engineering_snapshot(workspace)
 
     def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
-        from chipcompiler.engine.snapshot import commit_engineering_snapshot
+        from chipcompiler.engine.snapshot.store import commit_engineering_snapshot
 
         # The snapshot projects the ledger: build and publish it from one
         # consistent ledger view, never beside a sibling step's ledger write.

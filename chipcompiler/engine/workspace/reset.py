@@ -4,7 +4,10 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.engine.snapshot import commit_engineering_snapshot, read_engineering_snapshot
+from chipcompiler.engine.snapshot.store import (
+    commit_engineering_snapshot,
+    read_engineering_snapshot,
+)
 from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,

@@ -7,8 +7,8 @@ import pytest
 
 from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine import snapshot
 from chipcompiler.engine.observers import WaveObserver, _EngineeringCommitSink
+from chipcompiler.engine.snapshot import store as snapshot
 
 
 class _OverlapProbe:

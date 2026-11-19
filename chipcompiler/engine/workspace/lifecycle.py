@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
-from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from chipcompiler.engine.workspace.backup import retain_replaced_tree
 from chipcompiler.engine.workspace.spec import validate_workspace_spec
 from chipcompiler.params import carried_parameters, invalid_carried_parameters
@@ -318,7 +318,7 @@ def _update_workspace_from_spec(
     *,
     retain_backup: bool = False,
 ) -> WorkspaceUpdateResult:
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         EngineeringSnapshotError,
         ensure_engineering_snapshot,
         read_engineering_snapshot,

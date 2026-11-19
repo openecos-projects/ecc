@@ -5,7 +5,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.inspection.step_outputs import output_records
-from chipcompiler.engine.snapshot import _write_snapshot, create_engineering_snapshot
+from chipcompiler.engine.snapshot.store import _write_snapshot, create_engineering_snapshot
 from test.flow_fixture import step_fields
 
 

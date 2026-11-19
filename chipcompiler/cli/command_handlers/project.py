@@ -383,7 +383,7 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         )
     from chipcompiler.cli.project.workspace_spec import workspace_update_spec
     from chipcompiler.engine import update_workspace_from_spec
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
@@ -601,7 +601,7 @@ def _manage_workspace_lifecycle(
 ) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
     from chipcompiler.engine.workspace.management import (
         archive_managed_workspace,
@@ -667,7 +667,7 @@ def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandRe
 def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )

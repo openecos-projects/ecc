@@ -1966,7 +1966,7 @@ ecc compare run --baseline comparisons/before.json --current comparisons/after.j
 
 #### 实现边界
 
-`engine.snapshot` 维护 bounded reader 和身份校验；`engine.snapshot_export` 维护
+`engine.snapshot.store` 维护 bounded reader 和身份校验；`engine.snapshot.export` 维护
 目标约束和不覆盖保存；`cli.command_handlers.report_snapshot` 映射结果与错误。
 `report snapshot` 与 `compare run` 使用同一快照 schema，不新增持久化格式。
 
@@ -2094,7 +2094,7 @@ read_engineering_snapshot_file(path: str | Path) -> dict[str, Any]
 compare_snapshots(baseline: dict, current: dict) -> dict
 ```
 
-文件读取归 engine/snapshot 所有，纯比较归 engine/snapshot_compare 所有。CLI 使用
+文件读取归 engine/snapshot/store 所有，纯比较归 engine/snapshot/compare 所有。CLI 使用
 独立 typed input、command handler、shared create_app/execute_command 和渲染注册。
 不加载 workspace、不执行 EngineFlow、不生成报告、不创建目录或锁。
 

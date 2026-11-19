@@ -13,7 +13,7 @@ from typing import Any, TypeGuard
 
 from chipcompiler.data import LEC_STEP_TOOLS
 from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.engine.qor import collect_metric_records
+from chipcompiler.engine.snapshot.metrics import collect_metric_records
 from chipcompiler.tools.ecc.power_artifacts import (
     power_report_source_path,
     step_power_summary_path,
