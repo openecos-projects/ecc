@@ -628,7 +628,7 @@ required by doctor.
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`.
   `inspection/discovery.py::resolve_loaded_workspace()` resolves a managed
   `--workspace NAME` in the selected project (or its sole active workspace).
-  inspect reuses `engine/signoff_export.py::inspect_signoff_package` (blocked
+  inspect reuses `engine/signoff/export.py::inspect_signoff_package` (blocked
   still exits 0); export reuses `export_signoff_package_archive`
   (`SignoffExportError` → `signoff_incomplete`).
 - **Engine layer**: the `chipcompiler/engine/signoff/` package owns the signoff

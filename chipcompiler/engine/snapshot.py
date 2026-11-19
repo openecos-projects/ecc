@@ -342,7 +342,7 @@ def _build_snapshot(
     )
     checklist = checklist_result.data if checklist_result.status == "available" else {}
     from chipcompiler.engine.analysis import collect_workspace_projections
-    from chipcompiler.engine.signoff_assessment import build_signoff_assessment
+    from chipcompiler.engine.signoff.assessment import build_signoff_assessment
 
     projections = collect_workspace_projections(workspace, workspace_id)
     artifacts = projections["artifacts"]

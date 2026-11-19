@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 from chipcompiler.engine import EngineFlow, SignoffPackageOptions
-from chipcompiler.engine.signoff_assessment import build_signoff_assessment
+from chipcompiler.engine.signoff.assessment import build_signoff_assessment
 
 
 class SignoffExportError(RuntimeError):

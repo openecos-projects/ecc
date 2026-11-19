@@ -8,7 +8,7 @@ from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_loaded_workspace, workspace_display
-from chipcompiler.engine.signoff_export import SignoffAdditionalFileError, SignoffExportError
+from chipcompiler.engine.signoff.export import SignoffAdditionalFileError, SignoffExportError
 
 _MAX_ADDITIONAL_TOTAL = 64 * 1024 * 1024
 _MAX_ADDITIONAL_FILE = 16 * 1024 * 1024
@@ -20,7 +20,7 @@ def inspect(command_input, ctx: CommandContext) -> CommandResult:
     if failure is not None:
         return failure
 
-    from chipcompiler.engine.signoff_export import inspect_signoff_package
+    from chipcompiler.engine.signoff.export import inspect_signoff_package
 
     review = inspect_signoff_package(workspace)
     project = ctx.project
@@ -75,7 +75,7 @@ def export(command_input, ctx: CommandContext) -> CommandResult:
         if failure is not None:
             return failure
     try:
-        from chipcompiler.engine.signoff_export import export_signoff_package_archive
+        from chipcompiler.engine.signoff.export import export_signoff_package_archive
         from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
         from chipcompiler.utility.workspace_lock import workspace_lock
 

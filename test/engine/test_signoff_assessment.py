@@ -2,8 +2,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from chipcompiler.engine.signoff_assessment import build_signoff_assessment
-from chipcompiler.engine.signoff_export import SignoffExportError, _additional_file_path
+from chipcompiler.engine.signoff.assessment import build_signoff_assessment
+from chipcompiler.engine.signoff.export import SignoffExportError, _additional_file_path
 from chipcompiler.engine.snapshot_limits import CHECKLIST_READ_MAX_BYTES
 
 
