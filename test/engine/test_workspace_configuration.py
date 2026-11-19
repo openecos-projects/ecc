@@ -17,7 +17,10 @@ from chipcompiler.engine import (
     update_workspace_configuration,
     update_workspace_step_configuration,
 )
-from chipcompiler.engine.snapshot import create_engineering_snapshot, read_engineering_snapshot
+from chipcompiler.engine.snapshot.store import (
+    create_engineering_snapshot,
+    read_engineering_snapshot,
+)
 from chipcompiler.params import lookup_schema, workspace_param_value
 
 
@@ -642,7 +645,7 @@ def test_configuration_update_recovers_after_process_exit_before_snapshot(
 
     child = os.fork()
     if child == 0:
-        import chipcompiler.engine.workspace_configuration as configuration_module
+        import chipcompiler.engine.workspace.configuration as configuration_module
 
         configuration_module.invalidate_engineering_snapshot = lambda *_args, **_kwargs: os._exit(
             23
@@ -683,7 +686,7 @@ def test_configuration_update_recovers_after_process_exit_during_commit_cleanup(
 
     child = os.fork()
     if child == 0:
-        import chipcompiler.data.workspace_transaction as transaction_module
+        import chipcompiler.data.workspace.transaction as transaction_module
 
         original_rmtree = transaction_module.shutil.rmtree
 

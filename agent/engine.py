@@ -3,7 +3,7 @@ from pathlib import Path
 
 from chipcompiler.data import StateEnum, StepEnum, WorkspaceStep
 from chipcompiler.data.step import next_step_index
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 
 
 def _is_candidate_workspace(workspace) -> bool:

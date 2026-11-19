@@ -502,8 +502,8 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
     from pathlib import Path
 
     from chipcompiler.engine import apply_workspace_parameters
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     try:

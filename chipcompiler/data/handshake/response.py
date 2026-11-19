@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, WorkspaceStep
-from chipcompiler.data.flow_check import design_states_after
+from chipcompiler.data.flow.check import design_states_after
 from chipcompiler.data.handshake.messages import (
     DesignFiles,
     ResponseStatus,

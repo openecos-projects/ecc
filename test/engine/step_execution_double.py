@@ -7,10 +7,10 @@ from copy import copy, deepcopy
 from threading import Event, RLock, Thread
 
 from chipcompiler.data import is_sta_step
+from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
-from chipcompiler.engine.step_execution import (
+from chipcompiler.engine.step.execution import (
     StepExecutionResult,
     _prepare_log_file,
     get_process_rss_mb,
@@ -51,7 +51,7 @@ def _worker_view(workspace):
 
 
 def _initialize_worker_db(workspace, workspace_step):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     flow = EngineFlow(workspace)
     flow.init_db_engine_for_step(workspace_step)

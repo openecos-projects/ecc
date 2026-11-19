@@ -17,11 +17,11 @@ _TARGETS = frozenset(
 )
 
 _ALLOWLIST = {
-    ("chipcompiler.engine.step_subprocess", "run_step_worker"): "one-shot step handler",
+    ("chipcompiler.engine.step.process", "run_step_worker"): "one-shot step handler",
     ("chipcompiler.engine.db", "create_db_engine"): "worker-side DB wrapper",
-    ("chipcompiler.engine.flow", "init_db_engine_for_step"): "worker rebuilds one step DB",
+    ("chipcompiler.engine.flow.runner", "init_db_engine_for_step"): "worker rebuilds one step DB",
     (
-        "chipcompiler.engine.workspace_flow",
+        "chipcompiler.engine.step.chain",
         "init_db_engine_for_workspace_step",
     ): "worker-side workspace DB helper",
     ("chipcompiler.tools.ecc.runner", "create_db_engine.load_data"): "worker DB snapshot load",
@@ -172,12 +172,12 @@ def test_native_initialization_is_limited_to_worker_call_sites():
 def test_guard_rejects_new_function_in_allowlisted_module(tmp_path):
     _write(
         tmp_path,
-        "chipcompiler/engine/flow.py",
+        "chipcompiler/engine/flow/runner.py",
         "def helper():\n    return create_db_engine(None, None)\n",
     )
 
     assert _unexpected(_scan(tmp_path)) == [
-        NativeCall("chipcompiler.engine.flow", "helper", "create_db_engine", 2)
+        NativeCall("chipcompiler.engine.flow.runner", "helper", "create_db_engine", 2)
     ]
 
 
@@ -221,7 +221,7 @@ def test_guard_resolves_agent_import_aliases(tmp_path):
     _write(
         tmp_path,
         "agent/workspace_api.py",
-        "from chipcompiler.engine.workspace_flow import (\n"
+        "from chipcompiler.engine.step.chain import (\n"
         "    init_db_engine_for_workspace_step as _init_db,\n"
         ")\n"
         "def candidate(flow, step):\n"

@@ -64,7 +64,7 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         return failure
     assert workspace is not None
     root = Path(workspace.directory)
-    from chipcompiler.engine.signoff_export import inspect_signoff_package
+    from chipcompiler.engine.signoff.export import inspect_signoff_package
 
     review = inspect_signoff_package(workspace)
     gates = {

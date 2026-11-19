@@ -109,7 +109,7 @@ class Parameters:
 
 
 def parameters_have_chip_identity(data: object) -> bool:
-    from .workspace_config import parameters_have_chip_identity as _has_identity
+    from .workspace.config import parameters_have_chip_identity as _has_identity
 
     return _has_identity(data)
 
@@ -123,7 +123,7 @@ def _workspace_dir_for(path: Path) -> Path:
 
 
 def load_parameter(path: Path) -> Parameters:
-    from .workspace_config import load_workspace_config
+    from .workspace.config import load_workspace_config
 
     parameter = Parameters()
     parameter.path = Path(path)
@@ -155,7 +155,7 @@ def reload_parameter(path: Path | None, current: Parameters | None = None) -> Pa
 
 
 def save_parameter(parameter: Parameters) -> bool:
-    from .workspace_config import save_workspace_config
+    from .workspace.config import save_workspace_config
 
     if parameter.path is None:
         return False

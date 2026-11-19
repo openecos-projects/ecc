@@ -345,7 +345,7 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     )
     monkeypatch.setattr(module, "workspace_display", lambda command_input, ctx: "default")
     monkeypatch.setattr(
-        "chipcompiler.engine.signoff_export.inspect_signoff_package",
+        "chipcompiler.engine.signoff.export.inspect_signoff_package",
         lambda workspace: {"status": "ready"},
     )
     gates = {name: {"status": status} for name in module._PROFILES["rtl2gds"]}

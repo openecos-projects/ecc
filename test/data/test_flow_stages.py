@@ -3,11 +3,11 @@
 import pytest
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_needs import plan_needs
-from chipcompiler.data.flow_plan import plan_flow, preset_chain
-from chipcompiler.data.flow_stages import StepStage, plan_stages
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.data.workspace.flow_policy import analysis_wave_end
+from chipcompiler.data.flow.build import build_dynamic_flow_data
+from chipcompiler.data.flow.needs import plan_needs
+from chipcompiler.data.flow.plan import plan_flow, preset_chain
+from chipcompiler.data.flow.policy import analysis_wave_end
+from chipcompiler.data.flow.stages import StepStage, plan_stages
 from chipcompiler.rtl2gds import resolve_skip_steps
 
 _RTL2GDS = preset_chain("rtl2gds")

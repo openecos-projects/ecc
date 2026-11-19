@@ -10,11 +10,11 @@ from chipcompiler.cli import main as cli_main
 from chipcompiler.data import EccStep, load_workspace
 from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.engine import create_workspace_from_spec
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     create_engineering_snapshot,
     read_engineering_snapshot_from_directory,
 )
-from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+from chipcompiler.engine.workspace.reset import build_flow_for_workspace
 from chipcompiler.project import load_project_manifest, mutate_project_manifest
 from test.flow_fixture import publish_response
 

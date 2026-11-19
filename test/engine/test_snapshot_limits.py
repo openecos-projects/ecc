@@ -4,13 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.limits import ENGINEERING_SNAPSHOT_MAX_BYTES
+from chipcompiler.engine.snapshot.store import (
     EngineeringSnapshotError,
     _write_snapshot,
     create_engineering_snapshot,
     read_engineering_snapshot,
 )
-from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
 from test.flow_fixture import step_fields
 
 
@@ -376,21 +376,21 @@ def _snapshot_with_step_outputs(step_count, *, references_per_step=0, extra_refe
 
 
 def test_step_output_limit_accepts_exactly_the_limit():
-    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+    from chipcompiler.engine.snapshot.store import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
 
     # No artifact references: only the step-count policy is exercised.
     _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT), Path("."))
 
 
 def test_step_output_limit_rejects_one_over():
-    from chipcompiler.engine.snapshot import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
+    from chipcompiler.engine.snapshot.store import SNAPSHOT_STEP_LIMIT, _validate_step_outputs
 
     with pytest.raises(EngineeringSnapshotError):
         _validate_step_outputs(_snapshot_with_step_outputs(SNAPSHOT_STEP_LIMIT + 1), Path("."))
 
 
 def test_step_output_reference_limit_accepts_exactly_the_limit():
-    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+    from chipcompiler.engine.snapshot.store import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
 
     # 2048 steps * 2 references = exactly the reference limit, below the
     # independent step limit.
@@ -401,7 +401,7 @@ def test_step_output_reference_limit_accepts_exactly_the_limit():
 
 
 def test_step_output_reference_limit_rejects_one_over():
-    from chipcompiler.engine.snapshot import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
+    from chipcompiler.engine.snapshot.store import SNAPSHOT_REFERENCE_LIMIT, _validate_step_outputs
 
     # The same step count plus one top-level SDC reference is one over the
     # reference limit while the step count stays below its own limit.

@@ -529,7 +529,7 @@ def test_macro_import_workspace_can_commit_published_step_output(
         "chipcompiler.engine.apply_workspace_parameters", apply_workspace_parameters
     )
     monkeypatch.setattr(
-        "chipcompiler.engine.snapshot.read_engineering_snapshot_from_directory",
+        "chipcompiler.engine.snapshot.store.read_engineering_snapshot_from_directory",
         lambda _directory: {"workspaceRevision": 4},
     )
 

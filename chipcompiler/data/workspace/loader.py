@@ -8,7 +8,7 @@ from chipcompiler.utility import Logger, create_logger, json_read
 from ..parameter import load_parameter
 from ..pdk import get_pdk
 from ..schema_versions import PARAMS_TOML, require_file_schema_version
-from ..workspace_config import (
+from .config import (
     workspace_config_path as workspace_config_toml_path,
 )
 
@@ -29,7 +29,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         return None
 
     if not read_only:
-        from ..workspace_transaction import recover_workspace_file_transaction
+        from .transaction import recover_workspace_file_transaction
 
         recover_workspace_file_transaction(workspace_dir)
         require_file_schema_version(PARAMS_TOML, workspace_dir)
@@ -39,7 +39,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
 
     config_path = workspace_config_toml_path(workspace_dir)
     if config_path.is_symlink():
-        from chipcompiler.data.workspace_config import WorkspaceConfigError
+        from chipcompiler.data.workspace.config import WorkspaceConfigError
 
         raise WorkspaceConfigError(f"workspace config is a symlink: {config_path}")
     parameters = load_parameter(config_path)
@@ -118,7 +118,7 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
         workspace.design.input_filelist = filelist_path
 
     workspace.flow.path = home_dir / "flow.json"
-    from .flow_options import sync_flow_options_projection
+    from ..flow.options import sync_flow_options_projection
 
     sync_flow_options_projection(workspace, persist=not read_only)
     if read_only:

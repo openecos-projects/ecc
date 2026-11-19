@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
+from chipcompiler.data.flow.build import FLOW_JSON_SCHEMA_VERSION
 from chipcompiler.data.schema_versions import SCHEMA_VERSION_FIELD
-from chipcompiler.data.workspace.flow_data import FLOW_JSON_SCHEMA_VERSION
 from chipcompiler.engine.rerun import _reset_output_dir
 from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 from chipcompiler.tools.ecc_sizer import subflow as sizer_subflow

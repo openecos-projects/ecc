@@ -5,14 +5,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from chipcompiler.data import EccOutput, EccStep, SkippableStepEnum, StateEnum, StepEnum, Workspace
-from chipcompiler.data.workspace.flow_types import FlowDocument
+from chipcompiler.data.flow.document import FlowDocument
 from test.flow_fixture import step_fields
 
 from ._sizer_helpers import _sizer_runtime, _subflow_states, _workspace
 
 
 def test_timing_opt_step_result_does_not_require_gds(tmp_path):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     output_def = tmp_path / "out.def"
     output_verilog = tmp_path / "out.v"
@@ -33,7 +33,7 @@ def test_timing_opt_step_result_does_not_require_gds(tmp_path):
 
 
 def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     output_def = tmp_path / "out.def"
     output_verilog = tmp_path / "out.v"
@@ -60,8 +60,8 @@ def test_timing_opt_step_result_requires_declared_geometry_manifest(tmp_path):
 
 def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monkeypatch):
     import chipcompiler.tools as tools_api
-    from chipcompiler.engine import flow as flow_module
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow import runner as flow_module
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -145,7 +145,7 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
                 file.write("\n")
         return True
 
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineDB", fake_worker_db)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineDB", fake_worker_db)
     monkeypatch.setattr(tools_api, "run_step", fake_tool_run)
     monkeypatch.setattr(tools_api, "save_layout_image", lambda workspace, step: True)
     monkeypatch.setattr(flow_module, "log_flow", lambda workspace: None)
@@ -158,8 +158,8 @@ def test_engine_flow_clears_cached_db_after_successful_sizer_step(tmp_path, monk
 
 def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monkeypatch):
     import chipcompiler.tools as tools_api
-    from chipcompiler.engine import flow as flow_module
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow import runner as flow_module
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -206,7 +206,7 @@ def test_engine_flow_clears_cached_db_after_incomplete_sizer_step(tmp_path, monk
 
 
 def test_legacy_one_stage_success_is_invalidated_before_skip(tmp_path, monkeypatch):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
 
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(_sizer_runtime(tmp_path)))

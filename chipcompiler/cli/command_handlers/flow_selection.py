@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from chipcompiler.cli.interactive.terminal import KeyReader
     from chipcompiler.cli.project.config import ProjectConfig
     from chipcompiler.cli.project.flow_selection import FlowConfig
-    from chipcompiler.data.flow_plan import FlowPlan
+    from chipcompiler.data.flow.plan import FlowPlan
     from chipcompiler.data.types import LECEngineEnum
 
 Record = dict[str, object]
@@ -98,7 +98,7 @@ def flow_edit(args: FlowEditInput, ctx: CommandContext) -> CommandResult:
         effective_skip_steps,
         toggled_skip_steps,
     )
-    from chipcompiler.data.flow_plan import flow_target, preset_chain
+    from chipcompiler.data.flow.plan import flow_target, preset_chain
     from chipcompiler.rtl2gds import get_flow_builders
 
     selection = project_selection(ctx, "ecc flow edit")
@@ -453,7 +453,7 @@ def _terminal_confirm(console: "Console", read_key: "KeyReader") -> Confirm:
 def _preset_plan(
     cfg: "ProjectConfig", lec_engine: "LECEngineEnum", chosen: Selection
 ) -> "FlowPlan":
-    from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
+    from chipcompiler.data.flow.plan import inserted_chain, plan_flow, preset_chain
 
     return plan_flow(
         preset_chain(cfg.flow_preset, lec_engine=lec_engine),
@@ -463,7 +463,7 @@ def _preset_plan(
 
 
 def _policy_keys(flow_config: "FlowConfig | None") -> Record:
-    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+    from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     if flow_config is None:
         return {}

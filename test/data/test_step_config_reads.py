@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from chipcompiler.data.step_config_reads import ConfigRead
-from chipcompiler.data.workspace_parameters import workspace_param_step
+from chipcompiler.data.workspace.parameters import workspace_param_step
 from chipcompiler.params import lookup_schema
 from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 

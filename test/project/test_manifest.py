@@ -705,7 +705,7 @@ def test_project_workspace_acquires_workspace_lock_before_manifest_lock(tmp_path
         lambda _target: marked_lock("workspace"),
     )
     monkeypatch.setattr(
-        "chipcompiler.engine.workspace_lifecycle._create_workspace_from_spec",
+        "chipcompiler.engine.workspace.lifecycle._create_workspace_from_spec",
         lambda *_args: object(),
     )
     monkeypatch.setattr(project_api, "update_manifest_locked", lambda *_args: True)

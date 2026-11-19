@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.flow as engine_flow
+import chipcompiler.engine.flow.runner as engine_flow
 from chipcompiler.data import StateEnum, Workspace
+from chipcompiler.data.flow.document import load_flow_document
+from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_ledger import ledger_lock
-from chipcompiler.data.workspace.flow_types import load_flow_document
 from chipcompiler.engine import EngineFlow
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine.step.execution import StepExecutionResult
 from test.flow_fixture import current_flow_document
 
 _RESOURCES = {"attempt_id": "attempt-1", "isolated": True}

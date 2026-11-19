@@ -31,9 +31,9 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.utility import Logger
 from test.flow_fixture import step_fields
 

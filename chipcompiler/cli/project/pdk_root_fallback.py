@@ -25,7 +25,7 @@ def pdk_root_env_fallback_warning(run_dir: str) -> dict | None:
     """
     from chipcompiler.cli.core.records import warning_record
     from chipcompiler.cli.project.config import _pdk_root_from_env
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     try:
         payload = load_workspace_config(run_dir)

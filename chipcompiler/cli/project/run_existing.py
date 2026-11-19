@@ -28,7 +28,7 @@ def _workspace_range_target(run_dir: str, flow_config) -> dict | None:
     Project presets seed fresh workspaces. An explicit persisted range (for
     example a bounded derive) remains the target of subsequent resumes.
     """
-    from chipcompiler.data.workspace_config import (
+    from chipcompiler.data.workspace.config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
         load_workspace_config,
@@ -237,7 +237,7 @@ def _execute_existing_run(
     warnings = list(warning_records)
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
-    from chipcompiler.data.workspace_config import (
+    from chipcompiler.data.workspace.config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
     )

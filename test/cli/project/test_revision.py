@@ -4,7 +4,7 @@ from chipcompiler.cli.project.revision import expected_revision_error
 def _snapshot(workspace, revision: int) -> None:
     from types import SimpleNamespace
 
-    from chipcompiler.engine.snapshot import create_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 
     create_engineering_snapshot(
         SimpleNamespace(

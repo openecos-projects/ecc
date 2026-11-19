@@ -22,8 +22,8 @@ from chipcompiler.data import (
     Workspace,
     workspace_checklist_path,
 )
+from chipcompiler.data.flow.policy import FlowInputStepError, is_skipped_record
 from chipcompiler.data.step import StepDirectories, flow_step_directory
-from chipcompiler.data.workspace.flow_policy import FlowInputStepError, is_skipped_record
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
 from chipcompiler.engine.signoff.models import (
@@ -75,7 +75,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         parameters = self._read_parameters(workspace_config_path(workspace_dir))
         design = (
@@ -132,7 +132,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
-        # Golden precedence mirrors the execution wiring (engine/flow.py): the
+        # Golden precedence mirrors the execution wiring (engine/flow/runner.py): the
         # declared golden netlist, then the synthesis output, then the origin.
         lec_golden = (
             getattr(self.workspace.design, "golden_verilog", None)
@@ -392,7 +392,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         parameters_config = workspace_config_path(workspace_dir)
         add_file(

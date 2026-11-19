@@ -274,7 +274,7 @@ def _mutate(
                 )
             try:
                 refresh_workspace_config(workspace)
-                from chipcompiler.data.workspace.flow_options import (
+                from chipcompiler.data.flow.options import (
                     sync_flow_options_projection,
                 )
 
@@ -317,9 +317,9 @@ def _mutate(
 def _mutate_via_engine(
     ctx, workspace, schema, mutation, requested_value: object, status: str, scope: str | None
 ):
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
-    from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+    from chipcompiler.engine.workspace.configuration import apply_workspace_parameters
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
     from chipcompiler.params import workspace_param_diff, workspace_param_step
 
     key = _key(schema, scope)

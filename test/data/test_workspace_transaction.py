@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
+from chipcompiler.data.workspace.transaction import WorkspaceFileTransaction
 
 
 def test_rollback_restores_files_and_removes_new_managed_files(tmp_path):

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from chipcompiler.cli.core.records import warning_record
-from chipcompiler.data.flow_plan import FlowPlan, inserted_chain, plan_flow, preset_chain
+from chipcompiler.data.flow.plan import FlowPlan, inserted_chain, plan_flow, preset_chain
 
 if TYPE_CHECKING:
     from chipcompiler.cli.project.config import ProjectConfig

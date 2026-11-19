@@ -579,7 +579,7 @@ class FoundationExtractor:
 
     def _workspace_config_path(self) -> Path:
         """The workspace's current persisted configuration."""
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         return workspace_config_path(self.workspace_dir)
 
@@ -588,7 +588,7 @@ class FoundationExtractor:
 
     def _read_workspace_parameters(self) -> dict[str, Any]:
         """Read canonical flat parameters from home/params.toml."""
-        from chipcompiler.data.workspace_config import load_workspace_config
+        from chipcompiler.data.workspace.config import load_workspace_config
 
         return load_workspace_config(self.workspace_dir)
 

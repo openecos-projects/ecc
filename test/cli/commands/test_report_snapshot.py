@@ -4,7 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.engine.snapshot import create_engineering_snapshot, read_engineering_snapshot_file
+from chipcompiler.engine.snapshot.store import (
+    create_engineering_snapshot,
+    read_engineering_snapshot_file,
+)
 
 
 @pytest.fixture
@@ -48,8 +51,10 @@ def test_json_export_is_read_only_and_uses_managed_workspace(
         pytest.fail("snapshot export must not load workspaces, generate snapshots, or execute EDA")
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", unexpected)
-    monkeypatch.setattr("chipcompiler.engine.snapshot.create_engineering_snapshot", unexpected)
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow.run_steps", unexpected)
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.store.create_engineering_snapshot", unexpected
+    )
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineFlow.run_steps", unexpected)
 
     assert cli_main.run(_arguments(project, output, *selector, "--json")) == 0
 
@@ -163,7 +168,7 @@ def test_write_failure_is_structured(snapshot_project, tmp_path, monkeypatch, ca
     def fail(*args, **kwargs):
         raise OSError("write denied")
 
-    monkeypatch.setattr("chipcompiler.engine.snapshot_export.tempfile.mkstemp", fail)
+    monkeypatch.setattr("chipcompiler.engine.snapshot.export.tempfile.mkstemp", fail)
 
     assert cli_main.run(_arguments(project, output, "--json")) == 1
 

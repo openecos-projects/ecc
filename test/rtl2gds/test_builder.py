@@ -295,7 +295,7 @@ def test_unknown_flow_config_keys_never_become_steps_or_errors():
 
 def test_preset_shaped_flow_config_builds_the_preset_ledger():
     from chipcompiler.data.workspace import build_dynamic_flow_data
-    from chipcompiler.data.workspace_config import flow_section_from_flow_config
+    from chipcompiler.data.workspace.config import flow_section_from_flow_config
 
     policy = {"preset": "synthesis_lec", "skip_steps": [], "insert_steps": ["lec@synthesis"]}
 

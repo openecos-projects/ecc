@@ -18,7 +18,7 @@ from ._sizer_helpers import (
 
 
 def test_sizer_success_legalize_failure_leaves_published_outputs_empty(tmp_path, monkeypatch):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
     from chipcompiler.tools.ecc_sizer import builder as sizer_builder
     from chipcompiler.tools.ecc_sizer import runner as sizer_runner
 

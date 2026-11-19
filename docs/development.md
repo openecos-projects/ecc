@@ -343,7 +343,7 @@ chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) 
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
 chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
-chipcompiler/engine/qor_report.py # CLI QoR facade delegating to analysis.qor
+chipcompiler/analysis/qor/report.py # CLI QoR facade delegating to analysis.qor
 ```
 
 Module placement is enforced by `test/cli/test_cli_module_layout.py`: the core
@@ -628,7 +628,7 @@ required by doctor.
 - **CLI layer**: `cli/commands/signoff.py` + `cli/command_handlers/signoff.py`.
   `inspection/discovery.py::resolve_loaded_workspace()` resolves a managed
   `--workspace NAME` in the selected project (or its sole active workspace).
-  inspect reuses `engine/signoff_export.py::inspect_signoff_package` (blocked
+  inspect reuses `engine/signoff/export.py::inspect_signoff_package` (blocked
   still exits 0); export reuses `export_signoff_package_archive`
   (`SignoffExportError` → `signoff_incomplete`).
 - **Engine layer**: the `chipcompiler/engine/signoff/` package owns the signoff
@@ -650,9 +650,9 @@ required by doctor.
   diagnoses, interventions, the bounded report schema, and text rendering.
   New QoR conclusions belong here; do not copy thresholds or formulas into
   the GUI or CLI.
-- `engine/qor_report.py`: the CLI `ecc report qor` facade. It delegates to
+- `analysis/qor/report.py`: the CLI `ecc report qor` facade. It delegates to
   `analysis.qor` and does not own a second scoring implementation.
-- `engine/qor.py`: the Snapshot `qorAssessment` collector — validated metric
+- `engine/snapshot/metrics.py`: the Snapshot `qorAssessment` collector — validated metric
   records and Success-step summaries only, no scoring. Scores reach the
   Snapshot exclusively through `qorSnapshotExtension` from `analysis/qor/`
   (the legacy `qor_scoring.py` scorer was removed).
@@ -839,8 +839,8 @@ by an inserted step; a range bounded by `lec@synthesis` is bounded by
 
 Whether a selection can run is decided by step capabilities — each step's
 required design data, optional design data, and what it provides
-(`plan_flow` in `chipcompiler/data/flow_plan.py`, checked by `check_flow` in
-`chipcompiler/data/flow_check.py`):
+(`plan_flow` in `chipcompiler/data/flow/plan.py`, checked by `check_flow` in
+`chipcompiler/data/flow/check.py`):
 
 - An enabled step that lacks required design data is a configuration error;
   `ecc check`, `ecc run`, and workspace creation reject it with a fix hint
@@ -866,7 +866,7 @@ step, any of `rtl2gds.lec_insert_anchors()` (`synthesis` .. `routing`). LEC
 is the only entry of `data.types.INSERTABLE_FLOW_STEPS`: it changes nothing,
 provides nothing, and `FlowInputResolver` already skips LEC records, so the
 chain after it is unchanged. Other steps are not insertable: the capability
-check (`data/flow_check.py`) never takes design data away, so a second
+check (`data/flow/check.py`) never takes design data away, so a second
 netlist-changing step after `routing` would pass the check while breaking the
 routing, and the tool wrappers branch on the step name. An inserted step's
 ledger name is `lec@<step>` (`rtl2gds.inserted_step_name`

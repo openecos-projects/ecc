@@ -16,7 +16,7 @@ def refresh_engine_mocks(monkeypatch):
         lambda *_args, **_kwargs: [],
     )
     monkeypatch.setattr(
-        "chipcompiler.engine.snapshot.read_engineering_snapshot_from_directory",
+        "chipcompiler.engine.snapshot.store.read_engineering_snapshot_from_directory",
         lambda _path: {
             "workspaceId": "workspace-baseline",
             "workspaceRevision": 1,
@@ -33,7 +33,7 @@ def refresh_engine_mocks(monkeypatch):
 
     monkeypatch.setattr("chipcompiler.engine.update_workspace_from_spec", update)
     monkeypatch.setattr(
-        "chipcompiler.engine.snapshot.read_engineering_snapshot",
+        "chipcompiler.engine.snapshot.store.read_engineering_snapshot",
         lambda _workspace: {
             "workspaceId": "workspace-baseline",
             "workspaceRevision": 2,

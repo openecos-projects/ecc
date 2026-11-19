@@ -401,7 +401,7 @@ def test_all_output_modes_are_read_only(
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", unexpected)
     monkeypatch.setattr("chipcompiler.analysis.qor.refresh_workspace_qor_report", unexpected)
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow.run_steps", unexpected)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineFlow.run_steps", unexpected)
     assert cli_main.run(["report", "project", "--project", str(project), *options]) == 0
 
     captured = capsys.readouterr()

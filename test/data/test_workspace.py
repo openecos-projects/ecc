@@ -17,6 +17,7 @@ from chipcompiler.data import (
     create_workspace,
     load_workspace,
 )
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.workspace import (
     Flow,
@@ -27,7 +28,6 @@ from chipcompiler.data.workspace import (
     refresh_workspace_config,
     update_step_config,
 )
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.data.workspace.layout import EccData, EccOutput, EccStep, StepInput
 from chipcompiler.utility import json_read, json_write
 from test.flow_fixture import step_fields
@@ -172,7 +172,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
 
-    from chipcompiler.engine.workspace_configuration import (
+    from chipcompiler.engine.workspace.configuration import (
         build_workspace_configuration_projection,
     )
 
@@ -543,7 +543,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
     )
     assert workspace is not None
 
-    from chipcompiler.engine.workspace_flow import build_flow_for_workspace
+    from chipcompiler.engine.step.chain import build_flow_for_workspace
 
     build_flow_for_workspace(workspace)
 
@@ -657,16 +657,16 @@ def test_worker_can_hydrate_while_parent_owns_workspace_lock(
 def test_derived_snapshot_inputs_bind_to_final_workspace(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         create_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_derive import derive_workspace
+    from chipcompiler.engine.workspace.derive import derive_workspace
 
     source, workspace = _create_loaded_ics55_workspace(
         tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
     )
-    from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+    from chipcompiler.engine.workspace.reset import build_flow_for_workspace
 
     engine_flow = build_flow_for_workspace(workspace)
     assert engine_flow.save()

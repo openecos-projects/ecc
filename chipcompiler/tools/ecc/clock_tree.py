@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Final
 
 from chipcompiler.data import StepEnum
+from chipcompiler.data.flow.options import clock_tree_requested
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.workspace.flow_options import clock_tree_requested
 
 # Steps whose clock network ecc-tools can capture into the geometry snapshot.
 CLOCK_TREE_STEPS: Final = frozenset(

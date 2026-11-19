@@ -90,7 +90,7 @@ class TestCreateWorkspaceIntegration:
     def test_filelist_survives_workspace_reload(self, tmp_path, minimal_ics55_pdk_factory):
         from chipcompiler.data import load_workspace
         from chipcompiler.data.parameter import load_parameter, save_parameter
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         project_dir = tmp_path / "project"
         project_dir.mkdir()
@@ -208,7 +208,7 @@ class TestCreateWorkspaceIntegration:
 
     def test_load_workspace_rejects_symlinked_params_toml(self, tmp_path):
         from chipcompiler.data.workspace import load_workspace
-        from chipcompiler.data.workspace_config import WorkspaceConfigError, save_workspace_config
+        from chipcompiler.data.workspace.config import WorkspaceConfigError, save_workspace_config
 
         real_dir = tmp_path / "real-ws"
         save_workspace_config(str(real_dir), {"design": "gcd", "top_module": "gcd"}, None)

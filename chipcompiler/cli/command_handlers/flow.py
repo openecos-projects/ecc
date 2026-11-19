@@ -1,6 +1,6 @@
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.engine.workspace_spec import describe_workspace_spec
+from chipcompiler.engine.workspace.spec import describe_workspace_spec
 
 
 def flow_list(_args, _ctx: CommandContext) -> CommandResult:

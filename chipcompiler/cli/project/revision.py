@@ -4,7 +4,7 @@ from pathlib import Path
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     EngineeringSnapshotError,
     read_engineering_snapshot_from_directory,
 )

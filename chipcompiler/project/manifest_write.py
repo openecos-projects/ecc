@@ -355,7 +355,7 @@ def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
         and "skip_steps" in flow_config
     ):
         return preset_range
-    from chipcompiler.data.flow_plan import preset_chain
+    from chipcompiler.data.flow.plan import preset_chain
     from chipcompiler.rtl2gds import resolve_skip_steps
 
     try:

@@ -17,6 +17,9 @@ EXCLUDED_PAYLOAD_PREFIXES = (
     "torch/testing/_internal",
 )
 
+#: Agent instruction files sit beside the code they describe and never ship.
+EXCLUDED_PAYLOAD_NAMES = ("AGENTS.md",)
+
 EXCLUDED_HIDDENIMPORT_PREFIXES = (
     "torch.distributed._shard.checkpoint",
     "torch.distributed._sharded_tensor",
@@ -89,6 +92,8 @@ def payload_is_excluded(item):
         return False
 
     paths = item[:2] if isinstance(item, (tuple, list)) else (item,)
+    if any(Path(str(path).replace("\\", "/")).name in EXCLUDED_PAYLOAD_NAMES for path in paths):
+        return True
     return any(
         payload_path_matches(path, prefix) for path in paths for prefix in EXCLUDED_PAYLOAD_PREFIXES
     )

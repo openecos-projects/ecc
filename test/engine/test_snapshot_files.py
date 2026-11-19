@@ -2,13 +2,13 @@ import json
 
 import pytest
 
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.qor import unavailable_qor_snapshot_extension
+from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_SCHEMA_VERSION,
     EngineeringSnapshotError,
     read_engineering_snapshot_file,
     read_engineering_snapshot_from_directory,
 )
-from chipcompiler.engine.snapshot_qor import unavailable_qor_snapshot_extension
 
 
 @pytest.fixture
@@ -82,12 +82,12 @@ def test_saved_snapshot_identity_does_not_depend_on_adjacent_workspace_commands(
 
 def test_oversized_file_is_rejected_before_json_read(snapshot_file, monkeypatch):
     path, _snapshot = snapshot_file
-    monkeypatch.setattr("chipcompiler.engine.snapshot.ENGINEERING_SNAPSHOT_MAX_BYTES", 16)
+    monkeypatch.setattr("chipcompiler.engine.snapshot.store.ENGINEERING_SNAPSHOT_MAX_BYTES", 16)
 
     def unexpected_parse(*args, **kwargs):
         pytest.fail("oversized input must not be parsed")
 
-    monkeypatch.setattr("chipcompiler.engine.snapshot.json.loads", unexpected_parse)
+    monkeypatch.setattr("chipcompiler.engine.snapshot.store.json.loads", unexpected_parse)
 
     with pytest.raises(EngineeringSnapshotError, match="oversized"):
         read_engineering_snapshot_file(path)
@@ -155,7 +155,7 @@ def test_oversized_qor_integer_returns_a_snapshot_error(snapshot_file):
 
 
 def test_unhashable_artifact_availability_returns_a_snapshot_error(snapshot_file):
-    from chipcompiler.engine.snapshot import _artifact_id
+    from chipcompiler.engine.snapshot.store import _artifact_id
 
     path, snapshot = snapshot_file
     reference = "output/design.gds"

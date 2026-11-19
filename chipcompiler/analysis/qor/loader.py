@@ -13,8 +13,8 @@ from typing import cast
 
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES
 from chipcompiler.data import StateEnum, StepEnum
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.ecc.power_artifacts import power_step_path
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -94,7 +94,7 @@ def _flow_records(workspace, workspace_root: Path) -> list[FlowStepEntry]:
     if not isinstance(data, dict) or not data:
         # load_workspace leaves flow.data empty; the persisted ledger is the
         # source of truth and enforces the current schema.
-        from chipcompiler.data.workspace.flow_types import load_flow_document
+        from chipcompiler.data.flow.document import load_flow_document
 
         data = load_flow_document(workspace_root / "home" / "flow.json")
     steps = data.get("steps") if isinstance(data, dict) else None
@@ -119,7 +119,7 @@ def _parameters(workspace, workspace_root: Path) -> dict:
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)
     if isinstance(parameters, dict):
         return parameters
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     try:
         return load_workspace_config(workspace_root)

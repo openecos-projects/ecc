@@ -383,11 +383,11 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         )
     from chipcompiler.cli.project.workspace_spec import workspace_update_spec
     from chipcompiler.engine import update_workspace_from_spec
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 
     backup_directory = None
     fallback_backup = None
@@ -408,7 +408,7 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         if command_input.keep_backup and not supports_backup:
             from shutil import copytree
 
-            from chipcompiler.engine.workspace_backup import _free_backup_path
+            from chipcompiler.engine.workspace.backup import _free_backup_path
 
             fallback_backup = _free_backup_path(Path(ctx.run_dir))
             copytree(ctx.run_dir, fallback_backup)
@@ -601,9 +601,9 @@ def _manage_workspace_lifecycle(
 ) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_management import (
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.management import (
         archive_managed_workspace,
         delete_managed_workspace,
     )
@@ -646,8 +646,8 @@ def _manage_workspace_lifecycle(
 
 
 def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_management import reconcile_workspace_deletes as reconcile
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.management import reconcile_workspace_deletes as reconcile
 
     if ctx.project_state != "manifest" or ctx.manifest_error:
         return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
@@ -667,12 +667,12 @@ def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandRe
 def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.reset import reset_workspace_flow as reset
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
         return CommandResult.err([manifest_error_record(ctx.manifest_error)])
@@ -828,7 +828,7 @@ def _run_project(
     # The resolved skip policy, LEC engine and inserted steps survive every
     # target override below (they come from configuration, never from the
     # target spelling).
-    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+    from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     policies = (
         {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}

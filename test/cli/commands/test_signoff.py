@@ -66,7 +66,7 @@ REVIEW = {
 
 def _patch_inspect(monkeypatch, review=REVIEW):
     monkeypatch.setattr(
-        "chipcompiler.engine.signoff_export.inspect_signoff_package",
+        "chipcompiler.engine.signoff.export.inspect_signoff_package",
         lambda workspace: review,
     )
 
@@ -88,7 +88,7 @@ def _patch_export(monkeypatch, destination="/tmp/pkg.tar.gz", error=None):
         return destination
 
     monkeypatch.setattr(
-        "chipcompiler.engine.signoff_export.export_signoff_package_archive", fake_export
+        "chipcompiler.engine.signoff.export.export_signoff_package_archive", fake_export
     )
     return calls
 
@@ -293,7 +293,7 @@ class TestSignoffExport:
     def test_export_reports_additional_file_on_a_packaged_path(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
-        from chipcompiler.engine.signoff_export import SignoffAdditionalFileError
+        from chipcompiler.engine.signoff.export import SignoffAdditionalFileError
 
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))
@@ -316,7 +316,7 @@ class TestSignoffExport:
     def test_export_incomplete_maps_to_error(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
     ):
-        from chipcompiler.engine.signoff_export import SignoffExportError
+        from chipcompiler.engine.signoff.export import SignoffExportError
 
         project_dir = create_cli_project()
         os.makedirs(os.path.join(project_dir, "default"))

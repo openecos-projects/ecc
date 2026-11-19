@@ -232,7 +232,7 @@ def _flow_steps_table(workspace, spec=None) -> CsvTable:
 
 def build_csv_bundle(workspace, spec=None) -> CsvExportBundle:
     from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
-    from chipcompiler.engine.qor_report import build_qor_report
+    from chipcompiler.analysis.qor.report import build_qor_report
     from chipcompiler.engine.signoff.report_checklist import build_checklist_report
 
     qor = build_qor_report(workspace)

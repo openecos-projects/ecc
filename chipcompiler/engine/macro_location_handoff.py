@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .workspace_lifecycle import WorkspaceLifecycleError
+from .workspace.lifecycle import WorkspaceLifecycleError
 
 
 def prune_macro_location_after_write(workspace, written: set[str]) -> None:

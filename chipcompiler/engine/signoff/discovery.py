@@ -17,8 +17,8 @@ from chipcompiler.data import (
     WorkspaceStep,
     default_flow_step_category,
 )
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
 
 
 class CollectorDiscoveryMixin:
@@ -39,7 +39,7 @@ class CollectorDiscoveryMixin:
 
     def _read_parameters(self, path: Path) -> dict:
         """Read canonical workspace parameters; return {} when unreadable."""
-        from chipcompiler.data.workspace_config import load_workspace_config
+        from chipcompiler.data.workspace.config import load_workspace_config
 
         try:
             payload = load_workspace_config(path.parent.parent)
