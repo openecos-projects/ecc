@@ -197,6 +197,18 @@ def resolve_clock_list_metadata(cfg: ProjectConfig) -> None:
     cfg.design_frequency_mhz = clocks[0].frequency_mhz
 
 
+def clock_list_supplies_clock(cfg: ProjectConfig) -> bool:
+    """True when the first ``sdc.clock_list`` row, not ``[design]``, decides the clock."""
+    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
+        return False
+    from chipcompiler.data.workspace.sdc_inputs import parse_clock_list
+
+    try:
+        return bool(parse_clock_list(str(cfg.params_overrides["sdc.clock_list"])))
+    except ValueError:
+        return False
+
+
 def resolve_project_dir(project: str | None) -> str:
     if project:
         return os.path.abspath(project)

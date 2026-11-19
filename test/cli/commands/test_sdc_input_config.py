@@ -129,6 +129,55 @@ def test_clock_list_is_the_source_of_primary_flow_metadata(
     assert parameters["sdc"]["clock_list"] == clocks + "\n"
 
 
+@pytest.mark.parametrize(
+    ("project_frequency", "cli_frequency", "frequency_max", "primary"),
+    [
+        # Only the list is replaced: its first row decides, in every corner.
+        (None, None, 200.0, {"MAX": 180.0, "TYP": 200.0}),
+        # An explicit design.frequency_mhz keeps its precedence over the row,
+        # whether it comes with the list or was set in the project before.
+        (None, "150", 150.0, {"MAX": 150.0, "TYP": 150.0}),
+        ("150", None, 150.0, {"MAX": 150.0, "TYP": 150.0}),
+    ],
+)
+def test_clock_list_replaced_with_set_supplies_the_primary_clock(
+    tmp_path, flow_mocks, project_frequency, cli_frequency, frequency_max, primary
+):
+    from chipcompiler.data.workspace.sdc_inputs import PrimaryClock, SdcInputs
+
+    project = tmp_path / "project"
+    assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
+    (project / "rtl/gcd.v").write_text("module gcd(input clk, input core_clk); endmodule\n")
+    config = project / "ecc.toml"
+    config.write_text(config.read_text().replace('root = ""', f'root = "{tmp_path}"'))
+    if project_frequency:
+        command = ["param", "set", "design.frequency_mhz", project_frequency]
+        assert cli_main.run([*command, "--project", str(project)]) == 0
+    clocks = (
+        "core_clk MAX:180 WCL:180 MIN:180 ML:180 TYP:200\nclk MAX:20 WCL:20 MIN:20 ML:20 TYP:25"
+    )
+    overrides = ["--set", f"sdc.clock_list={clocks}"]
+    if cli_frequency:
+        overrides += ["--set", f"design.frequency_mhz={cli_frequency}"]
+
+    assert cli_main.run(["run", "--project", str(project), *overrides]) == 0
+
+    parameters = flow_mocks.capture["create_kwargs"]["parameters"]
+    assert {key: parameters[key] for key in ("clock", "frequency_max")} == {
+        "clock": "core_clk",
+        "frequency_max": frequency_max,
+    }
+    explicit = bool(project_frequency or cli_frequency)
+    assert parameters.get("_explicit_frequency", False) is explicit
+    inputs = SdcInputs.from_parameters(parameters)
+    auxiliary = {"MAX": 20.0, "TYP": 25.0}
+    for corner, frequency in primary.items():
+        assert inputs.clocks(parameters, corner) == (
+            PrimaryClock("core_clk", frequency),
+            PrimaryClock("clk", auxiliary[corner]),
+        )
+
+
 def test_new_project_requires_an_active_clock_list(tmp_path, flow_mocks, capsys):
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0

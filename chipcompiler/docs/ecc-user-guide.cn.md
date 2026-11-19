@@ -347,8 +347,6 @@ rtl = ["rtl/gcd.v"]      # 一个或多个 Verilog 源文件，也可指向一�
 # def = "inputs/gcd.def"
 # sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
@@ -365,6 +363,14 @@ skip_steps = ["diff_opt"]
 # 仅在运行时生效：同一阶段内互相独立的步骤，同时最多运行这么多个
 # （默认 4；1 表示逐个运行）。见 8.6 节。
 max_parallel_steps = 4
+
+[params.sdc]
+# 主时钟，每行一个：<端口或引脚> <corner>:<MHz> ...
+# 第一行的 TYP 频率同时提供流程使用的时钟端口和频率。
+# （生成的文件后面还有四项可选的时序输入，默认都是注释；见配置参考 1.7 节。）
+clock_list = '''
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+'''
 ```
 
 ## 4. check — 校验项目配置
@@ -878,6 +884,13 @@ ecc project baseline <WORKSPACE_ID> [--reason TEXT]   # 选定以哪个 workspac
 ecc project reconcile                 # 修复可证明的项目中间状态（如未完成的删除）
 ecc project doctor [--fix]            # 交叉核对 project.json 与 workspace 目录；--fix 显式修复
 ```
+
+声明了 `[params.sdc] clock_list` 的项目（`ecc init` 生成的项目都是如此），时钟端口和
+时钟频率取自该列表的第一行，而不是 `[design]` 的 `clock_port` / `frequency_mhz`。
+`project set` 和 `project apply` 仍会写入这两个键，同时输出
+`warning=clock_list_overrides_design`，因为这两个值不会被使用。修改时钟请用
+`ecc param set sdc.clock_list '<端口> <corner>:<MHz> ...'`；`ecc param set
+design.frequency_mhz`（§9）修改第一行时钟的频率，综合和生成的约束都按它执行。
 
 `project set`/`unset`/`add`/`remove` 对 manifest 项目也走同一条原子更新路径，立即同步
 `project.json.base_design`；`project apply` 可把多项修改打包成一次原子 manifest 更新

@@ -5,7 +5,7 @@ import os
 import tomllib
 
 from chipcompiler.cli.core.errors import CommandError, command_handler
-from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
@@ -31,7 +31,9 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
         error = None
     if error is not None:
         raise CommandError.from_result(error)
-    return CommandResult.ok([_record(field.key, value, "set")])
+    return CommandResult.ok(
+        [*_shadowed_clock_warnings(config_path, (field.key,)), _record(field.key, value, "set")]
+    )
 
 
 def project_apply(args, ctx: CommandContext) -> CommandResult:
@@ -50,7 +52,47 @@ def project_apply(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err([error_record("project_busy")], exit_code=20)
     except ProjectApplicationError as exc:
         return CommandResult.err([error_record(exc.code, key=exc.key, reason=str(exc))])
-    return CommandResult.ok([{"project": "apply", "status": "applied", "changed": changed}])
+    set_keys = tuple(item.partition("=")[0].strip() for item in args.sets or ())
+    config_path = os.path.join(ctx.project_dir, CONFIG_FILENAME)
+    return CommandResult.ok(
+        [
+            *_shadowed_clock_warnings(config_path, set_keys),
+            {"project": "apply", "status": "applied", "changed": changed},
+        ]
+    )
+
+
+_CLOCK_KEYS = ("design.clock_port", "design.frequency_mhz")
+
+
+def _shadowed_clock_warnings(config_path: str, keys: tuple[str, ...]) -> list[dict]:
+    """Warn when a [design] clock key was set that the clock list overrides.
+
+    A project that declares ``[params.sdc] clock_list`` (every ``ecc init``
+    project) takes its clock port and frequency from the first row of that
+    list; the [design] keys only apply without it. The value is still written,
+    so the user must be told that it does not change the flow.
+    """
+    shadowed = [key for key in _CLOCK_KEYS if key in keys]
+    if not shadowed:
+        return []
+    from chipcompiler.cli.project.config import clock_list_supplies_clock, load_project_config
+
+    try:
+        cfg = load_project_config(config_path)
+    except (OSError, ValueError):
+        return []
+    if not clock_list_supplies_clock(cfg):
+        return []
+    return [
+        warning_record(
+            "clock_list_overrides_design",
+            keys=shadowed,
+            reason="params.sdc.clock_list is declared: its first row supplies the clock port "
+            "and frequency, and [design] clock_port/frequency_mhz are not used",
+            set="ecc param set sdc.clock_list '<port> <corner>:<MHz> ...'",
+        )
+    ]
 
 
 def project_baseline(args, ctx: CommandContext) -> CommandResult:
