@@ -154,6 +154,23 @@ def _redirect_stdio_to_descriptor(descriptor: int, *, enabled: bool):
         sys.stdout, sys.stderr = saved_streams
 
 
+def run_identity_error(command_input, *, workspace_id: str, workspace: str):
+    """Reject a malformed ``--run-id``, ``--runtime-id`` or ``--log-file``.
+
+    ``managed_run_process`` validates these values too, but a fresh run enters
+    it only after the workspace has been created and registered. The run
+    dispatcher therefore asks here first, before it touches the project.
+    Returns the error result, or ``None`` when the values are acceptable.
+    """
+    try:
+        run_id = normalize_run_id(command_input.run_id)
+        normalize_runtime_id(command_input.runtime_id, default="external")
+        normalize_log_path(command_input.log_file, run_id)
+    except RuntimeProcessError as exc:
+        return runtime_process_error_result(exc, workspace_id=workspace_id, workspace=workspace)
+    return None
+
+
 def runtime_process_error_result(exc: RuntimeProcessError, *, workspace_id: str, workspace: str):
     from chipcompiler.cli.core.records import error_record
     from chipcompiler.cli.core.types import CommandResult

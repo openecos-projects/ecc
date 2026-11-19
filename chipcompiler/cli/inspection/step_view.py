@@ -12,6 +12,7 @@ import json
 import os
 from dataclasses import dataclass
 
+from chipcompiler.data.step import STEP_TOOLS
 from chipcompiler.utility.json import JsonObject, json_read
 
 SECTIONS = ("feature", "analysis", "checklist", "outputs")
@@ -34,13 +35,13 @@ class _StepEntry:
     tool: str
     directory: str | None
     flow: dict | None  # raw home/flow.json step record
-    aliases: frozenset[str]
+    selectors: frozenset[str]  # the flow name and step directory token
 
     def state(self) -> str:
-        from chipcompiler.cli.core.output import normalize_state
+        from chipcompiler.cli.core.output import flow_step_status
 
         if self.flow is not None:
-            return normalize_state(self.flow.get("state", ""))
+            return flow_step_status(self.flow.get("state", ""))
         return "unknown"  # dir-discovered step with no flow record
 
     def runtime(self) -> str | None:
@@ -54,10 +55,9 @@ class _StepEntry:
 def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     """Flow steps in flow order plus dir-discovered extras, dir-associated.
 
-    A flow step links to its step directory on token equality or the
-    underscore alias of its token ("Timing optimization" -> "timing_optimization").
+    A flow step links to its step directory on name equality or the
+    ``<step>_<tool>`` directory prefix.
     """
-    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
         discover_step_dirs,
         read_flow_json,
@@ -72,16 +72,10 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
     taken_dirs: set[str] = set()
     for flow_step in flow_steps:
         name = str(flow_step["name"])
-        token = normalize_step_name(name)
-        alias = token.replace(" ", "_")
-        matched = None
-        for dir_token in dir_tokens:
-            if dir_token in taken_dirs:
-                continue
-            if dir_token in (token, alias) or dir_token.startswith(f"{alias}_"):
-                matched = dir_token
-                taken_dirs.add(dir_token)
-                break
+        token = name
+        matched = token if token in dir_tokens and token not in taken_dirs else None
+        if matched:
+            taken_dirs.add(matched)
         entries.append(
             _StepEntry(
                 token=matched or token,
@@ -89,9 +83,7 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                 tool=str(flow_step.get("tool", "")),
                 directory=dir_tokens.get(matched) if matched else None,
                 flow=flow_step,
-                aliases=frozenset(
-                    {token.lower(), alias.lower(), name.lower(), *({matched} if matched else ())}
-                ),
+                selectors=frozenset({token, *({matched} if matched else ())}),
             )
         )
     for dir_token, dir_path in sorted(dir_tokens.items()):
@@ -100,18 +92,18 @@ def _step_entries(workspace_dir: str) -> list[_StepEntry]:
                 _StepEntry(
                     token=dir_token,
                     display=dir_token,
-                    tool=os.path.basename(dir_path).rpartition("_")[2],
+                    tool=STEP_TOOLS.get(dir_token, ""),
                     directory=dir_path,
                     flow=None,
-                    aliases=frozenset({dir_token.lower()}),
+                    selectors=frozenset({dir_token}),
                 )
             )
     return entries
 
 
 def _resolve_entry(entries: list[_StepEntry], token: str) -> _StepEntry | None:
-    wanted = token.strip().lower()
-    return next((e for e in entries if wanted in e.aliases), None)
+    wanted = token.strip()
+    return next((e for e in entries if wanted in e.selectors), None)
 
 
 # --- feature ---------------------------------------------------------------
@@ -272,11 +264,11 @@ def _checklist_records(entry: _StepEntry, workspace_dir: str) -> list[dict]:
         data, source = step_data, "step"
     else:
         home = json_read(os.path.join(workspace_dir, *_HOME_CHECKLIST_PATH))
-        names = set(entry.aliases) | {entry.display.lower()}
+        names = entry.selectors | {entry.display}
         items = [
             item
             for item in (home.get("checklist", []) if isinstance(home, dict) else [])
-            if isinstance(item, dict) and str(item.get("step", "")).lower() in names
+            if isinstance(item, dict) and str(item.get("step", "")) in names
         ]
         if not items:
             return []

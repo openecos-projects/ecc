@@ -15,11 +15,14 @@
 | --- | --- | --- |
 | 1 | `ecc run --set key=value`（可重复） | 仅新建 run |
 | 2 | `ecc.toml` `[params.*]` | 仅新建 run |
-| 3 | `project.json` `base_design.parameters` 与选中 workspace 条目的 `parameter_patch` 合并（manifest 基础层） | manifest 工程 |
+| 3 | `project.json` `base_design.frequency_mhz`（仅设计时钟频率；manifest 不再携带其它参数） | manifest 工程 |
 | 4 | schema 默认值（`chipcompiler/data/config_params/`、legacy 注册表模板） | 始终 |
 
 manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值叠加在
-它之上，因此已声明的 base 值只输给更高层、只赢过 schema 默认。
+它之上，因此已声明的 base 值只输给更高层、只赢过 schema 默认。早于
+`frequency_mhz` 的旧 manifest 仍通过其 `base_design.parameters.frequency_max`
+读取频率；可调参数不再从 `project.json` 读取，只在 `ecc.toml` 或各 workspace
+的 `params.toml` 中设置。
 
 **已有（existing）** workspace 复用其持久化的 `home/params.toml`，
 不再重新解析上述矩阵：
@@ -33,7 +36,7 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 `skip_steps` 遵循同一收敛方向：显式的 `ecc.toml` `[flow] skip_steps`
 （含空列表 `[]`）优先于 `project.json` workspace 条目，后者优先于代码
-默认 `("lec", "diff_opt")`；设为 `["lec"]` 可开启 `diff_opt`。
+默认 `("diff_opt",)`；设为 `[]` 可开启 `diff_opt`。
 两个面声明的策略不一致时，`ecc run`/`ecc check`
 发出 `skip_steps_shadowed` 警告并指明获胜来源。
 
@@ -46,6 +49,35 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
   用户参数（`flow.run` / `prepare_workspace_for_rerun(preserve_user_inputs=True)`）：
   被重跑的步骤按当前参数重新生成配置输入，下游步骤标记为未开始。
 - **GUI 运行**：`workspace.open` 本身不做配置刷新。派生配置在两条时机刷新：通过 GUI 保存参数时（`workspace.step_configuration.update` / `workspace.configuration.update`），以及运行前 flow 中存在 stale 步骤时。因此同一 `home/params.toml` 下 GUI 会话与 CLI 会话收敛到同一套 `config/*.json`。
+
+## 步骤参数的记录位置
+
+Workspace Spec 只描述结构（设计、输入、PDK、flow），不再携带参数。新建
+workspace 从 PDK 模板与 schema 默认值起步，之后通过 `ecc param set --workspace`
+或 `apply_workspace_parameters` 设置参数。经 `update_workspace_from_spec`
+重建 workspace 时，已存储的参数、直接 config 补丁、按步骤取值和基线 journal
+会被带入新 workspace；带入的值会按新 PDK 家族重新校验。
+
+DreamPlace 参数按步骤记录。workspace 的 `config/dreamplace_ecc.json` 只是基线；
+macro_placement、placement、diff_opt、diff_sizing、legalization 以及
+timing_optimization 的内部合法化，各自由基线加 `[params.step_params.<step>]`
+中该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`。DreamPlace 参数
+总是带步骤设置（`<step>:<param>` 键、`param apply` 的 `--step`、`ecc.toml` 的
+`[params.step.<step>]`），只能设置在 schema 声明的步骤上，修改只从该步骤开始失效。
+步骤不在 workspace 的 flow 中报 `unknown_flow_step`，
+不带步骤的键报 `parameter_step_required`，参数未声明的步骤报
+`parameter_not_applicable`。workspace 级（非按步骤）参数从读取其任一目标配置的最早
+flow 步骤开始失效，而不只是从其声明的步骤开始：`route.bottom_layer` 还会写入 floorplan
+的 db 配置（从 pre_floorplan 开始），`route.top_layer` 供给 DreamPlace 的 gpugr 层
+（从 macro_placement/placement 开始）。
+
+每个步骤目录在 `req.json`/`rsp.json` 旁还有 `params.json`，由步骤 worker 在
+工具确定最终 config 之后写入。它列出适用于该步骤的每个参数的 `value`、
+`default` 与 `source`（`default`、`ecc.toml`、`cli`、`project.json` 或
+`workspace`），以及这些参数当前在工具 config 中的取值（按 config 文件与 JSON
+路径索引）；DreamPlace 参数报告该步骤自己的取值与 config。它只作为开发者与
+agent 追溯步骤输入的证据，不会被回读。每个显式
+参数创建时所属的层记录在 `home/params.toml` 的 `[params._param_sources]` 下。
 
 ## CLI 与 GUI 差异
 
@@ -63,24 +95,17 @@ manifest 基础层是"地板"而不是"覆盖"：`ecc.toml` 与 `--set` 的值�
 
 ## schema 版本化
 
-workspace 文件带有显式 schema 版本，来自更新版本的文件会响亮报错，
-而不是被静默解析：
+只支持当前 workspace 格式；旧文件不再迁移，请用当前 ECC 重建 workspace。
 
-| 文件 | 字段 | 当前版本 | 说明 |
-| --- | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 2 | 缺省 = 版本 0（前版本化时代）；版本 0 走 legacy `parameters.json` 迁移，版本 1 迁移为去重后的 v2 |
-| `home/flow.json` | `schema_version` | 1 | 缺省 = 版本 0；写入处盖章，reconcile 拒绝更高版本 |
-| `home/engineering-snapshot.json` | `schemaVersion` | 4 | 与 GUI 共享；v2/v3 可读取并重建为 v4，不支持的版本以 `snapshot_rebuild_required` fail-closed |
+| 文件 | 字段 | 必需版本 |
+| --- | --- | --- |
+| `home/params.toml` | `schema_version` | 4 |
+| `home/flow.json` | `schema_version` | 3 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 7 |
 
-注册表位于 `chipcompiler/data/schema_migrations.py`：
-`{文件类型: {目标版本: 迁移函数}}`，在 workspace 打开时按版本升序依次
-应用。`params.toml` 或 `flow.json` 声明的版本高于支持范围时抛出
-`unsupported_schema_version`，错误信息带文件路径与版本号——绝不静默解析。
-Engineering Snapshot 注册表支持 v2、v3、v4，目标版本为 4：旧的 v2/v3 快照可读取，
-并由 `migrate_engineering_snapshot` 显式重建为 v4 契约；v4 已是当前版本，不再迁移。
-损坏或结构非法的文件抛出 `EngineeringSnapshotError`
-（`invalid Engineering Snapshot: <路径>`），不支持或更新的 `schemaVersion`
-则以 `snapshot_rebuild_required` fail-closed。
+`chipcompiler/data/schema_versions.py` 在加载前检查声明版本。旧版本会提示重建
+workspace，更新版本则 fail-closed，不会继续解析。非法快照抛出
+`EngineeringSnapshotError`，不支持的版本报告 `snapshot_rebuild_required`。
 
 ## Engineering Snapshot 载荷边界
 

@@ -1,12 +1,9 @@
 import contextlib
 import os
 
-from typing_extensions import deprecated
-
 from chipcompiler.cli.core.inputs import (
     CheckInput,
     InitInput,
-    MigrateInput,
     RtlImportInput,
     RunInput,
     WorkspaceImportInput,
@@ -75,12 +72,13 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
     # manifest fallback applied, entry layer resolved, manifest relaxations
     # honored, every declared RTL source checked.
     cfg = ctx.config
+    entry_flow_config: dict | None = None
     entry_warnings: list[dict] = []
     if ctx.project_state == "manifest":
         resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
         if isinstance(resolved_cfg, CommandResult):
             return resolved_cfg
-        cfg, _entry_flow_config, entry_warnings = resolved_cfg
+        cfg, entry_flow_config, entry_warnings = resolved_cfg
     elif cfg is None:
         return CommandResult.err(
             [
@@ -92,7 +90,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             ]
         )
 
-    errors = effective_config.validate_effective(ctx, cfg, fresh=False, flow_config=None)
+    errors = effective_config.validate_effective(
+        ctx, cfg, fresh=False, flow_config=entry_flow_config
+    )
 
     if errors:
         return CommandResult.err(
@@ -117,7 +117,7 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
                     os.path.realpath(ctx.run_dir), os.path.realpath(ctx.project_dir)
                 )
 
-    records = [
+    records: list[dict[str, object]] = [
         {
             "project": cfg.design_name,
             "status": "checked",
@@ -159,6 +159,9 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             }
         )
 
+    from chipcompiler.cli.project.flow_selection import selection_warnings
+
+    records.extend(selection_warnings(cfg, entry_flow_config))
     records.extend(entry_warnings)
 
     return CommandResult.ok(records)
@@ -193,21 +196,26 @@ def _preflight_environment(
     """
     from chipcompiler.cli.inspection import env_probe
     from chipcompiler.cli.project import run_preflight
-    from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_insert_steps, resolve_lec_engine, resolve_skip_steps
 
     if preset is None:
         return None
     skip = resolve_skip_steps(flow_config, materials=_preflight_clock_materials(cfg))
     lec_engine = resolve_lec_engine(flow_config)
+    insert = resolve_insert_steps(flow_config)
     probes = env_probe.probe_environment(
-        env_probe.probe_components_for_preset(preset, skip=skip, lec_engine=lec_engine)
+        env_probe.probe_components_for_preset(
+            preset, skip=skip, lec_engine=lec_engine, insert=insert
+        )
     )
     from chipcompiler import rtl2gds as rtl2gds_api
 
     builder = rtl2gds_api.get_flow_builders().get(preset)
     steps = [] if builder is None else builder()
-    steps = rtl2gds_api.filter_flow_steps(
-        rtl2gds_api.substitute_lec_engine(steps, lec_engine), skip
+    steps = rtl2gds_api.insert_flow_steps(
+        rtl2gds_api.filter_flow_steps(rtl2gds_api.substitute_lec_engine(steps, lec_engine), skip),
+        insert,
+        lec_engine,
     )
     step_names = [getattr(step, "value", str(step)) for step, _tool, _state in steps]
     resource_issues = run_preflight.pdk_issues_for_config(cfg, step_names)
@@ -224,7 +232,12 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
     """
     from chipcompiler.cli.inspection import env_probe
     from chipcompiler.cli.project import run_preflight
-    from chipcompiler.rtl2gds import build_flow_range, resolve_lec_engine, resolve_skip_steps
+    from chipcompiler.rtl2gds import (
+        build_flow_range,
+        resolve_insert_steps,
+        resolve_lec_engine,
+        resolve_skip_steps,
+    )
 
     try:
         steps = build_flow_range(
@@ -232,6 +245,7 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
             flow_config["end_step"],
             skip=resolve_skip_steps(flow_config, materials=_preflight_clock_materials(cfg)),
             lec_engine=resolve_lec_engine(flow_config),
+            insert=resolve_insert_steps(flow_config),
         )
     except ValueError:
         # Range spellings are validated where they are declared (CLI ranges
@@ -288,18 +302,6 @@ def _canonically_inside(path: str, anchor: str) -> bool:
     real_base = os.path.realpath(anchor)
     real = os.path.realpath(path)
     return real == real_base or real.startswith(real_base.rstrip(os.sep) + os.sep)
-
-
-@deprecated(
-    "legacy runs/ -> manifest layout migration machinery; slated for removal "
-    "after the transition period",
-    category=None,
-)
-def migrate(command_input: MigrateInput, ctx: CommandContext) -> CommandResult:
-    """Upgrade a legacy runs/ project to the manifest layout."""
-    from chipcompiler.cli.project.migrate import migrate_project
-
-    return migrate_project(command_input, ctx)
 
 
 def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
@@ -502,7 +504,9 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
 def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -> CommandResult:
     """Register an existing workspace without opening or changing it."""
     if ctx.project_state == "legacy":
-        return CommandResult.err([error_record("legacy_workspace_migration_required")])
+        from chipcompiler.cli.core.records import legacy_workspace_error_record
+
+        return CommandResult.err([legacy_workspace_error_record()])
     if ctx.manifest_error:
         return CommandResult.err(
             [
@@ -593,78 +597,6 @@ def import_workspace(command_input: WorkspaceImportInput, ctx: CommandContext) -
                 "status": metadata.status,
                 "workspace": ctx.run_dir,
                 "run_cmd": disclosure_cmd("ecc run", ctx.project, command_input.workspace),
-            }
-        ]
-    )
-
-
-def derive_workspace(command_input, ctx: CommandContext) -> CommandResult:
-    import shutil
-    import uuid
-    from pathlib import Path
-
-    from chipcompiler.cli.project.run_prepare import invalid_workspace_name
-    from chipcompiler.engine.workspace_derive import derive_workspace as derive
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.project.api import project_manifest_mutator
-    from chipcompiler.project.manifest import load_manifest
-    from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
-
-    if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
-        return CommandResult.err(
-            [error_record("workspace_derive_requires_managed_source", reason=ctx.manifest_error)]
-        )
-    target_id = command_input.target_workspace
-    if invalid_workspace_name(target_id):
-        return CommandResult.err([error_record("invalid_workspace", workspace_id=target_id)])
-    project = Path(ctx.project_dir).resolve()
-    target = project / target_id
-    target_existed = target.exists()
-    command_id = command_input.command_id or str(uuid.uuid4())
-    try:
-        project_manifest = load_manifest(str(project))
-        derived = derive(
-            ctx.run_dir,
-            target,
-            reset_from_step=command_input.from_step or "",
-            through_step=command_input.to_step or "",
-            command_id=command_id,
-            blocking=not command_input.no_wait,
-            project_id=project_manifest.project_id,
-            source_workspace_id=ctx.run_id,
-            target_workspace_id=target_id,
-        )
-        with manifest_lock(project, blocking=not command_input.no_wait):
-            load_manifest(str(project))
-            mutation = {
-                "type": "register_workspace",
-                "workspace_id": target_id,
-                "workspace_path": str(target),
-                "source_workspace_id": ctx.run_id,
-                "branch_from": {
-                    "source_workspace_id": ctx.run_id,
-                    **({"source_step": command_input.from_step} if command_input.from_step else {}),
-                },
-            }
-            if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
-                raise OSError("Project Manifest update failed")
-    except BlockingIOError:
-        return CommandResult.err([error_record("workspace_busy")], exit_code=20)
-    except (WorkspaceLifecycleError, OSError, ValueError) as exc:
-        if not target_existed and target.is_dir() and target != Path(ctx.run_dir):
-            shutil.rmtree(target, ignore_errors=True)
-        code = exc.code if isinstance(exc, WorkspaceLifecycleError) else "workspace_derive_failed"
-        return CommandResult.err([error_record(code, reason=str(exc))])
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
-
-    snapshot = read_engineering_snapshot(derived)
-    return CommandResult.ok(
-        [
-            {
-                "workspace_id": target_id,
-                "status": "derived",
-                "workspace": str(target),
-                "workspace_revision": snapshot["workspaceRevision"],
             }
         ]
     )
@@ -796,7 +728,9 @@ def _run_project(
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
     if ctx.project_state == "legacy":
-        return error("legacy_workspace_migration_required")
+        from chipcompiler.cli.core.records import legacy_workspace_error_record
+
+        return CommandResult.err([legacy_workspace_error_record()])
     if ctx.manifest_error:
         return error(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)
 
@@ -871,6 +805,10 @@ def _run_project(
             _attach_no_clock,
             _attach_skip_steps,
         )
+        from chipcompiler.cli.project.manifest_flow import (
+            attach_insert_steps,
+            declared_insert_steps,
+        )
 
         skip_steps = (
             list(cfg.flow_skip_steps)
@@ -936,7 +874,6 @@ def _run_project(
                 skip_probe or None,
                 materials={"clock_port": cfg.design_clock_port},
             )
-            build_flow_range(command_input.from_step, command_input.to_step, skip=skip)
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))
         flow_config = {
@@ -951,9 +888,11 @@ def _run_project(
     cli_overrides: dict[str, object] = {}
     raw_sets = command_input.param_set
     if raw_sets:
-        from chipcompiler.cli.project.params import parse_cli_overrides
+        from chipcompiler.params import parse_cli_overrides
 
-        cli_overrides, set_errors = parse_cli_overrides(list(raw_sets))
+        cli_overrides, set_errors = parse_cli_overrides(
+            list(raw_sets), (cfg.pdk_name if cfg is not None else "") or None
+        )
         if set_errors:
             return CommandResult.err(
                 [
@@ -992,7 +931,13 @@ def _run_project(
 
     flow_json = os.path.join(run_dir, "home", "flow.json")
     fresh_target = not os.path.exists(flow_json) or command_input.overwrite
-    if fresh_target and command_input.from_step is not None and command_input.to_step is None:
+    # `workspace create` (execute_flow=False) never runs a step, so its --from
+    # is only ever one half of a creation range, also on an existing target.
+    if (
+        (fresh_target or not execute_flow)
+        and command_input.from_step is not None
+        and command_input.to_step is None
+    ):
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
@@ -1032,27 +977,6 @@ def _run_project(
             ]
         )
 
-    # A creation-time (fresh/overwrite only) configuration conflict: the
-    # synthesis_lec preset exists to run the LEC the effective policy skips.
-    # Existing ledgers are never re-filtered, so resume/rerun is unaffected.
-    if (
-        fresh_target
-        and effective_preset == "synthesis_lec"
-        and "lec" in resolve_skip_steps_for_flow_config(flow_config)
-    ):
-        return CommandResult.err(
-            [
-                {
-                    "kind": "error",
-                    "error": "config_error",
-                    "reason": (
-                        "the synthesis_lec preset conflicts with the effective skip_steps "
-                        "policy (lec is skipped); set skip_steps = [] to enable it"
-                    ),
-                }
-            ]
-        )
-
     protected = (project_dir, os.path.join(project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
     canonical = {os.path.realpath(p) for p in protected}
@@ -1084,9 +1008,15 @@ def _run_project(
             preflight = None
         if preflight is not None:
             return preflight
+        from chipcompiler.cli.project.flow_selection import selection_warnings
 
+        warning_records = [*warning_records, *selection_warnings(cfg, flow_config)]
+
+    # The selector path executes steps. `workspace create` on an existing
+    # target must not reach it: it reports the workspace instead (#393, #442).
     if (
-        not fresh_target
+        execute_flow
+        and not fresh_target
         and not ctx.workspace_path_explicit
         and (
             command_input.resume

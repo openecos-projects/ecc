@@ -5,7 +5,7 @@ import math
 import re
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from chipcompiler.data import SkippableStepEnum, StepEnum
 from chipcompiler.data.step import STEP_DIRECTORIES
@@ -30,7 +30,7 @@ def clock_tree_stage_for_step(workspace, step_name: str) -> str | None:
     """Return the native snapshot stage, or None when capture is disabled."""
     if not clock_tree_requested(workspace):
         return None
-    return CLOCK_TREE_STAGE_BY_STEP.get(step_name)
+    return step_name if step_name in CLOCK_TREE_STEPS else None
 
 
 def _clock_tree_dir(workspace, step) -> Path:
@@ -39,9 +39,7 @@ def _clock_tree_dir(workspace, step) -> Path:
     filler_dir = (step.data.steps or {}).get(StepEnum.FILLER.value)
     if filler_dir is not None:
         return Path(filler_dir).parent / "clock_tree"
-    return (
-        Path(workspace.directory) / STEP_DIRECTORIES[StepEnum.FILLER.value] / "data" / "clock_tree"
-    )
+    return StepDirectories.of(workspace).path(StepEnum.FILLER.value) / "data" / "clock_tree"
 
 
 def _sta_config_path(workspace) -> Path:

@@ -119,14 +119,14 @@ def test_structured_candidate_failure_preserves_partial_result() -> None:
     partial = {"candidateRootRef": ".agent/candidates/candidate-1"}
 
     def runner(_observer):
-        raise RuntimeOperationFailed("candidate Harden failed", result=partial)
+        raise RuntimeOperationFailed("candidate harden failed", result=partial)
 
     started = manager.start(
         workspace_id="workspace-1",
         kind="candidate_rerun",
         origin="agent",
         rerun=True,
-        step="place",
+        step="placement",
         idempotency_key="failed-candidate",
         runner=runner,
     )
@@ -152,7 +152,7 @@ def test_cancelled_candidate_operation_preserves_runner_result() -> None:
         kind="candidate_rerun",
         origin="agent",
         rerun=True,
-        step="place",
+        step="placement",
         idempotency_key="cancelled-candidate",
         runner=runner,
     )

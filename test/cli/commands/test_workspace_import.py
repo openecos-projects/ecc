@@ -3,6 +3,7 @@ from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.parameter import Parameters, save_parameter
+from test.flow_fixture import step_fields
 
 
 def _existing_workspace(
@@ -17,13 +18,15 @@ def _existing_workspace(
     (home / "flow.json").write_text(
         json.dumps(
             {
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Synthesis",
+                        "name": "synthesis",
                         "tool": "yosys",
                         "state": state,
+                        **step_fields("synthesis", "yosys"),
                     }
-                ]
+                ],
             }
         )
     )
@@ -37,7 +40,7 @@ def _existing_workspace(
                 "clock": "clk",
                 "frequency_max": 125,
                 "max_fanout": 16,
-                "_flow": {"start": "Synthesis", "end": "Synthesis"},
+                "_flow": {"start": "synthesis", "end": "synthesis"},
             },
         )
     )
@@ -77,10 +80,8 @@ def test_import_external_workspace_registers_metadata_without_changing_workspace
     (entry,) = manifest["workspaces"]
     assert entry["workspace_id"] == "recovered"
     assert entry["workspace_path"] == str(workspace.resolve())
-    assert entry["start_step"] == "Synth"
-    assert entry["end_step"] == "Synth"
-    assert entry["parameter_patch"]["frequency_max"] == {"from": 100.0, "to": 125}
-    assert entry["parameter_patch"]["max_fanout"] == {"from": None, "to": 16}
+    assert entry["start_step"] == "synthesis"
+    assert entry["end_step"] == "synthesis"
     after = {
         path.relative_to(workspace): path.read_bytes()
         for path in workspace.rglob("*")
@@ -298,14 +299,14 @@ def test_run_path_selector_registers_and_resumes_existing_external_workspace(
 
     def spy_run_resume(flow, *, through=None):
         seen["ran"] = True
-        return StepRunResult(ok=True, executed=("Synthesis",))
+        return StepRunResult(ok=True, executed=("synthesis",))
 
     class Flow:
         def __init__(self, workspace):
             self.workspace = workspace
 
         def create_step_workspaces(self, *, executable_steps=None):
-            seen["created"] = executable_steps == {"Synthesis"}
+            seen["created"] = executable_steps == {"synthesis"}
 
         def load(self):
             from chipcompiler.utility import json_read

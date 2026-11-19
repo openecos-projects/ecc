@@ -1,6 +1,11 @@
 import os
+from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.output import disclosure_cmd
+
+if TYPE_CHECKING:
+    from chipcompiler.cli.project.config import ProjectConfig
+    from chipcompiler.data.parameter_schema import ResolvedParam
 
 
 def build_project_config_items(
@@ -15,6 +20,7 @@ def build_project_config_items(
         _resolve_path,
         find_config_path,
         load_project_config,
+        resolve_max_parallel_steps,
         resolve_pdk_root,
         validate_project_config,
     )
@@ -204,9 +210,10 @@ def build_project_config_items(
     )
 
     # Parameter records with source information
-    from chipcompiler.cli.project.params import resolve_parameters
+    from chipcompiler.params import resolve_parameters
 
-    cli_provenance, prov_error = _load_cli_provenance(run_dir)
+    pdk = cfg.pdk_name or None
+    cli_provenance, prov_error = _load_cli_provenance(run_dir, pdk)
     if prov_error:
         return [{"kind": "error", "status": "invalid_config", "reason": prov_error}], 1
     toml_overrides = dict(cfg.params_overrides)
@@ -222,22 +229,41 @@ def build_project_config_items(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
+        pdk=pdk,
     )
-    from chipcompiler.cli.command_handlers.param import _maps_to_str
+    from chipcompiler.cli.command_handlers.param_step_values import maps_to_str, record_at_step
+    from chipcompiler.data.step_parameters import is_step_scoped, step_key
 
+    by_key = {rp.key: rp for rp in resolved_params}
+    flow_steps = _flow_step_names(cfg, flow_config)
+    shown_params: list[tuple[str, ResolvedParam]] = []
     for rp in resolved_params:
+        if rp.step is not None:
+            continue  # step values are shown through their parameter's step rows
+        if not is_step_scoped(rp.schema):
+            shown_params.append((rp.key, rp))
+            continue
+        # A step-scoped parameter has no project-wide value: show it at each
+        # declared step in the flow (and at any step a layer sets explicitly),
+        # keyed <step>:<param> so its inspect command resolves.
+        for step in rp.schema.steps:
+            shown = record_at_step(by_key, rp, step)
+            if not flow_steps or step in flow_steps or shown.is_explicit:
+                shown_params.append((step_key(step, rp.param), shown))
+
+    for key, rp in shown_params:
         if rp.schema.has_direct_target and not rp.is_explicit:
             continue
         items.append(
             {
                 "kind": "param",
                 "scope": "project",
-                "key": rp.param,
+                "key": key,
                 "value": rp.value,
                 "default": rp.default,
                 "source": rp.source,
-                "maps_to": _maps_to_str(rp.schema.maps_to),
-                "inspect_cmd": disclosure_cmd(f"ecc param show {rp.param}", project),
+                "maps_to": maps_to_str(rp.schema.maps_to),
+                "inspect_cmd": disclosure_cmd(f"ecc param show {key}", project),
             }
         )
 
@@ -255,7 +281,22 @@ def build_project_config_items(
     return items, 0
 
 
-def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
+def _flow_step_names(cfg: "ProjectConfig", flow_config: dict | None) -> set[str]:
+    """Names of the steps of the project's flow; empty when it cannot be built."""
+    from chipcompiler.rtl2gds import build_flow_range, get_flow_builders
+
+    if isinstance(flow_config, dict) and "start_step" in flow_config:
+        try:
+            steps = build_flow_range(flow_config["start_step"], flow_config["end_step"])
+        except (KeyError, ValueError):
+            return set()
+    else:
+        builder = get_flow_builders().get(cfg.flow_preset)
+        steps = builder() if builder is not None else []
+    return {str(step) for step, _tool, _state in steps}
+
+
+def _load_cli_provenance(run_dir: str, pdk: str | None) -> tuple[dict[str, object], str | None]:
     import json
 
     provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
@@ -268,10 +309,10 @@ def _load_cli_provenance(run_dir: str) -> tuple[dict[str, object], str | None]:
         return {}, f"invalid CLI parameter provenance: {exc}"
     if not isinstance(data, dict):
         return {}, "invalid CLI parameter provenance: expected object"
-    from chipcompiler.cli.project.params import parse_cli_overrides
+    from chipcompiler.params import parse_cli_overrides
 
     items = [f"{k}={v}" for k, v in data.items()]
-    validated, errors = parse_cli_overrides(items)
+    validated, errors = parse_cli_overrides(items, pdk)
     if errors:
         return {}, f"invalid CLI parameter provenance: {errors[0]}"
     return validated, None
@@ -284,19 +325,17 @@ def build_step_config_items(
     run_id: str | None = None,
     project_dir: str | None = None,
 ) -> tuple[list[dict], int]:
-    from chipcompiler.cli.core.output import normalize_step_name
     from chipcompiler.cli.inspection.discovery import (
         _safe_steps,
         discover_step_dirs,
         read_flow_json,
-        step_dir_step_name,
-        step_dir_tool,
     )
     from chipcompiler.data import step_config_paths
+    from chipcompiler.data.step import STEP_TOOLS
 
     base_dir = project_dir or os.path.dirname(os.path.dirname(run_dir))
     requested_step_token = step_token or ""
-    step_token = normalize_step_name(requested_step_token)
+    step_token = str(requested_step_token)
     flow_data = read_flow_json(run_dir)
     if flow_data is None:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
@@ -305,7 +344,7 @@ def build_step_config_items(
 
     step_dirs = discover_step_dirs(run_dir)
     steps = _safe_steps(flow_data)
-    flow_step_by_token = {normalize_step_name(s.get("name", "")): s for s in steps}
+    flow_step_by_token = {s.get("name", ""): s for s in steps}
 
     if step_token not in flow_step_by_token and step_token not in step_dirs:
         return [{"kind": "error", "status": "unknown_step", "step": requested_step_token}], 1
@@ -314,19 +353,30 @@ def build_step_config_items(
     data_step = step_info.get("name")
     tool = step_info.get("tool")
     step_dir = step_dirs.get(step_token)
-    if tool is None and step_dir is not None:
-        tool = step_dir_tool(step_dir)
     if data_step is None and step_dir is not None:
-        data_step = step_dir_step_name(step_dir)
+        # A step the ledger does not record runs its canonical tool.
+        data_step = step_token
+        tool = STEP_TOOLS.get(step_token)
 
     items = []
     display_run = run_id or "default"
 
-    config_paths = ()
+    config_paths: list[tuple[str, str]] = []
     if data_step is not None:
-        config_paths = step_config_paths(run_dir, data_step, tool, existing_only=True)
+        config_paths = [
+            ("workspace_config", str(path))
+            for path in step_config_paths(run_dir, data_step, tool, existing_only=True)
+        ]
+    # A step that resolves its own config (DreamPlace) keeps it in <step dir>/config.
+    step_config_dir = os.path.join(step_dir, "config") if step_dir is not None else ""
+    if step_config_dir and os.path.isdir(step_config_dir):
+        config_paths.extend(
+            ("step_config", os.path.join(step_config_dir, name))
+            for name in sorted(os.listdir(step_config_dir))
+            if name.endswith(".json")
+        )
 
-    for fpath in config_paths:
+    for source, fpath in config_paths:
         items.append(
             {
                 "kind": "config",
@@ -334,8 +384,8 @@ def build_step_config_items(
                 "step": requested_step_token,
                 "role": "config",
                 "workspace_id": display_run,
-                "path": os.path.relpath(str(fpath), base_dir),
-                "source": "workspace_config",
+                "path": os.path.relpath(fpath, base_dir),
+                "source": source,
                 "inspect_cmd": disclosure_cmd(
                     f"ecc config {requested_step_token}", project, run_id
                 ),
@@ -355,25 +405,17 @@ def build_step_config_items(
     return items, 0
 
 
-def _manifest_parameter_overrides(cfg) -> dict:
-    """The manifest layer's parameter values in dotted registry-key form.
+def _manifest_parameter_overrides(cfg: "ProjectConfig") -> dict[str, float]:
+    """The manifest layer's one registry value: the declared clock frequency.
 
-    Execution layers ``base_design.parameters`` / ``parameter_patch`` beneath
-    ecc.toml and CLI overrides; the resolved view must present them instead
-    of reporting registry defaults. Generated manifests hoist geometry values
-    to GUI-flat aliases (utilitization, margin, ...), so the lookup runs on
-    the canonical projection whose nested keys match the registry's maps_to.
+    The manifest carries design identity only, but its ``frequency_mhz``
+    fills the config when ecc.toml declares none; the resolved view must
+    present it as the ``project.json`` layer instead of a registry default.
     """
-    from chipcompiler.cli.project.params import PARAM_REGISTRY, manifest_value_for
-    from chipcompiler.data.parameter_keys import geometry_to_parameters
-
-    manifest_parameters = getattr(cfg, "manifest_parameters", None) or {}
-    if not isinstance(manifest_parameters, dict):
+    if (
+        "design.frequency_mhz" in getattr(cfg, "_explicit_keys", frozenset())
+        or "design.frequency_mhz" in cfg.params_overrides
+        or not cfg.design_frequency_mhz
+    ):
         return {}
-    canonical = geometry_to_parameters(manifest_parameters)
-    overrides = {}
-    for schema in PARAM_REGISTRY:
-        value, present = manifest_value_for(canonical, schema.maps_to)
-        if present:
-            overrides[schema.param] = value
-    return overrides
+    return {"design.frequency_mhz": cfg.design_frequency_mhz}

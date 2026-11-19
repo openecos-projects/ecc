@@ -115,12 +115,8 @@ def compute_features(inputs) -> FeatureBundle:
     )
 
     power_metric_ids = ("power_analysis_dynamic_uw", "power_analysis_leakage_uw")
-    if not any(metric_id in inputs.metrics for metric_id in power_metric_ids):
-        # Workspaces written before powerAnalysis emitted its own metric ids
-        # stored the same values under the synthesis-prefixed legacy ids.
-        power_metric_ids = ("synthesis_power_dynamic_uw", "synthesis_power_leakage_uw")
     power_records = [inputs.metrics.get(metric_id) for metric_id in power_metric_ids]
-    if all(record is not None and record.step == "powerAnalysis" for record in power_records):
+    if all(record is not None and record.step == "power_analysis" for record in power_records):
         dynamic, leak = (record.value for record in power_records)
         power_leak_frac = _ratio(leak, dynamic + leak)
     else:
@@ -358,7 +354,7 @@ def _cts_transformed(inputs) -> bool:
     counted empty insertion, e.g. no clock or direct conversion) keeps
     the identity mapping.
     """
-    if inputs.step_state("CTS") != "Success":
+    if inputs.step_state("cts") != "Success":
         return False
     buffers = inputs.value("cts_buffer_count")
     inverters = inputs.value("cts_inverter_count")

@@ -8,7 +8,6 @@ from chipcompiler.engine.signoff import SignoffPackageCollector, generate_text_r
 from chipcompiler.engine.signoff.report import (
     DesignReportData,
     StepMetricStore,
-    canonicalize_stage_name,
     collect_workspace_report,
     extract_design_report_data,
     format_duration,
@@ -17,6 +16,7 @@ from chipcompiler.engine.signoff.report import (
     parse_runtime_seconds,
 )
 from chipcompiler.engine.signoff.report_text import format_text_report
+from test.flow_fixture import step_fields
 
 
 class TestParsers:
@@ -33,23 +33,6 @@ class TestParsers:
         assert format_duration(18.0) == "18s"
         assert format_duration(3723.0) == "1h 2m 3s"
         assert format_duration(None) is None
-
-    def test_canonicalize_stage_name(self):
-        assert canonicalize_stage_name("Synthesis_yosys") == "Synth"
-        assert canonicalize_stage_name("postFloorplan_ecc") == "PostFloorplan"
-        assert canonicalize_stage_name("legalization_dreamplace") == "Legal"
-        assert canonicalize_stage_name("custom_step") == "custom_step"
-
-    def test_canonicalize_stage_name_covers_every_lec_engine_directory(self):
-        for directory in (
-            "lec_yosys_lec",
-            "lec_kepler_formal",
-            "lec_dual",
-            "postRouteLec_yosys_lec",
-            "postRouteLec_kepler_formal",
-            "postRouteLec_dual",
-        ):
-            assert canonicalize_stage_name(directory) == "LEC"
 
     def test_parse_power_rpt(self):
         text = (
@@ -87,26 +70,26 @@ class TestParsers:
 class TestStepMetricStore:
     def test_query_schema3_metrics_array(self):
         store = StepMetricStore()
-        store.add("route_ecc", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
+        store.add("routing", {"metrics": [{"id": "route_dr_total_via_count", "value": 42}]})
         value, stage, key = store.query(
-            "Routing", "Via Count", ["Route"], ["route_dr_total_via_count"]
+            "Routing", "Via Count", ["routing"], ["route_dr_total_via_count"]
         )
         assert value == 42.0
         assert key == "route_dr_total_via_count"
 
     def test_query_dotted_path_and_normalized_key(self):
         store = StepMetricStore()
-        store.add("postFloorplan_ecc", {"Design Layout": {"die_area": 1234.5}})
+        store.add("post_floorplan", {"Design Layout": {"die_area": 1234.5}})
         value, _, _ = store.query(
-            "Physical", "Die Area", ["PostFloorplan"], ["Design Layout.die_area"]
+            "Physical", "Die Area", ["post_floorplan"], ["Design Layout.die_area"]
         )
         assert value == 1234.5
-        store.add("route_ecc", {"RouteDrTotalViaCount": 7})
-        assert store.query("Routing", "Via", ["Route"], ["route_dr_total_via_count"])[0] == 7.0
+        store.add("routing", {"RouteDrTotalViaCount": 7})
+        assert store.query("Routing", "Via", ["routing"], ["route_dr_total_via_count"])[0] == 7.0
 
     def test_query_miss_returns_none(self):
         store = StepMetricStore()
-        assert store.query("Physical", "Die Area", ["PostFloorplan"], ["die_area"])[0] is None
+        assert store.query("Physical", "Die Area", ["post_floorplan"], ["die_area"])[0] is None
 
 
 class TestExtractDesignReportData:
@@ -116,16 +99,24 @@ class TestExtractDesignReportData:
             "pdk": "ics55",
             "parameters": {"Design": "gcd", "PDK": "ics55", "Frequency max [MHz]": 200.0},
             "flow": {
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Synthesis",
+                        "name": "synthesis",
                         "tool": "yosys",
                         "state": "Success",
                         "runtime": "0:00:18",
                         "peak memory (mb)": 512,
+                        **step_fields("synthesis", "yosys"),
                     },
-                    {"name": "route", "tool": "ecc", "state": "Success", "runtime": "0:01:00"},
-                ]
+                    {
+                        "name": "routing",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "0:01:00",
+                        **step_fields("routing", "ecc"),
+                    },
+                ],
             },
             "step_metrics": {},
             "step_summaries": {},
@@ -139,7 +130,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "Harden_ecc": {
+                    "harden": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_area", "value": 0.30},
@@ -158,7 +149,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_summaries={
-                    "sta_ecc": {"setup_wns": -0.25},
+                    "sta": {"setup_wns": -0.25},
                 }
             )
         )
@@ -202,7 +193,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "drc_ecc": {"metrics": [{"id": "drc_count", "value": 0}]},
+                    "drc": {"metrics": [{"id": "drc_count", "value": 0}]},
                 }
             )
         )
@@ -210,7 +201,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "drc_ecc": {"drc_count": 5},
+                    "drc": {"drc_count": 5},
                 }
             )
         )
@@ -219,7 +210,7 @@ class TestExtractDesignReportData:
 
     def test_execution_stages_built_from_flow(self):
         data = extract_design_report_data(self._inputs())
-        assert [s.stage for s in data.execution.stages] == ["Synth", "Route"]
+        assert [s.stage for s in data.execution.stages] == ["synthesis", "routing"]
         assert data.execution.stages[0].runtime_seconds == 18.0
         assert data.execution.stages[0].runtime_formatted == "18s"
         assert data.execution.stages[0].peak_memory_mb == 512.0
@@ -230,7 +221,7 @@ class TestExtractDesignReportData:
         data = extract_design_report_data(
             self._inputs(
                 step_metrics={
-                    "Harden_ecc": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
+                    "harden": {"metrics": [{"id": "Design Layout.core_usage", "value": 150.0}]},
                 }
             )
         )
@@ -246,23 +237,25 @@ class TestFormatTextReport:
                 "pdk": "ics55",
                 "parameters": {"Frequency max [MHz]": 200.0},
                 "flow": {
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "Synthesis",
+                            "name": "synthesis",
                             "tool": "yosys",
                             "state": "Success",
                             "runtime": "0:00:18",
+                            **step_fields("synthesis", "yosys"),
                         }
-                    ]
+                    ],
                 },
                 "step_metrics": {
-                    "Harden_ecc": {
+                    "harden": {
                         "metrics": [
                             {"id": "Design Layout.die_area", "value": 0.42},
                             {"id": "Design Layout.core_usage", "value": 0.62},
                         ]
                     },
-                    "drc_ecc": {"drc_count": 0},
+                    "drc": {"drc_count": 0},
                 },
                 "sta_corner_reports": {"MAX_125/RCworst": {"setup_wns": 0.01, "hold_wns": 0.02}},
                 "version_info": {"gui": "1.2.3"},
@@ -311,21 +304,37 @@ def _make_workspace(tmp_path, *, full=True):
     _write_json(
         root / "home" / "flow.json",
         {
+            "schema_version": 3,
             "steps": [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
                     "runtime": "0:00:18",
                     "peak memory (mb)": 256,
+                    **step_fields("synthesis", "yosys"),
                 },
-            ]
+                {
+                    "name": "harden",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("harden", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+            ],
         },
     )
     if full:
-        _write_json(root / "home" / "parameters.json", {"Design": "gcd", "PDK": "ics55"})
+        from chipcompiler.data.workspace_config import save_workspace_config
+
+        assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
         _write_json(
-            root / "Harden_ecc" / "analysis" / "qor_metrics.json",
+            root / "harden_ecc" / "analysis" / "qor_metrics.json",
             {
                 "metrics": [
                     {"id": "Design Layout.die_area", "value": 0.42},
@@ -371,15 +380,26 @@ class TestCollectWorkspaceReport:
         _write_json(
             Path(workspace.directory) / "home" / "flow.json",
             {
+                "schema_version": 3,
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "powerAnalysis", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        **step_fields("synthesis", "yosys"),
+                    },
+                    {
+                        "name": "power_analysis",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("power_analysis", "ecc"),
+                    },
+                ],
             },
         )
         report_path = (
             Path(workspace.directory)
-            / "powerAnalysis_ecc"
+            / "power_analysis_ecc"
             / "data"
             / "pw"
             / "power_reporter"
@@ -430,3 +450,45 @@ class TestCollectWorkspaceReport:
         assert workspace is not None
         assert SignoffPackageCollector(workspace).text_report() == "REPORT"
         assert seen["workspace"] is workspace
+
+
+def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
+    steps = [
+        {
+            "name": name,
+            "tool": tool,
+            "state": "Success",
+            "category": "CHECKER" if name == "drc" else "PNR",
+            "directory": directory,
+        }
+        for (name, tool), directory in directories.items()
+    ]
+    _write_json(root / "home" / "flow.json", {"schema_version": 3, "steps": steps})
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
+    harden = directories[("harden", "ecc")]
+    drc = directories[("drc", "ecc")]
+    _write_json(
+        root / harden / "analysis" / "qor_metrics.json",
+        {"metrics": [{"id": "Design Layout.die_area", "value": 0.42}]},
+    )
+    _write_json(root / drc / "analysis" / "qor_metrics.json", {"drc_count": 2})
+    return SimpleNamespace(
+        directory=str(root), name="gcd", flow=SimpleNamespace(data={}), config={}
+    )
+
+
+def test_indexed_step_directories_report_like_the_legacy_layout(tmp_path):
+    names = {("synthesis", "yosys"): "synthesis_yosys", ("drc", "ecc"): "drc_ecc"}
+    names[("harden", "ecc")] = "harden_ecc"
+    indexed = {key: f"{index:02d}_{name}" for index, (key, name) in enumerate(names.items(), 1)}
+
+    legacy_data = collect_workspace_report(_make_flow_workspace(tmp_path / "legacy", names))
+    indexed_data = collect_workspace_report(_make_flow_workspace(tmp_path / "indexed", indexed))
+
+    assert (indexed_data.physical, indexed_data.verification) == (
+        legacy_data.physical,
+        legacy_data.verification,
+    )
+    assert indexed_data.physical.die_area_um2 == 420000.0

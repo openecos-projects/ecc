@@ -6,61 +6,79 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.line_records import json_literal
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
-from chipcompiler.cli.project.params import list_schemas, lookup_schema, parse_value, validate_value
-from chipcompiler.cli.project.workspace_params import (
+from chipcompiler.data.step_parameters import (
+    ParameterStepError,
+    is_step_scoped,
+    parse_step_key,
+    step_key,
+    step_values,
+)
+from chipcompiler.params import (
+    list_schemas,
+    parse_value,
     set_workspace_param,
     unset_workspace_param,
+    validate_value,
     workspace_param_diff,
     workspace_param_step,
     workspace_param_value,
 )
-from chipcompiler.rtl2gds import normalize_flow_step
 
 
 @command_handler
 def param_set(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx)
     try:
         value = parse_value(args.value, schema)
     except ValueError as exc:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=str(exc))])
-    errors = validate_value(value, schema)
+    pdk = str(_load_workspace(ctx).parameters.data.get("pdk") or "") or None
+    errors = validate_value(value, schema, pdk)
     if errors:
         return CommandResult.err([error_record("invalid_value", param=args.key, reason=errors[0])])
     return _mutate(
-        ctx, schema, lambda workspace: set_workspace_param(workspace, schema, value), value, "set"
+        ctx,
+        schema,
+        lambda workspace: set_workspace_param(workspace, schema, value, step),
+        value,
+        "set",
+        step,
     )
 
 
 @command_handler
 def param_unset(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx)
 
     def unset(workspace):
-        return unset_workspace_param(workspace, schema)
+        return unset_workspace_param(workspace, schema, step)
 
-    return _mutate(ctx, schema, unset, None, "unset")
+    return _mutate(ctx, schema, unset, None, "unset", step)
 
 
 @command_handler
 def param_show(args, ctx: CommandContext) -> CommandResult:
-    schema = _schema_and_workspace_error(args.key, ctx)
+    schema, step = _schema_and_workspace_error(args.key, ctx)
     workspace = _load_workspace(ctx)
     try:
-        value = workspace_param_value(workspace, schema)
+        value = workspace_param_value(workspace, schema, step=step)
     except ValueError as exc:
         return CommandResult.err(
             [error_record("workspace_param_refresh_required", param=args.key, reason=str(exc))]
         )
-    return CommandResult.ok([_record(ctx, schema.param, value, "workspace")])
+    return CommandResult.ok([_record(ctx, _key(schema, step), value, "workspace")])
 
 
 @command_handler
 def param_list(args, ctx: CommandContext) -> CommandResult:
     workspace = _load_workspace(ctx)
-    overrides = {record["key"] for record in workspace_param_diff(workspace)}
-    selected_step = normalize_flow_step(args.step or "").casefold()
-    canonical_step = normalize_flow_step(args.step or "")
+    selected_step = str(args.step or "")
+    canonical_step = str(args.step or "")
+    overrides = {
+        record["key"]
+        for record in workspace_param_diff(workspace)
+        if record.get("step") in (None, canonical_step or None)
+    }
     # ``load_workspace`` keeps the flow ledger lazy; use the accessor so
     # persisted steps are hydrated before validating the requested step.
     steps_accessor = getattr(workspace.flow, "steps", None)
@@ -73,36 +91,40 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
         else []
     )
     flow_step_names = {
-        normalize_flow_step(step.get("name", "")).casefold()
+        str(step.get("name", ""))
         for step in flow_steps
         if isinstance(step, dict) and step.get("name")
     }
     if selected_step and selected_step not in flow_step_names:
         return CommandResult.err([error_record("unknown_step", step=args.step)], exit_code=1)
-    first_step = normalize_flow_step(flow_steps[0]["name"]).casefold() if flow_steps else ""
+    first_step = str(flow_steps[0]["name"]) if flow_steps else ""
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
     records = []
     for schema in list_schemas():
-        if schema.pdk_target is not None or (not args.all and schema.param not in overrides):
+        if schema.pdk_target is not None:
             continue
-        schema_steps = {
-            normalize_flow_step(schema.group).casefold(),
-            normalize_flow_step(schema.applies).casefold(),
-        }
-        global_at_first_step = schema.applies == "all" and selected_step == first_step
-        if selected_step and selected_step not in schema_steps and not global_at_first_step:
+        if not selected_step and is_step_scoped(schema):
+            # Without a step, a step-scoped parameter lists its step values.
+            for step in _listed_steps(workspace, schema, show_all=bool(args.all)):
+                records.append(_list_row(ctx, workspace, schema, step, pdk, qualified=True))
+            continue
+        if not args.all and schema.param not in overrides:
+            continue
+        if selected_step and not schema.listed_at(selected_step, first_step):
             continue
         try:
-            value = workspace_param_value(workspace, schema)
+            records.append(
+                _list_row(
+                    ctx,
+                    workspace,
+                    schema,
+                    canonical_step or None,
+                    pdk,
+                    status="workspace" if schema.param in overrides else "base",
+                )
+            )
         except ValueError:
             continue
-        status = "workspace" if schema.param in overrides else "base"
-        if ctx.output_mode == OutputMode.PLAIN:
-            record = _line_record(ctx, schema, value, status)
-            if canonical_step:
-                record["step_id"] = canonical_step
-            records.append(record)
-        else:
-            records.append(_record(ctx, schema.param, value, status))
     if ctx.output_mode == OutputMode.PLAIN and not records:
         return CommandResult.ok(
             [
@@ -124,7 +146,9 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
     workspace = _load_workspace(ctx)
     records = [
         {
-            "param": record["key"],
+            "param": record["key"]
+            if record.get("step") is None
+            else step_key(record["step"], record["key"]),
             "value": record.get("value"),
             "baseline": record["baseline"],
             "source": "workspace",
@@ -194,7 +218,12 @@ def _restore_transaction(snapshot: dict) -> list[str]:
 
 
 def _mutate(
-    ctx: CommandContext, schema, mutation, requested_value: object, status: str
+    ctx: CommandContext,
+    schema,
+    mutation,
+    requested_value: object,
+    status: str,
+    scope: str | None = None,
 ) -> CommandResult:
     from chipcompiler.data import refresh_workspace_config, save_parameter
     from chipcompiler.engine import EngineFlow, rerun
@@ -207,9 +236,15 @@ def _mutate(
         with workspace_lock(Path(ctx.run_dir)):
             workspace = _load_workspace(ctx)
             if (Path(ctx.run_dir) / "home" / "engineering-snapshot.json").is_file():
-                return _mutate_via_engine(ctx, workspace, schema, mutation, requested_value, status)
+                return _mutate_via_engine(
+                    ctx, workspace, schema, mutation, requested_value, status, scope
+                )
             try:
                 result = mutation(workspace)
+            except ParameterStepError as exc:
+                return CommandResult.err(
+                    [error_record(exc.code, param=_key(schema, scope), reason=str(exc))]
+                )
             except ValueError as exc:
                 return CommandResult.err(
                     [
@@ -219,7 +254,7 @@ def _mutate(
                     ]
                 )
             if result is None:
-                return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+                return CommandResult.ok([_record(ctx, _key(schema, scope), None, "no_override")])
             value, step = result
             try:
                 snapshot = _snapshot_transaction(workspace)
@@ -272,24 +307,29 @@ def _mutate(
             [error_record("workspace_param_lock_failed", param=schema.param, reason=str(exc))]
         )
     effective_value = requested_value if status == "set" else value
-    record = _record(ctx, schema.param, effective_value, status)
+    record = _record(ctx, _key(schema, scope), effective_value, status)
     if step is not None:
         record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
 
-def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object, status: str):
-    from chipcompiler.data.workspace_parameters import workspace_param_diff, workspace_param_step
-    from chipcompiler.engine import update_workspace_step_configuration
+def _mutate_via_engine(
+    ctx, workspace, schema, mutation, requested_value: object, status: str, scope: str | None
+):
     from chipcompiler.engine.snapshot import read_engineering_snapshot
     from chipcompiler.engine.workspace_configuration import apply_workspace_parameters
     from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.params import workspace_param_diff, workspace_param_step
 
+    key = _key(schema, scope)
     overrides = workspace_param_diff(workspace)
-    existing = next((item for item in overrides if item["key"] == schema.param), None)
+    existing = next(
+        (item for item in overrides if item["key"] == schema.param and item.get("step") == scope),
+        None,
+    )
     if status == "unset" and existing is None:
-        return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+        return CommandResult.ok([_record(ctx, key, None, "no_override")])
     if status == "set":
         if requested_value is None:
             mutation(workspace)
@@ -298,45 +338,38 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
             value = requested_value
     else:
         if existing is None:
-            return CommandResult.ok([_record(ctx, schema.param, None, "no_override")])
+            return CommandResult.ok([_record(ctx, key, None, "no_override")])
         value = existing["baseline"]
-    step = workspace_param_step(schema)
+    step = workspace_param_step(schema, workspace, scope)
     try:
         revision = read_engineering_snapshot(workspace)["workspaceRevision"]
-        if step is None:
-            updated = apply_workspace_parameters(
-                ctx.run_dir,
-                revision,
-                {schema.param: value} if status == "set" else {},
-                (schema.param,) if status == "unset" else (),
-                command_id="",
-            )
-        else:
-            updated = update_workspace_step_configuration(
-                ctx.run_dir,
-                revision,
-                step,
-                {schema.param: value},
-                command_id="",
-            )
+        # The engine validates the (step-qualified) key and invalidates from
+        # the earliest step the change feeds.
+        updated = apply_workspace_parameters(
+            ctx.run_dir,
+            revision,
+            {key: value} if status == "set" else {},
+            (key,) if status == "unset" else (),
+            command_id="",
+        )
     except WorkspaceLifecycleError as exc:
         return CommandResult.err(
-            [error_record(exc.code, param=schema.param, reason=str(exc), **exc.details)]
+            [error_record(exc.code, param=key, reason=str(exc), **exc.details)]
         )
     except Exception as exc:
         return CommandResult.err(
-            [error_record("workspace_param_refresh_failed", param=schema.param, reason=str(exc))]
+            [error_record("workspace_param_refresh_failed", param=key, reason=str(exc))]
         )
 
     invalidated = []
     if step is not None:
         updated_steps = updated.flow.steps()
-        target = normalize_flow_step(step).casefold()
+        target = str(step)
         start = next(
             (
                 index
                 for index, item in enumerate(updated_steps)
-                if normalize_flow_step(item.get("name", "")).casefold() == target
+                if str(item.get("name", "")) == target
             ),
             len(updated_steps),
         )
@@ -345,17 +378,73 @@ def _mutate_via_engine(ctx, workspace, schema, mutation, requested_value: object
             for item in updated_steps[start:]
             if item.get("name") and item.get("state") == "Unstart"
         ]
-    record = _record(ctx, schema.param, value, status)
+    record = _record(ctx, key, value, status)
     if step is not None:
         record["from_step"] = step
     record["invalidated_steps"] = invalidated
     return CommandResult.ok([record])
 
 
+def _listed_steps(workspace, schema, *, show_all: bool) -> list[str]:
+    """Steps whose value of step-scoped *schema* an unscoped ``param list`` shows.
+
+    Edited (journaled) step values always; with ``--all`` also every stored one.
+    """
+    steps = [
+        record["step"]
+        for record in workspace_param_diff(workspace)
+        if record["key"] == schema.param and record.get("step") is not None
+    ]
+    if show_all:
+        steps.extend(
+            step
+            for step, values in step_values(workspace.parameters.data).items()
+            if schema.param in values
+        )
+    return list(dict.fromkeys(steps))
+
+
+def _list_row(
+    ctx: CommandContext,
+    workspace,
+    schema,
+    step: str | None,
+    pdk: str | None,
+    *,
+    status: str | None = None,
+    qualified: bool = False,
+) -> dict:
+    """One ``param list`` row of *schema* at *step*; *qualified* keys it ``<step>:<param>``."""
+    value = workspace_param_value(workspace, schema, step=step)
+    if status is None:
+        edited = any(
+            record["key"] == schema.param and record.get("step") == step
+            for record in workspace_param_diff(workspace)
+        )
+        status = "workspace" if edited else "base"
+    if ctx.output_mode != OutputMode.PLAIN:
+        return _record(ctx, _key(schema, step if qualified else None), value, status)
+    record = _line_record(ctx, schema, value, status, pdk)
+    if step is not None:
+        record["step_id"] = step
+    return record
+
+
+def _key(schema, step: str | None) -> str:
+    return schema.param if step is None else step_key(step, schema.param)
+
+
 def _schema_and_workspace_error(key: str, ctx: CommandContext):
-    schema = lookup_schema(key)
+    """The schema and step of a (possibly ``<step>:``-qualified) parameter *key*.
+
+    A step-scoped (DreamPlace) parameter must name its step, to be read or changed.
+    """
+    step, schema, key_error = parse_step_key(key)
     if schema is None:
         raise CommandError([error_record("unknown_parameter", param=key)])
+    if key_error is not None:
+        code = "parameter_step_required" if step is None else "parameter_not_applicable"
+        raise CommandError([error_record(code, param=key, reason=key_error)])
     if not schema.output_only:
         try:
             workspace_param_step(schema)
@@ -364,7 +453,7 @@ def _schema_and_workspace_error(key: str, ctx: CommandContext):
                 [error_record("workspace_param_refresh_required", param=key, reason=str(exc))]
             ) from exc
     _workspace_scope_error(ctx)
-    return schema
+    return schema, step
 
 
 def _load_workspace(ctx: CommandContext):
@@ -408,14 +497,16 @@ def _record(ctx: CommandContext, key: str, value: object, status: str) -> dict:
     }
 
 
-def _line_record(ctx: CommandContext, schema, value: object, status: str) -> dict:
+def _line_record(
+    ctx: CommandContext, schema, value: object, status: str, pdk: str | None = None
+) -> dict:
     """Return the stable machine record used by GUI workspace parameter reads."""
     record: dict[str, object] = {
         "record": "parameter",
         "id": schema.param,
         "type": schema.type,
         "value_literal": json_literal(value),
-        "default_literal": json_literal(schema.default),
+        "default_literal": json_literal(schema.default_for(pdk)),
         "applies_to": schema.applies,
         "status": status,
         "source": status,
@@ -423,8 +514,9 @@ def _line_record(ctx: CommandContext, schema, value: object, status: str) -> dic
     }
     if schema.range is not None:
         record["range_literal"] = json_literal(list(schema.range))
-    if schema.choices is not None:
-        record["choices_literal"] = json_literal(list(schema.choices))
+    choices = schema.choices_for(pdk)
+    if choices is not None:
+        record["choices_literal"] = json_literal(list(choices))
     if schema.unit is not None:
         record["unit"] = schema.unit
     if schema.description:

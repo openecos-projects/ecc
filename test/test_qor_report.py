@@ -9,6 +9,7 @@ from chipcompiler.engine.signoff.report_checklist import (
     build_checklist_report,
     generate_checklist_report,
 )
+from test.flow_fixture import step_fields
 
 
 def _write(path, payload):
@@ -49,21 +50,74 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
     _write(
         root / "home" / "flow.json",
         {
+            "schema_version": 3,
             "steps": [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                {"name": "Floorplan", "tool": "ecc", "state": "Success"},
-                {"name": "place", "tool": "dreamplace", "state": "Success"},
-                {"name": "CTS", "tool": "ecc", "state": "Success"},
-                {"name": "route", "tool": "ecc", "state": "Success"},
-                {"name": "drc", "tool": "ecc", "state": "Success"},
-                {"name": "lvs", "tool": "ecc", "state": "Success"},
-                {"name": "RCX", "tool": "ecc", "state": "Success"},
-                {"name": "sta", "tool": "ecc", "state": "Success"},
-                {"name": "Harden", "tool": "ecc", "state": "Success"},
-            ]
+                {
+                    "name": "synthesis",
+                    "tool": "yosys",
+                    "state": "Success",
+                    **step_fields("synthesis", "yosys"),
+                },
+                {
+                    "name": "floorplan",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("floorplan", "ecc"),
+                },
+                {
+                    "name": "placement",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    **step_fields("placement", "dreamplace"),
+                },
+                {
+                    "name": "cts",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("cts", "ecc"),
+                },
+                {
+                    "name": "routing",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("routing", "ecc"),
+                },
+                {
+                    "name": "drc",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("drc", "ecc"),
+                },
+                {
+                    "name": "lvs",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("lvs", "ecc"),
+                },
+                {
+                    "name": "rcx",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("rcx", "ecc"),
+                },
+                {
+                    "name": "sta",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("sta", "ecc"),
+                },
+                {
+                    "name": "harden",
+                    "tool": "ecc",
+                    "state": "Success",
+                    **step_fields("harden", "ecc"),
+                },
+            ],
         },
     )
-    _write(root / "home" / "parameters.json", {"Design": "gcd", "frequency_max": 50.0})
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
     if with_metrics:
         _write(
             root / "drc_ecc" / "analysis" / "qor_metrics.json",
@@ -74,7 +128,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
             _metrics_payload([_metric("lvs_count", 0, "gate")]),
         )
         _write(
-            root / "RCX_ecc" / "analysis" / "qor_metrics.json",
+            root / "rcx_ecc" / "analysis" / "qor_metrics.json",
             _metrics_payload(
                 [
                     _metric("rcx_spef_file_count", 1, "gate"),
@@ -99,7 +153,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
             ),
         )
         _write(
-            root / "Harden_ecc" / "analysis" / "qor_metrics.json",
+            root / "harden_ecc" / "analysis" / "qor_metrics.json",
             _metrics_payload([_metric("harden_artifact_missing_count", 0, "final")]),
         )
     if with_checklist:
@@ -115,9 +169,10 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                 "checklist": [
                     {
                         "id": "flow.route",
-                        "step": "route",
+                        "step": "routing",
                         "category": "flow",
                         "title": "Routing complete",
+                        "owner": "checklist",
                         "policy": "block",
                         "state": "pass",
                         "blocked": False,
@@ -130,6 +185,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                         "step": "drc",
                         "category": "quality",
                         "title": "DRC clean",
+                        "owner": "checklist",
                         "policy": "block",
                         "state": "failed",
                         "blocked": True,
@@ -141,9 +197,10 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                     },
                     {
                         "id": "harden.gds",
-                        "step": "Harden",
+                        "step": "harden",
                         "category": "artifact",
                         "title": "Harden GDS",
+                        "owner": "checklist",
                         "policy": "warn",
                         "state": "warning",
                         "blocked": False,
@@ -156,6 +213,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                         "step": "sta",
                         "category": "quality",
                         "title": "Corner coverage",
+                        "owner": "checklist",
                         "policy": "block",
                         "state": "pass",
                         "blocked": False,

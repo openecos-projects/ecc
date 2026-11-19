@@ -26,7 +26,7 @@ parameters = get_design_parameters("ics55", "gcd")
 # │   ├── flow.json          # Flow state file
 # │   ├── params.toml        # Workspace configuration (parameters, flow target)
 # │   └── checklist.json     # Checklist state
-# ├── CTS_ecc                # CTS step workspace
+# ├── cts_ecc                # CTS step workspace
 # │   ├── analysis    # Analysis files extract from metrics
 # │   ├── data        # Data files that generated during the step
 # │   ├── feature     # Metrics feature files
@@ -43,25 +43,25 @@ parameters = get_design_parameters("ics55", "gcd")
 # │   └── script
 # ├── log
 # │   └── gcd.xxxx-01-22_16-05-25 # Global log file
-# ├── macroPlacement_dreamplace
+# ├── macro_placement_dreamplace
 # │   ...
 # │   └── script
 # ├── origin
 # │   ├── gcd.sdc            # Constraint file
 # │   └── gcd.v              # RTL source file
-# ├── place_dreamplace
+# ├── placement_dreamplace
 # │   ...
 # │   └── script
-# ├── postFloorplan_ecc
+# ├── post_floorplan_ecc
 # │   ...
 # │   └── script
-# ├── preFloorplan_ecc
+# ├── pre_floorplan_ecc
 # │   ...
 # │   └── script
-# ├── route_ecc
+# ├── routing_ecc
 # │   ...
 # │   └── script
-# └── Synthesis_yosys
+# └── synthesis_yosys
 #     ...
 #     └── script
 workspace = create_workspace(

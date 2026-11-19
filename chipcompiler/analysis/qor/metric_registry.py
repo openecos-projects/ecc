@@ -62,18 +62,18 @@ METRIC_REGISTRY = {
 
 # Steps whose Success state and analysis payload the engine consumes.
 SCORED_STEP_VALUES = (
-    "Synthesis",
-    "postFloorplan",
-    "place",
-    "CTS",
+    "synthesis",
+    "post_floorplan",
+    "placement",
+    "cts",
     "legalization",
-    "route",
+    "routing",
     "drc",
     "lvs",
-    "RCX",
+    "rcx",
     "sta",
-    "powerAnalysis",
-    "Harden",
+    "power_analysis",
+    "harden",
 )
 
 

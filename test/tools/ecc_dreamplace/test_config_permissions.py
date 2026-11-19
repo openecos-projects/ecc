@@ -61,7 +61,6 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
         input_def=Path("input.def"),
         input_verilog=Path("input.v"),
     )
-    config_dir = tmp_path / "workspace" / "config"
 
     real_copy2 = shutil.copy2
 
@@ -81,7 +80,7 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    dreamplace_config = config_dir / "dreamplace_ecc.json"
+    dreamplace_config = dreamplace_builder.step_config_path(workspace, step)
     mode = dreamplace_config.stat().st_mode
     data = json_read(dreamplace_config)
 
@@ -125,13 +124,13 @@ def test_dreamplace_config_uses_empty_strings_for_missing_inputs(
     assert dreamplace_config["verilog_input"] == ""
 
 
-def test_workspace_config_generation_applies_flat_dreamplace_parameter_overrides(
+def test_workspace_config_generation_applies_direct_dreamplace_overrides(
     tmp_path,
     make_ics55_parameters,
 ):
     overrides = {
         "target_density": 0.65,
-        "target_overflow": 0.05,
+        "stop_overflow": 0.05,
         "cell_padding_x": 800,
         "routability_opt_flag": 1,
     }
@@ -139,39 +138,16 @@ def test_workspace_config_generation_applies_flat_dreamplace_parameter_overrides
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
-        parameters=make_ics55_parameters(overrides),
+        parameters=make_ics55_parameters({"config_overrides": {"dreamplace": overrides}}),
     )
 
     init_workspace_config(workspace)
 
     dreamplace_config = json_read(workspace.config["dreamplace"])
     assert dreamplace_config["target_density"] == overrides["target_density"]
-    assert dreamplace_config["stop_overflow"] == overrides["target_overflow"]
+    assert dreamplace_config["stop_overflow"] == overrides["stop_overflow"]
     assert dreamplace_config["cell_padding_x"] == overrides["cell_padding_x"]
     assert dreamplace_config["routability_opt_flag"] == overrides["routability_opt_flag"]
-
-
-def test_workspace_config_generation_nested_dreamplace_overrides_win_over_flat_keys(
-    tmp_path,
-    make_ics55_parameters,
-):
-    overrides = {
-        "routability_opt_flag": 1,
-        "dreamplace": {"routability_opt_flag": 0},
-    }
-    workspace = Workspace(
-        directory=tmp_path / "workspace",
-        design=OriginDesign(name="gcd"),
-        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
-        parameters=make_ics55_parameters(overrides),
-    )
-
-    init_workspace_config(workspace)
-
-    dreamplace_config = json_read(workspace.config["dreamplace"])
-    assert (
-        dreamplace_config["routability_opt_flag"] == overrides["dreamplace"]["routability_opt_flag"]
-    )
 
 
 def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
@@ -197,7 +173,7 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
 
     init_workspace_config(workspace)
     updated_overrides = {
-        "target_density": 0.7,
+        "config_overrides": {"dreamplace": {"target_density": 0.7}},
         "dreamplace": {
             "def_input": "stale.def",
             "verilog_input": "stale.v",
@@ -217,8 +193,8 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
 
     dreamplace_builder.build_step_config(workspace, step)
 
-    dreamplace_config = json_read(workspace.config["dreamplace"])
-    assert dreamplace_config["target_density"] == updated_overrides["target_density"]
+    dreamplace_config = json_read(dreamplace_builder.step_config_path(workspace, step))
+    assert dreamplace_config["target_density"] == 0.7
     assert dreamplace_config["def_input"] == "input.def"
     assert dreamplace_config["verilog_input"] == "input.v"
     assert dreamplace_config["result_dir"] == str(step.data.workdir_for(step.name))

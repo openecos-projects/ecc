@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
     DEFAULT_SKIP_STEPS,
+    INSERTABLE_FLOW_STEPS,
     LEC_STEP_TOOLS,
     NO_CLOCK_SKIP_STEPS,
     LECEngineEnum,
@@ -13,10 +14,44 @@ from chipcompiler.data import (
     StepBaseEnum,
     StepEnum,
     ToolName,
+    inserted_step_kind,
+)
+from chipcompiler.data.types import INSERTED_STEP_MARK
+
+#: One built chain entry: (step, tool, state).
+BuiltStep = tuple[StepBaseEnum | str, str, StateEnum | str]
+
+#: The canonical rtl2gds chain as (step, tool); ``None`` takes the LEC engine.
+#: Skip policies validate against this data, never a (patched) builder call.
+_RTL2GDS_CHAIN: Final[tuple[tuple[StepBaseEnum, str | None], ...]] = (
+    (StepEnum.SYNTHESIS, ToolName.YOSYS.value),
+    (StepEnum.PRE_FLOORPLAN, ToolName.ECC.value),
+    (StepEnum.MACRO_PLACEMENT, ToolName.DREAMPLACE.value),
+    (StepEnum.POST_FLOORPLAN, ToolName.ECC.value),
+    (StepEnum.PREPLACE, ToolName.SIZER.value),
+    (StepEnum.PLACEMENT, ToolName.DREAMPLACE.value),
+    (SkippableStepEnum.DIFF_OPT, ToolName.DREAMPLACE.value),
+    (StepEnum.DIFF_SIZING, ToolName.DREAMPLACE.value),
+    (StepEnum.CTS, ToolName.ECC.value),
+    (StepEnum.LEGALIZATION, ToolName.DREAMPLACE.value),
+    (SkippableStepEnum.TIMING_OPT, ToolName.SIZER.value),
+    (StepEnum.ROUTING, ToolName.ECC.value),
+    (StepEnum.FILLER, ToolName.ECC.value),
+    (StepEnum.LVS, ToolName.ECC.value),
+    (StepEnum.DRC, ToolName.ECC.value),
+    (StepEnum.ANTENNA_CHECK, ToolName.ECC.value),
+    (SkippableStepEnum.POST_ROUTE_LEC, None),
+    (StepEnum.RCX, ToolName.ECC.value),
+    (StepEnum.STA, ToolName.ECC.value),
+    (StepEnum.POWER_ANALYSIS, ToolName.ECC.value),
+    (StepEnum.EMIR, ToolName.ECC.value),
+    (StepEnum.HARDEN, ToolName.ECC.value),
 )
 
-# Step values a project is allowed to exclude from its ledger.
-SKIPPABLE_STEP_VALUES = frozenset(member.value for member in SkippableStepEnum)
+
+def rtl2gds_step_names() -> tuple[str, ...]:
+    """The canonical rtl2gds step names, in chain order."""
+    return tuple(step.value for step, _tool in _RTL2GDS_CHAIN)
 
 NO_CLOCK_SOURCE_EXPLICIT = "explicit"
 NO_CLOCK_SOURCE_INFERRED = "inferred"
@@ -98,14 +133,14 @@ def resolve_no_clock(
     return NoClockDecision(enabled=False, source=NO_CLOCK_SOURCE_OFF)
 
 
-def resolve_lec_engine(flow_config: dict | None) -> LECEngineEnum:
+def resolve_lec_engine(flow_config: Mapping[str, object] | None) -> LECEngineEnum:
     """The LEC engine a flow config declares.
 
     Presence-keyed like the skip policy: an absent ``lec_engine`` key yields
-    the code default; a declared value validates and normalizes through
-    :meth:`LECEngineEnum.from_value` (the ``dual`` alias becomes ``lec_dual``).
+    the code default; a declared value validates through
+    :meth:`LECEngineEnum.from_value`.
     """
-    if not isinstance(flow_config, dict) or "lec_engine" not in flow_config:
+    if not isinstance(flow_config, Mapping) or "lec_engine" not in flow_config:
         return DEFAULT_LEC_ENGINE
     return LECEngineEnum.from_value(flow_config["lec_engine"])
 
@@ -169,19 +204,126 @@ def resolve_skip_steps(
     return tuple(name for name in chain_names if name in requested)
 
 
+def lec_insert_anchors() -> tuple[str, ...]:
+    """The steps an LEC can be inserted after (``[flow] insert_steps``), in chain order.
+
+    The design-building steps from Synthesis up to filler, each of which
+    writes a netlist an LEC can check: ``lec@synthesis`` compares the RTL with
+    the mapped netlist (kepler-formal SEC), a later one compares the step's
+    netlist with the synthesis netlist. filler has ``post_route_lec``.
+    """
+    names = rtl2gds_step_names()
+    first = names.index(StepEnum.SYNTHESIS.value)
+    last = names.index(StepEnum.FILLER.value)
+    return tuple(step.value for step, tool in _RTL2GDS_CHAIN[first:last] if tool is not None)
+
+
+def inserted_step_name(step: str, after: str) -> str:
+    """The ledger name of *step* inserted after *after*: ``lec@cts``."""
+    return f"{step}{INSERTED_STEP_MARK}{after}"
+
+
+def parse_inserted_step(name: str) -> tuple[str, str] | None:
+    """(step, the step it follows) of a canonical inserted step name, else None."""
+    return _canonical_inserted_steps().get(name)
+
+
+@cache
+def _canonical_inserted_steps() -> dict[str, tuple[str, str]]:
+    """Every canonical inserted step name, with (step, the step it follows)."""
+    return {
+        inserted_step_name(kind, anchor): (kind, anchor)
+        for kind in sorted(INSERTABLE_FLOW_STEPS)
+        for anchor in lec_insert_anchors()
+    }
+
+
+def resolve_insert_steps(flow_config: Mapping[str, object] | None) -> tuple[str, ...]:
+    """The inserted steps a flow config declares (``[flow] insert_steps``).
+
+    Nothing is inserted when the key is absent. Entries are ``STEP@AFTER``
+    with canonical step names (``lec@timing_optimization``). Only an
+    insertable step (LEC) can be inserted, after a step of
+    :func:`lec_insert_anchors`, at most once per step. Returns canonical
+    names ordered by the step they follow; raises ``ValueError`` otherwise.
+    """
+    if not isinstance(flow_config, Mapping) or "insert_steps" not in flow_config:
+        return ()
+    raw = flow_config["insert_steps"]
+    if not isinstance(raw, list):
+        raise ValueError(f"insert_steps must be a list, not {type(raw).__name__}: {raw!r}")
+    anchors = lec_insert_anchors()
+    requested: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, str):
+            raise ValueError(f"insert_steps entries must be strings, not {entry!r}")
+        step, mark, after = entry.partition(INSERTED_STEP_MARK)
+        if not mark or not step.strip() or not after.strip():
+            raise ValueError(
+                f"insert_steps entry {entry!r} must be STEP{INSERTED_STEP_MARK}AFTER, "
+                f"for example lec{INSERTED_STEP_MARK}{StepEnum.CTS.value}"
+            )
+        if step.strip() not in INSERTABLE_FLOW_STEPS:
+            raise ValueError(
+                f"insert_steps entry {entry!r}: only "
+                f"{', '.join(sorted(INSERTABLE_FLOW_STEPS))} can be inserted"
+            )
+        anchor = after.strip()
+        if anchor not in anchors:
+            raise ValueError(
+                f"insert_steps entry {entry!r}: lec can be inserted after {', '.join(anchors)}"
+            )
+        requested.add(anchor)
+    return tuple(
+        inserted_step_name(StepEnum.LEC.value, anchor) for anchor in anchors if anchor in requested
+    )
+
+
+def insert_flow_steps(
+    steps: list, insert: Collection[str], lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
+) -> list:
+    """*steps* with each inserted step right after the step it follows.
+
+    An inserted step runs exactly when the step it follows runs: one whose
+    step is not in *steps* (skipped, or outside a range) is left out, and so
+    is one *steps* already holds (``synthesis_lec`` builds ``lec@synthesis``).
+    Inserted LEC steps use *lec_engine*.
+    """
+    lec_tool = LECEngineEnum.from_value(lec_engine).value
+    following: dict[str, str] = {}
+    for name in insert:
+        parsed = parse_inserted_step(name)
+        if parsed is None:
+            raise ValueError(f"not an inserted step: {name!r}")
+        following[parsed[1]] = name
+    names = [str(entry[0]) for entry in steps]
+    result = []
+    for name, entry in zip(names, steps, strict=True):
+        result.append(entry)
+        if name in following and following[name] not in names:
+            result.append((following[name], lec_tool, StateEnum.Unstart))
+    return result
+
+
 def filter_flow_steps(steps: list, skip: Collection[str]) -> list:
-    """Drop the skipped step entries from a built step list, order untouched."""
+    """Drop the skipped step entries from a built step list, order untouched.
+
+    An inserted entry a chain builds itself (``synthesis_lec``) goes with the
+    step it follows.
+    """
     excluded = set(skip)
-    return [
-        entry
-        for entry in steps
-        if (entry[0].value if isinstance(entry[0], StepBaseEnum) else str(entry[0])) not in excluded
-    ]
+
+    def kept(entry) -> bool:
+        name = str(entry[0])
+        parsed = parse_inserted_step(name)
+        return name not in excluded and (parsed is None or parsed[1] not in excluded)
+
+    return [entry for entry in steps if kept(entry)]
 
 
 def substitute_lec_engine(
-    steps: list, lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
-) -> list:
+    steps: list[BuiltStep], lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
+) -> list[BuiltStep]:
     """Replace the tool of a built chain's LEC entries with the engine.
 
     For callers that build a preset chain through the no-arg discovery
@@ -190,22 +332,25 @@ def substitute_lec_engine(
     construction time.
     """
     lec_tool = LECEngineEnum.from_value(lec_engine).value
-    lec_names = {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}
-    return [
-        (
-            step,
-            lec_tool
-            if (step.value if isinstance(step, StepBaseEnum) else str(step)) in lec_names
-            and tool in LEC_STEP_TOOLS
-            else tool,
-            state,
+
+    def is_lec(step: StepBaseEnum | str) -> bool:
+        name = str(step)
+        return (
+            name == SkippableStepEnum.POST_ROUTE_LEC.value
+            or inserted_step_kind(name) == StepEnum.LEC.value
         )
+
+    return [
+        (step, lec_tool if is_lec(step) and tool in LEC_STEP_TOOLS else tool, state)
         for step, tool, state in steps
     ]
 
 
 def build_rtl2gds_flow(
-    *, skip: Collection[str] = (), lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE
+    *,
+    skip: Collection[str] = (),
+    lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE,
+    insert: Collection[str] = (),
 ) -> list:
     lec_tool = LECEngineEnum.from_value(lec_engine).value
     steps = []
@@ -295,24 +440,20 @@ def build_flow_range(
     *,
     skip: Collection[str] = (),
     lec_engine: LECEngineEnum | str = DEFAULT_LEC_ENGINE,
+    insert: Collection[str] = (),
 ) -> list:
     """Return the inclusive canonical RTL-to-GDS range requested by a workspace.
 
     The RTL-to-GDS chain is owned by :func:`build_rtl2gds_flow`; partial flows
     are always slices of that chain rather than a second hand-maintained list.
     Skipped steps are excluded from the chain first, so a skipped step cannot
-    serve as a range boundary (it is unknown in the filtered chain).
+    serve as a range boundary (it is unknown in the filtered chain). Inserted
+    steps follow their step inside the range, the range's last step included.
     """
     steps = build_rtl2gds_flow(skip=skip, lec_engine=lec_engine)
-    names = [
-        step.value if isinstance(step, StepBaseEnum) else str(step) for step, _tool, _state in steps
-    ]
-    first = normalize_flow_step(from_step)
-    last = normalize_flow_step(to_step)
-    # The old standalone buffering spelling remains a runnable alias for
-    # existing workspaces, while new canonical ranges use diff_opt.
-    first = SkippableStepEnum.DIFF_OPT.value if first == StepEnum.DIFF_BUFFERING.value else first
-    last = SkippableStepEnum.DIFF_OPT.value if last == StepEnum.DIFF_BUFFERING.value else last
+    names = [str(step) for step, _tool, _state in steps]
+    first = str(from_step)
+    last = str(to_step)
     if first not in names or last not in names:
         available = ", ".join(names)
         raise ValueError(
@@ -322,7 +463,7 @@ def build_flow_range(
     end_index = names.index(last)
     if start_index > end_index:
         raise ValueError(f"flow range is reversed: {from_step!r} -> {to_step!r}")
-    return steps[start_index : end_index + 1]
+    return insert_flow_steps(steps[start_index : end_index + 1], insert, lec_engine)
 
 
 def build_syn_sta_flow() -> list:
@@ -338,7 +479,13 @@ def build_synthesis_lec_flow(*, lec_engine: LECEngineEnum | str = DEFAULT_LEC_EN
     steps = []
 
     steps.append((StepEnum.SYNTHESIS, ToolName.YOSYS.value, StateEnum.Unstart))
-    steps.append((SkippableStepEnum.LEC, lec_tool, StateEnum.Unstart))
+    steps.append(
+        (
+            inserted_step_name(StepEnum.LEC.value, StepEnum.SYNTHESIS.value),
+            lec_tool,
+            StateEnum.Unstart,
+        )
+    )
 
     return steps
 
@@ -348,7 +495,7 @@ def build_defview_flow() -> list:
     return [(StepEnum.DEFVIEW, ToolName.ECC.value, StateEnum.Unstart)]
 
 
-def get_flow_builders() -> dict[str, Callable[[], list]]:
+def get_flow_builders() -> dict[str, Callable[[], list[BuiltStep]]]:
     """Discover flow presets from the build_*_flow defs in this module."""
     builders = {}
     for name, fn in globals().items():

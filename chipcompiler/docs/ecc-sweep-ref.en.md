@@ -31,7 +31,7 @@ replacement of a baseline workspace.
 
 ```bash
 ecc sweep create --project /path/to/project --name density \
-  --param place.target_density=0.60,0.65 \
+  --param placement:place.target_density=0.60,0.65 \
   --param cts.max_fanout=16,32
 ecc sweep run   --project /path/to/project --name density
 ecc sweep compare --project /path/to/project --name density
@@ -75,7 +75,9 @@ ecc sweep create --name NAME --param KEY=V1[,V2,...] [--param KEY=... ...] [--pr
 Freezes the plan. `--param` is repeatable; each takes `KEY=VALUE[,VALUE...]` with at
 least one value. Keys are the reviewed `ecc param` keys and values are passed verbatim to
 `ecc run --set` at execution time, so the same validation applies (an invalid value fails
-the candidate's run, not the create). Creating an existing name, a malformed `--param`,
+the candidate's run, not the create). Step-scoped keys such as the DreamPlace `place.*`
+parameters carry their step, e.g. `placement:place.target_density`; an unqualified key
+fails the candidate's run with `parameter_step_required`. Creating an existing name, a malformed `--param`,
 or an empty parameter set exits `2`.
 
 The emitted plan JSON is also what `sweep show` prints later.
@@ -220,7 +222,7 @@ invalid explicit candidate or weight vector exits `2` before either file is writ
 
 Candidate ids are `candidate_0001`… in grid order: the parameter keys are sorted, and
 the product enumerates the last key's values fastest (in the example above:
-`cts.max_fanout=16 + place.target_density=0.60` → `candidate_0001`).
+`cts.max_fanout=16 + placement:place.target_density=0.60` → `candidate_0001`).
 
 `plan_fingerprint` lets two plans be compared for equality independent of creation time:
 same parameters and same candidate order ⇒ same fingerprint.

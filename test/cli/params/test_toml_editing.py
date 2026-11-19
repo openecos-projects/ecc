@@ -2,6 +2,8 @@ import json
 import os
 import tomllib
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_pdk_root, set_scoped_key
 
@@ -58,10 +60,14 @@ class TestScopedTomlEdit:
         project_dir = create_cli_project()
         toml_path = os.path.join(project_dir, "ecc.toml")
 
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.65", "--project", project_dir]
+        )
         capsys.readouterr()
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -73,14 +79,14 @@ class TestScopedTomlEdit:
     def test_set_then_show_still_works(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
 
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -95,11 +101,13 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.step.placement.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -112,15 +120,15 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.floorplan]\n  core_util = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -131,11 +139,11 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.place]\n  target_density = 0.65\n"
+        content += "\n[params.step.placement.place]\n  target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        cli_main.run(["param", "unset", "placement:place.target_density", "--project", project_dir])
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -147,11 +155,16 @@ class TestIndentedTomlKeys:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\n  target_density = 0.65\n\n[flow]\npreset = "rtl2gds"\n'
+        content += (
+            "\n[params.step.placement.place]\n  target_density = 0.65\n"
+            '\n[flow]\npreset = "rtl2gds"\n'
+        )
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -210,7 +223,7 @@ class TestMultilineTomlValues:
             after = f.read()
         assert "2," not in after
         assert after.count("core_margin") == 1
-        assert "[4, 4]" in after
+        assert "[4.0, 4.0]" in after
 
     def test_unset_removes_multiline_array(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -245,7 +258,7 @@ class TestMultilineTomlValues:
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert records[0]["value"] == "[4, 4]"
+        assert records[0]["value"] == "[4.0, 4.0]"
 
     def test_set_preserves_adjacent_key_after_multiline(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
@@ -381,16 +394,18 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.step.placement.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
             after = f.read()
-        assert "[params.place]" in after
+        assert "[params.step.placement.place]" in after
         assert "target_density = 0.7" in after
 
     def test_set_ignores_indented_next_section_header(self, tmp_path, capsys, create_cli_project):
@@ -398,11 +413,16 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += '\n[params.place]\ntarget_density = 0.65\n\n  [flow]\npreset = "rtl2gds"\n'
+        content += (
+            "\n[params.step.placement.place]\ntarget_density = 0.65\n"
+            '\n  [flow]\npreset = "rtl2gds"\n'
+        )
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(
+            ["param", "set", "placement:place.target_density", "0.7", "--project", project_dir]
+        )
         capsys.readouterr()
 
         with open(toml_path) as f:
@@ -418,15 +438,15 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.floorplan]\n# core_util = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        cli_main.run(["param", "set", "place.target_density", "0.7", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.7", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
@@ -437,13 +457,47 @@ class TestSafeTomlSectionParsing:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n# [params.place]\n# target_density = 0.65\n"
+        content += "\n# [params.step.placement.place]\n# target_density = 0.65\n"
         with open(toml_path, "w") as f:
             f.write(content)
 
-        rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "unset", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         capsys.readouterr()
         with open(toml_path) as f:
             after = f.read()
         assert "target_density" in after
+
+
+def test_project_apply_checks_layer_choices_against_the_declared_pdk() -> None:
+    from chipcompiler.cli.project.project_application import ProjectApplicationError, _apply_text
+
+    def apply(pdk: str):
+        return _apply_text(
+            f'[pdk]\nname = "{pdk}"\n',
+            parsed_sets=(("route.bottom_layer", "Metal3"),),
+            unsets=(),
+            add_rtl=(),
+            remove_rtl=(),
+        )
+
+    assert apply("sg13g2")[1] == ["route.bottom_layer"]
+    with pytest.raises(ProjectApplicationError):
+        apply("ics55")
+
+
+def test_project_apply_validates_against_the_batch_final_pdk_in_any_order() -> None:
+    from chipcompiler.cli.project.project_application import _apply_text
+
+    def apply(sets):
+        return _apply_text(
+            '[pdk]\nname = "ics55"\n', parsed_sets=sets, unsets=(), add_rtl=(), remove_rtl=()
+        )
+
+    layer, pdk = ("route.bottom_layer", "Metal3"), ("pdk.name", "sg13g2")
+
+    forward, reverse = apply((layer, pdk)), apply((pdk, layer))
+    assert set(forward[1]) == set(reverse[1]) == {"route.bottom_layer", "pdk.name"}
+    assert tomllib.loads(forward[0]) == tomllib.loads(reverse[0])

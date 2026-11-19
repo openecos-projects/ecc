@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 
 from chipcompiler.cli import main as cli_main
 
@@ -132,7 +133,7 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Timing optimization",
+                    "name": "timing_optimization",
                     "tool": "sizer",
                     "state": "Unstart",
                 }
@@ -161,7 +162,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -194,7 +195,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -230,7 +231,7 @@ class TestConfigStepResolved:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
@@ -249,13 +250,89 @@ class TestConfigStepResolved:
         rc = cli_main.run(["config", "nonexistent", "--project", project_dir])
         assert rc == 1
 
+    def test_config_step_corrupt_flow_json_plain_has_error_code(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("{not-json")
+
+        rc = cli_main.run(["config", "place", "--plain", "--project", project_dir])
+
+        assert rc == 1
+        records = plain_records(capsys.readouterr().out)
+        assert len(records) == 1
+        assert records[0]["kind"] == "error"
+        assert records[0]["error"] == "invalid_flow_json"
+        assert "status" not in records[0]
+        assert records[0]["inspect"] == f"ecc status --project {project_dir} --workspace default"
+
+    def test_config_step_corrupt_flow_json_json_has_error_code(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("[]")
+
+        rc = cli_main.run(["config", "place", "--json", "--project", project_dir])
+
+        assert rc == 1
+        records = json.loads(capsys.readouterr().out)
+        assert [record.get("error") for record in records] == ["invalid_flow_json"]
+        assert "status" not in records[0]
+
+    def test_config_step_corrupt_flow_json_text_shows_the_code(
+        self, tmp_path, capsys, create_cli_project
+    ):
+        project_dir = create_cli_project()
+        home = os.path.join(project_dir, "default", "home")
+        os.makedirs(home, exist_ok=True)
+        with open(os.path.join(home, "flow.json"), "w") as f:
+            f.write("{not-json")
+
+        rc = cli_main.run(["config", "place", "--project", project_dir])
+
+        assert rc == 1
+        out = capsys.readouterr().out
+        assert "invalid_flow_json" in out
+        assert "status:" not in out
+
+    def test_config_step_corrupt_flow_json_hint_keeps_an_absolute_selector(
+        self, tmp_path, capsys, create_cli_project, plain_records
+    ):
+        project_dir = create_cli_project()
+        outside = tmp_path / "outside"
+        (outside / "home").mkdir(parents=True)
+        (outside / "home" / "flow.json").write_text("{not-json")
+
+        rc = cli_main.run(
+            ["config", "place", "--plain", "--project", project_dir, "--workspace", str(outside)]
+        )
+
+        assert rc == 1
+        (record,) = plain_records(capsys.readouterr().out)
+        assert record["error"] == "invalid_flow_json"
+        assert record["inspect"] == f"ecc status --project {project_dir} --workspace {outside}"
+
+        # Following the hint looks at the external workspace, not <project>/outside.
+        rc = cli_main.run([*shlex.split(record["inspect"])[1:], "--plain"])
+
+        assert rc == 1
+        (status,) = plain_records(capsys.readouterr().out)
+        assert status["status"] == "corrupt"
+        assert status["workspace"] == str(outside)
+
     def test_config_step_no_config_files(
         self, tmp_path, capsys, create_cli_project, create_flow_json, create_step_dir
     ):
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
@@ -313,14 +390,14 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Timing optimization",
+                    "name": "timing_optimization",
                     "tool": "sizer",
                     "state": "Success",
                     "runtime": "0:00:04",
                 },
             ],
         )
-        create_step_dir(run_dir, "Timing optimization", "sizer", subdirs=["output"])
+        create_step_dir(run_dir, "timing_optimization", "sizer", subdirs=["output"])
         create_workspace_config(
             run_dir,
             {
@@ -330,7 +407,7 @@ class TestConfigStepResolved:
             },
         )
 
-        rc = cli_main.run(["config", "timing optimization", "--plain", "--project", project_dir])
+        rc = cli_main.run(["config", "timing_optimization", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
@@ -339,7 +416,7 @@ class TestConfigStepResolved:
             "default/config/dreamplace_ecc.json",
         ]
         assert all(item["source"] == "workspace_config" for item in records)
-        assert all(item["step"] == "timing optimization" for item in records)
+        assert all(item["step"] == "timing_optimization" for item in records)
 
     def test_config_cli_tokens_use_internal_flow_step_names(
         self,
@@ -351,8 +428,8 @@ class TestConfigStepResolved:
         plain_records,
     ):
         cases = [
-            ("place", "placement", None),
-            ("route", "routing", "route_ecc.json"),
+            ("placement", "placement", None),
+            ("routing", "routing", "routing_ecc.json"),
         ]
         for step_name, step_token, step_config in cases:
             project_dir = create_cli_project(name=f"gcd_{step_token}")
@@ -425,7 +502,7 @@ class TestConfigStepResolved:
         ]
         assert all(item["source"] == "workspace_config" for item in records)
 
-    def test_config_yosys_synthesis_does_not_report_ecc_workspace_configs(
+    def test_config_yosys_synthesis_reports_the_db_config_it_reads(
         self,
         tmp_path,
         capsys,
@@ -441,23 +518,22 @@ class TestConfigStepResolved:
             run_dir,
             [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
                     "runtime": "0:00:05",
                 },
             ],
         )
-        create_step_dir(run_dir, "Synthesis", "yosys", subdirs=["output"])
+        create_step_dir(run_dir, "synthesis", "yosys", subdirs=["output"])
         create_workspace_config(run_dir, {"db_ecc.json": "{}"})
 
         rc = cli_main.run(["config", "synthesis", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert len(records) == 1
-        assert records[0]["step"] == "synthesis"
-        assert records[0]["config_status"] == "none"
-        assert "path" not in records[0]
+        assert [(record["source"], os.path.basename(record["path"])) for record in records] == [
+            ("workspace_config", "db_ecc.json")
+        ]
 
 
 class TestEmptyStepConfigSentinel:
@@ -467,7 +543,7 @@ class TestEmptyStepConfigSentinel:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--project", project_dir])
         assert rc == 0
@@ -489,7 +565,7 @@ class TestEmptyStepConfigSentinel:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
         assert rc == 0
@@ -515,10 +591,10 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
             ],
         )
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
         rc = cli_main.run(["config", "cts", "--plain", "--project", project_dir])
@@ -543,18 +619,18 @@ class TestDirectoryOnlyStepConfig:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
             ],
         )
-        create_step_dir(run_dir, "route", "ecc", subdirs=["output"])
-        create_ecc_workspace_config(run_dir, "route_ecc.json")
+        create_step_dir(run_dir, "routing", "ecc", subdirs=["output"])
+        create_ecc_workspace_config(run_dir, "routing_ecc.json")
 
         rc = cli_main.run(["config", "routing", "--plain", "--project", project_dir])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert [item["path"] for item in records] == [
             "default/config/db_ecc.json",
-            "default/config/route_ecc.json",
+            "default/config/routing_ecc.json",
         ]
 
 
@@ -807,7 +883,7 @@ def test_config_resolved_pdk_overrides_absent(
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": [
                 {
@@ -827,3 +903,35 @@ def test_config_resolved_pdk_overrides_absent(
         assert by_key["design.top"]["resolved"] == "gcd"
         assert by_key["design.top"]["source"] == "project.json"
         assert by_key["pdk.name"]["resolved"] == "ics55"
+
+
+def test_config_renders_step_scoped_params_per_step(
+    tmp_path,
+    capsys,
+    create_cli_project,
+    mock_pdk_validation,
+    plain_records,
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write("\n[params.step.placement.place]\ntarget_density = 0.7\n")
+
+    rc = cli_main.run(["config", "--plain", "--project", project_dir])
+    assert rc == 0
+    params = [
+        item
+        for item in plain_records(capsys.readouterr().out)
+        if item.get("param", item.get("config", "")).split(":")[-1].startswith("place.")
+    ]
+    keys = [item.get("param", item.get("config")) for item in params]
+    assert "place.target_density" not in keys
+    density = next(i for i in params if "placement:place.target_density" in i.values())
+    assert (density["value"], density["source"]) == ("0.7", "ecc.toml")
+
+    for item in params:
+        command = item["inspect"].split()
+        assert command[:3] == ["ecc", "param", "show"], item
+        assert ":" in command[3], item
+        assert cli_main.run(command[1:]) == 0, item
+        capsys.readouterr()

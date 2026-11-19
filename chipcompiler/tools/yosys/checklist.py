@@ -53,7 +53,7 @@ class YosysChecklist:
                 step=step.value,
                 type=type,
                 item=item,
-                state=CheckState.Unstart.value,
+                state=CheckState.UNAVAILABLE,
             )
 
     def build_checklist(self) -> list:
@@ -196,7 +196,7 @@ class YosysSynthesisChecklist(YosysChecklist):
                 step=step,
                 type=type,
                 item=item,
-                state=CheckState.Passed if success else CheckState.Failed,
+                state=CheckState.PASS if success else CheckState.FAILED,
                 info="" if success else info,
             )
 

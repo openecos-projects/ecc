@@ -54,11 +54,6 @@
         "role": "rtl"
       }
     ],
-    "parameters": {
-      "design.frequency_mhz": 200.0,
-      "floorplan.core_util": 0.6,
-      "place.target_density": 0.7
-    },
     "pdk": {
       "familyId": "ics55",
       "mode": "default"

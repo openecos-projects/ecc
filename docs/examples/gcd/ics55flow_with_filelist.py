@@ -40,7 +40,7 @@ parameters = get_design_parameters("ics55", "gcd")
 # │   ├── params.toml     # Workspace configuration (die size, clock freq, flow target)
 # │   └── checklist.json  # Checklist state
 # ├── config/             # Workspace-level tool configuration files
-# ├── CTS_ecc             # Clock Tree Synthesis step workspace
+# ├── cts_ecc             # Clock Tree Synthesis step workspace
 # │   ├── analysis    # Analysis files extracted from metrics
 # │   ├── data        # Data files that generated during the step
 # │   ├── feature     # Metrics feature files
@@ -56,26 +56,26 @@ parameters = get_design_parameters("ics55", "gcd")
 # │   └── script
 # ├── log
 # │   └── gcd.xxxx-xx-xx_xx-xx-xx # Global log file
-# ├── macroPlacement_dreamplace # Macro placement step
+# ├── macro_placement_dreamplace # Macro placement step
 # │   ...
 # │   └── script
 # ├── origin          # Original design files
 # │   ├── gcd.sdc     # Timing constraints file
 # │   ├── filelist.f  # Verilog filelist (all RTL sources are listed here)
 # │   └── gcd.v       # GCD design source (copied from filelist)
-# ├── place_dreamplace # Placement step
+# ├── placement_dreamplace # Placement step
 # │   ...
 # │   └── script
-# ├── postFloorplan_ecc # Floorplanning step (post)
+# ├── post_floorplan_ecc # Floorplanning step (post)
 # │   ...
 # │   └── script
-# ├── preFloorplan_ecc  # Floorplanning step (pre)
+# ├── pre_floorplan_ecc  # Floorplanning step (pre)
 # │   ...
 # │   └── script
-# ├── route_ecc       # Routing step
+# ├── routing_ecc       # Routing step
 # │   ...
 # │   └── script
-# └── Synthesis_yosys # Logic synthesis step
+# └── synthesis_yosys # Logic synthesis step
 #     ...
 #     └── script
 #
@@ -171,7 +171,7 @@ print("\nFlow completed successfully!")
 print(f"Check logs and outputs in: {workspace_dir}")
 print("\nKey files to inspect:")
 print(f"  - Flow state: {workspace_dir}/home/flow.json")
-print(f"  - Synthesis output: {workspace_dir}/Synthesis_yosys/output/")
+print(f"  - Synthesis output: {workspace_dir}/synthesis_yosys/output/")
 print(f"  - Final DEF: {workspace_dir}/filler_ecc/output/")
 print(f"  - Global log: {workspace_dir}/log/")
 print(f"  - Per-step logs: {workspace_dir}/<step_name>/log/")

@@ -60,7 +60,7 @@ gcd_workspace/
 │   ├── flow.json          # Flow state file
 │   ├── params.toml        # Workspace configuration (parameters, flow target)
 │   └── checklist.json     # Checklist state
-├── CTS_ecc                # CTS step workspace
+├── cts_ecc                # CTS step workspace
 │   ├── analysis    # Analysis files extract from metrics
 │   ├── data        # Data files that generated during the step
 │   ├── feature     # Metrics feature files
@@ -77,25 +77,25 @@ gcd_workspace/
 │   └── script
 ├── log
 │   └── gcd.xxxx-01-22_16-05-25 # Global log file
-├── macroPlacement_dreamplace
+├── macro_placement_dreamplace
 │   ...
 │   └── script
 ├── origin
 │   ├── gcd.sdc            # Constraint file
 │   └── gcd.v              # RTL source file
-├── place_dreamplace
+├── placement_dreamplace
 │   ...
 │   └── script
-├── postFloorplan_ecc
+├── post_floorplan_ecc
 │   ...
 │   └── script
-├── preFloorplan_ecc
+├── pre_floorplan_ecc
 │   ...
 │   └── script
-├── route_ecc
+├── routing_ecc
 │   ...
 │   └── script
-└── Synthesis_yosys
+└── synthesis_yosys
     ...
     └── script
 ```
@@ -127,22 +127,22 @@ The flow we defined is:
 
 ```mermaid
 graph LR
-    A[Synthesis<br/>Yosys] --> B[preFloorplan<br/>ECC-Tools]
-    B --> C[macroPlacement<br/>DreamPlace]
-    C --> D[postFloorplan<br/>ECC-Tools]
-    D --> E[place<br/>DreamPlace]
-    E --> F[CTS<br/>ECC-Tools]
+    A[synthesis<br/>Yosys] --> B[pre_floorplan<br/>ECC-Tools]
+    B --> C[macro_placement<br/>DreamPlace]
+    C --> D[post_floorplan<br/>ECC-Tools]
+    D --> E[placement<br/>DreamPlace]
+    E --> F[cts<br/>ECC-Tools]
     F --> G[legalization<br/>DreamPlace]
-    G --> H[route<br/>ECC-Tools]
+    G --> H[routing<br/>ECC-Tools]
     H --> I[filler<br/>ECC-Tools]
 ```
 
 Then the flow engine will execute the steps sequentially, and you can check the logs and outputs in each step workspace.
 
 This example defines a custom flow ending at filler. The full default `rtl2gds`
-preset continues with `lvs → drc → antennaCheck → postRouteLec → RCX → sta →
-powerAnalysis → emir → Harden`. Antenna checking is report-only; inspect
-`antennaCheck_ecc/report/antennaCheck.rpt` and the native log for rule coverage.
+preset continues with `lvs → drc → antenna_check → post_route_lec → rcx → sta →
+power_analysis → emir → harden`. Antenna checking is report-only; inspect
+`antenna_check_ecc/report/antenna_check.rpt` and the native log for rule coverage.
 EMIR requires the technology file in `config/emir_ecc.json`.
 Existing custom flows keep their explicitly selected order.
 

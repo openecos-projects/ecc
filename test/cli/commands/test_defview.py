@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -130,3 +131,72 @@ def test_defview_reports_design_read_failure(tmp_path, monkeypatch):
     assert result.exit_code != 0
     assert result.records[0]["error"] == "defview_failed"
     assert "ECC failed to read DEF input" in result.records[0]["reason"]
+
+
+NATIVE_LINE = "[ECC native reader] begin config"
+
+
+def _native_output_then(result):
+    """A reader that logs the way the native library does: straight to fd 1."""
+
+    def run(**_kwargs):
+        os.write(1, f"{NATIVE_LINE}\n".encode())
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    return run
+
+
+def _workspace_with_def(tmp_path, monkeypatch):
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd", top_module="gcd"),
+    )
+    source_def = tmp_path / "selected.def"
+    source_def.write_text("VERSION 5.8 ;\n", encoding="utf-8")
+    monkeypatch.setattr(
+        defview_handler,
+        "resolve_loaded_workspace",
+        lambda _input, _ctx: (workspace, None),
+    )
+    return workspace, source_def
+
+
+def test_defview_keeps_native_reader_output_off_stdout(tmp_path, monkeypatch, capfd):
+    workspace, source_def = _workspace_with_def(tmp_path, monkeypatch)
+
+    def fake_run_defview(*, workspace, step):
+        os.write(1, f"{NATIVE_LINE}\n".encode())
+        step.output.geometry.mkdir(parents=True)
+        step.output.geometry_manifest.write_text("schema_version=1\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(defview_handler, "run_defview", fake_run_defview)
+
+    result = defview_handler.defview(_input(source_def), _context(workspace.directory))
+
+    captured = capfd.readouterr()
+    log_file = workspace.directory / "defview" / "log" / "defview.log"
+    assert result.exit_code == 0
+    assert NATIVE_LINE not in captured.out
+    assert NATIVE_LINE not in captured.err
+    assert NATIVE_LINE in log_file.read_text(encoding="utf-8")
+    assert result.records[0]["log"] == str(log_file)
+
+
+def test_defview_failures_name_the_log_that_holds_the_reader_output(tmp_path, monkeypatch, capfd):
+    workspace, source_def = _workspace_with_def(tmp_path, monkeypatch)
+    log_file = workspace.directory / "defview" / "log" / "defview.log"
+
+    for outcome in (False, RuntimeError("ECC failed to read DEF input")):
+        monkeypatch.setattr(defview_handler, "run_defview", _native_output_then(outcome))
+
+        result = defview_handler.defview(_input(source_def), _context(workspace.directory))
+
+        assert result.exit_code != 0
+        assert result.records[0]["error"] == "defview_failed"
+        assert result.records[0]["log"] == str(log_file)
+
+    assert NATIVE_LINE not in capfd.readouterr().out
+    assert log_file.read_text(encoding="utf-8").count(NATIVE_LINE) == 2

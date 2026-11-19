@@ -31,8 +31,9 @@ def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
         lambda *, skip=(), lec_engine=None: [
-            ("Synthesis", "yosys", "Unstart"),
-            ("place", "dreamplace", "Unstart"),
+            ("synthesis", "yosys", "Unstart"),
+            ("pre_floorplan", "ecc", "Unstart"),
+            ("placement", "dreamplace", "Unstart"),
         ],
     )
     monkeypatch.setattr(

@@ -17,7 +17,7 @@ STA_REPORT_FILENAMES = (
 )
 STA_QOR_SUMMARY_FILENAME = "qor_summary.json"
 STA_TIMING_PATHS_FILENAME = "timing_paths.json"
-# iPW writes power.rpt from the separate powerAnalysis step, so it is not an
+# iPW writes power.rpt from the separate power_analysis step, so it is not an
 # STA report artifact.
 STA_POWER_REPORT_FILENAME = "power.rpt"
 STA_POWER_SUMMARY_FILENAME = "power_summary.json"
@@ -397,7 +397,7 @@ def read_sta_power_summary_json(path: Path) -> StaPowerSummary | None:
 
 
 def read_power_step_summary_json(path: Path) -> StaPowerSummary | None:
-    """Read the canonical merged powerAnalysis step artifact."""
+    """Read the canonical merged power_analysis step artifact."""
     if not path.is_file() or path.stat().st_size <= 0:
         return None
 

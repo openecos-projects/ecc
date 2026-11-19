@@ -91,7 +91,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
     assert records["synthesis_port_count"]["value"] == 10
     assert records["synthesis_cell_area"]["source"] == {
         "kind": "feature",
-        "path": "feature/Synthesis_stat.json",
+        "path": "feature/synthesis_stat.json",
         "selector": "/design/area",
     }
     assert records["synthesis_power_dynamic_uw"] == {
@@ -138,7 +138,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
         "confidence": "high",
         "source": {
             "kind": "feature",
-            "path": "feature/Synthesis.step.json",
+            "path": "feature/synthesis.step.json",
             "selector": "/run/runtime_seconds",
         },
     }
@@ -149,7 +149,7 @@ def test_synthesis_metrics_write_v2_qor_files_without_legacy_metrics(tmp_path):
             "sdc_size_bytes": 128,
             "source": {
                 "kind": "feature",
-                "path": "feature/Synthesis.step.json",
+                "path": "feature/synthesis.step.json",
                 "selector": "/constraints/sdc",
             },
         }

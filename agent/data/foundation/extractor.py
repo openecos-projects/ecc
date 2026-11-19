@@ -13,6 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
+from chipcompiler.data.step.directories import recorded_step_directory
+from chipcompiler.data.types import StepEnum
+
 from .grid.canonical_grid import build_gcell_patch_grid, build_patch_grid, resize_nearest
 from .parsers.def_parser import DefData, DefNet, DefTrack, DefWire, parse_def
 from .parsers.drc_parser import parse_drc_artifacts
@@ -36,10 +39,6 @@ from .writers import write_json, write_jsonl
 FOUNDATION_REL = Path("foundation_data") / "ecc"
 _SUPPORTED_PROFILE = "iccd_full_v1"
 _ROUTE_COMPLETION_MODES = {"full_route", "space_router_label"}
-_STAGE_DIR_OVERRIDES = {
-    ("place", "dreamplace"): "place_dreamplace",
-    ("legalization", "dreamplace"): "legalization_dreamplace",
-}
 _ENTITY_NAMES = ("instances", "nets", "pins", "wires", "routing_graphs", "timing_paths", "patches")
 _TECH_REQUIRED_TABLES = {"tech_layers": "layers", "tech_vias": "vias", "library_cells": "cells"}
 _ATTRIBUTION_INPUT_TABLES = (
@@ -273,7 +272,9 @@ class FoundationExtractor:
                 "write_indexed_maps",
                 lambda: self._write_indexed_maps(canonical_maps, canonical_grid),
             )
-        route_stage = next((stage for stage in selected_stages if stage.name == "route"), None)
+        route_stage = next(
+            (stage for stage in selected_stages if stage.name == StepEnum.ROUTING.value), None
+        )
         native_demand_capacity = self._run_logged_stage(
             "parse_route_native_demand_capacity",
             lambda: (
@@ -545,9 +546,9 @@ class FoundationExtractor:
             tool = str(item.get("tool", "")).strip()
             if not name or not tool:
                 continue
-            directory = self.workspace_dir / _STAGE_DIR_OVERRIDES.get(
-                (name, tool), f"{name}_{tool}"
-            )
+            # The ledger records each step's directory (index-prefixed, e.g.
+            # 04_placement_dreamplace).
+            directory = self.workspace_dir / recorded_step_directory(item)
             stages.append(
                 StageInfo(
                     name=name, tool=tool, state=str(item.get("state", "")), directory=directory
@@ -577,25 +578,16 @@ class FoundationExtractor:
         return [by_name[name] for name in requested_names]
 
     def _workspace_config_path(self) -> Path:
-        """The workspace's persisted configuration: home/params.toml
-        preferred, legacy home/parameters.json as the fallback."""
+        """The workspace's current persisted configuration."""
         from chipcompiler.data.workspace_config import workspace_config_path
 
-        toml_path = workspace_config_path(self.workspace_dir)
-        if toml_path.exists():
-            return toml_path
-        return self.workspace_dir / "home" / "parameters.json"
+        return workspace_config_path(self.workspace_dir)
 
     def _workspace_config_rel_path(self) -> str:
         return str(self._workspace_config_path().relative_to(self.workspace_dir))
 
     def _read_workspace_parameters(self) -> dict[str, Any]:
-        """Read workspace parameters in whichever format the workspace
-        persists them: canonical flat keys from home/params.toml, or the
-        legacy display-key JSON with display/flat fallback reads downstream."""
-        config_path = self._workspace_config_path()
-        if config_path.suffix == ".json":
-            return self._read_json(config_path)
+        """Read canonical flat parameters from home/params.toml."""
         from chipcompiler.data.workspace_config import load_workspace_config
 
         return load_workspace_config(self.workspace_dir)
@@ -723,7 +715,8 @@ class FoundationExtractor:
                     continue
                 category, key = self._classify_map(csv_path)
                 if category == "ignored" or (
-                    category == "congestion" and stage.name not in {"place", "CTS"}
+                    category == "congestion"
+                    and stage.name not in {StepEnum.PLACEMENT.value, StepEnum.CTS.value}
                 ):
                     continue
                 exact_gcell_map = "gcell_patch_map" in csv_path.parts
@@ -764,7 +757,7 @@ class FoundationExtractor:
         stages: list[StageInfo],
     ) -> None:
         for stage in stages:
-            if stage.name not in {"place", "CTS"}:
+            if stage.name not in {StepEnum.PLACEMENT.value, StepEnum.CTS.value}:
                 continue
             existing = raw_maps.get(stage.name, {}).get("congestion", {})
             if existing.get("union"):
@@ -874,7 +867,7 @@ class FoundationExtractor:
         self, stages: list[StageInfo]
     ) -> tuple[Path, list[dict[str, Any]]] | None:
         candidates: list[Path] = []
-        for preferred in ("route", "CTS", "place"):
+        for preferred in (StepEnum.ROUTING.value, StepEnum.CTS.value, StepEnum.PLACEMENT.value):
             candidates.extend(
                 stage.directory
                 / "data"
@@ -981,17 +974,17 @@ class FoundationExtractor:
         canonical_maps: CanonicalMaps,
         def_data: dict[str, DefData],
     ) -> None:
-        stage = next((item for item in stages if item.name == "Floorplan"), None)
-        if stage is None or canonical_maps.get("Floorplan"):
+        stage = next((item for item in stages if item.name == StepEnum.FLOORPLAN.value), None)
+        if stage is None or canonical_maps.get(StepEnum.FLOORPLAN.value):
             return
         zero_density = _zero_density_maps(canonical_grid)
         if not zero_density:
             return
-        canonical_maps["Floorplan"] = {"density": zero_density}
-        self._quality.setdefault("availability", {}).setdefault("maps", {})["Floorplan"] = (
-            "available"
-        )
-        self._quality.get("null_reason", {}).get("maps", {}).pop("Floorplan", None)
+        canonical_maps[StepEnum.FLOORPLAN.value] = {"density": zero_density}
+        self._quality.setdefault("availability", {}).setdefault("maps", {})[
+            StepEnum.FLOORPLAN.value
+        ] = "available"
+        self._quality.get("null_reason", {}).get("maps", {}).pop(StepEnum.FLOORPLAN.value, None)
 
     def _ensure_floorplan_specific_maps(
         self,
@@ -1000,8 +993,8 @@ class FoundationExtractor:
         canonical_maps: CanonicalMaps,
         def_data: dict[str, DefData],
     ) -> None:
-        stage = next((item for item in stages if item.name == "Floorplan"), None)
-        parsed_def = def_data.get("Floorplan")
+        stage = next((item for item in stages if item.name == StepEnum.FLOORPLAN.value), None)
+        parsed_def = def_data.get(StepEnum.FLOORPLAN.value)
         if stage is None or parsed_def is None:
             return
         layout_physical_only_cells = self._floorplan_physical_only_cells_from_layout(stage)
@@ -1010,7 +1003,7 @@ class FoundationExtractor:
         )
         if not maps:
             return
-        canonical_maps.setdefault("Floorplan", {})["floorplan"] = maps
+        canonical_maps.setdefault(StepEnum.FLOORPLAN.value, {})["floorplan"] = maps
         self._record_raw_ref(
             stage,
             parsed_def.path,
@@ -1021,10 +1014,10 @@ class FoundationExtractor:
                 "grid_source": canonical_grid.get("grid_source"),
             },
         )
-        self._quality.setdefault("availability", {}).setdefault("maps", {})["Floorplan"] = (
-            "available"
-        )
-        self._quality.get("null_reason", {}).get("maps", {}).pop("Floorplan", None)
+        self._quality.setdefault("availability", {}).setdefault("maps", {})[
+            StepEnum.FLOORPLAN.value
+        ] = "available"
+        self._quality.get("null_reason", {}).get("maps", {}).pop(StepEnum.FLOORPLAN.value, None)
 
     def _floorplan_physical_only_cells_from_layout(self, stage: StageInfo) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -1426,7 +1419,7 @@ class FoundationExtractor:
                     else None,
                     "stage_track_variants": _stage_track_variants(axes),
                     "patch_capacity_ref": (
-                        "foundation_data/ecc/vectors/patches/route.jsonl:"
+                        f"foundation_data/ecc/vectors/patches/{StepEnum.ROUTING.value}.jsonl:"
                         "native_demand_capacity_by_layer"
                         if is_routing
                         else None
@@ -1776,7 +1769,7 @@ class FoundationExtractor:
                 canonical_maps.get(stage.name, {}),
                 sta_reports.get(stage.name),
                 drc_reports.get(stage.name)
-                or (drc_reports.get("drc") if stage.name == "route" else None),
+                or (drc_reports.get("drc") if stage.name == StepEnum.ROUTING.value else None),
             )
             nets = self._net_records(
                 stage,
@@ -1792,9 +1785,9 @@ class FoundationExtractor:
                 canonical_grid,
                 canonical_maps.get(stage.name, {}),
                 nets,
-                native_demand_capacity_by_patch if stage.name == "route" else {},
+                native_demand_capacity_by_patch if stage.name == StepEnum.ROUTING.value else {},
                 drc_reports.get(stage.name)
-                or (drc_reports.get("drc") if stage.name == "route" else None),
+                or (drc_reports.get("drc") if stage.name == StepEnum.ROUTING.value else None),
             )
             routing_graphs = self._routing_graph_records(
                 stage, parsed_def, canonical_grid, pins, nets
@@ -1842,7 +1835,11 @@ class FoundationExtractor:
                     )
                 else:
                     counts[entity][stage.name] = len(records)
-                if entity == "routing_graphs" and stage.name != "route" and not records:
+                if (
+                    entity == "routing_graphs"
+                    and stage.name != StepEnum.ROUTING.value
+                    and not records
+                ):
                     status = (
                         "optional_post_route_snapshot"
                         if stage.name in {"drc", "filler"}
@@ -1875,7 +1872,7 @@ class FoundationExtractor:
                 nets,
                 pins,
                 wires,
-                native_demand_capacity_by_patch if stage.name == "route" else {},
+                native_demand_capacity_by_patch if stage.name == StepEnum.ROUTING.value else {},
                 timing_paths,
                 drc_reports.get(stage.name),
                 parsed_def,
@@ -2167,7 +2164,7 @@ class FoundationExtractor:
             return []
         route_label_demand_capacity_by_patch = (
             _route_label_demand_capacity_by_patch(stage.directory, canonical_grid)
-            if stage.name == "route"
+            if stage.name == StepEnum.ROUTING.value
             else {}
         )
         pins_by_net: dict[str, list[dict[str, Any]]] = {}
@@ -2238,7 +2235,7 @@ class FoundationExtractor:
             net.name: _wire_net_context(net, net_records.get(net.name)) for net in parsed_def.nets
         }
         total_wire_count = sum(len(item.wires) for item in parsed_def.nets)
-        large_design_route = stage.name == "route" and total_wire_count > 1000
+        large_design_route = stage.name == StepEnum.ROUTING.value and total_wire_count > 1000
         if large_design_route:
             self._quality["large_design_observed"] = {
                 "enabled": True,
@@ -2293,7 +2290,7 @@ class FoundationExtractor:
     ) -> list[dict[str, Any]]:
         if not parsed_def:
             return []
-        if stage.name != "route":
+        if stage.name != StepEnum.ROUTING.value:
             self._quality.setdefault("availability", {}).setdefault("routing_graphs", {})[
                 stage.name
             ] = "not_available_before_route"
@@ -2524,7 +2521,7 @@ class FoundationExtractor:
             route_label = _demand_capacity_label(native_demand_capacity)
             native_route_oracle = _route_native_demand_capacity_oracle(route_label)
             route_oracle = None
-            if stage == "route":
+            if stage == StepEnum.ROUTING.value:
                 route_oracle = {
                     "feature_role": "route_only_oracle",
                     "available_for_training_input": False,
@@ -2610,7 +2607,11 @@ class FoundationExtractor:
                 "unlocalized_count": patch_drc.get("unlocalized_count"),
                 "source": "drc_artifacts" if patch_drc.get("availability") != "missing" else None,
             }
-            is_progressive_input_stage = stage in {"Floorplan", "place", "CTS"}
+            is_progressive_input_stage = stage in {
+                StepEnum.FLOORPLAN.value,
+                StepEnum.PLACEMENT.value,
+                StepEnum.CTS.value,
+            }
             input_available = is_progressive_input_stage
             if not input_available:
                 timing_context["available_for_training_input"] = False
@@ -2823,13 +2824,13 @@ class FoundationExtractor:
                 },
                 "drc_context": drc_context,
                 "progressive_metadata": {
-                    "available_from": "Floorplan" if stage_order else stage,
+                    "available_from": StepEnum.FLOORPLAN.value if stage_order else stage,
                     "grid_stable_across_stages": True,
                     "stage_order_index": stage_index,
                     "is_progressive_input_stage": is_progressive_input_stage,
-                    "is_route_oracle_stage": stage == "route",
+                    "is_route_oracle_stage": stage == StepEnum.ROUTING.value,
                     "input_blocks": input_blocks if is_progressive_input_stage else [],
-                    "oracle_blocks": ["route_oracle"] if stage == "route" else [],
+                    "oracle_blocks": ["route_oracle"] if stage == StepEnum.ROUTING.value else [],
                     "prev_stage": prev_stage,
                     "density_delta_from_prev_stage": None,
                     "pin_count_delta_from_prev_stage": None,
@@ -2847,7 +2848,7 @@ class FoundationExtractor:
                     "nets": f"vectors/nets/{stage}.jsonl",
                     "wires": f"vectors/wires/{stage}.jsonl",
                     "timing_paths": f"vectors/timing_paths/{stage}.jsonl",
-                    "route": def_source if stage == "route" else None,
+                    "route": def_source if stage == StepEnum.ROUTING.value else None,
                     "drc": "drc_artifacts"
                     if drc_context.get("availability") == "available"
                     else None,
@@ -2857,7 +2858,7 @@ class FoundationExtractor:
                         "horizontal_demand_capacity,vertical_demand_capacity); "
                         "union_utilization=max(horizontal_utilization,vertical_utilization); "
                         "tightness_class={over_capacity,near_capacity,relaxed,unknown}"
-                        if stage == "route" and native_demand_capacity
+                        if stage == StepEnum.ROUTING.value and native_demand_capacity
                         else None
                     ),
                 },
@@ -2980,14 +2981,10 @@ class FoundationExtractor:
 
     @staticmethod
     def _engineer_settable_parameters(parameters: dict[str, Any]) -> dict[str, Any]:
-        from chipcompiler.data.parameter_keys import normalize_parameter_dict
-
-        # One canonical schema regardless of the on-disk format: legacy
-        # display keys normalize first, then environment keys and the flow
-        # target are dropped and core keeps only the tunables. The flow
-        # target surfaces as "flow" after normalization ("_flow").
-        normalized = json.loads(json.dumps(normalize_parameter_dict(parameters)))
-        for key in ("pdk_root", "die", "flow"):
+        # Environment keys and the flow target are not engineer-settable
+        # parameters; core keeps only its tunables.
+        normalized = json.loads(json.dumps(parameters))
+        for key in ("pdk_root", "die", "_flow"):
             normalized.pop(key, None)
         core = normalized.get("core")
         if isinstance(core, dict):
@@ -3026,7 +3023,7 @@ class FoundationExtractor:
         if dreamplace:
             knobs["dreamplace"] = dreamplace
         cts = self._first_config_values(
-            [stage for stage in stages if stage.name == "CTS"],
+            [stage for stage in stages if stage.name == StepEnum.CTS.value],
             "cts_ecc.json",
             {
                 "router_type": ("router_type",),
@@ -3043,8 +3040,8 @@ class FoundationExtractor:
         if cts:
             knobs["cts"] = cts
         route = self._first_config_values(
-            [stage for stage in stages if stage.name == "route"],
-            "route_ecc.json",
+            [stage for stage in stages if stage.name == StepEnum.ROUTING.value],
+            "routing_ecc.json",
             {
                 "thread_number": ("RT", "-thread_number"),
                 "enable_timing": ("RT", "-enable_timing"),
@@ -3423,7 +3420,7 @@ class FoundationExtractor:
                     "artifact_id": _source_artifact_id(rel_path),
                     "design_id": design_id,
                     "run_id": run_id,
-                    "stage_id": stage_ids.get("route"),
+                    "stage_id": stage_ids.get(StepEnum.ROUTING.value),
                     "artifact_type": "route_native_demand_capacity",
                     "relative_path": rel_path,
                     "sha256": _file_digest(path),
@@ -4856,7 +4853,7 @@ class FoundationExtractor:
                 _block_availability_counts(records, "drc_context")
             )
             for record in records:
-                if stage.name == "route":
+                if stage.name == StepEnum.ROUTING.value:
                     label_status = (
                         record.get("label_refs", {}).get("label_source_status") or "missing"
                     )
@@ -5034,9 +5031,13 @@ class FoundationExtractor:
                     "label_table": "run_patch_route_labels",
                     "join_keys": ["design_id", "run_id", "patch_id"],
                     "stage_policy": {
-                        "P1": ["Floorplan"],
-                        "P2": ["Floorplan", "place"],
-                        "P3": ["Floorplan", "place", "CTS"],
+                        "P1": [StepEnum.FLOORPLAN.value],
+                        "P2": [StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value],
+                        "P3": [
+                            StepEnum.FLOORPLAN.value,
+                            StepEnum.PLACEMENT.value,
+                            StepEnum.CTS.value,
+                        ],
                     },
                     "route_completion_mode": route_completion_mode,
                     "leakage_policy": {
@@ -5063,7 +5064,7 @@ class FoundationExtractor:
                 "allowed_input_stages": progressive_policy["stage_policy"],
                 "label_source": {
                     "table": "run_patch_route_labels",
-                    "stage": "route",
+                    "stage": StepEnum.ROUTING.value,
                     "artifact_table": "artifacts",
                     "completion_mode": route_completion_mode,
                 },
@@ -5173,7 +5174,7 @@ class FoundationExtractor:
 
     def _r3_seed_ids(self) -> list[str]:
         candidates: list[tuple[float, str]] = []
-        for record in self._records_for_stage("patches", "place"):
+        for record in self._records_for_stage("patches", StepEnum.PLACEMENT.value):
             patch_id = _patch_id_from_record(record)
             if patch_id is None:
                 continue
@@ -5362,7 +5363,7 @@ def _attach_progressive_metadata(
             first_seen.setdefault(key, stage.name)
     place_keys = {
         str(record.get("identity", {}).get("instance_key"))
-        for record in instances_by_stage.get("place", [])
+        for record in instances_by_stage.get(StepEnum.PLACEMENT.value, [])
     }
     previous_by_key: dict[str, dict[str, Any]] = {}
     for stage in stages:
@@ -5380,9 +5381,13 @@ def _attach_progressive_metadata(
                 dy = float(current_center["y"]) - float(previous_center["y"])
                 moved = dx != 0.0 or dy != 0.0
             first_stage = first_seen.get(key, stage.name)
-            created_stage = "Synthesis" if first_stage in {"Floorplan", "place"} else first_stage
+            created_stage = (
+                StepEnum.SYNTHESIS.value
+                if first_stage in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
+                else first_stage
+            )
             created_stage_source = (
-                "def_component" if created_stage == "Synthesis" else "first_observed"
+                "def_component" if created_stage == StepEnum.SYNTHESIS.value else "first_observed"
             )
             record["progressive_metadata"] = {
                 "available_from": first_stage,
@@ -5512,7 +5517,7 @@ def _pin_records_for_stage(
     wires_by_net = {net.name: list(net.wires) for net in parsed_def.nets}
     route_label_demand_capacity_by_patch = (
         _route_label_demand_capacity_by_patch(stage.directory, canonical_grid)
-        if stage.name == "route"
+        if stage.name == StepEnum.ROUTING.value
         else {}
     )
     raw_pins: list[dict[str, Any]] = []
@@ -6200,7 +6205,7 @@ def _pin_route_context(
     drc_report: dict[str, Any] | None,
     wires_by_net: dict[str, list[DefWire]] | None = None,
 ) -> dict[str, Any] | None:
-    if stage_name != "route":
+    if stage_name != StepEnum.ROUTING.value:
         return None
     net_wires = (wires_by_net or {}).get(net)
     if net_wires is None:
@@ -6421,7 +6426,9 @@ def _attach_pin_progressive_metadata(stages: list[StageInfo], pins_dir: Path) ->
     for stage in stages:
         for record in records_by_stage.get(stage.name, []):
             first_seen.setdefault(str(record.get("pin_key")), stage.name)
-    place_keys = {str(record.get("pin_key")) for record in records_by_stage.get("place", [])}
+    place_keys = {
+        str(record.get("pin_key")) for record in records_by_stage.get(StepEnum.PLACEMENT.value, [])
+    }
     previous_by_key: dict[str, dict[str, Any]] = {}
     for stage in stages:
         current = records_by_stage.get(stage.name, [])
@@ -6453,16 +6460,20 @@ def _attach_pin_progressive_metadata(stages: list[StageInfo], pins_dir: Path) ->
                         dy = float(current_parent_center["y"]) - float(previous_parent_center["y"])
                 moved = dx != 0.0 or dy != 0.0
             first_stage = first_seen.get(key, stage.name)
-            created_stage = "Synthesis" if first_stage in {"Floorplan", "place"} else first_stage
+            created_stage = (
+                StepEnum.SYNTHESIS.value
+                if first_stage in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
+                else first_stage
+            )
             record["progressive_metadata"] = {
                 "available_from": first_stage,
                 "created_stage": created_stage,
                 "created_stage_source": "def_connection"
-                if created_stage == "Synthesis"
+                if created_stage == StepEnum.SYNTHESIS.value
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
-                "introduced_by_cts": first_stage == "CTS",
+                "introduced_by_cts": first_stage == StepEnum.CTS.value,
                 "prev_net": previous.get("identity", {}).get("net") if previous else None,
                 "net_changed_from_prev_stage": (
                     previous.get("identity", {}).get("net") != record.get("identity", {}).get("net")
@@ -6495,7 +6506,9 @@ def _attach_pin_progressive_metadata_in_memory(
     for stage in stages:
         for record in records_by_stage.get(stage.name, []):
             first_seen.setdefault(str(record.get("pin_key")), stage.name)
-    place_keys = {str(record.get("pin_key")) for record in records_by_stage.get("place", [])}
+    place_keys = {
+        str(record.get("pin_key")) for record in records_by_stage.get(StepEnum.PLACEMENT.value, [])
+    }
     previous_by_key: dict[str, dict[str, Any]] = {}
     for stage in stages:
         current = records_by_stage.get(stage.name, [])
@@ -6510,16 +6523,20 @@ def _attach_pin_progressive_metadata_in_memory(
                 dy = float(center["y"]) - float(previous_center["y"])
                 moved = dx != 0.0 or dy != 0.0
             first_stage = first_seen.get(key, stage.name)
-            created_stage = "Synthesis" if first_stage in {"Floorplan", "place"} else first_stage
+            created_stage = (
+                StepEnum.SYNTHESIS.value
+                if first_stage in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
+                else first_stage
+            )
             record["progressive_metadata"] = {
                 "available_from": first_stage,
                 "created_stage": created_stage,
                 "created_stage_source": "def_connection"
-                if created_stage == "Synthesis"
+                if created_stage == StepEnum.SYNTHESIS.value
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
-                "introduced_by_cts": first_stage == "CTS",
+                "introduced_by_cts": first_stage == StepEnum.CTS.value,
                 "prev_net": previous.get("identity", {}).get("net") if previous else None,
                 "net_changed_from_prev_stage": (
                     previous.get("identity", {}).get("net") != record.get("identity", {}).get("net")
@@ -6640,7 +6657,9 @@ def _attach_net_progressive_metadata(stages: list[StageInfo], nets_dir: Path) ->
     for stage in stages:
         for record in records_by_stage.get(stage.name, []):
             first_seen.setdefault(str(record.get("net_key")), stage.name)
-    place_keys = {str(record.get("net_key")) for record in records_by_stage.get("place", [])}
+    place_keys = {
+        str(record.get("net_key")) for record in records_by_stage.get(StepEnum.PLACEMENT.value, [])
+    }
     previous_by_key: dict[str, dict[str, Any]] = {}
     for stage in stages:
         current = records_by_stage.get(stage.name, [])
@@ -6669,14 +6688,20 @@ def _attach_net_progressive_metadata(stages: list[StageInfo], nets_dir: Path) ->
                 if isinstance(previous, dict) and isinstance(previous.get("geometry_proxy"), dict)
                 else {}
             )
-            introduced_by_cts = first in {"CTS", "legalization", "route", "drc", "filler"} and bool(
-                record.get("identity", {}).get("is_clock") or _is_clock_like(key)
-            )
+            introduced_by_cts = first in {
+                StepEnum.CTS.value,
+                "legalization",
+                StepEnum.ROUTING.value,
+                "drc",
+                "filler",
+            } and bool(record.get("identity", {}).get("is_clock") or _is_clock_like(key))
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
+                "created_stage": StepEnum.SYNTHESIS.value
+                if first in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
+                else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "place"}
+                if first in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -6717,7 +6742,9 @@ def _attach_net_progressive_metadata_in_memory(
     for stage in stages:
         for record in records_by_stage.get(stage.name, []):
             first_seen.setdefault(str(record.get("net_key")), stage.name)
-    place_keys = {str(record.get("net_key")) for record in records_by_stage.get("place", [])}
+    place_keys = {
+        str(record.get("net_key")) for record in records_by_stage.get(StepEnum.PLACEMENT.value, [])
+    }
     previous_by_key: dict[str, dict[str, Any]] = {}
     for stage in stages:
         current = records_by_stage.get(stage.name, [])
@@ -6746,14 +6773,20 @@ def _attach_net_progressive_metadata_in_memory(
                 if isinstance(previous, dict) and isinstance(previous.get("geometry_proxy"), dict)
                 else {}
             )
-            introduced_by_cts = first in {"CTS", "legalization", "route", "drc", "filler"} and bool(
-                record.get("identity", {}).get("is_clock") or _is_clock_like(key)
-            )
+            introduced_by_cts = first in {
+                StepEnum.CTS.value,
+                "legalization",
+                StepEnum.ROUTING.value,
+                "drc",
+                "filler",
+            } and bool(record.get("identity", {}).get("is_clock") or _is_clock_like(key))
             record["progressive_metadata"] = {
                 "available_from": first,
-                "created_stage": "Synthesis" if first in {"Floorplan", "place"} else first,
+                "created_stage": StepEnum.SYNTHESIS.value
+                if first in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
+                else first,
                 "created_stage_source": "def_net"
-                if first in {"Floorplan", "place"}
+                if first in {StepEnum.FLOORPLAN.value, StepEnum.PLACEMENT.value}
                 else "first_observed",
                 "exists_in_prev_stage": previous is not None,
                 "exists_in_place": key in place_keys,
@@ -7256,7 +7289,7 @@ def _overlap_patch_ids(patches: list[dict[str, Any]], bbox: dict[str, Any]) -> l
 def _strip_stage_prefix_from_density_maps(
     maps: dict[str, MapMatrix], stage: str
 ) -> dict[str, MapMatrix]:
-    prefix = f"{stage.lower()}_"
+    prefix = f"{stage}_"
     stripped = {key.removeprefix(prefix): matrix for key, matrix in maps.items()}
     return {
         key: stripped[key]
@@ -7931,12 +7964,12 @@ def _workspace_relative_artifact_path(value: Any) -> str:
     path = Path(text)
     parts = path.parts
     for marker in (
-        "Synthesis_yosys",
-        "Floorplan_ecc",
-        "place_dreamplace",
-        "CTS_ecc",
+        "synthesis_yosys",
+        "floorplan_ecc",
+        "placement_dreamplace",
+        "cts_ecc",
         "legalization_dreamplace",
-        "route_ecc",
+        "routing_ecc",
         "drc_final_ecc",
         "drc_ecc",
         "filler_ecc",
@@ -8053,12 +8086,12 @@ def _metric_artifact_relative_path(stage_name: str, metric_name: str) -> str:
 
 def _stage_directory_name(stage_name: str) -> str:
     mapping = {
-        "Synthesis": "Synthesis_yosys",
-        "Floorplan": "Floorplan_ecc",
-        "place": "place_dreamplace",
-        "CTS": "CTS_ecc",
+        StepEnum.SYNTHESIS.value: "synthesis_yosys",
+        StepEnum.FLOORPLAN.value: "floorplan_ecc",
+        StepEnum.PLACEMENT.value: "placement_dreamplace",
+        StepEnum.CTS.value: "cts_ecc",
         "legalization": "legalization_dreamplace",
-        "route": "route_ecc",
+        StepEnum.ROUTING.value: "routing_ecc",
         "drc": "drc_ecc",
         "drc_final": "drc_final_ecc",
         "filler": "filler_ecc",
@@ -8429,7 +8462,7 @@ def _timing_for_scoped_patch_paths(
     ]
     return {
         "feature_role": "stage_qor_context",
-        "available_for_training_input": stage != "route",
+        "available_for_training_input": stage != StepEnum.ROUTING.value,
         "availability": "available" if scoped_paths else "missing",
         "critical_path_count": len(scoped_paths),
         "worst_slack_min": min(slacks) if slacks else None,
@@ -8464,7 +8497,7 @@ def _electrical_for_scoped_patch_paths(
         )
     return {
         "feature_role": "stage_qor_context",
-        "available_for_training_input": stage != "route",
+        "available_for_training_input": stage != StepEnum.ROUTING.value,
         "availability": "available" if caps or slews or resistances or incrs else "missing",
         "capacitance_sum": sum(caps) if caps else None,
         "resistance_sum": sum(resistances) if resistances else None,
@@ -8561,13 +8594,15 @@ def _patch_null_reason(
         out["local_density"] = "missing_density_maps"
     if not rudy_maps and not congestion_maps:
         out["pre_route_estimators"] = (
-            "missing_pre_route_maps" if stage != "route" else "not_applicable_for_stage"
+            "missing_pre_route_maps"
+            if stage != StepEnum.ROUTING.value
+            else "not_applicable_for_stage"
         )
     if timing_context.get("availability") == "missing":
         out["timing_context"] = "missing_sta_artifacts"
     if electrical_context.get("availability") == "missing":
         out["electrical_context"] = "missing_electrical_artifacts"
-    if stage != "route":
+    if stage != StepEnum.ROUTING.value:
         out["route_oracle"] = "not_route_stage"
     elif route_oracle is not None and not native_demand_capacity:
         out["route_oracle"] = "missing_router_native_route_demand_capacity_artifact"
@@ -8635,10 +8670,10 @@ def _extract_ppa_metric_values(payload: dict[str, Any]) -> dict[str, Any]:
 def _extract_route_ppa_metrics(features: Any) -> dict[str, Any]:
     if not isinstance(features, dict):
         return {}
-    route_step = features.get("route.step.json")
+    route_step = features.get(f"{StepEnum.ROUTING.value}.step.json")
     if not isinstance(route_step, dict):
         return {}
-    route_payload = route_step.get("route")
+    route_payload = route_step.get(StepEnum.ROUTING.value)
     if not isinstance(route_payload, dict):
         return {}
     dr_iters = route_payload.get("DR")
@@ -8674,7 +8709,7 @@ def _summary_flow(flow: dict[str, Any], stages: list[StageInfo]) -> dict[str, An
 def _top_patch_view_items(
     vector_records: dict[str, dict[str, list[dict[str, Any]]]],
 ) -> list[dict[str, Any]]:
-    rows = list(vector_records.get("patches", {}).get("route") or [])
+    rows = list(vector_records.get("patches", {}).get(StepEnum.ROUTING.value) or [])
     if not rows:
         for stage_name in sorted(vector_records.get("patches", {})):
             rows = list(vector_records.get("patches", {}).get(stage_name) or [])
@@ -8733,7 +8768,7 @@ def _top_patch_view_items(
 def _top_net_view_items(
     vector_records: dict[str, dict[str, list[dict[str, Any]]]],
 ) -> list[dict[str, Any]]:
-    rows = list(vector_records.get("nets", {}).get("route") or [])
+    rows = list(vector_records.get("nets", {}).get(StepEnum.ROUTING.value) or [])
     if not rows:
         for stage_name in sorted(vector_records.get("nets", {})):
             rows = list(vector_records.get("nets", {}).get(stage_name) or [])
@@ -9178,12 +9213,12 @@ def _attach_timing_progressive_metadata(
     stage_name: str, records: list[dict[str, Any]], timing_dir: Path
 ) -> None:
     stage_order = [
-        "Synthesis",
-        "Floorplan",
-        "place",
-        "CTS",
+        StepEnum.SYNTHESIS.value,
+        StepEnum.FLOORPLAN.value,
+        StepEnum.PLACEMENT.value,
+        StepEnum.CTS.value,
         "legalization",
-        "route",
+        StepEnum.ROUTING.value,
         "drc",
         "filler",
     ]
@@ -9525,7 +9560,7 @@ def _route_analysis_for_net(
     stage_maps: dict[str, dict[str, MapMatrix]],
     route_label_demand_capacity_by_patch: dict[int, float],
 ) -> dict[str, Any] | None:
-    if stage.name != "route":
+    if stage.name != StepEnum.ROUTING.value:
         return None
     if len(route_wires) > 100:
         wire_geometries = [_wire_geometry(wire) for wire in route_wires[:1000]]
@@ -9717,7 +9752,7 @@ def _build_net_record(
     null_reason: dict[str, str] = {}
     if hpwl is None:
         null_reason["geometry_proxy"] = "missing_terminal_anchors"
-    if stage.name != "route":
+    if stage.name != StepEnum.ROUTING.value:
         null_reason["route_analysis"] = "route_only_not_available_for_preroute_stage"
     elif not route_wires:
         null_reason["route_analysis"] = "no_routed_wires"
@@ -9836,14 +9871,14 @@ def _build_net_record(
             "instances": f"foundation_data/ecc/vectors/instances/{stage.name}.jsonl",
             "maps": f"foundation_data/ecc/maps/{stage.name}",
             "sta": timing_context.get("source"),
-            "wires": "foundation_data/ecc/vectors/wires/route.jsonl"
-            if stage.name == "route"
+            "wires": f"foundation_data/ecc/vectors/wires/{stage.name}.jsonl"
+            if stage.name == StepEnum.ROUTING.value
             else None,
-            "routing_graph": "foundation_data/ecc/vectors/routing_graphs/route.jsonl"
-            if stage.name == "route"
+            "routing_graph": f"foundation_data/ecc/vectors/routing_graphs/{stage.name}.jsonl"
+            if stage.name == StepEnum.ROUTING.value
             else None,
             "route": _workspace_relative_from_parsed_def(parsed_def)
-            if stage.name == "route"
+            if stage.name == StepEnum.ROUTING.value
             else None,
         },
         "null_reason": null_reason,
@@ -9853,10 +9888,10 @@ def _build_net_record(
 def _workspace_relative_from_parsed_def(parsed_def: DefData) -> str:
     parts = parsed_def.path.parts
     for marker in (
-        "Floorplan_ecc",
-        "place_dreamplace",
-        "CTS_ecc",
-        "route_ecc",
+        "floorplan_ecc",
+        "placement_dreamplace",
+        "cts_ecc",
+        "routing_ecc",
         "drc_ecc",
         "filler_ecc",
         "legalization_dreamplace",
@@ -10191,7 +10226,7 @@ def _build_wire_record(
     )
     if not capacity_context.get("available"):
         null_reason["capacity_context"] = (
-            "missing_track_capacity" if stage.name == "route" else "not_implemented"
+            "missing_track_capacity" if stage.name == StepEnum.ROUTING.value else "not_implemented"
         )
     patch_anchor = _wire_patch_anchor(
         stage_maps, canonical_grid, geometry, primary_patch_id, intersections
@@ -10262,7 +10297,7 @@ def _build_wire_record(
             "null_reason": null_reason,
         }
     route_context = None
-    if stage.name == "route":
+    if stage.name == StepEnum.ROUTING.value:
         local_overflow = _route_wire_local_overflow(
             primary_patch_id, native_demand_capacity_by_patch or {}, stage_maps, row_col
         )
@@ -10358,7 +10393,7 @@ def _build_wire_record(
             "is_new_routed_geometry": None,
             "exists_same_geometry_in_prev_stage": None,
             "net_exists_in_prev_stage": None,
-            "route_only_oracle": stage.name == "route" and route_context is not None,
+            "route_only_oracle": stage.name == StepEnum.ROUTING.value and route_context is not None,
             "tracking_scope": "stage_local_wire_geometry",
         },
         "source_refs": {
@@ -10370,7 +10405,7 @@ def _build_wire_record(
             "tech_layer": "foundation_data/ecc/vectors/tech/layers.json",
             "tech_via": "foundation_data/ecc/vectors/tech/vias.json" if wire.via else None,
             "sta": None,
-            "route": "routed_def_reconstruction" if stage.name == "route" else None,
+            "route": "routed_def_reconstruction" if stage.name == StepEnum.ROUTING.value else None,
         },
         "null_reason": null_reason,
     }
@@ -10476,7 +10511,7 @@ def _wire_capacity_context(
     )
     direction = geometry.get("direction")
     if (
-        stage_name == "route"
+        stage_name == StepEnum.ROUTING.value
         and isinstance(label, dict)
         and direction in {"horizontal", "vertical"}
     ):
@@ -10495,12 +10530,12 @@ def _wire_capacity_context(
         }
     source = (
         "current_stage_real_wires_only"
-        if stage_name != "route"
+        if stage_name != StepEnum.ROUTING.value
         else "missing_route_overflow_artifact"
     )
     return {
-        "available": stage_name != "route" and primary_length is not None,
-        "patch_layer_demand": primary_length if stage_name != "route" else None,
+        "available": stage_name != StepEnum.ROUTING.value and primary_length is not None,
+        "patch_layer_demand": primary_length if stage_name != StepEnum.ROUTING.value else None,
         "patch_layer_capacity": None,
         "patch_layer_utilization": None,
         "layer_demand_capacity_ratio": None,
@@ -10933,8 +10968,8 @@ def _build_routing_graph_record(
             "drc_count": None,
         },
         "progressive_metadata": {
-            "available_from": "route",
-            "created_stage": "route",
+            "available_from": StepEnum.ROUTING.value,
+            "created_stage": StepEnum.ROUTING.value,
             "exists_before_route": False,
             "not_available_before_route": True,
             "route_only_oracle": True,

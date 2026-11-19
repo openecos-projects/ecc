@@ -2,6 +2,7 @@ import json
 import os
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,6 +18,7 @@ from chipcompiler.engine import (
     update_workspace_step_configuration,
 )
 from chipcompiler.engine.snapshot import create_engineering_snapshot, read_engineering_snapshot
+from chipcompiler.params import lookup_schema, workspace_param_value
 
 
 def _workspace_spec_fixture() -> tuple[dict, dict]:
@@ -74,13 +76,18 @@ def test_workspace_configuration_update_is_revision_aware_and_idempotent(
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
 
+def _target_density(workspace: Any) -> object:
+    """The placement step's target density, as its DreamPlace config build will see it."""
+    return workspace_param_value(workspace, lookup_schema("place.target_density"), step="placement")
+
+
 def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_step(
     tmp_path, minimal_ics55_pdk_factory
 ):
     spec, bindings = _workspace_spec_fixture()
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
-    baseline_density = workspace.parameters.data["dreamplace"]["target_density"]
+    baseline_density = _target_density(workspace)
     flow = EngineFlow(workspace)
     for step in flow.workspace.flow.data.get("steps", []):
         step["state"] = "Success"
@@ -95,14 +102,14 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     updated = apply_workspace_parameters(
         workspace.directory,
         1,
-        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        {"placement:place.target_density": 0.65, "cts.skew_bound": "0.10"},
         (),
         command_id="batch-1",
     )
     committed = read_engineering_snapshot(updated)
     states = [step["state"] for step in updated.flow.steps()]
     names = [step["name"] for step in updated.flow.steps()]
-    first = names.index("place")
+    first = names.index("placement")
 
     assert committed["workspaceRevision"] == 2
     assert committed["flow"] == json.loads(
@@ -110,12 +117,12 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
     )
     assert states[:first] == ["Success"] * first
     assert all(state == "Unstart" for state in states[first:])
-    assert updated.parameters.data["dreamplace"]["target_density"] == 0.65
+    assert _target_density(updated) == 0.65
 
     repeated = apply_workspace_parameters(
         workspace.directory,
         1,
-        {"place.target_density": 0.65, "cts.skew_bound": "0.10"},
+        {"placement:place.target_density": 0.65, "cts.skew_bound": "0.10"},
         (),
         command_id="batch-1",
     )
@@ -125,11 +132,11 @@ def test_workspace_parameter_batch_commits_once_and_invalidates_from_earliest_st
         workspace.directory,
         2,
         {},
-        ("place.target_density", "cts.skew_bound"),
+        ("placement:place.target_density", "cts.skew_bound"),
         command_id="batch-2",
     )
     assert read_engineering_snapshot(restored)["workspaceRevision"] == 3
-    assert restored.parameters.data["dreamplace"]["target_density"] == baseline_density
+    assert _target_density(restored) == baseline_density
 
 
 def test_workspace_parameter_batch_rejects_step_mismatch_without_writes(
@@ -178,17 +185,17 @@ def test_published_step_parameter_update_preserves_current_step(
         initial["workspaceRevision"],
         {"macro.placements": placements},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-1",
     )
 
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
     committed = read_engineering_snapshot(updated)
-    assert states["macroPlacement"] == "Success"
-    assert states["postFloorplan"] == "Unstart"
+    assert states["macro_placement"] == "Success"
+    assert states["post_floorplan"] == "Unstart"
     assert committed["flow"] == updated.flow.data
-    assert committed["stalePredecessor"]["invalidatedStepIds"][0] == "postFloorplan"
+    assert committed["stalePredecessor"]["invalidatedStepIds"][0] == "post_floorplan"
     assert updated.parameters.data["macro"]["placements"] == placements
     from chipcompiler.data.workspace.macro_location import parse_macro_location_tcl
 
@@ -229,7 +236,7 @@ def test_published_macro_parameter_update_rejects_mismatched_handoff_without_wri
                 ]
             },
             (),
-            step_id="macroPlacement",
+            step_id="macro_placement",
             commit_step_output=True,
             command_id="published-macro-mismatch",
         )
@@ -293,7 +300,7 @@ def test_published_macro_parameter_update_rejects_invalid_handoff_without_writes
                 ]
             },
             (),
-            step_id="macroPlacement",
+            step_id="macro_placement",
             commit_step_output=True,
             command_id=f"published-macro-invalid-{expected_code}",
         )
@@ -332,7 +339,7 @@ def test_published_macro_parameter_update_accepts_rendered_float_precision(
         initial["workspaceRevision"],
         {"macro.placements": placements},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-precision",
     )
@@ -384,7 +391,7 @@ def test_published_macro_parameter_update_publishes_mixed_orientations(
         initial["workspaceRevision"],
         {"macro.placements": placements},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-orientations",
     )
@@ -392,8 +399,8 @@ def test_published_macro_parameter_update_publishes_mixed_orientations(
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
     assert updated.parameters.data["macro"]["placements"] == placements
     assert parse_macro_location_tcl(updated.config["macro_location"].read_text()) == placements
-    assert states["macroPlacement"] == "Success"
-    assert states["postFloorplan"] == "Unstart"
+    assert states["macro_placement"] == "Success"
+    assert states["post_floorplan"] == "Unstart"
 
 
 def test_published_macro_parameter_update_rejects_duplicate_instances(
@@ -426,7 +433,7 @@ def test_published_macro_parameter_update_rejects_duplicate_instances(
                 ]
             },
             (),
-            step_id="macroPlacement",
+            step_id="macro_placement",
             commit_step_output=True,
             command_id="published-macro-duplicate",
         )
@@ -461,7 +468,7 @@ def test_published_macro_parameter_update_checks_unchanged_handoff(
         initial["workspaceRevision"],
         {"macro.placements": placements},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-initial",
     )
@@ -473,7 +480,7 @@ def test_published_macro_parameter_update_checks_unchanged_handoff(
             read_engineering_snapshot(updated)["workspaceRevision"],
             {"macro.placements": placements},
             (),
-            step_id="macroPlacement",
+            step_id="macro_placement",
             commit_step_output=True,
             command_id="published-macro-unchanged",
         )
@@ -503,7 +510,7 @@ def test_published_macro_parameter_update_can_clear_all_placements(
         initial["workspaceRevision"],
         {"macro.placements": placements},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-before-clear",
     )
@@ -513,7 +520,7 @@ def test_published_macro_parameter_update_can_clear_all_placements(
         read_engineering_snapshot(published)["workspaceRevision"],
         {"macro.placements": []},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         commit_step_output=True,
         command_id="published-macro-clear",
     )
@@ -523,8 +530,8 @@ def test_published_macro_parameter_update_can_clear_all_placements(
     assert cleared.config["macro_location"].read_text().strip() == (
         "# Auto-generated macro location file"
     )
-    assert states["macroPlacement"] == "Success"
-    assert states["postFloorplan"] == "Unstart"
+    assert states["macro_placement"] == "Success"
+    assert states["post_floorplan"] == "Unstart"
 
 
 def test_published_step_parameter_update_requires_success_without_writes(
@@ -556,7 +563,7 @@ def test_published_step_parameter_update_requires_success_without_writes(
                 ]
             },
             (),
-            step_id="macroPlacement",
+            step_id="macro_placement",
             commit_step_output=True,
             command_id="published-macro-2",
         )
@@ -590,13 +597,13 @@ def test_macro_placements_without_output_commit_invalidates_current_step(
         initial["workspaceRevision"],
         {"macro.placements": [{"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}]},
         (),
-        step_id="macroPlacement",
+        step_id="macro_placement",
         command_id="ordinary-macro-1",
     )
 
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
-    assert states["macroPlacement"] == "Unstart"
-    assert states["postFloorplan"] == "Unstart"
+    assert states["macro_placement"] == "Unstart"
+    assert states["post_floorplan"] == "Unstart"
 
 
 def test_workspace_configuration_update_rolls_back_refresh_failure(
@@ -748,12 +755,12 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         workspace_revision=initial["workspaceRevision"],
     )
 
-    configuration = read_step_configuration(workspace, "floor-plan")
+    configuration = read_step_configuration(workspace, "pre_floorplan")
     synthesis = read_step_configuration(workspace, "synthesis")
     updated = update_workspace_step_configuration(
         workspace.directory,
         configuration["workspaceRevision"],
-        "Floorplan",
+        "pre_floorplan",
         {"floorplan.core_util": 0.55},
         "step-configuration-1",
     )
@@ -774,16 +781,16 @@ def test_step_configuration_update_invalidates_only_target_suffix(
         "knob_id",
     }
     states = {step["name"]: step["state"] for step in updated.flow.steps()}
-    assert states["Synthesis"] == "Success"
-    assert states["preFloorplan"] == "Unstart"
-    assert states["macroPlacement"] == "Unstart"
+    assert states["synthesis"] == "Success"
+    assert states["pre_floorplan"] == "Unstart"
+    assert states["macro_placement"] == "Unstart"
     assert read_engineering_snapshot(updated)["workspaceRevision"] == 2
 
     with pytest.raises(WorkspaceLifecycleError) as inapplicable:
         update_workspace_step_configuration(
             workspace.directory,
             2,
-            "Floorplan",
+            "pre_floorplan",
             {"place.target_density": 0.6},
             "step-configuration-2",
         )
@@ -798,7 +805,7 @@ def test_manual_macro_placement_is_editable_with_floorplan_configuration(
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings, "create-1")
 
-    configuration = read_step_configuration(workspace, "Floorplan")
+    configuration = read_step_configuration(workspace, "pre_floorplan")
     record = next(
         item for item in configuration["parameters"] if item["param"] == "macro.manual_placement"
     )
@@ -808,7 +815,7 @@ def test_manual_macro_placement_is_editable_with_floorplan_configuration(
     updated = update_workspace_step_configuration(
         workspace.directory,
         configuration["workspaceRevision"],
-        "Floorplan",
+        "pre_floorplan",
         {"macro.manual_placement": True},
         "step-configuration-manual-macro",
     )
@@ -853,3 +860,41 @@ def test_macro_placements_apply_prunes_stale_tcl_when_emptied(tmp_path, minimal_
     assert text == f"{MACRO_LOCATION_MARKER}\n\n"
     updated = load_workspace(workspace.directory)
     assert macro_placements(updated) == []
+
+
+def test_step_configuration_includes_parameters_spanning_several_steps(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    from chipcompiler.engine import read_step_configuration
+
+    spec, bindings = _workspace_spec_fixture()
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+
+    params = {
+        item["param"] for item in read_step_configuration(workspace, "placement")["parameters"]
+    }
+
+    assert "place.timing_sizing_action" in params
+
+
+def test_parameter_records_report_the_workspace_pdk_default_and_choices(tmp_path):
+    from test.data.conftest import create_minimal_sg13g2_pdk
+
+    spec, bindings = _workspace_spec_fixture()
+    spec["pdk"]["familyId"] = "sg13g2"
+    bindings["pdk"]["root"] = str(create_minimal_sg13g2_pdk(tmp_path / "pdk"))
+    workspace = create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
+
+    def record(step: str, param: str) -> dict[str, Any]:
+        records = read_step_configuration(workspace, step)["parameters"]
+        return next(item for item in records if item["param"] == param)
+
+    assert record("placement", "place.target_density")["default"] == 0.65
+    assert record("routing", "route.bottom_layer")["choices"] == [
+        "Metal1",
+        "Metal2",
+        "Metal3",
+        "Metal4",
+        "Metal5",
+    ]

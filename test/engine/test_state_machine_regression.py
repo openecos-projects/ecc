@@ -29,6 +29,10 @@ from chipcompiler.data.workspace.flow_ledger import _VALID_TRANSITIONS
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
+from test.flow_fixture import step_fields
+
+#: Real flow step names: the ledger rejects unknown steps.
+_STEPS = ("synthesis", "pre_floorplan", "placement", "cts", "routing")
 
 
 def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
@@ -43,22 +47,23 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
     for i in range(num_steps):
         steps.append(
             {
-                "name": f"step_{i}",
+                "name": _STEPS[i],
                 "tool": "mock",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(_STEPS[i], "mock"),
             }
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 3, "steps": steps}),
         logger=Logger(),
     )
 
@@ -69,54 +74,54 @@ class TestValidTransitionGuards:
     def test_unstart_to_ongoing(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        assert flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        step = flow.get_step(name="step_0", tool="mock")
+        assert flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         assert step["state"] == StateEnum.Ongoing.value
 
     def test_unstart_to_incomplete(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        assert flow.set_state("step_0", "mock", StateEnum.Imcomplete)
-        step = flow.get_step(name="step_0", tool="mock")
+        assert flow.set_state("synthesis", "mock", StateEnum.Imcomplete)
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         assert step["state"] == StateEnum.Imcomplete.value
 
     def test_ongoing_to_success(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        assert flow.set_state("step_0", "mock", StateEnum.Success)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        assert flow.set_state("synthesis", "mock", StateEnum.Success)
 
     def test_ongoing_to_incomplete(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        assert flow.set_state("step_0", "mock", StateEnum.Imcomplete)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        assert flow.set_state("synthesis", "mock", StateEnum.Imcomplete)
 
     def test_ongoing_to_invalid(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        assert flow.set_state("step_0", "mock", StateEnum.Invalid)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        assert flow.set_state("synthesis", "mock", StateEnum.Invalid)
 
     def test_pending_to_ongoing(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Pending.value
         flow.save()
-        assert flow.set_state("step_0", "mock", StateEnum.Ongoing)
+        assert flow.set_state("synthesis", "mock", StateEnum.Ongoing)
 
     def test_pending_to_incomplete(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Pending.value
         flow.save()
-        assert flow.set_state("step_0", "mock", StateEnum.Imcomplete)
+        assert flow.set_state("synthesis", "mock", StateEnum.Imcomplete)
 
 
 class TestInvalidTransitionRejection:
@@ -126,53 +131,53 @@ class TestInvalidTransitionRejection:
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Success)
+            flow.set_state("synthesis", "mock", StateEnum.Success)
 
     def test_unstart_to_invalid_rejected(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Invalid)
+            flow.set_state("synthesis", "mock", StateEnum.Invalid)
 
     def test_success_to_ongoing_rejected(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Success.value
         flow.save()
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Ongoing)
+            flow.set_state("synthesis", "mock", StateEnum.Ongoing)
 
     def test_incomplete_to_ongoing_rejected(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Imcomplete.value
         flow.save()
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Ongoing)
+            flow.set_state("synthesis", "mock", StateEnum.Ongoing)
 
     def test_invalid_to_ongoing_rejected(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Invalid.value
         flow.save()
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Ongoing)
+            flow.set_state("synthesis", "mock", StateEnum.Ongoing)
 
     def test_invalid_to_success_rejected(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Invalid.value
         flow.save()
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Success)
+            flow.set_state("synthesis", "mock", StateEnum.Success)
 
 
 class TestIdempotency:
@@ -181,22 +186,22 @@ class TestIdempotency:
     def test_unstart_to_unstart(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        assert flow.set_state("step_0", "mock", StateEnum.Unstart)
+        assert flow.set_state("synthesis", "mock", StateEnum.Unstart)
 
     def test_ongoing_to_ongoing(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        assert flow.set_state("step_0", "mock", StateEnum.Ongoing)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        assert flow.set_state("synthesis", "mock", StateEnum.Ongoing)
 
     def test_success_to_success(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        step = flow.get_step(name="step_0", tool="mock")
+        step = flow.get_step(name="synthesis", tool="mock")
         assert step is not None
         step["state"] = StateEnum.Success.value
         flow.save()
-        assert flow.set_state("step_0", "mock", StateEnum.Success)
+        assert flow.set_state("synthesis", "mock", StateEnum.Success)
 
 
 class TestBatchResetBypassesGuards:
@@ -207,13 +212,13 @@ class TestBatchResetBypassesGuards:
         flow = EngineFlow(workspace=ws)
 
         # Set lifecycle-reachable states via set_state
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        flow.set_state("step_1", "mock", StateEnum.Ongoing)
-        flow.set_state("step_1", "mock", StateEnum.Success)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        flow.set_state("pre_floorplan", "mock", StateEnum.Ongoing)
+        flow.set_state("pre_floorplan", "mock", StateEnum.Success)
 
         # Set terminal states via direct assignment (bypassing guards)
         for i, state in [(2, StateEnum.Imcomplete), (3, StateEnum.Invalid), (4, StateEnum.Pending)]:
-            step = flow.get_step(name=f"step_{i}", tool="mock")
+            step = flow.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             step["state"] = state.value
         flow.save()
@@ -221,7 +226,7 @@ class TestBatchResetBypassesGuards:
         flow.clear_states()
 
         for i in range(5):
-            step = flow.get_step(name=f"step_{i}", tool="mock")
+            step = flow.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             assert step["state"] == StateEnum.Unstart.value
 
@@ -231,16 +236,16 @@ class TestBatchResetBypassesGuards:
         ws = _make_workspace(tmp_path, num_steps=5)
         flow = EngineFlow(workspace=ws)
 
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        flow.set_state("step_0", "mock", StateEnum.Success)
-        flow.set_state("step_1", "mock", StateEnum.Ongoing)
-        flow.set_state("step_1", "mock", StateEnum.Success)
-        flow.set_state("step_2", "mock", StateEnum.Ongoing)
-        flow.set_state("step_2", "mock", StateEnum.Invalid)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        flow.set_state("synthesis", "mock", StateEnum.Success)
+        flow.set_state("pre_floorplan", "mock", StateEnum.Ongoing)
+        flow.set_state("pre_floorplan", "mock", StateEnum.Success)
+        flow.set_state("placement", "mock", StateEnum.Ongoing)
+        flow.set_state("placement", "mock", StateEnum.Invalid)
 
         # Directly set remaining steps to Invalid (bypassing guards)
         for i in [3, 4]:
-            step = flow.get_step(name=f"step_{i}", tool="mock")
+            step = flow.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             step["state"] = StateEnum.Invalid.value
         flow.save()
@@ -250,13 +255,13 @@ class TestBatchResetBypassesGuards:
 
         # step_2 and all downstream should be Unstart
         for i in [2, 3, 4]:
-            step = flow.get_step(name=f"step_{i}", tool="mock")
+            step = flow.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             assert step["state"] == StateEnum.Unstart.value
 
         # step_0, step_1 should remain Success
         for i in [0, 1]:
-            step = flow.get_step(name=f"step_{i}", tool="mock")
+            step = flow.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             assert step["state"] == StateEnum.Success.value
 
@@ -267,12 +272,12 @@ class TestPersistence:
     def test_state_persists_to_file(self, tmp_path):
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
-        flow.set_state("step_0", "mock", StateEnum.Ongoing)
-        flow.set_state("step_0", "mock", StateEnum.Success)
+        flow.set_state("synthesis", "mock", StateEnum.Ongoing)
+        flow.set_state("synthesis", "mock", StateEnum.Success)
 
         # Reload from disk
         flow2 = EngineFlow(workspace=ws)
-        step = flow2.get_step(name="step_0", tool="mock")
+        step = flow2.get_step(name="synthesis", tool="mock")
         assert step is not None
         assert step["state"] == StateEnum.Success.value
 
@@ -280,11 +285,11 @@ class TestPersistence:
         ws = _make_workspace(tmp_path)
         flow = EngineFlow(workspace=ws)
         with pytest.raises(ValueError, match="Illegal state transition"):
-            flow.set_state("step_0", "mock", StateEnum.Success)
+            flow.set_state("synthesis", "mock", StateEnum.Success)
 
         # Reload — should still be Unstart
         flow2 = EngineFlow(workspace=ws)
-        step = flow2.get_step(name="step_0", tool="mock")
+        step = flow2.get_step(name="synthesis", tool="mock")
         assert step is not None
         assert step["state"] == StateEnum.Unstart.value
 
@@ -298,13 +303,13 @@ class TestResumeAndRerun:
 
         # Simulate lifecycle: Unstart → Ongoing → Success
         for i in range(3):
-            flow.set_state(f"step_{i}", "mock", StateEnum.Ongoing)
-            flow.set_state(f"step_{i}", "mock", StateEnum.Success)
+            flow.set_state(_STEPS[i], "mock", StateEnum.Ongoing)
+            flow.set_state(_STEPS[i], "mock", StateEnum.Success)
 
         # Reload — all should be Success
         flow2 = EngineFlow(workspace=ws)
         for i in range(3):
-            step = flow2.get_step(name=f"step_{i}", tool="mock")
+            step = flow2.get_step(name=_STEPS[i], tool="mock")
             assert step is not None
             assert step["state"] == StateEnum.Success.value
 
@@ -328,10 +333,21 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
     first_name = StepEnum.FLOORPLAN.value
     second_name = StepEnum.PLACEMENT.value
     ws.flow.data = {
+        "schema_version": 3,
         "steps": [
-            {"name": first_name, "tool": "ecc", "state": StateEnum.Unstart.value},
-            {"name": second_name, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": first_name,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(first_name, "ecc"),
+            },
+            {
+                "name": second_name,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(second_name, "ecc"),
+            },
+        ],
     }
     assert ws.flow.path is not None
     Path(ws.flow.path).write_text(json.dumps(ws.flow.data), encoding="utf-8")
@@ -372,25 +388,27 @@ def test_design_read_failure_stops_flow_despite_stale_outputs(tmp_path, monkeypa
 def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisory, parallel):
     ws = _make_workspace(tmp_path, num_steps=2)
     ws.flow.data = {
+        "schema_version": 3,
         "steps": [
             {
                 "name": advisory,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(advisory, "ecc"),
             },
             {
                 "name": StepEnum.HARDEN.value,
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.HARDEN.value, "ecc"),
             },
-        ]
+        ],
     }
     flow = EngineFlow(ws)
     flow.workspace_steps = [
         SimpleNamespace(name=advisory, tool="ecc"),
         SimpleNamespace(name=StepEnum.HARDEN.value, tool="ecc"),
     ]
-    monkeypatch.setattr(flow, "init_db_engine", lambda: True)
     monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
 
     executed = []
@@ -400,17 +418,13 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         return StateEnum.Imcomplete if step.name == advisory else StateEnum.Success
 
     monkeypatch.setattr(flow, "run_step", run_step)
-    if parallel:
-        # Isolate batch dispatch from the subprocess/native-tool implementation.
-        monkeypatch.setattr(
-            flow, "_can_parallelize_checker_batch", lambda step, *_: step.name == advisory
-        )
-        monkeypatch.setattr(flow, "_is_checker_batch_step", lambda step: step.name == advisory)
-        monkeypatch.setattr(
-            flow, "_run_checker_batch", lambda steps, **kw: [run_step(step) for step in steps]
-        )
+    # One wave of both steps, run on two workers, or one step per wave.
+    monkeypatch.setattr(
+        flow, "_analysis_wave_end", lambda steps, index: len(steps) if parallel else index + 1
+    )
+    monkeypatch.setattr(flow, "_checker_parallelism", lambda steps: len(steps))
     assert flow.run_steps() is True
-    assert executed == [advisory, StepEnum.HARDEN.value]
+    assert sorted(executed) == sorted([advisory, StepEnum.HARDEN.value])
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +439,7 @@ def _make_resume_workspace(tmp_path, steps):
     workspace = Workspace(directory=tmp_path, flow=Flow(path=home / "flow.json"))
     engine_flow = EngineFlow(workspace)
     engine_flow.workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,
@@ -433,9 +448,10 @@ def _make_resume_workspace(tmp_path, steps):
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(name, "ecc"),
             }
             for name, state in steps
-        ]
+        ],
     }
     engine_flow.save()
     engine_flow.workspace_steps = []
@@ -454,14 +470,14 @@ def _make_resume_workspace(tmp_path, steps):
     return engine_flow
 
 
-class TestLegacyStateNormalization:
+class TestTerminalStateNormalization:
     """run_step() normalizes terminal states before set_state(Ongoing)."""
 
     def test_incomplete_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Legacy workspace with Incomplete step — resume normalizes it."""
+        """An Incomplete step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
+            [("synthesis", "Success"), ("floorplan", "Incomplete")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -475,30 +491,14 @@ class TestLegacyStateNormalization:
         assert persisted["steps"][1]["state"] == StateEnum.Success.value
 
     def test_invalid_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Legacy workspace with Invalid step — resume normalizes it."""
+        """An Invalid step is normalized when execution resumes."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Invalid")],
+            [("synthesis", "Success"), ("floorplan", "Invalid")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
 
-        result = flow.run_step(flow.workspace_steps[1], rerun=False)
-        assert result == StateEnum.Success
-
-        persisted = json.loads((tmp_path / "home" / "flow.json").read_text())
-        assert persisted["steps"][1]["state"] == StateEnum.Success.value
-
-    def test_legacy_warning_step_normalized_on_resume(self, tmp_path, monkeypatch):
-        """Persisted Warning state from the removed LEC downgrade — resume normalizes it."""
-        flow = _make_resume_workspace(
-            tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Warning")],
-        )
-        monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
-        monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
-
-        # This must NOT raise ValueError
         result = flow.run_step(flow.workspace_steps[1], rerun=False)
         assert result == StateEnum.Success
 
@@ -509,7 +509,7 @@ class TestLegacyStateNormalization:
         """Ongoing step is NOT a terminal state — no normalization needed."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Ongoing")],
+            [("synthesis", "Success"), ("floorplan", "Ongoing")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -522,7 +522,7 @@ class TestLegacyStateNormalization:
         """Normal Unstart step — no normalization, normal lifecycle."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Unstart")],
+            [("synthesis", "Success"), ("floorplan", "Unstart")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
@@ -531,39 +531,41 @@ class TestLegacyStateNormalization:
         assert result == StateEnum.Success
 
     def test_normalization_emits_warning(self, tmp_path, monkeypatch, caplog):
-        """Normalization logs a warning so the legacy state is not silently lost."""
+        """Resetting an unfinished step logs a warning before it reruns."""
         flow = _make_resume_workspace(
             tmp_path,
-            [("Synthesis", "Success"), ("Floorplan", "Incomplete")],
+            [("synthesis", "Success"), ("floorplan", "Incomplete")],
         )
         monkeypatch.setattr(tools, "run_step", lambda **_kw: True)
         monkeypatch.setattr(flow, "check_step_result", lambda **_kw: True)
 
         with caplog.at_level(logging.WARNING):
             flow.run_step(flow.workspace_steps[1], rerun=False)
-        assert "Normalizing legacy" in caplog.text
+        assert "Resetting" in caplog.text
         assert "Incomplete" in caplog.text
 
 
-def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeypatch):
-    """AgentEngineFlow: unusable step-log path must not block tool execution."""
+def test_agent_flow_unusable_log_path_fails_step_without_ongoing(tmp_path, monkeypatch):
+    """AgentEngineFlow uses the shared step-log failure contract."""
     import agent.engine as agent_engine
 
-    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir = tmp_path / "floorplan_ecc"
     step_dir.mkdir()
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields("floorplan", "ecc"),
             }
-        ]
+        ],
     }
     workspace.logger = Logger()
 
@@ -571,7 +573,7 @@ def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeyp
     agent_flow.workspace = workspace
     agent_flow.workspace_steps = [
         EccStep(
-            name="Floorplan",
+            name="floorplan",
             tool="ecc",
             directory=step_dir,
             output=EccOutput(verilog=step_dir / "design.v"),
@@ -581,38 +583,40 @@ def test_agent_flow_unusable_log_path_does_not_block_execution(tmp_path, monkeyp
     vars(agent_flow)["engine_db"] = SimpleNamespace(engine=None)
 
     mock_run = MagicMock(return_value=True)
-    monkeypatch.setattr(agent_engine, "run_agent_step", mock_run)
+    monkeypatch.setattr("agent.tools.run_step", mock_run)
     monkeypatch.setattr(agent_flow, "check_step_result", lambda **_kw: True)
 
     result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
 
-    assert mock_run.call_count == 1
-    assert result == StateEnum.Success
+    assert mock_run.call_count == 0
+    assert result == StateEnum.Imcomplete
 
     persisted = json.loads((tmp_path / "flow.json").read_text())
     assert persisted["steps"][0]["state"] != StateEnum.Ongoing.value
 
 
 def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
-    """AgentEngineFlow: run_agent_step() failure must not be swallowed."""
+    """AgentEngineFlow reports tool failures through the shared terminal path."""
     import agent.engine as agent_engine
 
     log_file = tmp_path / "agent_step.log"
-    step_dir = tmp_path / "Floorplan_ecc"
+    step_dir = tmp_path / "floorplan_ecc"
     step_dir.mkdir()
 
     workspace = Workspace(directory=tmp_path, flow=Flow(path=tmp_path / "flow.json"))
     workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
             {
-                "name": "Floorplan",
+                "name": "floorplan",
                 "tool": "ecc",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields("floorplan", "ecc"),
             }
-        ]
+        ],
     }
     workspace.logger = Logger()
 
@@ -620,7 +624,7 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
     agent_flow.workspace = workspace
     agent_flow.workspace_steps = [
         EccStep(
-            name="Floorplan",
+            name="floorplan",
             tool="ecc",
             directory=step_dir,
             output=EccOutput(verilog=step_dir / "design.v"),
@@ -632,7 +636,7 @@ def test_agent_flow_step_failure_not_silently_swallowed(tmp_path, monkeypatch):
     def _raise(**_kw):
         raise RuntimeError("tool crashed")
 
-    monkeypatch.setattr(agent_engine, "run_agent_step", _raise)
+    monkeypatch.setattr("agent.tools.run_step", _raise)
 
     result = agent_flow.run_step(agent_flow.workspace_steps[0], rerun=False)
 
@@ -651,9 +655,8 @@ class TestRunStepsLedgerCompleteness:
         ws = _make_workspace(tmp_path, num_steps=ledger_steps)
         flow = EngineFlow(workspace=ws)
         flow.workspace_steps = [
-            SimpleNamespace(name=f"step_{i}", tool="mock") for i in range(created_steps)
+            SimpleNamespace(name=_STEPS[i], tool="mock") for i in range(created_steps)
         ]
-        monkeypatch.setattr(flow, "init_db_engine", lambda: True)
         monkeypatch.setattr(flow, "run_step", lambda *args, **kwargs: StateEnum.Success)
         monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
         return flow

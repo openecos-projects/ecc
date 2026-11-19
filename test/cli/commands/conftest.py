@@ -56,7 +56,9 @@ def flow_mocks(monkeypatch):
     from chipcompiler.data.workspace import flow_options
 
     capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}
-    workspace_obj = SimpleNamespace(name="workspace", flow=SimpleNamespace(data={"steps": []}))
+    workspace_obj = SimpleNamespace(
+        name="workspace", flow=SimpleNamespace(data={"schema_version": 3, "steps": []})
+    )
     project_flow_options = flow_options.sync_flow_options_projection
 
     def fake_flow_options_projection(workspace, *, persist=False):
@@ -81,7 +83,7 @@ def flow_mocks(monkeypatch):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -111,7 +113,7 @@ def manifest_stubs(capsys, plain_records):
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": workspaces,
         }
@@ -159,75 +161,6 @@ def spy_mutations(monkeypatch):
 
 
 @pytest.fixture
-def legacy_hint():
-    """The expected legacy_layout_detected record for a project path."""
-
-    def _build(project_dir):
-        return {
-            "kind": "warning",
-            "warning": "legacy_layout_detected",
-            "reason": "this project uses the legacy runs/ layout; run 'ecc migrate' to upgrade",
-            "migrate": f"ecc migrate --project {project_dir} --yes",
-        }
-
-    return _build
-
-
-@pytest.fixture
-def create_legacy_workspace():
-    """Factory: a real runs/<run_id> workspace with a Synthesis..postFloorplan
-    flow ledger cut from the canonical chain.
-
-    *states* holds (first step state, last step state); steps between them
-    inherit the first state."""
-
-    def _create(project_dir, pdk_root, run_id, states):
-        from chipcompiler.data import create_workspace
-        from chipcompiler.data.workspace_config import flow_steps_in_range
-        from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
-
-        rtl_path = os.path.join(project_dir, "rtl", "gcd.v")
-        os.makedirs(os.path.dirname(rtl_path), exist_ok=True)
-        with open(rtl_path, "w") as f:
-            f.write("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-        run_dir = os.path.join(project_dir, "runs", run_id)
-        workspace = create_workspace(
-            directory=run_dir,
-            origin_def="",
-            origin_verilog=rtl_path,
-            pdk="ics55",
-            parameters={"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
-            pdk_root=str(pdk_root),
-        )
-        assert workspace is not None
-
-        chain = [
-            (step.value if hasattr(step, "value") else str(step), str(tool))
-            for step, tool, _state in build_rtl2gds_flow()
-        ]
-        tools = dict(chain)
-        names = flow_steps_in_range("Synthesis", "postFloorplan")
-        step_states = [states[0]] * (len(names) - 1) + [states[1]]
-        steps = [
-            {
-                "name": name,
-                "tool": tools[name],
-                "state": state,
-                "runtime": "",
-                "peak memory (mb)": 0,
-                "info": {},
-            }
-            for name, state in zip(names, step_states, strict=True)
-        ]
-        with open(os.path.join(run_dir, "home", "flow.json"), "w") as f:
-            json.dump({"steps": steps}, f)
-        return run_dir
-
-    return _create
-
-
-@pytest.fixture
 def set_flow_preset():
     """Set [flow] preset in a project's ecc.toml."""
 
@@ -244,12 +177,20 @@ def set_flow_preset():
 
 @pytest.fixture
 def patch_all_flow_builders():
-    """Patch every preset builder with a distinctive two-step stub chain."""
+    """Patch every preset builder with a distinctive two-step stub chain.
+
+    The marker steps are registered steps without required design data, so
+    the capability check of a declared skip policy accepts every stub chain.
+    """
 
     def _patch(monkeypatch):
         markers = {}
-        for attr in ("build_rtl2gds_flow", "build_syn_sta_flow", "build_synthesis_lec_flow"):
-            steps = [("Synthesis", "yosys", "Unstart"), (attr, "ecc", "Unstart")]
+        for attr, marker in (
+            ("build_rtl2gds_flow", "gds"),
+            ("build_syn_sta_flow", "signoff"),
+            ("build_synthesis_lec_flow", "abstract_lef"),
+        ):
+            steps = [("synthesis", "yosys", "Unstart"), (marker, "ecc", "Unstart")]
             markers[attr] = steps
             monkeypatch.setattr(f"chipcompiler.rtl2gds.builder.{attr}", lambda steps=steps: steps)
         return markers

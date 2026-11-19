@@ -48,14 +48,19 @@ class ProjectConfig:
     # Declared [flow] lec_engine spelling; None when the key is absent (the
     # code default engine then applies).
     flow_lec_engine: str | None = None
+    # Declared [flow] insert_steps spelling (``["lec@cts"]``); None when the
+    # key is absent (nothing is inserted).
+    flow_insert_steps: list[str] | None = None
+    # Declared [flow] max_parallel_steps; None when the key is absent (the code
+    # default then applies). A run-time knob only: it is never stored in the
+    # workspace and does not take part in flow selection.
+    flow_max_parallel_steps: int | None = None
     config_path: str = ""
     project_dir: str = ""
 
     params_overrides: dict[str, object] = field(default_factory=dict)
 
-    # Manifest-backed layers (project.json projects): the base parameter
-    # payload beneath ecc.toml/--set, and the manifest's origin DEF.
-    manifest_parameters: dict[str, object] = field(default_factory=dict)
+    # Manifest-backed layer (project.json projects): the manifest's origin DEF.
     manifest_origin_def: str = ""
     # True when this config was assembled from the manifest alone (no
     # ecc.toml): the workspace's own [flow] is then the run target source.
@@ -151,6 +156,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     # instead of silently dropping them.
     skip_steps = flow.get("skip_steps")
     lec_engine = flow.get("lec_engine")
+    insert_steps = flow.get("insert_steps")
+    max_parallel_steps = flow.get("max_parallel_steps")
 
     from chipcompiler.data.workspace_config import flow_no_clock
 
@@ -172,6 +179,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         flow_skip_steps=skip_steps,
         flow_no_clock=flow_no_clock(flow),
         flow_lec_engine=lec_engine,
+        flow_insert_steps=insert_steps,
+        flow_max_parallel_steps=max_parallel_steps,
         config_path=config_path,
         project_dir=project_dir,
     )
@@ -191,9 +200,9 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
 
     params_raw = data.get("params")
     if isinstance(params_raw, dict):
-        from chipcompiler.cli.project.params import parse_toml_params
+        from chipcompiler.params import parse_toml_params
 
-        flat, param_errors = parse_toml_params(params_raw)
+        flat, param_errors = parse_toml_params(params_raw, cfg.pdk_name or None)
         cfg.params_overrides = flat
         if param_errors:
             cfg._param_errors = param_errors
@@ -267,9 +276,8 @@ def load_run_config(project_dir: str) -> ProjectConfig | None:
 
 def _supported_flow_presets() -> set[str]:
     from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.data.workspace_config import LEGACY_PRESET_RANGES
 
-    return set(rtl2gds_api.get_flow_builders()) | set(LEGACY_PRESET_RANGES)
+    return set(rtl2gds_api.get_flow_builders())
 
 
 def validate_project_config(cfg: ProjectConfig) -> list[str]:
@@ -335,6 +343,19 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         except ValueError as exc:
             errors.append(str(exc))
 
+    if "flow.insert_steps" in cfg._explicit_keys:
+        from chipcompiler.rtl2gds import resolve_insert_steps
+
+        try:
+            resolve_insert_steps({"insert_steps": cfg.flow_insert_steps})
+        except ValueError as exc:
+            errors.append(str(exc))
+
+    if cfg._explicit_keys & {"flow.skip_steps", "flow.insert_steps"}:
+        from chipcompiler.cli.project.flow_selection import selection_errors
+
+        errors.extend(selection_errors(cfg, None))
+
     if "flow.lec_engine" in cfg._explicit_keys:
         from chipcompiler.rtl2gds import resolve_lec_engine
 
@@ -343,9 +364,40 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         except ValueError as exc:
             errors.append(str(exc))
 
+    if "flow.max_parallel_steps" in cfg._explicit_keys:
+        problem = _max_parallel_steps_problem(cfg.flow_max_parallel_steps)
+        if problem:
+            errors.append(problem)
+
     errors.extend(cfg._flow_config_errors)
 
     return errors
+
+
+def _max_parallel_steps_problem(value: object) -> str | None:
+    # bool is an int subclass: ``max_parallel_steps = true`` is not a count.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return f"flow.max_parallel_steps must be an integer >= 1, got {value!r}"
+    return None
+
+
+def resolve_max_parallel_steps(cfg: ProjectConfig | None) -> int:
+    """The declared ``[flow] max_parallel_steps`` or the code default.
+
+    *cfg* is None for a project without an ecc.toml (manifest-only). Raises
+    ValueError for a declared value that is not an integer >= 1 (the message
+    ``validate_project_config`` reports), so no caller renders, edits or runs
+    with an unusable cap.
+    """
+    from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
+
+    declared = None if cfg is None else cfg.flow_max_parallel_steps
+    if declared is None:
+        return DEFAULT_MAX_PARALLEL_STEPS
+    problem = _max_parallel_steps_problem(declared)
+    if problem:
+        raise ValueError(problem)
+    return declared
 
 
 def to_parameters(cfg: ProjectConfig) -> dict:

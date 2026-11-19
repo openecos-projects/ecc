@@ -7,10 +7,10 @@ SCHEMAS = (
         name="manual_placement",
         type="bool",
         default=False,
-        applies="floorplan",
+        applies="pre_floorplan",
         maps_to={"macro": "manual_placement"},
         description=(
-            "Require manual hard-macro placement. When true, macroPlacement stops "
+            "Require manual hard-macro placement. When true, macro_placement stops "
             "unless macro.placements and config/macro_location.tcl contain placements; "
             "when false, an empty placement set uses DreamPlace."
         ),
@@ -22,12 +22,12 @@ SCHEMAS = (
         name="placements",
         type="json",
         default=[],
-        applies="macro",
+        applies="macro_placement",
         maps_to={"macro": "placements"},
         description=(
             "Manual hard-macro placements rendered into config/macro_location.tcl. "
             "Each entry is {instance, x, y, orientation} with micron coordinates; "
-            "instances are committed fixed. When set, macroPlacement skips DreamPlace."
+            "instances are committed fixed. When set, macro_placement skips DreamPlace."
         ),
         example='[{"instance": "u0", "x": 10.0, "y": 20.0, "orientation": "R0"}]',
     ),

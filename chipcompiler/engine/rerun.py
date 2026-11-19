@@ -4,11 +4,10 @@
 Selection primitives behind ``ecc run --workspace``: resume from the first
 non-successful step, re-execute a step and its persisted suffix, or run
 exactly one step. Everything here drives an ``EngineFlow`` that was loaded
-from an existing workspace; execution itself stays in ``EngineFlow.run_step``.
+from an existing workspace; execution itself, including the parallel analysis
+waves, stays in ``EngineFlow.run_steps``.
 """
 
-import logging
-import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -18,16 +17,20 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
     is_finished_step_state,
-    log_flow,
 )
+from chipcompiler.data.handshake import (
+    HandshakeError,
+    ResponseStatus,
+    clear_response,
+    load_response,
+)
+from chipcompiler.data.step import recorded_step_directory
+from chipcompiler.data.workspace.flow_ledger import reset_step_record
 from chipcompiler.data.workspace.flow_policy import is_skipped_record
-from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import path_is_within
 
 if TYPE_CHECKING:
     from chipcompiler.engine.flow import EngineFlow
-
-logger = logging.getLogger(__name__)
 
 
 class StepRunResult(NamedTuple):
@@ -53,7 +56,7 @@ def selected_step_names(
         return [steps[index]["name"]]
     if from_step is not None:
         first = _require_step_index(flow, from_step)
-        last = _require_step_index(flow, through) if through is not None else len(steps) - 1
+        last = _through_index(flow, through) if through is not None else len(steps) - 1
         if last < first:
             raise ValueError(f"step '{through}' is before '{from_step}'")
         return [step["name"] for step in steps[first : last + 1]]
@@ -66,7 +69,7 @@ def selected_step_names(
 def bounded_resume_names(flow: "EngineFlow", through: str) -> list[str]:
     """The default-resume selection bounded to the reconciled target's end."""
     steps = flow.workspace.flow.data.get("steps", [])
-    last_index = _require_step_index(flow, through)
+    last_index = _through_index(flow, through)
     for index, step in enumerate(steps):
         if not is_finished_step_state(step.get("state")):
             if index > last_index:
@@ -120,7 +123,7 @@ def run_from(
     """
     steps = flow.workspace.flow.data.get("steps", [])
     index = _require_step_index(flow, name)
-    last_index = _require_step_index(flow, through) if through is not None else len(steps) - 1
+    last_index = _through_index(flow, through) if through is not None else len(steps) - 1
     if last_index < index:
         raise ValueError(f"step '{through}' is before '{name}'")
     _require_steps_available(flow, last_index)
@@ -135,10 +138,10 @@ def run_from(
     if not suffix:
         return StepRunResult(ok=True, executed=())
     output_dirs = _validated_output_dirs(flow.workspace, suffix)
-    # A bounded rerun executes only the requested interval, but all later
-    # states become stale because their input chain changed. Their outputs are
-    # deliberately retained until the user chooses to run them.
-    _invalidate_suffix(flow, index, preserve_skipped=preserve_skipped)
+    # A bounded rerun executes only the requested interval; later steps built
+    # on it are invalidated too. Their outputs are deliberately retained until
+    # the user chooses to run them.
+    _invalidate_selection(flow, index, last_index, preserve_skipped=preserve_skipped)
     return _run_selected(
         flow,
         list(zip(suffix, output_dirs, strict=True)),
@@ -175,14 +178,11 @@ def run_only(
     if not force and is_finished_step_state(steps[index].get("state")):
         return StepRunResult(ok=True, executed=())
     _require_steps_available(flow, index)
-    # Selectors accept CLI aliases and case-insensitive spellings. Resolve the
-    # actual WorkspaceStep through the persisted canonical name, not the raw
-    # selector, including ``diff_opt`` for a legacy ``diff_buffering`` ledger.
     workspace_step = flow.get_workspace_step(steps[index]["name"])
     if workspace_step is None:
         raise RuntimeError(f"step {steps[index]['name']!r} has no workspace step")
     (output_dir,) = _validated_output_dirs(flow.workspace, [workspace_step])
-    _invalidate_suffix(flow, index)
+    _invalidate_selection(flow, index, index)
     return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
 
 
@@ -191,27 +191,20 @@ def _require_step_index(flow: "EngineFlow", name: str) -> int:
     for index, step in enumerate(steps):
         if step.get("name") == name:
             return index
-    # Selectors accept any CLI spelling of a persisted step ("postfloorplan",
-    # "postFloorplan", "POSTFLOORPLAN", "synth", ...) — only an unambiguous
-    # canonical form may not be guessed at.
-    from chipcompiler.rtl2gds.builder import normalize_flow_step
-
-    canonical = normalize_flow_step(name)
-    for index, step in enumerate(steps):
-        if step.get("name") == canonical:
-            return index
-        # A pre-migration ledger records the old step name, while the
-        # canonical selector and flow target now use diff_opt.  Keep the raw
-        # ledger entry executable so migration does not require rewriting its
-        # artifact directory before the first rerun.
-        if canonical == "diff_opt" and step.get("name") == "diff_buffering":
-            return index
-    folded = str(name or "").casefold()
-    for index, step in enumerate(steps):
-        if str(step.get("name", "")).casefold() == folded:
-            return index
     available = ", ".join(str(step.get("name")) for step in steps)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
+
+
+def _through_index(flow: "EngineFlow", name: str) -> int:
+    """The index of the step that ends a range: *name*, or the last inserted
+    step right after it (``--to cts`` includes ``lec@cts``, the check of cts)."""
+    from chipcompiler.data import inserted_step_kind
+
+    steps = flow.workspace.flow.data.get("steps", [])
+    index = _require_step_index(flow, name)
+    while index + 1 < len(steps) and inserted_step_kind(str(steps[index + 1].get("name", ""))):
+        index += 1
+    return index
 
 
 def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:
@@ -244,13 +237,56 @@ def _invalidate_suffix(
     for step in steps[index:end]:
         if preserve_skipped and is_skipped_record(step):
             continue
-        step["state"] = StateEnum.Unstart.value
-        step["runtime"] = ""
-        step["peak memory (mb)"] = 0
-        step.pop("resource_observation", None)
-        step.pop("checklist_waiver", None)
+        reset_step_record(step)
     if not flow.save():
         raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+
+
+def _invalidate_selection(
+    flow: "EngineFlow", first: int, last: int, *, preserve_skipped: bool = False
+) -> None:
+    """Mark steps *first*..*last* Unstart, and every later step built on them.
+
+    With *preserve_skipped*, deliberately Skipped steps keep their state and
+    response: they are not rerun, and nothing reads their outputs.
+
+    A later step keeps its results only when its rsp.json shows that nothing it
+    read came from an invalidated step; a step without a readable response is
+    invalidated, as positional invalidation always did. Once the invalidation
+    is persisted, the selected steps' responses are removed before any of
+    their outputs are deleted.
+    """
+    steps = flow.workspace.flow.data.get("steps", [])
+    root = Path(flow.workspace.directory)
+    invalidated: set[str] = set()
+    for index in range(first, len(steps)):
+        if preserve_skipped and is_skipped_record(steps[index]):
+            continue
+        directory = recorded_step_directory(steps[index])
+        if index > last and not _built_on(root / directory, invalidated):
+            continue
+        reset_step_record(steps[index])
+        invalidated.add(directory)
+    if not flow.save():
+        raise ValueError("failed to persist step invalidation; refusing to modify outputs")
+    for step in steps[first : last + 1]:
+        if preserve_skipped and is_skipped_record(step):
+            continue
+        clear_response(root / recorded_step_directory(step))
+
+
+def _built_on(step_directory: Path, invalidated: set[str]) -> bool:
+    """Whether the step may have read anything from the *invalidated* step directories."""
+    try:
+        response = load_response(step_directory)
+    except HandshakeError:
+        return True
+    if response is None or response.status is not ResponseStatus.SUCCESS:
+        return True
+    links = list(response.upstream.values())
+    if response.design_source is not None:
+        links.append(response.design_source)
+    return any(link.step_directory in invalidated for link in links)
 
 
 def _run_selected(
@@ -272,23 +308,15 @@ def _run_selected(
         def get_workspace_step(self, step_id):
             return flow.get_workspace_step(step_id)
 
-        def run_step(self, workspace_step, *, rerun=False, observer=None):
-            output_dir = output_dirs[workspace_step.name]
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - begin step - {workspace_step.name}"
+        def run_steps(self, *, steps, rerun=False, observer=None):
+            # Wave grouping, dispatch and the begin/end step sections belong to
+            # the flow; each step's output is reset right before it runs.
+            return flow.run_steps(
+                steps=steps,
+                rerun=rerun,
+                observer=observer,
+                prepare_step=lambda step: _reset_output_dir(output_dirs[step.name]),
             )
-            _reset_output_dir(output_dir)
-            _redirect_to_step_log(workspace_step)
-            flow.init_db_engine_for_step(workspace_step)
-            if _callable_accepts_keyword(flow.run_step, "observer"):
-                state = flow.run_step(workspace_step, rerun=rerun, observer=observer)
-            else:
-                state = flow.run_step(workspace_step, rerun=rerun)
-            log_flow(workspace=flow.workspace)
-            flow.workspace.logger.log_section(
-                f"{workspace_step.tool} - end step - {workspace_step.name}"
-            )
-            return state
 
     from chipcompiler.engine.execution import ExecutionPlan, execute
 
@@ -311,19 +339,6 @@ def _run_selected(
             if result.succeeded
             else tuple(output_dirs)[min(len(executed), len(output_dirs) - 1)]
         ),
-    )
-
-
-def _callable_accepts_keyword(callback, keyword: str) -> bool:
-    import inspect
-
-    try:
-        parameters = inspect.signature(callback).parameters.values()
-    except (TypeError, ValueError):
-        return False
-    return any(
-        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters
     )
 
 
@@ -371,19 +386,6 @@ def _validated_output_dirs(workspace: Workspace, steps: list[WorkspaceStep]) -> 
             )
         output_dirs.append(resolved)
     return output_dirs
-
-
-def _redirect_to_step_log(workspace_step: WorkspaceStep) -> None:
-    """Redirect stdio before DB init so its warnings land in the step log."""
-    log_file = workspace_step.log.file or ""
-    if not log_file:
-        return
-    log_file = os.path.abspath(log_file)
-    try:
-        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
-        redirect_stdio_to_file(log_file)
-    except Exception:
-        logger.exception("Failed to redirect stdio to log file: %s", log_file)
 
 
 def _reset_output_dir(output_dir: Path) -> None:

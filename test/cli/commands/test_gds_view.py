@@ -5,6 +5,7 @@ from chipcompiler.cli.command_handlers import gds_view
 from chipcompiler.cli.core.inputs import GdsViewInput, OutputOptions, ProjectOptions
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.tools.klayout_tool.viewer import KlayoutUnavailableError
+from test.flow_fixture import step_fields
 
 
 def _context(workspace: Path) -> CommandContext:
@@ -19,21 +20,33 @@ def _context(workspace: Path) -> CommandContext:
 
 def _workspace(tmp_path: Path, *, gds: bool = True, multiple: bool = False) -> Path:
     workspace = tmp_path / "workspace"
-    output = workspace / "Harden_ecc" / "output"
+    output = workspace / "harden_ecc" / "output"
     output.mkdir(parents=True)
     if gds:
-        (output / "gcd_Harden.gds").write_bytes(b"GDS")
+        (output / "gcd_harden.gds").write_bytes(b"gds")
         if multiple:
-            (output / "gcd_Harden_extra.gds").write_bytes(b"GDS")
+            (output / "gcd_Harden_extra.gds").write_bytes(b"gds")
     (workspace / "home").mkdir(parents=True)
     (workspace / "home" / "flow.json").write_text(
-        json.dumps({"steps": [{"name": "Harden", "tool": "ecc", "state": "Success"}]}),
+        json.dumps(
+            {
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("harden", "ecc"),
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     return workspace
 
 
-def _input(step: str = "Harden") -> GdsViewInput:
+def _input(step: str = "harden") -> GdsViewInput:
     return GdsViewInput(output=OutputOptions(), project=ProjectOptions(), step=step)
 
 
@@ -69,12 +82,14 @@ def test_gds_view_opens_the_selected_step_gds(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     opened = []
-    monkeypatch.setattr(gds_view, "view_gds", lambda path: opened.append(path))
+    monkeypatch.setattr(
+        "chipcompiler.tools.klayout_tool.viewer.view_gds", lambda path: opened.append(path)
+    )
 
     result = gds_view.gds_view(_input(), _context(workspace))
 
     assert result.exit_code == 0
-    assert opened == [workspace / "Harden_ecc/output/gcd_Harden.gds"]
+    assert opened == [workspace / "harden_ecc/output/gcd_harden.gds"]
     assert result.records[0]["status"] == "closed"
 
 
@@ -82,8 +97,7 @@ def test_gds_view_reports_missing_klayout_gui(tmp_path, monkeypatch):
     workspace = _workspace(tmp_path)
     monkeypatch.setenv("DISPLAY", ":99")
     monkeypatch.setattr(
-        gds_view,
-        "view_gds",
+        "chipcompiler.tools.klayout_tool.viewer.view_gds",
         lambda path: (_ for _ in ()).throw(
             KlayoutUnavailableError("KLayout GUI executable was not found")
         ),

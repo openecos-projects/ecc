@@ -9,13 +9,11 @@ selection, plus an optional declared skip policy) into the initial
 from collections.abc import Mapping
 
 from chipcompiler.data.types import (
-    FlowStepCategory,
     StateEnum,
-    StepBaseEnum,
     default_flow_step_category,
 )
 
-from ..schema_migrations import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
+from ..schema_versions import FLOW_JSON, SCHEMA_VERSION_FIELD, SUPPORTED_SCHEMA_VERSIONS
 from .flow_types import FlowDocument, FlowStepEntry
 
 #: The schema_version written into home/flow.json ledgers.
@@ -25,9 +23,9 @@ FLOW_JSON_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[FLOW_JSON]
 def _entries_of(steps) -> list[tuple[str, str, str]]:
     return [
         (
-            step.value if isinstance(step, StepBaseEnum) else str(step),
+            str(step),
             str(tool),
-            state.value if isinstance(state, StateEnum) else str(state),
+            str(state),
         )
         for step, tool, state in steps
     ]
@@ -66,8 +64,11 @@ def build_dynamic_flow_data(
     A non-contiguous explicit selection degrades to the contiguous
     first..last range (with a log note) so flow.json and the [flow] target
     always describe the same steps. A preset-shaped config selects the
-    preset's canonical range. The config's skip policy is resolved here:
-    skipped steps never enter the ledger.
+    preset's chain, whose first step may be skipped. The config's skip
+    policy and inserted steps are resolved here: skipped steps never enter
+    the ledger, an inserted step follows the step it is inserted after, and
+    a selection whose remaining steps lack required design data
+    (:func:`~chipcompiler.data.flow_plan.plan_flow`) raises ``ValueError``.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
@@ -75,41 +76,50 @@ def build_dynamic_flow_data(
     from ..workspace_config import flow_range_for_preset, resolve_flow_selection
 
     entries = _flow_entries_for_config(flow_config)
+    start: str | None = None
+    end: str | None = None
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:
-        first, last = flow_range_for_preset(flow_config["preset"])
-        selected_names = [first, last]
+        # _flow_entries_for_config falls back to the canonical chain.
+        flow_range_for_preset(flow_config["preset"])  # raises on unknown presets
     else:
         selected_names, _degraded = resolve_flow_selection(flow_config, entries)
-    if not selected_names:
-        return {}
+        if not selected_names:
+            return {}
+        start, end = selected_names[0], selected_names[-1]
 
     import chipcompiler.rtl2gds as rtl2gds_api
+    from chipcompiler.data.flow_plan import inserted_chain, plan_flow
 
     skip = rtl2gds_api.resolve_skip_steps(flow_config, materials=materials)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
-    # Filter the whole chain first so a skipped boundary is an unknown step,
-    # exactly like a range outside the chain.
-    skipped_chain = rtl2gds_api.filter_flow_steps(entries, skip)
-    chain_names = [name for name, _tool, _state in skipped_chain]
-    try:
-        selected = skipped_chain[
-            chain_names.index(selected_names[0]) : chain_names.index(selected_names[-1]) + 1
-        ]
-    except ValueError as exc:
+    plan = plan_flow(
+        [(name, tool) for name, tool, _state in entries],
+        skip_steps=skip,
+        inserted=inserted_chain(
+            rtl2gds_api.resolve_insert_steps(flow_config), lec_engine=lec_engine
+        ),
+        start=start,
+        end=end,
+    )
+    if plan.errors:
         raise ValueError(
-            f"unknown flow step: {selected_names[0]!r} -> {selected_names[-1]!r}; "
-            f"available steps: {', '.join(chain_names)}"
-        ) from exc
-    selected = rtl2gds_api.substitute_lec_engine(selected, lec_engine)
+            "skip_steps leaves steps without required design data: "
+            + "; ".join(violation.message() for violation in plan.errors)
+        )
+    selected = rtl2gds_api.substitute_lec_engine(
+        [(step.name, step.tool, StateEnum.Unstart) for step in plan.steps if step.enabled],
+        lec_engine,
+    )
     return {
         SCHEMA_VERSION_FIELD: FLOW_JSON_SCHEMA_VERSION,
         "steps": [
             _flow_step_template(
-                name.value if isinstance(name, StepBaseEnum) else str(name),
+                str(name),
                 str(tool),
-                state.value if isinstance(state, StateEnum) else str(state),
+                str(state),
+                index=index,
             )
-            for name, tool, state in selected
+            for index, (name, tool, state) in enumerate(selected, start=1)
         ],
     }
 
@@ -146,32 +156,17 @@ def _selected_dynamic_flow_step_names(
 
 
 def _normalize_flow_step_name(value) -> str:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    return normalize_flow_step(value)
+    return str(value or "").strip()
 
 
-def _flow_step_template(name: str, tool: str, state: str) -> FlowStepEntry:
+def _flow_step_template(name: str, tool: str, state: str, *, index: int | None) -> FlowStepEntry:
     return {
         "name": name,
         "tool": tool,
         "category": default_flow_step_category(name).value,
         "state": state,
+        "directory": new_step_directory(name, tool, index=index),
         "runtime": "",
         "peak memory (mb)": 0,
         "info": {},
     }
-
-
-def normalize_flow_step_categories(flow_data: FlowDocument) -> bool:
-    """Repair default categories persisted before a step classification changed."""
-    changed = False
-    for step in flow_data.get("steps", []):
-        if not isinstance(step, dict) or not isinstance(step.get("name"), str):
-            continue
-        category = str(step.get("category") or FlowStepCategory.PNR.value).upper()
-        canonical = default_flow_step_category(step["name"])
-        if category == FlowStepCategory.PNR.value and canonical == FlowStepCategory.CHECKER:
-            step["category"] = canonical.value
-            changed = True
-    return changed

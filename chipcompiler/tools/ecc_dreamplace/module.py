@@ -6,7 +6,6 @@ import math
 import os
 import sys
 from contextlib import contextmanager, suppress
-from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,21 +14,14 @@ from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.utility.path import optional_path
 
+from .run_modes import GEOMETRY_ONLY_CONFIG, MODE_FLAGS, DreamplaceRunMode
+
 _LEGALIZE_OWNERS = frozenset(
     {
         StepEnum.LEGALIZATION.value,
         SkippableStepEnum.TIMING_OPT.value,
     }
 )
-
-
-class DreamplaceRunMode(Enum):
-    PLACEMENT = "placement"
-    DIFF_OPT = "diff_opt"
-    DIFF_SIZING = "diff_sizing"
-    DIFF_BUFFERING = "diff_buffering"
-    MACRO_PLACEMENT = "macro_placement"
-    LEGALIZATION = "legalization"
 
 
 class DreamplaceModule:
@@ -50,22 +42,15 @@ class DreamplaceModule:
         self.input_verilog = optional_path(input_verilog)
         self.output_def = optional_path(output_def)
         self.output_verilog = optional_path(output_verilog)
-        self.param_path = workspace.config["dreamplace"]
+        from .builder import step_config_path
+
+        self.param_path = step_config_path(workspace, step)
         self.result_dir = str(step.data.workdir_for(step.name))
 
     def _build_params(self, params_cls, *, mode: DreamplaceRunMode):
-        param_path = self.param_path
-        if mode in (
-            DreamplaceRunMode.DIFF_OPT,
-            DreamplaceRunMode.DIFF_SIZING,
-            DreamplaceRunMode.DIFF_BUFFERING,
-        ):
-            from .builder import step_config_path
-
-            generated_path = step_config_path(self.workspace, self.step)
-            if generated_path.is_file():
-                param_path = generated_path
-        with open(param_path, encoding="utf-8") as f_reader:
+        if not self.param_path.is_file():
+            raise FileNotFoundError(f"DreamPlace step config is missing: {self.param_path}")
+        with open(self.param_path, encoding="utf-8") as f_reader:
             config = json.load(f_reader)
         if config.get("cell_model_schema") is None:
             config.pop("cell_model_schema", None)
@@ -78,36 +63,8 @@ class DreamplaceModule:
             from .builder import _apply_diff_sizing_defaults
 
             config = _apply_diff_sizing_defaults(config)
-        elif mode is DreamplaceRunMode.DIFF_BUFFERING:
-            from .diff_buffering import apply_diff_buffering_defaults
-
-            config = apply_diff_buffering_defaults(config)
         elif mode is not DreamplaceRunMode.PLACEMENT:
-            config.update(
-                place_io_engine="ecc",
-                flow_kind="placement",
-                placement_sizing_mode="place_only",
-                sizing_parameterization="logits",
-                diff_timing_driven_placement=0,
-                differentiable_timing_obj=0,
-                with_sta=0,
-                timing_rc_mode="placement",
-                timing_opt_flag=0,
-                timing_eval_flag=0,
-                enable_net_weighting=0,
-                pin2pin_net_weighting=0,
-                timing_opt_enabled=0,
-                inflation_s5b1_enabled=0,
-                routability_opt_flag=0,
-                l_shape_routability_flag=0,
-                adjust_gpugr_area_flag=0,
-                gpugr_final_eval_flag=0,
-                buffering_continuous_relaxed_optimization=False,
-                buffering_segment_count_tns_gradient=False,
-                buffering_segment_strategy="continuous",
-                buffering_candidate_strategy="continuous",
-                joint_segment_virtual_density_enabled=0,
-            )
+            config.update(GEOMETRY_ONLY_CONFIG)
 
         params = params_cls()
         params.fromJson(config)
@@ -126,36 +83,18 @@ class DreamplaceModule:
         params.base_design_name = self.workspace.design.name
 
         params.macro_only = 0
-        if mode is DreamplaceRunMode.MACRO_PLACEMENT:
-            params.macro_only = 1
-            params.detailed_place_flag = 0
-            params.global_place_flag = 1
-            params.macro_place_flag = 1
-            params.legalize_flag = 1
-            params.two_stage_flag = 0
-            params.macro_halo_x = 2000
-            params.macro_halo_y = 2000
-            params.routability_opt_flag = 0
-            params.get_congestion_map = 0
-            params.egr_padding_flag = 0
-        elif mode is DreamplaceRunMode.LEGALIZATION:
-            params.global_place_flag = 0
-            params.legalize_flag = 1
-            # Geometry-only legalization preserves the repaired hold timing.
-            params.detailed_place_flag = 0
-            params.enable_fillers = 0
-            params.random_center_init_flag = 0
-            params.auto_adjust_bins = 1
-            params.post_legalization_adaptive_padding_flag = 0
+        # Already in the step file (``force_mode_config``); the flow defaults
+        # above must not override the stages this mode runs.
+        for name, value in MODE_FLAGS.get(mode, {}).items():
+            setattr(params, name, value)
 
         if mode in (
             DreamplaceRunMode.DIFF_OPT,
             DreamplaceRunMode.DIFF_SIZING,
-            DreamplaceRunMode.DIFF_BUFFERING,
         ):
             params.place_io_engine = "ecc"
             params.design_inputs = self._ecc_design_inputs(params)
-            if mode in (DreamplaceRunMode.DIFF_OPT, DreamplaceRunMode.DIFF_BUFFERING):
+            if mode is DreamplaceRunMode.DIFF_OPT:
                 params.design_inputs.update(spef="", spef_path="", rcx_config="")
         elif mode is not DreamplaceRunMode.PLACEMENT:
             params.place_io_engine = "ecc"
@@ -246,7 +185,6 @@ class DreamplaceModule:
             DreamplaceRunMode.PLACEMENT: "dreamplace_placement.log",
             DreamplaceRunMode.DIFF_OPT: "dreamplace_diff_opt.log",
             DreamplaceRunMode.DIFF_SIZING: "dreamplace_diff_sizing.log",
-            DreamplaceRunMode.DIFF_BUFFERING: "dreamplace_diff_buffering.log",
             DreamplaceRunMode.MACRO_PLACEMENT: "dreamplace_macro_placement.log",
             DreamplaceRunMode.LEGALIZATION: "dreamplace_legalization.log",
         }[mode]
@@ -333,23 +271,6 @@ class DreamplaceModule:
                 from .diff_opt import finalize_diff_opt
 
                 ppa = finalize_diff_opt(engine)
-                if self.step.name == StepEnum.DIFF_BUFFERING.value:
-                    # Preserve the legacy artifact contract while recording
-                    # that the canonical owner was diff_opt.
-                    from chipcompiler.utility import json_write
-
-                    alias = dict(ppa)
-                    alias.update(
-                        legacy_step=StepEnum.DIFF_BUFFERING.value,
-                        canonical_step=SkippableStepEnum.DIFF_OPT.value,
-                        flow_kind="diff_buffering_legacy_alias",
-                    )
-                    json_write(Path(self.result_dir) / "diff_buffering_summary.json", alias)
-            elif mode is DreamplaceRunMode.DIFF_BUFFERING:
-                from .diff_buffering import finalize_diff_buffering
-
-                ppa = finalize_diff_buffering(engine)
-
             if place_io_engine in {"openroad", "ecc"}:
                 if self.output_def:
                     engine.write_back(str(self.output_def))
@@ -366,11 +287,6 @@ class DreamplaceModule:
 
     def run_diff_sizing(self) -> bool:
         return self._run(mode=DreamplaceRunMode.DIFF_SIZING)
-
-    def run_diff_buffering(self) -> bool:
-        # Deprecated ledger compatibility: preserve the old step/output names
-        # while executing the canonical placement-parasitic diff_opt owner.
-        return self._run(mode=DreamplaceRunMode.DIFF_OPT)
 
     def run_macro_placement(self) -> bool:
         return self._run(mode=DreamplaceRunMode.MACRO_PLACEMENT)

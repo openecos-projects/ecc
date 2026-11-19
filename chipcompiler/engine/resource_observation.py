@@ -20,13 +20,17 @@ def _stat(pid: int) -> tuple[str, int, int]:
     return fields[19], int(fields[1]), max(0, int(fields[21])) * os.sysconf("SC_PAGE_SIZE")
 
 
+def new_attempt_id() -> str:
+    return f"step-attempt-{uuid4().hex}"
+
+
 class ResourceObservation:
-    def __init__(self, pid: int, *, isolated: bool, step: str, tool: str):
+    def __init__(self, pid: int, *, attempt_id: str, isolated: bool, step: str, tool: str):
         self.pid = pid
         self.isolated = isolated
         self.step = step
         self.tool = tool
-        self.attempt_id = f"step-attempt-{uuid4().hex}"
+        self.attempt_id = attempt_id
         self.started_at = datetime.now(UTC).isoformat()
         self.started = time.monotonic()
         self.start_id = None
@@ -147,7 +151,11 @@ class ResourceObservation:
         }
 
 
-def start_observation(pid: int, *, isolated: bool, step: str, tool: str) -> ResourceObservation:
-    observation = ResourceObservation(pid, isolated=isolated, step=step, tool=tool)
+def start_observation(
+    pid: int, *, attempt_id: str, isolated: bool, step: str, tool: str
+) -> ResourceObservation:
+    observation = ResourceObservation(
+        pid, attempt_id=attempt_id, isolated=isolated, step=step, tool=tool
+    )
     observation.start()
     return observation

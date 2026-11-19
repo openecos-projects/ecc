@@ -12,9 +12,6 @@ _DREAMPLACE_PARAMETERS = (
 # fields still fail.
 _ECC_OWNED_DREAMPLACE_PARAMETERS = {
     "buffering_candidate_strategy",
-    "diff_buffering_coefficients",
-    "diff_buffering_rounds",
-    "diff_buffering_selection_fraction",
     "diff_optimization_flows",
     "diff_optimization_mode",
     "diff_sizing_continuous_steps",

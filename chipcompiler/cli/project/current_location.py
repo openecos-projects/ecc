@@ -23,7 +23,7 @@ def _project_marker(root: Path) -> bool:
 def _workspace_marker(root: Path) -> bool:
     return any(
         os.path.lexists(root / "home" / name)
-        for name in ("flow.json", "params.toml", "engineering-snapshot.json", "parameters.json")
+        for name in ("flow.json", "params.toml", "engineering-snapshot.json")
     )
 
 

@@ -36,16 +36,17 @@ def _workspace(workspace_dir):
         flow=SimpleNamespace(
             path=parameters_path.parent / "flow.json",
             data={
+                "schema_version": 3,
                 "steps": [
-                    {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
+                    {"name": "synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
                     {
-                        "name": "macroPlacement",
+                        "name": "macro_placement",
                         "state": "Success",
                         "runtime": "",
                         "peak memory (mb)": 0,
                     },
-                    {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                ]
+                    {"name": "placement", "state": "Success", "runtime": "", "peak memory (mb)": 0},
+                ],
             },
         ),
     )
@@ -65,7 +66,7 @@ def _write_manifest(project_dir: str) -> None:
                     "top_module": "gcd",
                     "clock": "clk",
                     "rtl_list": ["rtl/gcd.v"],
-                    "parameters": {"design": "gcd", "frequency_max": 100},
+                    "frequency_mhz": 100,
                 },
                 "workspaces": [
                     {
@@ -238,7 +239,7 @@ def test_macro_set_workspace_persists_and_invalidates_suffix(
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "set"
     assert record["instance"] == "u_ram0"
-    assert record["from_step"] == "macroPlacement"
+    assert record["from_step"] == "macro_placement"
     assert "'u_ram0'" in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
@@ -265,7 +266,7 @@ def test_macro_set_snapshot_workspace_passes_placements_to_engine(
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
     captured = {}
 
-    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status, scope):
         captured["value"] = requested_value
         captured["status"] = status
         return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
@@ -321,7 +322,7 @@ def test_macro_remove_snapshot_workspace_passes_remaining_to_engine(
     monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _path: workspace)
     captured = {}
 
-    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status):
+    def fake_engine_mutation(ctx, workspace, schema, mutation, requested_value, status, scope):
         captured["value"] = requested_value
         captured["status"] = status
         return CommandResult.ok([{"param": schema.param, "status": "set", "source": "workspace"}])
@@ -495,7 +496,7 @@ def test_macro_import_workspace_replaces_placements_and_invalidates_suffix(
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "imported"
-    assert record["from_step"] == "macroPlacement"
+    assert record["from_step"] == "macro_placement"
     assert "'u_a'" in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_a", "x": 10.0, "y": 20.5, "orientation": "R0"}
@@ -572,7 +573,7 @@ def test_macro_import_workspace_can_commit_published_step_output(
             {
                 "command_id": "macro-publish-1",
                 "commit_step_output": True,
-                "step_id": "macroPlacement",
+                "step_id": "macro_placement",
             },
         )
     ]

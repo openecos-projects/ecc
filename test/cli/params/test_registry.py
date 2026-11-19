@@ -3,14 +3,16 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli.project.effective_config import _diverging_lower_keys
-from chipcompiler.cli.project.params import (
+from chipcompiler.data.parameter_schema import config_patch
+from chipcompiler.data.step_parameters import is_step_scoped
+from chipcompiler.params import (
     PARAM_REGISTRY,
+    ConfigTarget,
     ParamSchema,
     ResolvedParam,
     build_backend_overrides,
     build_config_overrides,
     build_pdk_overrides,
-    coerce_manifest_parameters,
     is_known_key,
     list_groups,
     lookup_schema,
@@ -36,10 +38,9 @@ REQUIRED_KEYS = [
     "floorplan.aspect_ratio",
     "cts.max_fanout",
     "place.target_density",
-    "place.target_overflow",
-    "place.global_right_padding",
+    "place.stop_overflow",
     "place.cell_padding_x",
-    "place.routability_opt",
+    "place.routability_opt_flag",
     "route.bottom_layer",
     "route.top_layer",
     "flow.run_analysis",
@@ -85,10 +86,10 @@ class TestSchemaRegistry:
 
     def test_cli_keys_map_to_backend_names(self):
         density = _required_schema("place.target_density")
-        assert density.maps_to == {"dreamplace": "target_density"}
+        assert density.config_target == ConfigTarget("dreamplace", ("target_density",))
 
         fanout = _required_schema("cts.max_fanout")
-        assert fanout.maps_to == "max_fanout"
+        assert fanout.config_target == ConfigTarget("cts", ("max_fanout",))
 
         util = _required_schema("floorplan.core_util")
         assert util.maps_to == {"core": "utilitization"}
@@ -120,7 +121,7 @@ class TestSchemaRegistry:
         schema = _required_schema("cts.skew_bound")
         assert schema is not None
         assert schema.config_target is not None
-        assert schema.config_target.config_key == "CTS"
+        assert schema.config_target.config_key == "cts"
         assert schema.config_target.json_path == ("skew_bound",)
 
     def test_list_groups_returns_ordered_groups(self):
@@ -305,10 +306,12 @@ class TestSourceAwareResolution:
         util = next(r for r in resolved if r.param == "floorplan.core_util")
         assert util.value == 1.0
 
-    def test_float_in_list_int_rejected(self):
+    def test_fractional_margin_is_accepted_as_floats(self):
         toml = {"floorplan.core_margin": [2.5, 3]}
         resolved, errors = resolve_parameters(toml_overrides=toml)
-        assert len(errors) > 0
+        assert errors == []
+        margin = next(item for item in resolved if item.param == "floorplan.core_margin")
+        assert margin.value == [2.5, 3.0]
 
     def test_str_rejected_for_int_schema(self):
         toml = {"cts.max_fanout": "abc"}
@@ -339,8 +342,10 @@ class TestBackendMapping:
             source="cli",
             schema=schema,
         )
-        result = build_backend_overrides([rp])
-        assert result == {"dreamplace": {"target_density": 0.65}}
+        assert build_backend_overrides([rp]) == {}
+        # A step-scoped value replays per step, never onto the workspace baseline.
+        assert build_config_overrides([rp]) == {}
+        assert config_patch([rp]) == {"dreamplace": {"target_density": 0.65}}
 
     def test_nested_key_mapping(self):
         schema = _required_schema("floorplan.core_util")
@@ -375,8 +380,11 @@ class TestBackendMapping:
             source="cli",
             schema=schema,
         )
-        result = build_backend_overrides([rp])
-        assert result == {"top_layer": "MET4"}
+        assert build_backend_overrides([rp]) == {}
+        assert build_config_overrides([rp]) == {
+            "routing": {"RT": {"-top_routing_layer": "MET4"}},
+            "dreamplace": {"gpugr_top_routing_layer": "MET4"},
+        }
 
     def test_flow_bool_top_level_mapping(self):
         schema = _required_schema("flow.run_analysis")
@@ -398,7 +406,7 @@ class TestBackendMapping:
     def test_config_overrides_omit_defaults(self):
         resolved, errors = resolve_parameters(toml_overrides={"cts.skew_bound": "0.05"})
         assert errors == []
-        assert build_config_overrides(resolved) == {"CTS": {"skew_bound": "0.05"}}
+        assert build_config_overrides(resolved) == {"cts": {"skew_bound": "0.05"}}
 
     def test_mapping_does_not_mutate_schema_defaults(self):
         schema = _required_schema("place.target_density")
@@ -421,12 +429,13 @@ class TestBackendMapping:
         rp = next(item for item in resolved if item.param == schema.param)
 
         backend = build_backend_overrides([rp])
-        config = build_config_overrides([rp])
+        config = config_patch([rp])
+        assert build_config_overrides([rp]) == ({} if is_step_scoped(schema) else config)
         pdk = build_pdk_overrides([rp])
         assert isinstance(backend, dict)
         assert isinstance(config, dict)
         assert isinstance(pdk, dict)
-        if schema.config_target is not None:
+        if schema.config_target is not None and schema.maps_to is None:
             assert config
             assert backend == {}
         elif schema.pdk_target is not None:
@@ -438,7 +447,7 @@ class TestBackendMapping:
     @pytest.mark.parametrize("schema", PARAM_REGISTRY, ids=lambda schema: schema.param)
     def test_every_schema_is_safe_in_divergence_projection(self, schema):
         diverging, compared = _diverging_lower_keys(
-            {schema.param: schema.default}, lambda _schema: (None, False)
+            {schema.param: schema.default}, lambda _key: (None, False)
         )
 
         assert diverging == []
@@ -454,12 +463,12 @@ class TestCliOverrides:
     def test_repeatable_set(self):
         result, errors = parse_cli_overrides(
             [
-                "place.target_density=0.65",
+                "placement:place.target_density=0.65",
                 "cts.max_fanout=16",
             ]
         )
         assert errors == []
-        assert result == {"place.target_density": 0.65, "cts.max_fanout": 16}
+        assert result == {"placement:place.target_density": 0.65, "cts.max_fanout": 16}
 
     def test_malformed_rejected(self):
         result, errors = parse_cli_overrides(["noequals"])
@@ -474,17 +483,17 @@ class TestCliOverrides:
         assert len(errors) > 0
 
     def test_invalid_value_does_not_produce_override(self):
-        result, errors = parse_cli_overrides(["place.target_density=1.5"])
-        assert "place.target_density" not in result
+        result, errors = parse_cli_overrides(["placement:place.target_density=1.5"])
+        assert "placement:place.target_density" not in result
         assert len(errors) > 0
 
 
 class TestTomlParams:
     def test_flat_toml_parsing(self):
-        table = {"place": {"target_density": 0.65}}
+        table = {"step": {"placement": {"place": {"target_density": 0.65}}}}
         flat, errors = parse_toml_params(table)
         assert errors == []
-        assert flat == {"place.target_density": 0.65}
+        assert flat == {"placement:place.target_density": 0.65}
 
     def test_nested_toml_parsing(self):
         flat, errors = parse_toml_params({"floorplan": {"die_builder": {"mode": "die_size"}}})
@@ -501,62 +510,6 @@ class TestTomlParams:
         table = {"place": "not_a_table"}
         flat, errors = parse_toml_params(table)
         assert len(errors) > 0
-
-
-class TestManifestCoercion:
-    def test_bool_string_coerced(self):
-        canonical = {"run_analysis": "false", "frequency_max": 100}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced["run_analysis"] is False
-
-    def test_bad_bool_value_preserved_with_error(self):
-        canonical = {"run_analysis": "maybe"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["run_analysis"] == "maybe"
-        assert len(errors) == 1
-        assert "expected bool for flow.run_analysis" in errors[0]
-
-    def test_explicit_none_reported_as_type_error(self):
-        canonical = {"run_analysis": None}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["run_analysis"] is None
-        assert len(errors) == 1
-        assert "NoneType" in errors[0]
-
-    def test_skip_params_bypassed(self):
-        canonical = {"run_analysis": "maybe"}
-        coerced, errors = coerce_manifest_parameters(
-            canonical, skip_params=frozenset({"flow.run_analysis"})
-        )
-        assert errors == []
-        assert coerced["run_analysis"] == "maybe"
-
-    def test_unknown_keys_pass_through(self):
-        canonical = {"custom_key": "false"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced == {"custom_key": "false"}
-
-    def test_nested_coercion_does_not_mutate_input(self):
-        canonical = {"core": {"utilitization": 1}, "frequency_max": 100}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert isinstance(coerced["core"]["utilitization"], float)
-        assert isinstance(canonical["core"]["utilitization"], int)
-
-    def test_huge_int_degrades_to_error(self):
-        canonical = {"frequency_max": 10**400}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert coerced["frequency_max"] == 10**400
-        assert len(errors) == 1
-        assert "too large to represent" in errors[0]
-
-    def test_absent_keys_untouched(self):
-        canonical = {"design": "gcd"}
-        coerced, errors = coerce_manifest_parameters(canonical)
-        assert errors == []
-        assert coerced == {"design": "gcd"}
 
 
 def test_every_param_registry_entry_has_an_explicit_description():

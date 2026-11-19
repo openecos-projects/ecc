@@ -27,10 +27,16 @@ def _workspace(tmp_path):
             lefs=[Path("std.lef")],
             libs=[Path("slow.lib")],
             sdc=Path("clock.sdc"),
-            spef=Path("route.spef"),
+            spef=Path("routing.spef"),
         ),
-        parameters=Parameters(data={"bottom_layer": "M2", "top_layer": "M7"}),
+        parameters=Parameters(data={"pdk": "ics55"}),
     )
+    route_config = tmp_path / "routing_ecc.json"
+    route_config.write_text(
+        json.dumps({"RT": {"-bottom_routing_layer": "M2", "-top_routing_layer": "M7"}}),
+        encoding="utf-8",
+    )
+    workspace.config = {"routing": route_config}
     return workspace
 
 

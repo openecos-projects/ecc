@@ -8,17 +8,19 @@ the type checker does not enforce the structural protocol.
 """
 
 import inspect
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Protocol, TypeVar, runtime_checkable
 
 from chipcompiler.data import Workspace, WorkspaceStepBase
+from chipcompiler.data.step_config_reads import ConfigRead
 
 StepT = TypeVar("StepT", bound=WorkspaceStepBase)
 
 
 @runtime_checkable
 class ToolModule(Protocol[StepT]):
-    """The five-function surface of a flow-step tool module.
+    """The surface of a flow-step tool module: five functions and its config reads.
 
     StepT binds the step type produced by ``build_step`` to the one
     consumed by ``build_step_space``/``build_step_config``/``run_step``:
@@ -26,6 +28,10 @@ class ToolModule(Protocol[StepT]):
     never fights contravariance; orchestrating consumers use
     ``ToolModule[Any]``.
     """
+
+    #: Step name -> the workspace configs (and fields) the step reads; see
+    #: :mod:`chipcompiler.data.step_config_reads`.
+    STEP_CONFIG_READS: Mapping[str, tuple[ConfigRead, ...]]
 
     @staticmethod
     def is_eda_exist() -> bool: ...
@@ -40,6 +46,8 @@ class ToolModule(Protocol[StepT]):
         output_def: Path | None = None,
         output_verilog: Path | None = None,
         output_gds: Path | None = None,
+        *,
+        step_directory: Path | None = None,
     ) -> StepT: ...
 
     @staticmethod
@@ -50,6 +58,11 @@ class ToolModule(Protocol[StepT]):
 
     @staticmethod
     def run_step(workspace: Workspace, step: StepT, ecc_module: object | None = None) -> bool: ...
+
+
+def tool_module_members() -> list[str]:
+    """Every member a tool module must define: the functions and its config reads."""
+    return [*tool_module_functions(), "STEP_CONFIG_READS"]
 
 
 def tool_module_functions() -> dict[str, inspect.Signature]:

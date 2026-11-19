@@ -174,6 +174,9 @@ select the workspace by its registered ID.
 
 Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 
+Legacy `runs/` projects and older workspace formats are not migrated; create a
+new project and workspace with this ECC.
+
 | Command | Description |
 | --- | --- |
 | `ecc init <name>` | Create a project skeleton and `ecc.toml` |
@@ -184,7 +187,6 @@ Run `ecc --help` (or `ecc <command> --help`) for full usage. Common commands:
 | `ecc status` | Show a quick run/step progress summary |
 | `ecc log [step]` | Show available logs or step log content |
 | `ecc config [step]` | Show resolved project or step configuration |
-| `ecc migrate` | Migrate a legacy `runs/` project to the manifest layout |
 | `ecc param` | Manage parameter overrides (`list`, `show`, `set`, `unset`, `diff`) |
 | `ecc pdk` | Manage the PDK path (`set-root`, `show`, `unset`) |
 | `ecc project` | Edit project declarations in `ecc.toml` (`set`, `unset`, `add`, `remove`, `show`) |

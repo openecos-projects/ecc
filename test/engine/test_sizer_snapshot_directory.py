@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from chipcompiler.engine.snapshot import create_engineering_snapshot
+from test.flow_fixture import step_fields
 
 
 def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
@@ -46,10 +47,10 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
     (analysis / "qor_hotspots.json").write_text(
         json.dumps({"schema_version": 3, "hotspots": []}), encoding="utf-8"
     )
-    (output / "gcd_Timing optimization.png").write_bytes(b"layout")
-    (report / "Timing optimization.db.rpt").write_text("report", encoding="utf-8")
+    (output / "gcd_timing_optimization.png").write_bytes(b"layout")
+    (report / "timing_optimization.db.rpt").write_text("report", encoding="utf-8")
     (step_dir / "subflow.json").write_text(
-        json.dumps({"steps": [{"name": "run sizer", "state": "Success"}]}),
+        json.dumps({"schema_version": 3, "steps": [{"name": "run sizer", "state": "Success"}]}),
         encoding="utf-8",
     )
     workspace = SimpleNamespace(
@@ -57,13 +58,15 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
         design=SimpleNamespace(name="gcd"),
         flow=SimpleNamespace(
             data={
+                "schema_version": 3,
                 "steps": [
                     {
-                        "name": "Timing optimization",
+                        "name": "timing_optimization",
                         "tool": "sizer",
                         "state": "Success",
+                        **step_fields("timing_optimization", "sizer"),
                     }
-                ]
+                ],
             }
         ),
         parameters=SimpleNamespace(data={}),
@@ -79,7 +82,7 @@ def test_snapshot_resolves_canonical_sizer_step_directory(tmp_path):
     assert artifacts["qor_metrics"]["availability"] == "available"
     assert artifacts["layout_image"]["availability"] == "available"
     assert artifacts["layout_image"]["reference"] == (
-        "timing_optimization_sizer/output/gcd_Timing optimization.png"
+        "timing_optimization_sizer/output/gcd_timing_optimization.png"
     )
     reports = [artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "report_text"]
     assert reports[0]["availability"] == "available"

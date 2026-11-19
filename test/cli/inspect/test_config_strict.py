@@ -27,7 +27,7 @@ class TestStepConfigIgnoresLegacyFlowRun:
         set_flow_run(project_dir, toml_line)
         run_dir = os.path.join(project_dir, "default")
         create_flow_json(run_dir)
-        create_step_dir(run_dir, "CTS", "ecc", subdirs=["output"])
+        create_step_dir(run_dir, "cts", "ecc", subdirs=["output"])
         create_cts_workspace_config(run_dir)
 
         args = ["config", "cts"]

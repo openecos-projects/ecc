@@ -12,6 +12,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     build_workspace_config_paths,
 )
+from chipcompiler.data.step_parameters import step_parameter_view
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import (
     apply_direct_config_overrides,
@@ -24,6 +25,7 @@ from chipcompiler.utility.path import require_path
 
 from .diff_opt import apply_diff_opt_defaults
 from .diff_opt import prepare_drive_table as prepare_diff_opt_drive_table
+from .run_modes import force_mode_config, step_geometry_mode
 from .timing_coefficients import resolve_timing_coefficients
 
 
@@ -85,6 +87,9 @@ def _apply_placement_buffering_profile(
         "buffering_fixed_buffer_master",
         "buffering_fixed_bsu_index",
     }
+
+
+STEP_CONFIG_FILE = "dreamplace_ecc.json"
 
 
 def step_config_path(workspace: Workspace, step: WorkspaceStep) -> Path:
@@ -253,6 +258,8 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
+    *,
+    step_directory: Path | None = None,
 ) -> EccStep:
     step = ecc_builder.build_step(
         workspace=workspace,
@@ -263,6 +270,7 @@ def build_step(
         output_def=output_def,
         output_verilog=output_verilog,
         output_gds=output_gds,
+        step_directory=step_directory,
         tool="dreamplace",
     )
 
@@ -280,12 +288,16 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     from .checklist import DreamplaceChecklist
 
     DreamplaceChecklist(workspace=workspace, workspace_step=step)
+    write_step_config(workspace, step)
 
+
+def write_step_config(workspace: Workspace, step: EccStep) -> Path:
+    """Resolve *step*'s DreamPlace config from the workspace baseline into its step directory."""
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
-
     params = json_read(workspace.config["dreamplace"])
-    parameter_data = _current_parameter_data(workspace)
+    # The step's own values replay as part of its direct config patch.
+    parameter_data = step_parameter_view(_current_parameter_data(workspace), step.name)
     params = apply_parameter_overrides(params, parameter_data)
     params = apply_direct_config_overrides(params, parameter_data)
     params, internal_buffering_keys = _apply_placement_buffering_profile(workspace, step, params)
@@ -297,11 +309,6 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     elif step.name == SkippableStepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
-    elif step.name == StepEnum.DIFF_BUFFERING.value:
-        # Legacy workspaces retain the old step name, but execute the
-        # placement-parasitic diff_opt controller and its canonical tuple
-        # configuration.  Keep the old fields as aliases for migration.
-        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
 
     from dreamplace.flows.flow_config import resolve_flow_config
 
@@ -316,10 +323,13 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
         # Workspace-level placement values (density, padding and routability)
         # are intentionally not shared with the standalone sizing lane.
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
-    elif step.name == StepEnum.DIFF_BUFFERING.value:
-        params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
+    mode = step_geometry_mode(step.name)
+    if mode is not None:
+        params = force_mode_config(params, mode)
     params = _set_step_fields(params, step)
 
     config_path = step_config_path(workspace, step)
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    json_write(config_path, params)
+    if not json_write(config_path, params):
+        raise OSError(f"Failed to write DreamPlace step config: {config_path}")
+    return config_path

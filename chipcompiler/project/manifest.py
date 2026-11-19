@@ -23,98 +23,43 @@ from typing import Any
 MANIFEST_FILENAME = "project.json"
 CONFIG_FILENAME = "ecc.toml"
 
-# GUI display names for the canonical rtl2gds chain.
-MANIFEST_FLOW_STEPS = (
-    "Synth",
-    "LEC",
-    "PreFloorplan",
-    "MacroPlacement",
-    "PostFloorplan",
-    "Preplace",
-    "Place",
-    "DiffOpt",
-    "DiffBuffering",
-    "DiffSizing",
-    "CTS",
-    "Legal",
-    "TimingOpt",
-    "Route",
-    "Filler",
-    "RCX",
-    "STA",
-    "PowerAnalysis",
-    "LVS",
-    "PostRouteLEC",
-    "DRC",
-    "AntennaCheck",
-    "EMIR",
-    "Harden",
-)
-
-# ``Floor`` was the public manifest value before floorplanning was split into
-# pre/macro/post stages.  Read it as the completed handoff stage so old ranges
-# keep their original start/end meaning without rewriting project.json.
-# ``Timing Opt``/``Post-route LEC``/``Power Analysis`` are the Studio display
-# spellings the GUI sends on workspace registration; accept them so a manifest
-# carrying display names still loads (entries self-heal to canonical spellings
-# on next write).
-_MANIFEST_STEP_ALIASES = {
-    "Floor": "PostFloorplan",
-    "Timing Opt": "TimingOpt",
-    "Post-route LEC": "PostRouteLEC",
-    "Power Analysis": "PowerAnalysis",
-}
-
 PRESET_MANIFEST_RANGE = {
-    "syn_sta": ("Synth", "Synth"),
-    "rtl2gds": ("Synth", "Harden"),
-    "synthesis_lec": ("Synth", "LEC"),
-    # Legacy presets removed from the builder; keep resolving them so
-    # persisted projects still load.
-    "rcx": ("Synth", "STA"),
-    "harden": ("Synth", "Harden"),
+    "syn_sta": ("synthesis", "synthesis"),
+    "rtl2gds": ("synthesis", "harden"),
+    "synthesis_lec": ("synthesis", "lec@synthesis"),
 }
 
-_CANONICAL_TO_MANIFEST_STEP = {
-    "Synthesis": "Synth",
-    "lec": "LEC",
-    "preFloorplan": "PreFloorplan",
-    "macroPlacement": "MacroPlacement",
-    "postFloorplan": "PostFloorplan",
-    "Floorplan": "PostFloorplan",
-    "preplace": "Preplace",
-    "place": "Place",
-    "diff_opt": "DiffOpt",
-    "diff_buffering": "DiffBuffering",
-    "diff_sizing": "DiffSizing",
-    "CTS": "CTS",
-    "legalization": "Legal",
-    "Timing optimization": "TimingOpt",
-    "route": "Route",
-    "filler": "Filler",
-    "RCX": "RCX",
-    "sta": "STA",
-    "powerAnalysis": "PowerAnalysis",
-    "emir": "EMIR",
-    "lvs": "LVS",
-    "postRouteLec": "PostRouteLEC",
-    "drc": "DRC",
-    "antennaCheck": "AntennaCheck",
-    "Harden": "Harden",
-}
 
-# Display name -> canonical step value, for skip-policy boundary checks.
-_MANIFEST_TO_CANONICAL_STEP = {v: k for k, v in _CANONICAL_TO_MANIFEST_STEP.items()}
+def _flow_position(step_name: str) -> int | None:
+    """Range position of a flow step in the rtl2gds chain, or None off the chain.
+
+    An inserted LEC (``lec@cts``) sits right after the step it checks.
+    """
+    from chipcompiler.rtl2gds import parse_inserted_step
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
+
+    chain = rtl2gds_step_names()
+    inserted = parse_inserted_step(step_name)
+    anchor = inserted[1] if inserted is not None else step_name
+    if anchor not in chain:
+        return None
+    return 2 * chain.index(anchor) + (inserted is not None)
+
+
+def is_manifest_flow_step(step_name: str) -> bool:
+    """Whether a project.json range may start or end at *step_name*."""
+    return _flow_position(step_name) is not None
 
 
 def validate_manifest_range(start_step: str, end_step: str) -> tuple[str, str]:
-    """Alias-resolve and validate a persisted start/end range."""
-    start_step = _MANIFEST_STEP_ALIASES.get(start_step, start_step)
-    end_step = _MANIFEST_STEP_ALIASES.get(end_step, end_step)
+    """Validate a persisted start/end range of rtl2gds flow step names."""
+    positions = []
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
-        if step_name not in MANIFEST_FLOW_STEPS:
+        position = _flow_position(step_name)
+        if position is None:
             raise ManifestError(f"{field_name} is not on the canonical flow chain: {step_name}")
-    if MANIFEST_FLOW_STEPS.index(start_step) > MANIFEST_FLOW_STEPS.index(end_step):
+        positions.append(position)
+    if positions[0] > positions[1]:
         raise ManifestError(f"flow range is reversed: {start_step} -> {end_step}")
     return start_step, end_step
 
@@ -135,7 +80,6 @@ class ManifestWorkspace:
     start_step: str
     end_step: str
     status: str
-    parameter_patch: dict = field(default_factory=dict)
     # Declared workspaces[].skip_steps spelling (aliases/duplicates kept);
     # None when the key is absent, () for an explicit empty list. The base
     # layer: an explicit ecc.toml [flow] skip_steps overrides it, like every
@@ -229,14 +173,14 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
     if not isinstance(status, str) or status not in _WORKSPACE_STATUSES:
         status = "not_started"
     declared_skip, skipped = _workspace_skip_steps(source, index)
-    start_step = _optional_str(source.get("start_step")) or "Synth"
-    end_step = _optional_str(source.get("end_step")) or "Harden"
+    start_step = _optional_str(source.get("start_step")) or "synthesis"
+    end_step = _optional_str(source.get("end_step")) or "harden"
     try:
         start_step, end_step = validate_manifest_range(start_step, end_step)
     except ManifestError as exc:
         raise ManifestError(f"workspaces[{index}] {exc}") from None
     for step_name, field_name in ((start_step, "start_step"), (end_step, "end_step")):
-        if _MANIFEST_TO_CANONICAL_STEP[step_name] in skipped:
+        if step_name in skipped:
             raise ManifestError(
                 f"workspaces[{index}] {field_name} {step_name!r} is skipped by skip_steps "
                 f"and cannot bound the flow range"
@@ -247,7 +191,6 @@ def _normalize_workspace_entry(value: Any, index: int, project_dir: str) -> Mani
         start_step=start_step,
         end_step=end_step,
         status=status,
-        parameter_patch=_record(source.get("parameter_patch")),
         skip_steps=declared_skip,
         raw=dict(source),
     )
@@ -330,7 +273,6 @@ def load_manifest(project_dir: str) -> ProjectManifest:
 
     name = _optional_str(source.get("name")) or os.path.basename(project_dir) or "project"
     base_design = _record(source.get("base_design"))
-    base_design = {**base_design, "parameters": _record(base_design.get("parameters"))}
     # Mirror the GUI parser: primary defaults to "timing", directions keep
     # only maximize/minimize entries from the source (no default fill).
     objectives_raw = _record(source.get("objectives"))
@@ -418,19 +360,12 @@ def classify_project(project_dir: str) -> str:
 
 
 def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | None) -> dict:
-    """Flatten the manifest into a parameter payload (lowest precedence layer).
+    """Flatten the manifest's design identity and sources (lowest precedence layer).
 
-    ``base_design.parameters`` plus the workspace's ``parameter_patch`` form
-    the base layer beneath project ecc.toml and --set overrides.
+    The manifest carries no tunable parameters: those live in ecc.toml and in
+    each workspace's params.toml. ``workspace`` is accepted for call-site
+    symmetry with the flow-range lookup and does not affect the result.
     """
-    parameters = dict(manifest.base_design.get("parameters") or {})
-    if workspace is not None:
-        for key, change in workspace.parameter_patch.items():
-            parameters[key] = (
-                change["to"] if isinstance(change, dict) and "to" in change else change
-            )
-    if manifest.design_name and not _optional_str(parameters.get("design")):
-        parameters["design"] = manifest.design_name
     rtl_list = manifest.base_design.get("rtl_list")
     if not isinstance(rtl_list, list):
         rtl_list = []
@@ -447,49 +382,22 @@ def assemble_config(manifest: ProjectManifest, workspace: ManifestWorkspace | No
         "golden_netlist": _optional_str(manifest.base_design.get("golden_netlist")),
         "sdc": _optional_str(manifest.base_design.get("sdc")),
         "spef": _optional_str(manifest.base_design.get("spef")),
-        "parameters": parameters,
+        "frequency_mhz": _manifest_frequency(manifest.base_design),
     }
 
 
-def resolved_base_parameters(cfg) -> dict:
-    """The ecc.toml-resolved base_design.parameters for a generated manifest.
+def _manifest_frequency(base_design: dict[str, Any]) -> object:
+    """The declared clock frequency, raw (validated by the config layer).
 
-    GUI-flat vocabulary: identity fields plus the [params] overrides,
-    projected through the geometry converter so positional values surface
-    as the wizard's aliases (die_width, utilitization, margin, ...).
-    --set values are run-scoped and never included.
+    ``base_design.frequency_mhz`` is canonical. Manifests written before it
+    existed carried the value only as ``base_design.parameters.frequency_max``;
+    that spelling is read as a fallback and never written.
     """
-    canonical: dict = {
-        "design": cfg.design_name,
-        "top_module": cfg.design_top,
-        "clock": cfg.design_clock_port,
-        "frequency_max": cfg.design_frequency_mhz,
-    }
-    if cfg.params_overrides:
-        from chipcompiler.data.parameter_schema import (
-            build_backend_overrides,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-        canonical.update(build_backend_overrides(resolved))
-
-    from chipcompiler.data.parameter_keys import parameters_to_geometry
-
-    flat = parameters_to_geometry(canonical)
-    # Exclusive GUI-flat shape: geometry lives only in the aliases —
-    # the canonical die/core subtrees are consumed, not duplicated.
-    # Non-positional members (e.g. aspect_ratio) hoist to flat top-level
-    # keys; positional members are covered by the aliases.
-    for subtree_name in ("die", "core"):
-        subtree = flat.pop(subtree_name, None)
-        if not isinstance(subtree, dict):
-            continue
-        for member, value in subtree.items():
-            if member in ("size", "utilitization", "margin"):
-                continue
-            flat.setdefault(member, value)
-    return flat
+    declared = base_design.get("frequency_mhz")
+    if declared is not None:
+        return declared
+    legacy: object = base_design.get("parameters")
+    return legacy.get("frequency_max") if isinstance(legacy, dict) else None
 
 
 def base_design_from_config(cfg, pdk_root: str) -> dict:
@@ -498,9 +406,8 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
     Identity and sources come from the ecc.toml-resolved config with the
     DECLARED project source spellings preserved: ``rtl_list`` verbatim,
     and ``origin_verilog`` when the single source is plain RTL (empty for
-    a filelist source; the document builder drops empty keys). Parameters
-    are the GUI-flat projection. Shared by virgin generation and first
-    migration so the two writers cannot drift.
+    a filelist source; the document builder drops empty keys). Shared by
+    every manifest writer so their generated documents cannot drift.
     """
     from chipcompiler.utility.filelist import FILELIST_SUFFIXES
 
@@ -519,7 +426,7 @@ def base_design_from_config(cfg, pdk_root: str) -> dict:
         "golden_netlist": cfg.design_golden_netlist,
         "sdc": cfg.design_sdc,
         "spef": cfg.design_spef,
-        "parameters": resolved_base_parameters(cfg),
+        "frequency_mhz": cfg.design_frequency_mhz,
     }
 
 

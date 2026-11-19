@@ -15,14 +15,14 @@ from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config import find_config_path
-from chipcompiler.cli.project.params import lookup_schema
-from chipcompiler.cli.project.workspace_params import (
-    set_workspace_param,
-    workspace_param_value,
-)
 from chipcompiler.data.workspace.macro_location import (
     MACRO_ORIENTATIONS,
     parse_macro_location_tcl,
+)
+from chipcompiler.params import (
+    lookup_schema,
+    set_workspace_param,
+    workspace_param_value,
 )
 
 MACRO_PARAM = "macro.placements"
@@ -205,7 +205,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                     error_record(
                         "step_output_not_published",
                         param=MACRO_PARAM,
-                        reason="Workspace has no published macroPlacement output",
+                        reason="Workspace has no published macro_placement output",
                     )
                 ]
             )
@@ -240,7 +240,7 @@ def _workspace_import(args, ctx, schema, placements: list) -> CommandResult:
                 expected,
                 {MACRO_PARAM: placements},
                 (),
-                step_id="macroPlacement" if args.commit_step_output else None,
+                step_id="macro_placement" if args.commit_step_output else None,
                 commit_step_output=args.commit_step_output,
                 command_id=args.command_id or str(uuid.uuid4()),
             )

@@ -9,7 +9,7 @@ metrics); this module owns the human-facing configuration file only.
 
 Layout::
 
-    schema_version = 2   (top-level; absent in pre-versioning files = version 0)
+    schema_version = 4   (required; every other version is rejected)
     [design]   name / top / clock_port / frequency_mhz
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
@@ -17,7 +17,8 @@ Layout::
                no_clock = true     (optional; omits placement/CTS timing steps via skip policy)
                lec_engine = "..."  (optional, normalized)
     [params]   flat snake_case parameters; nested dicts map to subtables;
-               identity mirrors are reconstructed on load, not persisted
+               identity mirrors are reconstructed on load, not persisted;
+               [params.step_params.<step>] holds per-step DreamPlace values
 """
 
 import logging
@@ -29,9 +30,8 @@ from pathlib import Path
 from typing import Any
 
 import tomli_w
-from typing_extensions import deprecated
 
-from .schema_migrations import (
+from .schema_versions import (
     PARAMS_TOML,
     SCHEMA_VERSION_FIELD,
     SUPPORTED_SCHEMA_VERSIONS,
@@ -41,7 +41,6 @@ from .schema_migrations import (
 logger = logging.getLogger(__name__)
 
 WORKSPACE_CONFIG_FILENAME = "params.toml"
-LEGACY_PARAMETERS_FILENAME = "parameters.json"
 
 #: The schema_version written into new home/params.toml documents.
 WORKSPACE_CONFIG_SCHEMA_VERSION = SUPPORTED_SCHEMA_VERSIONS[PARAMS_TOML]
@@ -63,20 +62,6 @@ _PDK_SECTION_KEYS = {
     "pdk_config": "config",
 }
 
-_DREAMPLACE_MIRROR_KEYS = {
-    "target_density": "target_density",
-    "target_overflow": "stop_overflow",
-    "cell_padding_x": "cell_padding_x",
-    "routability_opt_flag": "routability_opt_flag",
-}
-
-# Ranges for presets removed when RCX/STA/Harden folded into the canonical
-# rtl2gds chain. Persisted configs may still name them.
-LEGACY_PRESET_RANGES = {
-    "rcx": ("Synthesis", "sta"),
-    "harden": ("Synthesis", "Harden"),
-}
-
 
 class WorkspaceConfigError(ValueError):
     """Invalid ``home/params.toml`` content (parse failure or rule violation)."""
@@ -90,18 +75,9 @@ def workspace_config_path(workspace_dir: str | Path) -> Path:
     return Path(workspace_dir) / "home" / WORKSPACE_CONFIG_FILENAME
 
 
-@deprecated(
-    "legacy parameters.json -> params.toml migration; slated for removal once "
-    "legacy workspaces are phased out",
-    category=None,
-)
-def legacy_parameters_path(workspace_dir: str | Path) -> Path:
-    return Path(workspace_dir) / "home" / LEGACY_PARAMETERS_FILENAME
-
-
 def is_workspace_config(path: str | Path) -> bool:
-    """True when *path* names a workspace config file (TOML or legacy JSON)."""
-    return Path(path).name in (WORKSPACE_CONFIG_FILENAME, LEGACY_PARAMETERS_FILENAME)
+    """True when *path* names the current workspace config file."""
+    return Path(path).name == WORKSPACE_CONFIG_FILENAME
 
 
 def parameters_have_chip_identity(data: object) -> bool:
@@ -210,6 +186,15 @@ def validate_flow_config(flow: object) -> dict:
             result["lec_engine"] = LECEngineEnum.from_value(section["lec_engine"]).value
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
+    if "insert_steps" in section:
+        from chipcompiler.rtl2gds import resolve_insert_steps
+
+        try:
+            result["insert_steps"] = list(
+                resolve_insert_steps({"insert_steps": section["insert_steps"]})
+            )
+        except ValueError as exc:
+            raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
     if preset is None and start is None:
         # A policy-only section (skip_steps / no_clock / lec_engine without a
         # flow target).
@@ -217,21 +202,26 @@ def validate_flow_config(flow: object) -> dict:
     if preset is not None:
         if not isinstance(preset, str) or not preset.strip():
             raise WorkspaceFlowTargetError(f"[flow] preset must be a non-empty string: {preset!r}")
-        first, last = flow_range_for_preset(preset)  # raises on unknown presets
-        excluded = set(result.get("skip_steps") or ())
-        for boundary in (first, last):
-            if boundary in excluded:
-                raise WorkspaceFlowTargetError(
-                    f"[flow] {boundary!r} (the {preset!r} preset boundary) is skipped by "
-                    f"skip_steps and cannot be part of the flow target; set skip_steps = [] "
-                    f"or pick another preset"
-                )
+        flow_range_for_preset(preset)  # raises on unknown presets
+        from chipcompiler.data.flow_plan import flow_target, preset_chain
+
+        # The preset's target is its last step that is not an inserted check
+        # (synthesis_lec ends with lec@synthesis, which skipping Synthesis
+        # drops too); its first step may be skipped, the declared inputs then
+        # stand in for it.
+        target = flow_target(preset_chain(preset))
+        if target in set(result.get("skip_steps") or ()):
+            raise WorkspaceFlowTargetError(
+                f"[flow] {target!r} ends the {preset!r} preset and cannot be skipped; "
+                f"remove it from skip_steps (for example skip_steps = []) or pick "
+                f"another preset"
+            )
         result["preset"] = preset
         return _with_no_clock(result, no_clock=no_clock)
 
-    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
+    from chipcompiler.rtl2gds import rtl2gds_step_names
 
-    canonical_names = [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
+    canonical_names = list(rtl2gds_step_names())
     normalized: dict[str, str] = {}
     for key, value in (("start", start), ("end", end)):
         if not isinstance(value, str):
@@ -257,32 +247,21 @@ def validate_flow_config(flow: object) -> dict:
     return _with_no_clock(result, no_clock=no_clock)
 
 
-def canonical_flow_chain() -> list[str]:
-    """The canonical rtl2gds chain's step names, in order."""
-    from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
-
-    return [name for name, _tool, _state in _canonical_rtl2gds_flow_entries()]
-
-
 def flow_range_for_preset(preset: str) -> tuple[str, str]:
     """(first, last) canonical step names of a named preset."""
     from chipcompiler import rtl2gds as rtl2gds_api
 
     builder = rtl2gds_api.get_flow_builders().get(preset)
     if builder is None:
-        # Presets removed when RCX/STA/Harden folded into the rtl2gds chain
-        # still resolve so existing ecc.toml/params.toml files keep working.
-        legacy = LEGACY_PRESET_RANGES.get(preset)
-        if legacy is None:
-            raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
-        return legacy
+        raise WorkspaceFlowTargetError(f"unknown flow preset: {preset}")
     steps = builder()
     if not steps:
         raise WorkspaceFlowTargetError(f"flow preset has no steps: {preset}")
+
     first, last = steps[0][0], steps[-1][0]
     return (
-        first.value if hasattr(first, "value") else str(first),
-        last.value if hasattr(last, "value") else str(last),
+        str(first),
+        str(last),
     )
 
 
@@ -303,9 +282,10 @@ def _contiguous_range(chain: list[str], first: str, last: str) -> list[str]:
 
 def flow_steps_in_range(start: str, end: str) -> list[str]:
     """Canonical step names from *start* to *end* inclusive."""
-    chain = canonical_flow_chain()
+    from chipcompiler.rtl2gds import rtl2gds_step_names
+
     try:
-        return _contiguous_range(chain, start, end)
+        return _contiguous_range(list(rtl2gds_step_names()), start, end)
     except ValueError as exc:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 
@@ -395,36 +375,11 @@ def _split_payload(data: dict) -> dict[str, Any]:
         value = params.pop(param_key, None)
         if value is not None:
             pdk[section_key] = value
-    dreamplace = params.get("dreamplace")
-    if isinstance(dreamplace, dict):
-        dreamplace = dict(dreamplace)
-        for parameter_key, dreamplace_key in _DREAMPLACE_MIRROR_KEYS.items():
-            if dreamplace_key not in dreamplace or parameter_key not in data:
-                continue
-            if dreamplace[dreamplace_key] != data[parameter_key]:
-                logger.warning(
-                    "[params.dreamplace].%s conflicts with top-level %s; "
-                    "preserving the nested override",
-                    dreamplace_key,
-                    parameter_key,
-                )
-                continue
-            dreamplace.pop(dreamplace_key)
-        if dreamplace:
-            params["dreamplace"] = dreamplace
-        else:
-            params.pop("dreamplace", None)
     return {"design": design, "pdk": pdk, "params": params}
 
 
 def _merge_payload(sections: dict[str, Any]) -> dict:
-    """Inverse of _split_payload: flatten TOML sections back to one dict.
-
-    The merged payload is normalized to the canonical flat vocabulary:
-    a hand-written params.toml with legacy long keys (or GUI geometry
-    aliases) never leaks non-canonical keys into a loaded Parameters
-    payload.
-    """
+    """Inverse of _split_payload: flatten TOML sections back to one dict."""
     for name in ("params", "design", "pdk"):
         section = sections.get(name)
         if section is not None and not isinstance(section, dict):
@@ -446,16 +401,14 @@ def _merge_payload(sections: dict[str, Any]) -> dict:
         if value is not None and (str(value or "").strip() or param_key not in params):
             params[param_key] = value
 
-    from .parameter_keys import normalize_parameter_dict
-
-    return normalize_parameter_dict(params)
+    return params
 
 
 def _decode_workspace_config(path: Path, workspace_dir: str | Path) -> dict:
     """Decode and validate one workspace config document.
 
     Shared by load_workspace_config (canonical location) and the staged
-    migration candidate: TOML parse, [flow] validation with ledger
+    current config: TOML parse, [flow] validation with ledger
     fallback, payload merge, and workspace-relative pdk_config resolution.
     Raises WorkspaceConfigError on TOML parse failure and
     WorkspaceFlowTargetError on [flow] rule violations.
@@ -498,7 +451,26 @@ def load_workspace_config(workspace_dir: str | Path) -> dict:
     return _decode_workspace_config(workspace_config_path(workspace_dir), workspace_dir)
 
 
-def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
+def ledger_flow_section(names: list[str]) -> dict:
+    """The (unvalidated) [flow] section describing a ledger's step names.
+
+    Its range runs from the first to the last chain step; the inserted steps
+    (``lec@cts``) are its ``insert_steps``, since an inserted name never
+    bounds a range.
+    """
+    from chipcompiler.rtl2gds import parse_inserted_step
+
+    chain = [name for name in names if parse_inserted_step(name) is None]
+    inserted = [name for name in names if parse_inserted_step(name) is not None]
+    if not chain:
+        return {}
+    section: dict = {"start": chain[0], "end": chain[-1]}
+    if inserted:
+        section["insert_steps"] = inserted
+    return section
+
+
+def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict:
     """The [flow] section implied by the persisted flow.json, or {}."""
     from chipcompiler.utility import json_read
 
@@ -513,10 +485,11 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
         for step in steps
         if isinstance(step, dict) and isinstance(step.get("name"), str) and step["name"]
     ]
-    if not names:
+    section = ledger_flow_section(names)
+    if not section:
         return {}
     try:
-        return validate_flow_config({"start": names[0], "end": names[-1]})
+        return validate_flow_config(section)
     except WorkspaceFlowTargetError:
         return {}
 
@@ -524,7 +497,7 @@ def _derive_flow_from_ledger(workspace_dir: str | Path) -> dict[str, str]:
 def _drop_null_values(value: Any, *, _path: str = "") -> Any:
     """Drop JSON null values TOML cannot serialize, logging each removal.
 
-    Legacy ``parameters.json`` payloads may carry ``null``; a migration
+    Invalid persisted payloads may carry ``null``; a write
     blocked on it must not leave the workspace permanently unwritable —
     absent beats null here (a parameter that cannot round-trip would
     otherwise read back as a different value anyway).
@@ -618,44 +591,6 @@ def _stage_config_bytes(target: Path, content: bytes) -> Path | None:
         return None
 
 
-def _stamp_preversioned_params_toml(config_path: Path, workspace_dir: Path) -> None:
-    """Add the v1 marker to a valid pre-versioning TOML file without re-rendering it."""
-    try:
-        original = config_path.read_bytes()
-        text = original.decode("utf-8")
-        document = tomllib.loads(text)
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        logger.warning(
-            "params.toml schema stamp deferred (read/parse failed): %s: %s",
-            config_path,
-            exc,
-        )
-        return
-    if not isinstance(document, dict) or SCHEMA_VERSION_FIELD in document:
-        return
-
-    prefix = f"schema_version = {WORKSPACE_CONFIG_SCHEMA_VERSION}\n".encode("ascii")
-    if original.startswith(b"\xef\xbb\xbf"):
-        content = original[:3] + prefix + original[3:]
-    else:
-        content = prefix + original
-    candidate = _stage_config_bytes(config_path, content)
-    if candidate is None:
-        return
-    try:
-        # Parse the exact candidate before installation and preserve the same
-        # workspace-root checks used by normal params.toml loading.
-        _decode_workspace_config(candidate, workspace_dir)
-        os.replace(candidate, config_path)
-    except Exception as exc:
-        logger.warning(
-            "params.toml schema stamp deferred (verify/install failed): %s: %s",
-            config_path,
-            exc,
-        )
-        _unlink_best_effort(candidate)
-
-
 def save_workspace_config(
     workspace_dir: str | Path,
     data: dict,
@@ -665,14 +600,14 @@ def save_workspace_config(
 
     Invalid [flow] sections raise WorkspaceFlowTargetError before anything
     is written; unserializable payloads and filesystem failures return
-    False so migration fallback paths stay reachable.
+    False.
     """
     if flow:
         validate_flow_config(flow)
     try:
         content = render_workspace_config(workspace_dir, data, flow)
     except (TypeError, ValueError) as exc:
-        # Payload values tomli_w cannot serialize (e.g. a legacy null).
+        # Payload values tomli_w cannot serialize (for example null).
         logger.warning("failed to render workspace config for %s: %s", workspace_dir, exc)
         return False
 
@@ -728,153 +663,3 @@ def resolve_flow_selection(
         selected_names[-1],
     )
     return (contiguous, True)
-
-
-def warn_legacy_config_shadow(workspace_dir: str | Path) -> None:
-    """Log the ``workspace_config_shadowed`` warning when both configs exist.
-
-    The legacy migration runs only for version-0 configs (see
-    ``chipcompiler.data.schema_migrations``); a leftover legacy
-    ``parameters.json`` next to a versioned ``params.toml`` is still inert,
-    so the disclosure must survive on every open, not only during migration.
-    """
-    config_path = workspace_config_path(workspace_dir)
-    legacy_path = legacy_parameters_path(workspace_dir)
-    if config_path.exists() and legacy_path.exists():
-        logger.warning(
-            "workspace_config_shadowed: both %s and %s exist; using the TOML",
-            config_path,
-            legacy_path,
-        )
-
-
-@deprecated(
-    "legacy parameters.json -> params.toml migration; slated for removal once "
-    "legacy workspaces are phased out",
-    category=None,
-)
-def migrate_legacy_parameters(workspace_dir: Path) -> None:
-    """Rewrite a legacy ``home/parameters.json`` into ``home/params.toml``.
-
-    Runs at workspace open, the single choke point for loading workspaces.
-    When both files exist the TOML wins and the JSON is left untouched. The
-    candidate is staged and validated before its atomic install, so any
-    failure (render, write, validation, install) leaves no final TOML:
-    the workspace loads via the normalized in-memory copy and the next
-    open retries.
-    """
-    from .parameter_keys import normalize_parameter_dict
-
-    home_spelled = Path(workspace_dir).resolve() / "home"
-    if home_spelled.is_symlink():
-        # A symlinked home redirects the migration's write AND the legacy
-        # delete onto an external directory: never mutate through it.
-        logger.warning(
-            "legacy parameters migration refused through a symlinked home: %s",
-            home_spelled,
-        )
-        return
-    config_path = workspace_config_path(workspace_dir)
-    legacy_path = legacy_parameters_path(workspace_dir)
-    if config_path.exists():
-        _stamp_preversioned_params_toml(config_path, Path(workspace_dir).resolve())
-        if legacy_path.exists():
-            logger.warning(
-                "workspace_config_shadowed: both %s and %s exist; using the TOML",
-                config_path,
-                legacy_path,
-            )
-        return
-    if legacy_path.is_symlink():
-        # A symlinked legacy parameters file would let the migration copy
-        # external content into the workspace and then delete the link:
-        # refuse and leave the file untouched.
-        logger.warning(
-            "legacy parameters migration refused through a symlinked file: %s",
-            legacy_path,
-        )
-        return
-    if not legacy_path.exists():
-        return
-
-    from chipcompiler.utility import JsonReadError, json_read_strict
-
-    try:
-        legacy_data = json_read_strict(legacy_path)
-    except (JsonReadError, OSError) as exc:
-        logger.warning("legacy parameters unreadable, skipping migration: %s: %s", legacy_path, exc)
-        return
-    if not isinstance(legacy_data, dict):
-        logger.warning(
-            "legacy parameters unreadable, skipping migration: %s: not a JSON object", legacy_path
-        )
-        return
-
-    normalized = normalize_parameter_dict(legacy_data)
-    # Derive the flow target from the persisted flow's first/last steps so
-    # the migrated workspace stays self-describing.
-    flow_section = _derive_flow_from_ledger(workspace_dir)
-    try:
-        content = render_workspace_config(workspace_dir, normalized, flow_section or None)
-    except (TypeError, ValueError) as exc:
-        # Payload values tomli_w cannot serialize (e.g. a legacy null).
-        logger.warning(
-            "legacy parameters migration deferred (render failed): %s: %s", legacy_path, exc
-        )
-        return
-
-    # Stage the candidate, validate it against the workspace root, and only
-    # then atomically install it. A failed candidate validation leaves NO
-    # final config behind, so the next open retries without any cleanup of
-    # an installed unverified file.
-    candidate = _stage_config_bytes(config_path, content)
-    if candidate is None:
-        logger.warning("legacy parameters migration deferred (rewrite failed): %s", legacy_path)
-        return
-    try:
-        _decode_workspace_config(candidate, workspace_dir)
-    except Exception as exc:
-        logger.warning(
-            "legacy parameters migration deferred (verify failed): %s: %s", config_path, exc
-        )
-        _unlink_best_effort(candidate)
-        return
-    try:
-        os.replace(candidate, config_path)
-    except OSError as exc:
-        logger.warning(
-            "legacy parameters migration deferred (install failed): %s: %s", config_path, exc
-        )
-        _unlink_best_effort(candidate)
-        return
-    try:
-        legacy_path.unlink()
-    except OSError as exc:
-        # The TOML is verified; a leftover JSON only re-enters the shadowed
-        # branch on the next open — warn, but the workspace is migrated.
-        logger.warning(
-            "legacy parameters migrated but the original file could not be removed: %s: %s",
-            legacy_path,
-            exc,
-        )
-
-
-@deprecated(
-    "legacy parameters.json -> params.toml migration; slated for removal once "
-    "legacy workspaces are phased out",
-    category=None,
-)
-def legacy_parameters_fallback(workspace_dir: str | Path) -> dict:
-    """Normalized in-memory copy of a legacy parameters.json, or {}.
-
-    Used when the rewrite was deferred (e.g. read-only dir) so the
-    workspace still opens; the next open retries the migration.
-    """
-    from chipcompiler.utility import json_read
-
-    from .parameter_keys import normalize_parameter_dict
-
-    data = json_read(legacy_parameters_path(workspace_dir))
-    if not isinstance(data, dict):
-        return {}
-    return normalize_parameter_dict(data)

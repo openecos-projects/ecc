@@ -5,16 +5,15 @@ import re
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES as STEP_DIRS
-from chipcompiler.data.step import all_step_directories
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.engine.signoff.report_data import (
+    PARAMETERS_STAGE,
     DesignReportData,
     EvidenceProvenanceRecord,
     ParsedPowerMetrics,
     ParsedQorSummaryMetrics,
-    canonicalize_stage_name,
 )
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_source_path
+from chipcompiler.tools.ecc.power_artifacts import power_report_source_path
 from chipcompiler.utility.json import json_read
 
 # ---------------------------------------------------------------------------
@@ -231,8 +230,7 @@ class StepMetricStore:
     def add(self, stage: str, payload: dict) -> None:
         if not _is_record(payload):
             return
-        for key in (stage, canonicalize_stage_name(stage)):
-            self._stages.setdefault(key, {}).update(payload)
+        self._stages.setdefault(stage, {}).update(payload)
 
     def stage(self, name: str) -> dict | None:
         return self._stages.get(name)
@@ -301,7 +299,7 @@ def _query(store, params, provenance, category, display_name, stage_priority, al
                             value=number,
                             unit=unit,
                             status="CONFIGURED",
-                            stage="Parameters",
+                            stage=PARAMETERS_STAGE,
                             corner=None,
                             tool="Configuration",
                             source_metric_id=alias,
@@ -309,7 +307,7 @@ def _query(store, params, provenance, category, display_name, stage_priority, al
                             timestamp=store.timestamp,
                         )
                     )
-                return number, "Parameters", alias
+                return number, PARAMETERS_STAGE, alias
     return None, "", ""
 
 
@@ -355,14 +353,16 @@ def _step_metric_payloads(step_dir: Path) -> list[dict]:
     return [payload for payload in payloads if payload]
 
 
-def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | None]:
+def _sta_corner_reports(
+    workspace, workspace_root: Path, directories: StepDirectories
+) -> tuple[dict, dict | None]:
     """Return STA corner timing plus the dedicated iPW power payload."""
     from chipcompiler.tools.ecc import sta_qor
 
     corners: dict[str, dict] = {}
     power_payload = None
-    feature_root = workspace_root / STEP_DIRS[StepEnum.STA.value] / "feature"
-    report_root = workspace_root / STEP_DIRS[StepEnum.STA.value] / "report"
+    feature_root = directories.path(StepEnum.STA) / "feature"
+    report_root = directories.path(StepEnum.STA) / "report"
     for label, feature_dir in sta_qor.configured_sta_artifact_directories(workspace, feature_root):
         payload = json_read(feature_dir / "qor_summary.json")
         report_dir = report_root / label
@@ -378,13 +378,15 @@ def _sta_corner_reports(workspace, workspace_root: Path) -> tuple[dict, dict | N
             payload.setdefault("violating_endpoints_hold", rpt.hold_nvp)
         if payload:
             corners[label] = payload
-    power_rpt = parse_power_rpt(_read_text(workspace_power_report_source_path(workspace_root)))
+    power_rpt = parse_power_rpt(
+        _read_text(power_report_source_path(directories.path(StepEnum.POWER_ANALYSIS)))
+    )
     if power_rpt.total_power_mw is not None:
         power_payload = dataclasses.asdict(power_rpt)
 
     if not corners:
-        # syn_sta-style workspace: post-synthesis STA lives in Synthesis_yosys.
-        synth_report = workspace_root / STEP_DIRS[StepEnum.SYNTHESIS.value] / "report"
+        # syn_sta-style workspace: post-synthesis STA lives in synthesis_yosys.
+        synth_report = directories.path(StepEnum.SYNTHESIS) / "report"
         rpt = parse_qor_summary_rpt(_read_text(synth_report / "qor_summary.rpt"))
         power_rpt = parse_power_rpt(_read_text(synth_report / "power.rpt"))
         if rpt.wns is not None or power_rpt.total_power_mw is not None:
@@ -406,27 +408,35 @@ def collect_workspace_report(workspace) -> DesignReportData:
     """Walk an ECC workspace (Workspace or duck-typed stand-in) and extract."""
     workspace_root = Path(workspace.directory)
     flow_data = workspace.flow.data if getattr(workspace, "flow", None) else {}
-    flow = json_read(workspace_root / "home" / "flow.json") or flow_data
+    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.workspace_config import load_workspace_config
+
+    flow = load_flow_document(workspace_root / "home" / "flow.json") or flow_data
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)
     if not isinstance(parameters, dict):
-        parameters = json_read(workspace_root / "home" / "parameters.json")
-    if not isinstance(parameters, dict):
-        parameters = {}
+        try:
+            parameters = load_workspace_config(workspace_root)
+        except (OSError, ValueError):
+            parameters = {}
 
+    directories = StepDirectories.from_records(
+        workspace_root, flow.get("steps", []) if isinstance(flow, dict) else []
+    )
+    # Report stages are the flow step names (``placement``, ``sta``).
     step_metrics: dict[str, dict] = {}
-    for dir_name in all_step_directories():
-        step_dir = workspace_root / dir_name
+    for step_name in directories.reader_step_names():
+        step_dir = directories.path(step_name)
         if not step_dir.is_dir():
             continue
         merged: dict = {}
         for payload in _step_metric_payloads(step_dir):
             merged.update(payload)
         if merged:
-            step_metrics[dir_name] = merged
+            step_metrics[step_name] = merged
 
-    corners, power_payload = _sta_corner_reports(workspace, workspace_root)
+    corners, power_payload = _sta_corner_reports(workspace, workspace_root, directories)
     if power_payload:
-        step_metrics.setdefault("Power", {}).update(power_payload)
+        step_metrics.setdefault(StepEnum.POWER_ANALYSIS, {}).update(power_payload)
 
     from chipcompiler.cli.core.version_info import version_payload
     from chipcompiler.engine.signoff.report import extract_design_report_data

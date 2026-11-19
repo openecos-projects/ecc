@@ -10,10 +10,18 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     create_workspace,
 )
+from chipcompiler.data.handshake import (
+    StepInputs,
+    StepRequest,
+    UpstreamResponse,
+    write_request,
+)
+from chipcompiler.data.types import AnalysisData, DesignData, DesignState
 from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.tools.ecc import builder, runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.utility import json_read, json_write
+from test.flow_fixture import publish_response
 
 
 def test_emir_default_technology_path_uses_workspace_config_copy(
@@ -33,30 +41,6 @@ def test_emir_default_technology_path_uses_workspace_config_copy(
     config_path = workspace.config[StepEnum.EMIR.value]
     technology_path = Path(json_read(config_path)["technology_file_path"])
 
-    assert technology_path == config_path.parent / "ics55_synthetic.tech"
-    assert technology_path.is_file()
-
-
-def test_emir_legacy_packaged_technology_path_migrates_to_workspace_copy(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
-    workspace = create_workspace(
-        directory=tmp_path / "workspace",
-        origin_def="",
-        origin_verilog=fixtures / "gcd/gcd.v",
-        pdk="ics55",
-        pdk_root=str(minimal_ics55_pdk_factory(tmp_path / "pdk")),
-        parameters={},
-    )
-    assert workspace is not None
-    config_path = workspace.config[StepEnum.EMIR.value]
-    packaged_path = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
-    assert json_write(config_path, {"technology_file_path": str(packaged_path)})
-
-    refresh_workspace_config(workspace)
-
-    technology_path = Path(json_read(config_path)["technology_file_path"])
     assert technology_path == config_path.parent / "ics55_synthetic.tech"
     assert technology_path.is_file()
 
@@ -95,10 +79,11 @@ def emir_case(tmp_path, monkeypatch):
     step = builder.build_step(
         workspace,
         StepEnum.EMIR.value,
-        input_def=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.def.gz",
-        input_verilog=tmp_path / "powerAnalysis_ecc" / "output" / "gcd_powerAnalysis.v.gz",
+        input_def=tmp_path / "power_analysis_ecc" / "output" / "gcd_power_analysis.def.gz",
+        input_verilog=tmp_path / "power_analysis_ecc" / "output" / "gcd_power_analysis.v.gz",
     )
     builder.build_step_space(step)
+    write_request(_emir_request(tmp_path, power=True))
     module = Mock(spec=ECCToolsModule)
     module.init_emir.return_value = True
     module.run_emir.return_value = True
@@ -106,6 +91,28 @@ def emir_case(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "is_eda_exist", lambda: True)
     monkeypatch.setattr(runner, "save_data", save_data)
     return workspace, step, module, save_data
+
+
+def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
+    """EMIR's req.json: the grid from post_floorplan and power from power_analysis."""
+    upstream: dict[DesignData, UpstreamResponse] = {
+        DesignState.FILLED: UpstreamResponse("filler_ecc", None),
+        DesignState.PDN: UpstreamResponse("post_floorplan_ecc", None),
+    }
+    if power:
+        upstream[AnalysisData.POWER] = publish_response(workspace_dir, "power_analysis_ecc")
+    return StepRequest(
+        workspace_directory=workspace_dir,
+        step=StepEnum.EMIR.value,
+        tool="ecc",
+        step_directory="emir_ecc",
+        attempt_id="attempt-emir",
+        inputs=StepInputs(),
+        design_source=UpstreamResponse("power_analysis_ecc", None),
+        upstream=upstream,
+        final_step=False,
+        layout_image=False,
+    )
 
 
 def write_native_emir_reports(step, *files: str) -> None:
@@ -128,7 +135,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
             output_dir=workspace.directory / "emir_ecc" / "data" / "emir",
             instance_power_file_path=(
                 workspace.directory
-                / "powerAnalysis_ecc"
+                / "power_analysis_ecc"
                 / "data"
                 / "pw"
                 / "power_reporter"
@@ -137,7 +144,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
             technology_file_path=str(workspace.directory / "process.tech"),
             ploc_file_path=(
                 workspace.directory
-                / "postFloorplan_ecc"
+                / "post_floorplan_ecc"
                 / "data"
                 / "fp"
                 / "pdn_generator"
@@ -279,3 +286,52 @@ def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
         call.run_emir(),
         call.destroy_emir(),
     ]
+
+
+def test_emir_without_an_upstream_power_analysis_fails_before_native_init(emir_case, tmp_path):
+    workspace, step, module, _save_data = emir_case
+    write_request(_emir_request(tmp_path, power=False))
+
+    with pytest.raises(ValueError, match="no power analysis"):
+        runner.run_step(workspace, step, module)
+
+    module.init_emir.assert_not_called()
+
+
+def test_emir_reads_the_typical_spef_a_derived_workspace_inherited(emir_case):
+    from chipcompiler.data.step import StepDirectories
+    from chipcompiler.tools.ecc import emir
+
+    workspace, step, _module, _save_data = emir_case
+    assert json_write(
+        workspace.config[StepEnum.STA.value],
+        {
+            "liberty": [{"corner": "TYP", "temperature": 25, "path": ["typ.lib"]}],
+            "signoff": [{"TYP": ["TYPICAL"]}],
+        },
+    )
+    inherited = StepDirectories.of(workspace).path(StepEnum.RCX.value) / "output"
+    inherited.mkdir(parents=True)
+    (inherited / "gcd_TYPICAL_25C.spef").write_text("*SPEF\n", encoding="utf-8")
+
+    assert emir._typical_spef_path(workspace, step, runner) == str(
+        inherited / "gcd_TYPICAL_25C.spef"
+    )
+
+
+def test_emir_reads_the_power_analysis_a_derived_workspace_inherited(emir_case, tmp_path):
+    from chipcompiler.data.step import StepDirectories
+    from chipcompiler.tools.ecc import emir
+    from chipcompiler.tools.ecc.power_artifacts import instance_power_path
+
+    workspace, step, _module, _save_data = emir_case
+    write_request(_emir_request(tmp_path, power=False))
+    inherited = StepDirectories.of(workspace).path(StepEnum.POWER_ANALYSIS.value)
+    instance_power_path(inherited).parent.mkdir(parents=True)
+    instance_power_path(inherited).write_text("instance\tpower\n", encoding="utf-8")
+
+    # The grid from the post_floorplan step req.json names, power from the inherited run.
+    assert emir._upstream_directories(workspace, step) == (
+        workspace.directory / "post_floorplan_ecc",
+        inherited,
+    )

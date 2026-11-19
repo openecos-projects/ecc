@@ -8,9 +8,11 @@ different policies, and the materialized default in generated projects.
 """
 
 import json
+import os
 
 import pytest
 
+from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.config import load_project_config, validate_project_config
 from chipcompiler.cli.project.effective_config import (
     declared_skip_steps,
@@ -48,14 +50,16 @@ class TestManifestSkipSteps:
 
         assert entry.skip_steps is None
 
-    def test_declared_spelling_is_kept_verbatim(self, tmp_path):
-        _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=["LEC", "lec", "postlec"])])
+    def test_declared_list_is_kept_verbatim(self, tmp_path):
+        _write_manifest(
+            tmp_path, [_workspace(tmp_path, skip_steps=["lec", "lec", "post_route_lec"])]
+        )
 
         (entry,) = load_manifest(str(tmp_path)).workspaces
 
-        # One normalizer exists (the resolver); the manifest stores the
-        # declared spelling and only checks its validity.
-        assert entry.skip_steps == ("LEC", "lec", "postlec")
+        # The resolver dedupes and orders; the manifest stores the declared
+        # list and only checks its validity.
+        assert entry.skip_steps == ("lec", "lec", "post_route_lec")
 
     def test_explicit_empty_list_is_distinct_from_absent(self, tmp_path):
         _write_manifest(tmp_path, [_workspace(tmp_path, skip_steps=[])])
@@ -70,7 +74,6 @@ class TestManifestSkipSteps:
             "lec",
             None,
             [1],
-            ["route"],
             ["bogus"],
         ],
     )
@@ -110,9 +113,9 @@ class TestEccTomlSkipSteps:
         assert cfg.flow_skip_steps is None
 
     def test_declared_list_is_kept_verbatim(self, tmp_path):
-        cfg = self._config(tmp_path, 'skip_steps = ["TimingOpt", "lec"]\n')
+        cfg = self._config(tmp_path, 'skip_steps = ["timing_optimization", "lec"]\n')
 
-        assert cfg.flow_skip_steps == ["TimingOpt", "lec"]
+        assert cfg.flow_skip_steps == ["timing_optimization", "lec"]
 
     @pytest.mark.parametrize(
         "flow_extra",
@@ -120,7 +123,11 @@ class TestEccTomlSkipSteps:
             'skip_steps = "lec"\n',
             "skip_steps = 3\n",
             "skip_steps = [1]\n",
-            'skip_steps = ["route"]\n',
+            'skip_steps = ["bogus"]\n',
+            # route provides the routed design filler requires.
+            'skip_steps = ["routing"]\n',
+            # Harden is the rtl2gds flow target.
+            'skip_steps = ["harden"]\n',
         ],
     )
     def test_invalid_value_is_a_config_error(self, tmp_path, flow_extra):
@@ -158,7 +165,9 @@ class TestSkipStepsPrecedence:
         return entry, cfg
 
     def test_ecc_toml_wins_over_project_json(self, tmp_path):
-        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["TimingOpt"], toml_skip=["lec"])
+        entry, cfg = self._entry_and_cfg(
+            tmp_path, manifest_skip=["timing_optimization"], toml_skip=["lec"]
+        )
 
         assert declared_skip_steps(entry, cfg) == ["lec"]
 
@@ -200,7 +209,9 @@ class TestSkipStepsShadowWarning:
         return entry, cfg
 
     def test_warning_when_ecc_toml_shadows_a_different_manifest_entry(self, tmp_path):
-        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["TimingOpt"], toml_skip=["lec"])
+        entry, cfg = self._entry_and_cfg(
+            tmp_path, manifest_skip=["timing_optimization"], toml_skip=["lec"]
+        )
 
         warning = skip_steps_shadow_warning(entry, cfg)
 
@@ -210,7 +221,7 @@ class TestSkipStepsShadowWarning:
         assert warning["shadowed_source"] == "project.json"
 
     def test_no_warning_when_the_policies_agree(self, tmp_path):
-        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["LEC", "lec"], toml_skip=["lec"])
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["lec", "lec"], toml_skip=["lec"])
 
         assert skip_steps_shadow_warning(entry, cfg) is None
 
@@ -275,19 +286,23 @@ def test_pre_register_materializes_declared_skip_steps(tmp_path, monkeypatch):
         pdk_root="/pdk",
         workspace_id="ws_0001",
         workspace_path=str(tmp_path / "ws_0001"),
-        flow_config={"skip_steps": ["TimingOpt"]},
+        flow_config={"skip_steps": ["timing_optimization"]},
     )
 
     assert outcome == "registered"
     (entry,) = load_manifest(str(tmp_path)).workspaces
-    assert entry.skip_steps == ("TimingOpt",)
+    assert entry.skip_steps == ("timing_optimization",)
 
 
 class TestManifestSkipBoundary:
     def test_skipped_manifest_boundary_fails_the_load(self, tmp_path):
         _write_manifest(
             tmp_path,
-            [_workspace(tmp_path, start_step="Synth", end_step="LEC", skip_steps=["LEC"])],
+            [
+                _workspace(
+                    tmp_path, start_step="synthesis", end_step="diff_opt", skip_steps=["diff_opt"]
+                )
+            ],
         )
 
         with pytest.raises(ManifestError, match="cannot bound the flow range"):
@@ -299,13 +314,56 @@ class TestManifestSkipBoundary:
             [
                 _workspace(
                     tmp_path,
-                    start_step="Synth",
-                    end_step="PreFloorplan",
-                    skip_steps=["LEC"],
+                    start_step="synthesis",
+                    end_step="cts",
+                    skip_steps=["diff_opt"],
                 )
             ],
         )
 
         (entry,) = load_manifest(str(tmp_path)).workspaces
 
-        assert entry.skip_steps == ("LEC",)
+        assert entry.skip_steps == ("diff_opt",)
+
+
+@pytest.mark.parametrize(
+    ("skip_steps", "rc", "reports"),
+    [
+        # Optional data missing: warnings, and the check passes.
+        (
+            ["diff_opt", "cts"],
+            0,
+            [
+                f"warning=flow_step_degraded step={step} missing=['clock_tree'] "
+                f"fixes=['cts'] reason=\"{step} runs with degraded results without "
+                'clock_tree; enable cts"'
+                for step in ("routing", "sta", "power_analysis", "harden")
+            ],
+        ),
+        # Required data missing: a configuration error.
+        (
+            ["diff_opt", "legalization", "timing_optimization"],
+            1,
+            [
+                'check=config status=fail reason="flow.skip_steps: routing requires legal; '
+                'enable timing_optimization or legalization"'
+            ],
+        ),
+    ],
+)
+def test_check_reports_the_declared_selection(
+    capsys, create_cli_project, mock_pdk_validation, skip_steps, rc, reports
+):
+    mock_pdk_validation()
+    project_dir = create_cli_project()
+    with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
+        f.write(f"\nskip_steps = {json.dumps(skip_steps)}\n")
+
+    assert cli_main.run(["check", "--project", project_dir, "--plain"]) == rc
+
+    lines = capsys.readouterr().out.splitlines()
+    assert [
+        line.removeprefix("kind=warning ").split(" source=")[0]
+        for line in lines
+        if "flow_step_degraded" in line or line.startswith("check=config")
+    ] == reports
