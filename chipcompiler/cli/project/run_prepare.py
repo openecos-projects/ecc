@@ -267,7 +267,7 @@ def execute_fresh_run(
                 )
             return None
         from chipcompiler.cli.core.records import error_record
-        from chipcompiler.engine.workspace_backup import retain_replaced_tree
+        from chipcompiler.engine.workspace.backup import retain_replaced_tree
         from chipcompiler.project import register_workspace_backup
 
         retained = retain_replaced_tree(Path(backup_path), Path(run_dir))
@@ -542,7 +542,7 @@ def execute_fresh_run(
             if getattr(workspace, "directory", None):
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
-                    from chipcompiler.engine.workspace_lifecycle import (
+                    from chipcompiler.engine.workspace.lifecycle import (
                         workspace_command_fingerprint,
                         write_workspace_command,
                     )

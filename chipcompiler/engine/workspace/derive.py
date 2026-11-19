@@ -12,7 +12,7 @@ from chipcompiler.engine.snapshot import (
     STALE_SNAPSHOT_FILENAME,
     create_engineering_snapshot,
 )
-from chipcompiler.engine.workspace_lifecycle import (
+from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _replace_string_prefix,
     command_retry_matches,
@@ -104,14 +104,14 @@ def derive_workspace(
                     "workspace_invalid", f"Workspace cannot be opened: {source}"
                 )
 
-            from chipcompiler.engine.workspace_reset import (
+            from chipcompiler.engine.workspace.reset import (
                 build_flow_for_workspace,
                 prepare_steps_for_rerun,
             )
 
             engine_flow = build_flow_for_workspace(workspace)
             if through_step:
-                from chipcompiler.engine.workspace_derive_range import bound_derived_flow
+                from chipcompiler.engine.workspace.derive_range import bound_derived_flow
 
                 bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
                 _prune_derived_checklist(workspace, engine_flow.workspace_steps)

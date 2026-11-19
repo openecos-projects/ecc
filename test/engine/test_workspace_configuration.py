@@ -642,7 +642,7 @@ def test_configuration_update_recovers_after_process_exit_before_snapshot(
 
     child = os.fork()
     if child == 0:
-        import chipcompiler.engine.workspace_configuration as configuration_module
+        import chipcompiler.engine.workspace.configuration as configuration_module
 
         configuration_module.invalidate_engineering_snapshot = lambda *_args, **_kwargs: os._exit(
             23

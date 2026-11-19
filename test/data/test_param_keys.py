@@ -49,7 +49,7 @@ def test_knob_value_transforms_follow_the_agent_contract():
 
 
 def test_parameter_catalog_records_carry_display_key_and_knob_id():
-    from chipcompiler.engine.workspace_spec import describe_workspace_spec
+    from chipcompiler.engine.workspace.spec import describe_workspace_spec
 
     catalog = describe_workspace_spec()["parameterCatalog"]
     assert catalog

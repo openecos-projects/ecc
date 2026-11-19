@@ -13,8 +13,8 @@ from typing import Any
 
 from chipcompiler.data import DEFAULT_ABC_LOAD, PDK, create_workspace, get_pdk, load_workspace
 from chipcompiler.engine.snapshot import create_engineering_snapshot
-from chipcompiler.engine.workspace_backup import retain_replaced_tree
-from chipcompiler.engine.workspace_spec import validate_workspace_spec
+from chipcompiler.engine.workspace.backup import retain_replaced_tree
+from chipcompiler.engine.workspace.spec import validate_workspace_spec
 from chipcompiler.params import carried_parameters, invalid_carried_parameters
 from chipcompiler.rtl2gds import get_flow_builders
 
@@ -426,7 +426,7 @@ def _require_readable_configuration(current: Any) -> None:
     """Refuse to rebuild a Workspace whose managed configuration is unreadable."""
     from chipcompiler.utility import JsonReadError
 
-    from .workspace_configuration import read_workspace_configuration
+    from .configuration import read_workspace_configuration
 
     try:
         read_workspace_configuration(current, strict=True)

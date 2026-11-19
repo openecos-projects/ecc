@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data.step import unindexed_step_directory
-from chipcompiler.engine.workspace_spec import (
+from chipcompiler.engine.workspace.spec import (
     describe_workspace_spec,
     validate_workspace_spec,
 )
@@ -571,7 +571,7 @@ def test_workspace_spec_update_retain_backup_failure_keeps_original_tree(
 def test_workspace_spec_update_retain_backup_rolls_back_when_reload_fails(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch
 ):
-    import chipcompiler.engine.workspace_lifecycle as lifecycle
+    import chipcompiler.engine.workspace.lifecycle as lifecycle
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
     from chipcompiler.engine.snapshot import read_engineering_snapshot
 

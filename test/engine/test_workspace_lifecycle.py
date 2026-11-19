@@ -1,7 +1,7 @@
 import ctypes
 import errno
 
-from chipcompiler.engine.workspace_lifecycle import exchange_directories
+from chipcompiler.engine.workspace.lifecycle import exchange_directories
 
 
 def test_exchange_directories_falls_back_when_nfs_rejects_rename_exchange(tmp_path, monkeypatch):

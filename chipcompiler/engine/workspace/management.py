@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
-from chipcompiler.engine.workspace_lifecycle import (
+from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     workspace_command_fingerprint,
     write_workspace_command,

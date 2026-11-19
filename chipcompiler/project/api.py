@@ -174,7 +174,7 @@ def create_project_workspace(
     expected_project_id: str | None = None,
     now: str | None = None,
 ):
-    from chipcompiler.engine.workspace_lifecycle import _create_workspace_from_spec
+    from chipcompiler.engine.workspace.lifecycle import _create_workspace_from_spec
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project = Path(project_dir).expanduser().resolve()

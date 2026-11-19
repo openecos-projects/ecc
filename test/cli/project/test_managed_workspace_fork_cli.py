@@ -14,7 +14,7 @@ from chipcompiler.engine.snapshot import (
     create_engineering_snapshot,
     read_engineering_snapshot_from_directory,
 )
-from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+from chipcompiler.engine.workspace.reset import build_flow_for_workspace
 from chipcompiler.project import load_project_manifest, mutate_project_manifest
 from test.flow_fixture import publish_response
 

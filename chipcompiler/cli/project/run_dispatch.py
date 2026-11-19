@@ -206,7 +206,7 @@ def _repeats_recorded_create(command_input, run_dir: str, run_name: str) -> bool
     """True when this exact `workspace create` request already built the workspace."""
     if not command_input.command_id:
         return False
-    from chipcompiler.engine.workspace_lifecycle import (
+    from chipcompiler.engine.workspace.lifecycle import (
         WorkspaceLifecycleError,
         command_retry_matches,
         workspace_command_fingerprint,

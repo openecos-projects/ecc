@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.engine.snapshot import commit_engineering_snapshot, read_engineering_snapshot
-from chipcompiler.engine.workspace_lifecycle import (
+from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
     command_retry_matches,

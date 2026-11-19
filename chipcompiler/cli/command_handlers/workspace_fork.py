@@ -65,8 +65,8 @@ def fork(
 
     from chipcompiler.cli.project.run_prepare import invalid_workspace_name
     from chipcompiler.engine.snapshot import read_engineering_snapshot
-    from chipcompiler.engine.workspace_derive import derive_workspace
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.derive import derive_workspace
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
     from chipcompiler.project.api import project_manifest_mutator
     from chipcompiler.project.manifest import load_manifest
     from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked

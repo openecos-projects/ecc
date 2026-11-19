@@ -38,14 +38,14 @@ from chipcompiler.params import (
 from chipcompiler.rtl2gds import get_flow_builders
 from chipcompiler.utility import JsonReadError
 
-from .macro_location_handoff import (
+from ..macro_location_handoff import (
     prune_macro_location_after_write as _prune_macro_location_after_write,
 )
-from .macro_location_handoff import (
+from ..macro_location_handoff import (
     verify_published_macro_location as _verify_published_macro_location,
 )
-from .parameter_steps import earliest_flow_step, edit_scope, require_flow_step, step_catalog
-from .workspace_lifecycle import (
+from ..parameter_steps import earliest_flow_step, edit_scope, require_flow_step, step_catalog
+from .lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
     command_retry_matches,

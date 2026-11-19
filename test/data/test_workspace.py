@@ -172,7 +172,7 @@ def test_create_workspace_returns_path_fields_and_persists_string_paths(
     assert cts["max_fanout"] == 37
     assert cts["buffer_type"] == workspace.pdk.buffers
 
-    from chipcompiler.engine.workspace_configuration import (
+    from chipcompiler.engine.workspace.configuration import (
         build_workspace_configuration_projection,
     )
 
@@ -661,12 +661,12 @@ def test_derived_snapshot_inputs_bind_to_final_workspace(
         create_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_derive import derive_workspace
+    from chipcompiler.engine.workspace.derive import derive_workspace
 
     source, workspace = _create_loaded_ics55_workspace(
         tmp_path, "workspace", minimal_ics55_pdk_factory, default_ics55_parameters
     )
-    from chipcompiler.engine.workspace_reset import build_flow_for_workspace
+    from chipcompiler.engine.workspace.reset import build_flow_for_workspace
 
     engine_flow = build_flow_for_workspace(workspace)
     assert engine_flow.save()
