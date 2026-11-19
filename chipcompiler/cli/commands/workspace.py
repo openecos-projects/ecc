@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from chipcompiler.cli.command_handlers import project as project_handlers
+from chipcompiler.cli.command_handlers import workspace_execution as workspace_execution_handlers
 from chipcompiler.cli.command_handlers import workspace_fork as workspace_fork_handlers
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.cli.core.inputs import (
@@ -16,13 +17,41 @@ from chipcompiler.cli.core.inputs import (
     WorkspaceReconcileDeletesInput,
     WorkspaceRefreshInput,
     WorkspaceResetFlowInput,
+    WorkspaceExecutionInput,
     output_options,
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import PlainOption, ProjectOption
+from chipcompiler.cli.core.options import PlainOption, ProjectOption, StepSubprocessOption
 
 workspace_app = create_app(help="Import or refresh managed workspaces")
+
+
+@workspace_app.command("execution")
+def execution_cmd(
+    workspace: Annotated[str, typer.Argument(help="Workspace ID")],
+    *,
+    project: ProjectOption = None,
+    step_subprocess: StepSubprocessOption = None,
+    expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
+    command_id: Annotated[str, typer.Option("--command-id")] = "",
+    no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    plain: PlainOption = False,
+) -> None:
+    """Show or change execution mode in home/flow.json without resetting results."""
+    execute_command(
+        "workspace",
+        WorkspaceExecutionInput(
+            output=output_options(plain=plain),
+            project=project_options(project),
+            workspace=workspace,
+            step_subprocess=step_subprocess,
+            expected_revision=expected_revision,
+            command_id=command_id,
+            no_wait=no_wait,
+        ),
+        workspace_execution_handlers.workspace_execution,
+    )
 
 
 @workspace_app.command("reconcile-deletes")
@@ -57,6 +86,7 @@ def fork_cmd(
     to_step: Annotated[
         str | None, typer.Option("--to", help="Create only the inclusive --from/--to range")
     ] = None,
+    step_subprocess: StepSubprocessOption = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
     plain: PlainOption = False,
@@ -79,6 +109,7 @@ def fork_cmd(
         target_workspace=target_workspace,
         from_step=from_step,
         to_step=to_step,
+        step_subprocess=step_subprocess,
         command_id=command_id,
         no_wait=no_wait,
     )
@@ -163,6 +194,7 @@ def create_cmd(
     from_step: Annotated[str | None, typer.Option("--from")] = None,
     to_step: Annotated[str | None, typer.Option("--to")] = None,
     param_set: Annotated[list[str] | None, typer.Option("--set")] = None,
+    step_subprocess: StepSubprocessOption = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
     plain: PlainOption = False,
@@ -175,6 +207,7 @@ def create_cmd(
         from_step=from_step,
         to_step=to_step,
         param_set=tuple(param_set or ()),
+        step_subprocess=step_subprocess,
         command_id=command_id,
         no_wait=no_wait,
     )
@@ -227,6 +260,7 @@ def refresh_cmd(
         ),
     ] = False,
     project: ProjectOption = None,
+    step_subprocess: StepSubprocessOption = None,
     expected_revision: Annotated[int | None, typer.Option("--expected-revision", min=1)] = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
@@ -252,6 +286,7 @@ def refresh_cmd(
         workspace=workspace,
         force=force,
         keep_backup=keep_backup,
+        step_subprocess=step_subprocess,
         expected_revision=expected_revision,
         command_id=command_id,
         no_wait=no_wait,
