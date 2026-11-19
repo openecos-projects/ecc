@@ -288,6 +288,48 @@ CANDIDATE_KNOBS = (
         available=False,
         unavailable_reason="iCTS does not accept net_list",
     ),
+    # Stored as legalization step values (``legalization.*`` parameters);
+    # detailed placement stays forced off to protect the repaired hold timing.
+    CandidateKnob(
+        "legalization.cell_padding_x",
+        StepEnum.LEGALIZATION.value,
+        "dreamplace",
+        ("cell_padding_x",),
+        "uint",
+        0,
+        10000,
+    ),
+    CandidateKnob(
+        "legalization.bndry_padding_x",
+        StepEnum.LEGALIZATION.value,
+        "dreamplace",
+        ("bndry_padding_x",),
+        "uint",
+        0,
+    ),
+    CandidateKnob(
+        "legalization.bndry_padding_y",
+        StepEnum.LEGALIZATION.value,
+        "dreamplace",
+        ("bndry_padding_y",),
+        "uint",
+        0,
+    ),
+    CandidateKnob(
+        "legalization.num_threads",
+        StepEnum.LEGALIZATION.value,
+        "dreamplace",
+        ("num_threads",),
+        "uint",
+        1,
+    ),
+    CandidateKnob(
+        "legalization.deterministic",
+        StepEnum.LEGALIZATION.value,
+        "dreamplace",
+        ("deterministic_flag",),
+        "bool_int",
+    ),
 )
 
 

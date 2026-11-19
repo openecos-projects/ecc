@@ -39,16 +39,20 @@ def knob_store_key(knob: CandidateKnob) -> str:
 
 
 def knob_step_parameter(knob: CandidateKnob) -> ParamSchema:
-    """The step-scoped parameter whose config target is the knob's DreamPlace key."""
+    """The step-scoped parameter of the knob's target step that sets its DreamPlace key.
+
+    Several parameters may set one DreamPlace field on different steps
+    (``place.cell_padding_x`` on placement, ``legalization.cell_padding_x``
+    on legalization); the one declared for the target step is the knob's.
+    """
     for schema in list_schemas():
         target = schema.config_target
         if (
             target is not None
             and target.config_key == knob.config_key
             and target.json_path == knob.json_path
+            and schema.applies_to(knob.target_step)
         ):
-            if not schema.applies_to(knob.target_step):
-                break
             return schema
     raise CandidateStepValueError(
         f"knob {knob.knob_id} has no {knob.target_step} parameter for {'.'.join(knob.json_path)}"

@@ -34,6 +34,11 @@ def test_registry_covers_the_declared_public_physical_knobs():
         "route.thread_number",
         "route.enable_timing",
         "cts.skew_bound",
+        "legalization.cell_padding_x",
+        "legalization.bndry_padding_x",
+        "legalization.bndry_padding_y",
+        "legalization.num_threads",
+        "legalization.deterministic",
     }.issubset(knob_ids)
     assert "design.frequency_mhz" not in knob_ids
     assert "place.global_right_padding" not in knob_ids
@@ -120,6 +125,35 @@ def test_dreamplace_knob_materializes_as_a_target_step_value(tmp_path):
     ]
     assert cw.read_params(tmp_path / snapshot["before_ref"]) == {"core": core}
     assert (tmp_path / snapshot["after_ref"]).read_bytes() == params_path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "knob_id,value,parameter,stored",
+    [
+        ("legalization.cell_padding_x", 400, "legalization.cell_padding_x", 400),
+        ("legalization.bndry_padding_y", 4, "legalization.bndry_padding_y", 4),
+        ("legalization.deterministic", False, "legalization.deterministic_flag", 0),
+    ],
+)
+def test_legalization_knob_materializes_as_a_legalization_step_value(
+    tmp_path, knob_id, value, parameter, stored
+):
+    workspace = cw.workspace(tmp_path)
+    baseline = workspace.config["dreamplace"].read_bytes()
+
+    receipt = materialize_candidate_config(
+        workspace,
+        "legalization",
+        [{"knob_id": knob_id, "value": value}],
+        candidate_id="legalization-candidate",
+    )
+
+    # Written in dbu as given: unlike place.cell_padding_x, not scaled by site width.
+    assert receipt["patch"] == [{"knob_id": knob_id, "value": value}]
+    assert cw.read_params(tmp_path / "home" / "params.toml")["step_params"] == {
+        "legalization": {parameter: stored}
+    }
+    assert workspace.config["dreamplace"].read_bytes() == baseline
 
 
 def test_reapply_restores_the_dreamplace_step_value(tmp_path):
@@ -224,6 +258,8 @@ def test_materialize_converts_padding_sites_to_written_dbu(tmp_path):
     "target_step,patch",
     [
         ("cts", [{"knob_id": "legalization.bndry_padding_x", "value": 20000}]),
+        ("legalization", [{"knob_id": "legalization.detailed_place_flag", "value": True}]),
+        ("legalization", [{"knob_id": "legalization.cell_padding_x", "value": 10001}]),
         ("cts", [{"knob_id": "cts.max_fanout", "value": True}]),
         ("cts", [{"knob_id": "cts.buffer_type", "value": ["NOT_A_PDK_BUFFER"]}]),
         ("filler", [{"knob_id": "filler.min_filler_width", "value": 2}]),
@@ -284,7 +320,13 @@ def test_export_capabilities_returns_stable_schema_and_backend_truth_without_wri
         "adapter": "legalization_dreamplace",
         "available": True,
     }
-    assert legalization["knobs"] == []
+    assert {knob["knob_id"] for knob in legalization["knobs"]} == {
+        "legalization.cell_padding_x",
+        "legalization.bndry_padding_x",
+        "legalization.bndry_padding_y",
+        "legalization.num_threads",
+        "legalization.deterministic",
+    }
     assert filler["backend"]["available"] is False
     assert filler["candidate_generation"] is False
     assert filler["knobs"] == []

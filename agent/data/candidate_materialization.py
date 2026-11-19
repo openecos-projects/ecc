@@ -288,6 +288,8 @@ def _validate_uint(knob: CandidateKnob, value: Any) -> None:
         raise CandidateMaterializationError(f"{knob.knob_id} must be an integer")
     if knob.minimum is not None and value < knob.minimum:
         raise CandidateMaterializationError(f"{knob.knob_id} must be >= {knob.minimum}")
+    if knob.maximum is not None and value > knob.maximum:
+        raise CandidateMaterializationError(f"{knob.knob_id} must be <= {knob.maximum}")
 
 
 def _validate_uint_list(knob: CandidateKnob, value: Any) -> None:
