@@ -322,6 +322,7 @@ def create_workspace(command_input, ctx: CommandContext) -> CommandResult:
         from_step=command_input.from_step,
         to_step=command_input.to_step,
         param_set=command_input.param_set,
+        step_subprocess=command_input.step_subprocess,
         command_id=command_input.command_id or str(uuid.uuid4()),
         no_wait=command_input.no_wait,
     )
@@ -398,6 +399,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
         spec, bindings = workspace_update_spec(ctx.run_dir, cfg, flow_config)
+        if command_input.step_subprocess is not None:
+            spec["flow"]["stepSubprocess"] = command_input.step_subprocess
         # Keep compatibility with older embedders that provide the lifecycle
         # callable without the optional backup keyword. The in-tree engine
         # supports it; this fallback only preserves the previous generation

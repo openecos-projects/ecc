@@ -45,6 +45,7 @@ def fork_workspace(command_input: WorkspaceForkInput, ctx: CommandContext) -> Co
         to_step=command_input.to_step or "",
         command_id=command_input.command_id,
         no_wait=command_input.no_wait,
+        step_subprocess=command_input.step_subprocess,
     )
 
 
@@ -58,6 +59,7 @@ def fork(
     to_step: str,
     command_id: str = "",
     no_wait: bool = False,
+    step_subprocess: bool | None = None,
 ) -> CommandResult:
     """Fork *source_id* into *target_id* and register it; a failed fork leaves nothing."""
     import shutil
@@ -89,6 +91,7 @@ def fork(
             project_id=project_manifest.project_id,
             source_workspace_id=source_id,
             target_workspace_id=target_id,
+            **({"step_subprocess": step_subprocess} if step_subprocess is not None else {}),
         )
         with manifest_lock(project, blocking=not no_wait):
             load_manifest(str(project))
