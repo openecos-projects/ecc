@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.engine.qor_report import build_qor_report, generate_qor_report
+from chipcompiler.analysis.qor.report import build_qor_report, generate_qor_report
 from chipcompiler.engine.signoff.report_checklist import (
     build_checklist_report,
     generate_checklist_report,

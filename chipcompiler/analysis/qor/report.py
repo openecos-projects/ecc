@@ -1,7 +1,7 @@
 """Workspace-level QoR report entry points.
 
 The scoring implementation lives in ``chipcompiler.analysis.qor``
-(ECC-QoR draft 3); this module is the engine-side facade the CLI uses.
+(ECC-QoR draft 3); this module is the facade the CLI uses.
 ``home/qor_report.json`` is written by the flow engine after each
 successful step via ``analysis.qor.refresh_workspace_qor_report``.
 """

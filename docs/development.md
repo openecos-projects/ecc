@@ -343,7 +343,7 @@ chipcompiler/cli/project/         # config.py (ecc.toml parsing and validation) 
 chipcompiler/cli/rendering/       # output rendering (render / renderers / pretty / progress)
 chipcompiler/engine/signoff/      # signoff collector + design/checklist reports (package, see below)
 chipcompiler/analysis/qor/ # canonical QoR v3 analysis, scoring, and report contract
-chipcompiler/engine/qor_report.py # CLI QoR facade delegating to analysis.qor
+chipcompiler/analysis/qor/report.py # CLI QoR facade delegating to analysis.qor
 ```
 
 Module placement is enforced by `test/cli/test_cli_module_layout.py`: the core
@@ -650,7 +650,7 @@ required by doctor.
   diagnoses, interventions, the bounded report schema, and text rendering.
   New QoR conclusions belong here; do not copy thresholds or formulas into
   the GUI or CLI.
-- `engine/qor_report.py`: the CLI `ecc report qor` facade. It delegates to
+- `analysis/qor/report.py`: the CLI `ecc report qor` facade. It delegates to
   `analysis.qor` and does not own a second scoring implementation.
 - `engine/snapshot/metrics.py`: the Snapshot `qorAssessment` collector — validated metric
   records and Success-step summaries only, no scoring. Scores reach the

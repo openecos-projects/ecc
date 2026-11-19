@@ -67,7 +67,7 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
     if failure is not None:
         return failure
 
-    from chipcompiler.engine.qor_report import build_qor_report, generate_qor_report
+    from chipcompiler.analysis.qor.report import build_qor_report, generate_qor_report
 
     try:
         # Build once and render that snapshot: a second traversal could read
