@@ -1385,7 +1385,9 @@ ecc signoff export -o <path>.tar.gz [--include-debug] [--additional-files -] [--
 
 `--additional-files -` 从 stdin 读取一个 tar 流，把其中的普通文件一并嵌入导出包
 （只接受相对 POSIX 路径；最多 256 个条目、单文件 16 MiB、总量 64 MiB——这是
-ECOS Studio 附加用户自选文件的通道）。该命令还接受自动化选项
+ECOS Studio 附加用户自选文件的通道）。路径若已被导出包占用（交付物、`manifest.json`
+或包内任何其他文件），该文件会被拒绝并报 `invalid_additional_files`：附加文件只能
+加入导出包，不能替换其中已有的内容。该命令还接受自动化选项
 `--expected-revision` 与 `--no-wait`（见 §5.1）。
 
 直接指定已有 workspace 时，例如：

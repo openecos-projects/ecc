@@ -11,6 +11,10 @@ class SignoffExportError(RuntimeError):
     pass
 
 
+class SignoffAdditionalFileError(SignoffExportError):
+    """An additional file cannot be placed in the collected signoff package."""
+
+
 def inspect_signoff_package(workspace) -> dict:
     """Return the current Signoff Assessment without mutating the Workspace."""
     return build_signoff_assessment(workspace)
@@ -63,9 +67,10 @@ def export_signoff_package_archive(
                     raise SignoffExportError("additional file entries require string content")
                 try:
                     path = _additional_file_path(package_dir, archive_path)
+                    _require_unused_path(package_dir, path, archive_path)
                     path.parent.mkdir(parents=True, exist_ok=True)
                     if _has_symlink_parent(package_dir, path):
-                        raise SignoffExportError("additional file path contains a symlink")
+                        raise SignoffAdditionalFileError("additional file path contains a symlink")
                     path.write_text(content, encoding="utf-8")
                 except SignoffExportError:
                     raise
@@ -96,17 +101,38 @@ def export_signoff_package_archive(
 
 def _additional_file_path(package_dir: Path, archive_path: str) -> Path:
     if not archive_path or "\x00" in archive_path:
-        raise SignoffExportError("additional file path must name a relative file")
+        raise SignoffAdditionalFileError("additional file path must name a relative file")
     relative = Path(archive_path)
     if relative == Path(".") or relative.is_absolute() or ".." in relative.parts:
-        raise SignoffExportError("additional file path must stay inside the signoff package")
+        raise SignoffAdditionalFileError(
+            "additional file path must stay inside the signoff package"
+        )
     try:
         destination = (package_dir / relative).resolve()
     except (OSError, ValueError) as exc:
-        raise SignoffExportError("additional file path must name a relative file") from exc
+        raise SignoffAdditionalFileError("additional file path must name a relative file") from exc
     if not destination.is_relative_to(package_dir.resolve()):
-        raise SignoffExportError("additional file path must stay inside the signoff package")
+        raise SignoffAdditionalFileError(
+            "additional file path must stay inside the signoff package"
+        )
     return destination
+
+
+def _require_unused_path(package_dir: Path, path: Path, archive_path: str) -> None:
+    """Additional files are added next to the collected package, never in place of it.
+
+    The deliverables and the manifest.json that records their sizes and
+    digests are already materialized here. A path that exists, or that runs
+    through an existing file, would replace one of them (or an earlier
+    additional file) while the manifest keeps describing the original.
+    """
+    current = package_dir.resolve()
+    for component in path.relative_to(current).parts:
+        current /= component
+        if os.path.lexists(current) and not (current != path and current.is_dir()):
+            raise SignoffAdditionalFileError(
+                f"additional file path is already used by the signoff package: {archive_path}"
+            )
 
 
 def _has_symlink_parent(package_dir: Path, path: Path) -> bool:
