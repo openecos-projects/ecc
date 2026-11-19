@@ -2,8 +2,8 @@
 
 from copy import deepcopy
 
-from .flow_ledger import save_ledger
-from .flow_types import FlowDocument
+from ..flow.document import FlowDocument
+from ..flow.ledger import save_ledger
 
 
 def declared_step_subprocess(data: FlowDocument) -> bool | None:

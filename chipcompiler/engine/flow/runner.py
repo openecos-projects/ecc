@@ -640,7 +640,7 @@ class EngineFlow:
 
     def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
         """Compatibility predicate for callers that inspect checker batching."""
-        from chipcompiler.engine import step_subprocess
+        from chipcompiler.engine.step import process as step_subprocess
 
         return (
             index > 0
@@ -747,7 +747,7 @@ class EngineFlow:
         flow once after the wave instead.
         """
         workers = 1
-        from chipcompiler.engine import step_subprocess
+        from chipcompiler.engine.step import process as step_subprocess
 
         if len(steps) > 1 and step_subprocess.is_enabled(self.workspace):
             workers = self._checker_parallelism(steps)

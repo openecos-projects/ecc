@@ -8,12 +8,12 @@ import pytest
 from chipcompiler.data.workspace import Workspace
 from chipcompiler.data.workspace.execution import declared_step_subprocess, save_step_subprocess
 from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.snapshot import read_engineering_snapshot
-from chipcompiler.engine.step_subprocess import execution_mode, is_enabled
-from chipcompiler.engine.workspace_derive import derive_workspace
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+from chipcompiler.engine.step.process import execution_mode, is_enabled
+from chipcompiler.engine.workspace.derive import derive_workspace
+from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 from chipcompiler.engine.workspace_execution import update_workspace_execution
-from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 
 
 @pytest.fixture
@@ -140,9 +140,9 @@ def test_execution_update_rolls_back_when_snapshot_publication_fails(
 def test_execution_update_recovers_interrupted_transaction_before_reading_state(
     execution_workspace, interrupted_after
 ):
-    from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
-    from chipcompiler.engine.snapshot import refresh_engineering_snapshot
-    from chipcompiler.engine.workspace_lifecycle import (
+    from chipcompiler.data.workspace.transaction import WorkspaceFileTransaction
+    from chipcompiler.engine.snapshot.store import refresh_engineering_snapshot
+    from chipcompiler.engine.workspace.lifecycle import (
         workspace_command_fingerprint,
         write_workspace_command,
     )
