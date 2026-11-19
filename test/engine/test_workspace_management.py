@@ -10,6 +10,7 @@ from chipcompiler.engine.workspace.management import (
     archive_managed_workspace,
     delete_managed_workspace,
     reconcile_workspace_deletes,
+    unregister_missing_workspace,
 )
 from chipcompiler.project import (
     create_project_manifest,
@@ -200,3 +201,69 @@ def test_reconcile_delete_preserves_unproven_staging(tmp_path, minimal_ics55_pdk
 
     assert caught.value.code == "workspace_delete_recovery_unproven"
     assert staging.is_dir()
+
+
+def test_unregister_missing_workspace_removes_the_entry(tmp_path, minimal_ics55_pdk_factory):
+    import shutil
+
+    project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
+    shutil.rmtree(workspace)
+
+    assert unregister_missing_workspace(project, "baseline", blocking=False) == workspace
+
+    assert load_project_manifest(project)["workspaces"] == []
+    assert not workspace.exists()
+
+    with pytest.raises(WorkspaceLifecycleError) as undeclared:
+        unregister_missing_workspace(project, "baseline", blocking=False)
+    assert undeclared.value.code == "workspace_not_declared"
+
+
+def test_unregister_missing_workspace_leaves_an_existing_directory_alone(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
+
+    with pytest.raises(WorkspaceLifecycleError) as present:
+        unregister_missing_workspace(project, "baseline", blocking=False)
+
+    assert present.value.code == "workspace_identity_changed"
+    assert [entry["workspace_id"] for entry in load_project_manifest(project)["workspaces"]] == [
+        "baseline"
+    ]
+    assert workspace.is_dir()
+
+
+def test_unregister_missing_workspace_refuses_a_registered_runtime_process(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    import shutil
+
+    project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
+    shutil.rmtree(workspace)
+    path = project / "project.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["runtime_processes"] = {"baseline": {"run_id": "active"}}
+    path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(WorkspaceLifecycleError) as running:
+        unregister_missing_workspace(project, "baseline", blocking=False)
+
+    assert running.value.code == "workspace_running"
+    assert len(load_project_manifest(project)["workspaces"]) == 1
+
+
+def test_unregister_missing_workspace_leaves_an_interrupted_delete_to_reconcile(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
+    staging = _stage_delete(project, workspace, "baseline", "delete-crash-3")
+
+    with pytest.raises(WorkspaceLifecycleError) as staged:
+        unregister_missing_workspace(project, "baseline", blocking=False)
+
+    assert staged.value.code == "workspace_delete_recovery_required"
+    assert staging.is_dir()
+    # The staged directory is still recoverable: the entry was not dropped.
+    assert reconcile_workspace_deletes(project, blocking=False) == ("restored:baseline",)
+    assert workspace.is_dir()

@@ -1021,7 +1021,9 @@ Engineering Snapshot）时报 `workspace_fork_source_unavailable`。
 （不必手改 `project.json`）；`delete` 取消登记并可选删除目录。`delete` 保留下来的目录仍是磁盘上的一个
 workspace：用同一个名字执行 `create` 或 `ecc run` 会把它连同已保存的状态重新登记；
 想从空的 workspace 开始，请在删除时加 `--delete-directory`，或运行时加
-`--overwrite`。自动化选项按需适用
+`--overwrite`。已登记 workspace 的目录若已被删除，`delete` 直接去掉这条登记
+（此时没有 revision 可校验）；`archive`、`reset-flow`、`refresh` 则报 `workspace_missing`，
+并给出 `ecc workspace delete` 与 `ecc workspace create` 两条出路。自动化选项按需适用
 （archive/delete/reset-flow 带 `--expected-revision`；创建/fork 类子命令带
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
 `workspace_busy`（退出码 20）。
