@@ -132,7 +132,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
-        # Golden precedence mirrors the execution wiring (engine/flow.py): the
+        # Golden precedence mirrors the execution wiring (engine/flow/runner.py): the
         # declared golden netlist, then the synthesis output, then the origin.
         lec_golden = (
             getattr(self.workspace.design, "golden_verilog", None)

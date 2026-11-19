@@ -245,7 +245,7 @@ class TestFlowSetStatePersistence:
 
     def test_set_state_rolls_back_when_save_fails(self, tmp_path, monkeypatch):
         from chipcompiler.data import StateEnum
-        from chipcompiler.engine.flow import EngineFlow
+        from chipcompiler.engine.flow.runner import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_path.write_text(
@@ -298,7 +298,7 @@ class TestFlowSetStatePersistence:
         """When save() fails, file stays stale; a fresh resume load sees stale state."""
         from chipcompiler.data import StateEnum
         from chipcompiler.engine import rerun
-        from chipcompiler.engine.flow import EngineFlow
+        from chipcompiler.engine.flow.runner import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_data = {
@@ -346,7 +346,7 @@ class TestFlowSetStatePersistence:
         """When save() succeeds, resume correctly skips successful steps."""
         from chipcompiler.data import StateEnum
         from chipcompiler.engine import rerun
-        from chipcompiler.engine.flow import EngineFlow
+        from chipcompiler.engine.flow.runner import EngineFlow
 
         flow_path = tmp_path / "flow.json"
         flow_data = {

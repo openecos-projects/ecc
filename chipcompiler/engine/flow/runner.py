@@ -40,20 +40,20 @@ from chipcompiler.data.step import (
     recorded_step_directory,
 )
 from chipcompiler.engine import EngineDB
-from chipcompiler.engine.flow_completion import (
+from chipcompiler.engine.flow.completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
 )
-from chipcompiler.engine.flow_completion import (
+from chipcompiler.engine.flow.completion import (
     refresh_qor_report as _refresh_qor_report,
 )
-from chipcompiler.engine.flow_completion import (
+from chipcompiler.engine.flow.completion import (
     refresh_signoff_checklist as _refresh_signoff_checklist,
 )
-from chipcompiler.engine.flow_completion import (
+from chipcompiler.engine.flow.completion import (
     reset_unfinished_terminal_state as _reset_unfinished_terminal_state,
 )
-from chipcompiler.engine.flow_completion import save_step_qor_facts as _save_step_qor_facts
-from chipcompiler.engine.flow_completion import sync_step_checklist as _sync_step_checklist
+from chipcompiler.engine.flow.completion import save_step_qor_facts as _save_step_qor_facts
+from chipcompiler.engine.flow.completion import sync_step_checklist as _sync_step_checklist
 from chipcompiler.engine.memory import read_memory_status
 from chipcompiler.engine.observers import (
     WaveObserver,

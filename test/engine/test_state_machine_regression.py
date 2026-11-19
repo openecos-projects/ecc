@@ -26,7 +26,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.flow.ledger import _VALID_TRANSITIONS
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.tools.ecc.runner import EccDesignReadError
 from chipcompiler.utility import Logger
 from test.flow_fixture import step_fields
@@ -409,7 +409,7 @@ def test_advisory_step_failure_does_not_stop_flow(tmp_path, monkeypatch, advisor
         SimpleNamespace(name=advisory, tool="ecc"),
         SimpleNamespace(name=StepEnum.HARDEN.value, tool="ecc"),
     ]
-    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.log_flow", lambda workspace: None)
 
     executed = []
 
@@ -658,7 +658,7 @@ class TestRunStepsLedgerCompleteness:
             SimpleNamespace(name=_STEPS[i], tool="mock") for i in range(created_steps)
         ]
         monkeypatch.setattr(flow, "run_step", lambda *args, **kwargs: StateEnum.Success)
-        monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda workspace: None)
+        monkeypatch.setattr("chipcompiler.engine.flow.runner.log_flow", lambda workspace: None)
         return flow
 
     def test_narrowed_execution_fails_full_ledger_check_by_default(self, tmp_path, monkeypatch):

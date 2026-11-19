@@ -30,7 +30,7 @@ from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.utility.path import path_is_within
 
 if TYPE_CHECKING:
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
 
 class StepRunResult(NamedTuple):

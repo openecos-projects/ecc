@@ -15,7 +15,7 @@ from chipcompiler.data import OriginDesign, Workspace
 from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.data.flow.document import FlowDocument
 from chipcompiler.data.step import recorded_step_directory
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.step_chain import iter_workspace_steps
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step

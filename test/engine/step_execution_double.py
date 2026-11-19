@@ -51,7 +51,7 @@ def _worker_view(workspace):
 
 
 def _initialize_worker_db(workspace, workspace_step):
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     flow = EngineFlow(workspace)
     flow.init_db_engine_for_step(workspace_step)

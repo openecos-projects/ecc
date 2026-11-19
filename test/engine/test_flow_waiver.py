@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data import Workspace
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_waiver import mark_step_skipped, waive_checklist
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.flow.waiver import mark_step_skipped, waive_checklist
 from chipcompiler.engine.rerun import invalidate_from
 from chipcompiler.engine.workspace.reset import prepare_steps_for_rerun
 from test.flow_fixture import step_fields

@@ -12,7 +12,7 @@ from chipcompiler.data.step_parameters import (
 )
 from chipcompiler.data.workspace import workspace_config_paths
 from chipcompiler.data.workspace.transaction import WorkspaceFileTransaction
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.rerun import invalidate_after, invalidate_from
 from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,

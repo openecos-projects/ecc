@@ -54,7 +54,7 @@ def test_json_export_is_read_only_and_uses_managed_workspace(
     monkeypatch.setattr(
         "chipcompiler.engine.snapshot.store.create_engineering_snapshot", unexpected
     )
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow.run_steps", unexpected)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineFlow.run_steps", unexpected)
 
     assert cli_main.run(_arguments(project, output, *selector, "--json")) == 0
 

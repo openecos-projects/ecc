@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.flow as flow_module
+import chipcompiler.engine.flow.runner as flow_module
 from chipcompiler import tools
 from chipcompiler.data import (
     ChecklistState,
@@ -23,8 +23,8 @@ from chipcompiler.data import (
     YosysOutput,
     YosysStep,
 )
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_completion import sync_step_checklist
+from chipcompiler.engine.flow.completion import sync_step_checklist
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.tools.ecc.signoff_checklist import refresh_step_checklist
 from test.flow_fixture import step_directory, step_fields
 

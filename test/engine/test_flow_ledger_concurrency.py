@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.flow as engine_flow
+import chipcompiler.engine.flow.runner as engine_flow
 from chipcompiler.data import StateEnum, Workspace
 from chipcompiler.data.flow.document import load_flow_document
 from chipcompiler.data.flow.ledger import ledger_lock

@@ -10,12 +10,12 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.flow as engine_flow
+import chipcompiler.engine.flow.runner as engine_flow
 from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import rerun
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.observers import WaveObserver
 
 _NAMES = [

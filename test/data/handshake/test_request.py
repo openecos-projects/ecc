@@ -16,7 +16,7 @@ from chipcompiler.data.handshake import (
 )
 from chipcompiler.data.types import AnalysisData, DesignState
 from chipcompiler.engine import step_subprocess
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 
 
 def _wired_flow(tmp_path) -> EngineFlow:

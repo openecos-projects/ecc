@@ -33,7 +33,7 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.utility import Logger
 from test.flow_fixture import step_fields
 

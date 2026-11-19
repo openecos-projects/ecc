@@ -1,7 +1,7 @@
 import pytest
 
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.rtl2gds import build_flow_range
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step

@@ -48,7 +48,7 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
 def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     """(golden, gate) netlists the post-route LEC proof compares."""
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
-    # Golden precedence mirrors the execution wiring (engine/flow.py): the
+    # Golden precedence mirrors the execution wiring (engine/flow/runner.py): the
     # declared golden netlist, else the synthesis output when the flow
     # contains Synthesis, else the origin RTL.
     gate = _post_route_gate(workspace)

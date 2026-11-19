@@ -1,6 +1,6 @@
 from .db import EngineDB
 from .execution import ExecutionPlan, ExecutionResult, execute
-from .flow import EngineFlow
+from .flow.runner import EngineFlow
 from .rerun import StepRunResult
 from .signoff import SignoffPackageCollector, SignoffPackageOptions
 from .workspace.configuration import (

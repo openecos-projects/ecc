@@ -415,7 +415,7 @@ def _build_requested_step(workspace: Workspace, request: StepRequest) -> Workspa
 
 
 def main() -> int:
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
     from chipcompiler.tools import run_step
 
     handler = partial(run_step_worker, flow_factory=EngineFlow, tool_runner=run_step)

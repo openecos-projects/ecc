@@ -39,7 +39,7 @@ def test_execute_step_subprocess_reports_worker_crash(monkeypatch, tmp_path):
 
 def test_failed_worker_reloads_subflow_for_interrupted_finalization(monkeypatch, tmp_path):
     from chipcompiler.data import StateEnum, SubflowState
-    from chipcompiler.engine.flow_completion import finalize_interrupted_subflow
+    from chipcompiler.engine.flow.completion import finalize_interrupted_subflow
 
     step = fakes.workspace_step(tmp_path)
     subflow_path = tmp_path / "subflow.json"

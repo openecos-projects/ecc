@@ -17,7 +17,7 @@ from chipcompiler.data.workspace.config import load_workspace_config
 def test_current_params_and_flow_documents_load(tmp_path):
     from chipcompiler.data import OriginDesign
     from chipcompiler.data.workspace.config import save_workspace_config
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     workspace_dir = tmp_path / "workspace"
     assert save_workspace_config(workspace_dir, {"design": "gcd", "pdk": "ics55"})

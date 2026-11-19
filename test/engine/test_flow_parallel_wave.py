@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.flow as engine_flow
+import chipcompiler.engine.flow.runner as engine_flow
 from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS, StateEnum, Workspace
 from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.engine import EngineFlow
@@ -274,7 +274,7 @@ def test_run_steps_runs_each_analysis_wave_as_one_batch(monkeypatch, tmp_path):
         return [(step, StateEnum.Success) for step in steps]
 
     monkeypatch.setattr(flow, "_run_wave", run_wave)
-    monkeypatch.setattr("chipcompiler.engine.flow.log_flow", lambda **_kwargs: None)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.log_flow", lambda **_kwargs: None)
 
     assert flow.run_steps() is True
     assert dispatched == [

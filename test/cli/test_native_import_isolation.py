@@ -22,7 +22,7 @@ from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.rendering import progress
 from chipcompiler.data import EccStep, Workspace
 from chipcompiler.engine import ExecutionPlan, execute, step_execution
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.step_execution import StepExecutionResult
 
 

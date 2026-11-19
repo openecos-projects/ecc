@@ -160,6 +160,6 @@ def test_post_route_lec_is_revalidated_against_the_golden_it_ran_with(
         ],
     }
 
-    # Execution's order (engine/flow.py): the declared golden, the synthesis
+    # Execution's order (engine/flow/runner.py): the declared golden, the synthesis
     # netlist, the origin.
     assert post_route_lec_netlists(workspace)[0] == tmp_path / expected

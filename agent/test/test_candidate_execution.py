@@ -332,7 +332,7 @@ from types import SimpleNamespace
 
 from agent import tools as agent_tools
 from chipcompiler.engine import step_subprocess
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 
 
 def initialize_db(flow, step):

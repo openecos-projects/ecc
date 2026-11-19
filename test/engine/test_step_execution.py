@@ -6,8 +6,8 @@ import pytest
 
 from chipcompiler import tools
 from chipcompiler.data import EccFeature, EccStep, StateEnum, Workspace
-from chipcompiler.engine import flow as flow_module
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow import runner as flow_module
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.step_execution import STEP_WORKER_MODULE, StepExecutionResult
 from test.flow_fixture import step_fields
 

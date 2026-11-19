@@ -1,7 +1,7 @@
 import json
 
 from chipcompiler.data import Workspace
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from test.flow_fixture import step_fields
 

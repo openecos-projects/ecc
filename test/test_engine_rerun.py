@@ -8,8 +8,8 @@ import pytest
 from chipcompiler.data import EccOutput, EccStep, StateEnum, Workspace
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import rerun
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_waiver import mark_step_skipped
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.flow.waiver import mark_step_skipped
 from test.flow_fixture import step_fields
 
 

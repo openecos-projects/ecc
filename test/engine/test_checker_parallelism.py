@@ -3,10 +3,10 @@
 from types import SimpleNamespace
 from typing import cast
 
-import chipcompiler.engine.flow as flow_module
+import chipcompiler.engine.flow.runner as flow_module
 from chipcompiler.data import WorkspaceStep
 from chipcompiler.data.workspace import Workspace
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.memory import MemoryStatus
 
 CHECKER_NAMES = (

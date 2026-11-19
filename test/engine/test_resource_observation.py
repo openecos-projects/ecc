@@ -170,7 +170,7 @@ def test_frozen_execution_is_explicitly_shared(monkeypatch):
 
 def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypatch, tmp_path):
     from chipcompiler.data import EccStep, StateEnum, Workspace
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     monkeypatch.setattr("chipcompiler.tools.run_step", lambda **_kwargs: False)
     workspace = Workspace(directory=tmp_path)
@@ -209,7 +209,7 @@ def test_failed_execution_persists_facts_and_rerun_gets_a_new_identity(monkeypat
 
 def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatch, tmp_path):
     from chipcompiler.data import EccStep, Workspace
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {
@@ -232,7 +232,7 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
     step = EccStep(name="routing", directory=tmp_path, tool="ecc")
     flow.workspace_steps = [step]
     monkeypatch.setattr(
-        "chipcompiler.engine.flow.execute_tool_step",
+        "chipcompiler.engine.flow.runner.execute_tool_step",
         lambda *_args, **_kwargs: pytest.fail("Skipped step ran"),
     )
 
@@ -245,7 +245,7 @@ def test_skipping_a_successful_step_does_not_create_a_new_measurement(monkeypatc
 
 def test_start_commit_failure_preserves_previous_resource_facts(monkeypatch, tmp_path):
     from chipcompiler.data import EccStep, Workspace
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
 
     workspace = Workspace(directory=tmp_path)
     workspace.flow.data = {

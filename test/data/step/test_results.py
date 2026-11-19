@@ -7,7 +7,7 @@ from chipcompiler.data.flow.document import load_flow_document
 from chipcompiler.data.flow.ledger import save_ledger, set_flow_state
 from chipcompiler.data.step.results import STATE_FILE
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from test.flow_fixture import step_fields
 
 
