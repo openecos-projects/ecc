@@ -11,7 +11,7 @@ from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 
 
 def test_derive_rewrites_workspace_paths_without_corrupting_frozen_replay(tmp_path):
-    from chipcompiler.engine.workspace_derive import _rewrite_staged_paths
+    from chipcompiler.engine.workspace.derive import _rewrite_staged_paths
 
     source, target = str(tmp_path / "source"), str(tmp_path / "target")
     staging = tmp_path / "staging"

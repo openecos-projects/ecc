@@ -3,16 +3,16 @@
 from pathlib import Path
 
 from chipcompiler.data.workspace.execution import declared_step_subprocess, save_step_subprocess
-from chipcompiler.data.workspace_transaction import (
+from chipcompiler.data.workspace.transaction import (
     WorkspaceFileTransaction,
     recover_workspace_file_transaction,
 )
-from chipcompiler.engine.snapshot import (
+from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     read_engineering_snapshot,
     refresh_engineering_snapshot,
 )
-from chipcompiler.engine.workspace_lifecycle import (
+from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
     command_retry_matches,

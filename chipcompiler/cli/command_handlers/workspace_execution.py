@@ -5,13 +5,13 @@ from pathlib import Path
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.data.workspace.execution import declared_step_subprocess
-from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot
-from chipcompiler.engine.step_subprocess import execution_mode
-from chipcompiler.engine.workspace_execution import update_workspace_execution
-from chipcompiler.engine.workspace_lifecycle import (
+from chipcompiler.engine.snapshot.store import EngineeringSnapshotError, read_engineering_snapshot
+from chipcompiler.engine.step.process import execution_mode
+from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
 )
+from chipcompiler.engine.workspace_execution import update_workspace_execution
 
 
 def workspace_execution(args, ctx: CommandContext) -> CommandResult:
