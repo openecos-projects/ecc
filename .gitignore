@@ -159,7 +159,6 @@ chipcompiler.egg-info/
 
 # OSS CAD Suite
 chipcompiler/thirdparty/oss-cad-suite/
-gui/src-tauri/resources/oss-cad-suite/
 
 # ICS55 PDK
 chipcompiler/thirdparty/icsprout55-pdk
@@ -183,11 +182,7 @@ chipcompiler/tools/ecc_dreamplace/dreamplace
 
 .humanize/
 humanize-*
-.zcode/
 docs/superpowers/
-findings.md
-progress.md
-task_plan.md
 .agents/
 
 .ccache
