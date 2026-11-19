@@ -274,6 +274,8 @@ def _refresh_emir_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
     config["technology_file_path"] = str(technology_path)
     json_write(config_path, config)
+
+
 def _has_new_floorplan_schema(config: dict) -> bool:
     die_builder = config.get("die_builder")
     macro_placer = config.get("macro_placer")
@@ -477,15 +479,12 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    migrate_workspace_config_filenames(workspace.directory)
-
+    _copy_missing_files(ecc_config_dir, config_dir)
+    if not workspace.config["dreamplace"].exists():
+        shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
     from chipcompiler.pdk.workspace import initialize_tool_configs
 
-    initialized = initialize_tool_configs(workspace)
-    if not initialized:
-        _copy_missing_files(ecc_config_dir, config_dir)
-        if not workspace.config["dreamplace"].exists():
-            shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
+    initialize_tool_configs(workspace)
     _ensure_writable(config_dir)
 
     refresh_workspace_config(workspace)

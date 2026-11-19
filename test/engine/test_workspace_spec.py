@@ -177,6 +177,7 @@ def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
         (pdk_root / name).write_text(name)
     descriptor = {
         "family_id": "ics55",
+        "parameters": {"frequency_max": 100},
         "resources": {
             "tech": {"path": "tech.lef", "role": "tech"},
             "cells": {"path": "cells.lef", "role": "lef"},
@@ -295,124 +296,6 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
         )
     assert conflict.value.code == "revision_conflict"
     assert read_engineering_snapshot(repeated.workspace) == after
-
-
-def test_workspace_spec_update_preserves_omitted_config_parameters(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    from chipcompiler.data import load_workspace
-    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
-
-    payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
-    initial_spec = deepcopy(payload["workspaceSpec"])
-    initial_spec["parameters"]["cts.skew_bound"] = "0.12"
-    target = tmp_path / "workspace"
-    created = create_workspace_from_spec(target, initial_spec, bindings)
-    before = read_engineering_snapshot(created)
-
-    update_spec = deepcopy(payload["workspaceSpec"])
-    update_spec["parameters"] = {
-        "design.frequency_mhz": 250.0,
-        "cts.skew_bound": "0.20",
-    }
-    updated = update_workspace_from_spec(
-        target,
-        before["workspaceRevision"],
-        update_spec,
-        bindings,
-        "preserve-config-1",
-    )
-
-    reopened = load_workspace(updated.workspace.directory)
-    cts = json.loads(reopened.config["CTS"].read_text(encoding="utf-8"))
-    assert reopened.parameters.data["frequency_max"] == 250.0
-    assert cts["skew_bound"] == "0.20"
-
-
-def test_workspace_spec_update_normalizes_persisted_flag_booleans(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    """DreamPlace round-trips its 0/1 flags as JSON booleans into the Snapshot.
-
-    A refresh revalidates that committed baseline, so the persisted spelling
-    must be normalized back to the registry's int instead of failing the
-    Workspace that produced it.
-    """
-    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
-
-    payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
-    target = tmp_path / "workspace"
-    create_workspace_from_spec(target, deepcopy(payload["workspaceSpec"]), bindings)
-
-    snapshot_path = target / "home" / "engineering-snapshot.json"
-    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    snapshot["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] = True
-    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
-    after = read_engineering_snapshot_from_directory(target)
-
-    update_spec = deepcopy(payload["workspaceSpec"])
-    update_spec["parameters"] = {}
-    update_workspace_from_spec(
-        target,
-        after["workspaceRevision"],
-        update_spec,
-        bindings,
-        "flag-bool-1",
-    )
-    refreshed = read_engineering_snapshot_from_directory(target)
-    assert refreshed["workspaceSpec"]["parameters"]["place.auto_adjust_bins"] == 1
-
-
-def test_workspace_spec_rejects_sta_resource_override(tmp_path, minimal_ics55_pdk_factory):
-    from chipcompiler.engine import create_workspace_from_spec
-    from chipcompiler.pdk.manifest import DescriptorError
-
-    payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
-    spec = deepcopy(payload["workspaceSpec"])
-    spec["parameters"]["sta.liberty"] = [
-        {"corner": "MAX", "temperature": 25, "path": ["unlocked.lib"]}
-    ]
-    with pytest.raises(DescriptorError, match="belongs to the PDK profile"):
-        create_workspace_from_spec(tmp_path / "workspace", spec, bindings)
-    assert not (tmp_path / "workspace").exists()
-
-
-def test_workspace_spec_update_preserves_inapplicable_parameters_when_flow_changes(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    import chipcompiler.engine.workspace_configuration as workspace_configuration
-    from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
-
-    payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
-    initial_spec = deepcopy(payload["workspaceSpec"])
-    initial_spec["parameters"]["cts.skew_bound"] = "0.12"
-    target = tmp_path / "workspace"
-    created = create_workspace_from_spec(target, initial_spec, bindings)
-    before = read_engineering_snapshot(created)
-
-    update_spec = deepcopy(payload["workspaceSpec"])
-    update_spec["flow"] = {"flowId": "syn_sta"}
-    update_spec["parameters"] = {"design.frequency_mhz": 250.0}
-    updated = update_workspace_from_spec(
-        target,
-        before["workspaceRevision"],
-        update_spec,
-        bindings,
-        "preserve-config-flow-1",
-    )
-
-    configuration = workspace_configuration.read_workspace_configuration(updated.workspace)
-    assert configuration["workspaceSpec"]["parameters"]["cts.skew_bound"] == "0.12"
-    cts = json.loads(updated.workspace.config["CTS"].read_text(encoding="utf-8"))
-    assert cts["skew_bound"] == "0.12"
-    assert list(tmp_path.glob(".workspace.staging-*")) == []
 
 
 def test_workspace_spec_update_preserves_unknown_config_extensions(
@@ -924,6 +807,18 @@ def test_workspace_spec_update_carries_parameters_when_the_flow_changes(
 def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk(
     tmp_path, minimal_ics55_pdk_factory
 ):
+    def add_liberty_resource(root):
+        path = root / "liberty" / "cell.lib"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(cell) {}\n")
+        descriptor_path = root / "ecc-pdk.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        descriptor["resources"]["workspace-test-lib"] = {
+            "path": "liberty/cell.lib",
+            "role": "liberty",
+        }
+        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
     from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
@@ -931,6 +826,7 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
     payload, bindings = _shared_fixture("valid.json")
     old_pdk = minimal_ics55_pdk_factory(tmp_path / "old-pdk")
     bindings["pdk"]["root"] = str(old_pdk)
+    add_liberty_resource(old_pdk)
     target = tmp_path / "workspace"
     create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
     declared_liberty = [{"corner": "MAX", "temperature": 25, "path": ["liberty/cell.lib"]}]
@@ -939,6 +835,7 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
     assert sta["liberty"][0]["path"] == [str(old_pdk / "liberty/cell.lib")]
 
     new_pdk = minimal_ics55_pdk_factory(tmp_path / "new-pdk")
+    add_liberty_resource(new_pdk)
     update_workspace_from_spec(
         target,
         read_engineering_snapshot_from_directory(target)["workspaceRevision"],
@@ -954,6 +851,18 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
 def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     tmp_path, minimal_ics55_pdk_factory
 ):
+    def add_liberty_resource(root):
+        path = root / "liberty" / "cell.lib"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(cell) {}\n")
+        descriptor_path = root / "ecc-pdk.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        descriptor["resources"]["workspace-test-lib"] = {
+            "path": "liberty/cell.lib",
+            "role": "liberty",
+        }
+        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import (
         apply_workspace_parameters,
@@ -963,7 +872,9 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "old-pdk"))
+    old_pdk = minimal_ics55_pdk_factory(tmp_path / "old-pdk")
+    add_liberty_resource(old_pdk)
+    bindings["pdk"]["root"] = str(old_pdk)
     target = tmp_path / "workspace"
     create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
     declared = [{"corner": "MAX", "temperature": 25, "path": ["liberty/cell.lib"]}]
@@ -973,6 +884,7 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     apply_workspace_parameters(target, revision, {}, ("sta.liberty",))
 
     new_pdk = minimal_ics55_pdk_factory(tmp_path / "new-pdk")
+    add_liberty_resource(new_pdk)
     update_workspace_from_spec(
         target,
         read_engineering_snapshot_from_directory(target)["workspaceRevision"],

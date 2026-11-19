@@ -13,30 +13,45 @@ def initialize_tool_configs(workspace) -> bool:
     descriptor = descriptor_for(workspace.pdk)
     if descriptor is None:
         return False
-    configs = descriptor.tools.get("configs", {})
+    declared = descriptor.tools.get("configs", {})
+    aliases = {"route": "routing"}
+    configs = {
+        aliases.get(str(key).casefold(), str(key).casefold()): value
+        for key, value in declared.items()
+    }
     unknown = set(configs) - set(workspace.config)
     if unknown:
         raise DescriptorError(
             "unknown_tool_config", f"unknown tool config targets: {sorted(unknown)}"
         )
     for key, path in workspace.config.items():
-        if key == "dir" or path.suffix != ".json" or path.exists():
+        if key == "dir" or path.suffix != ".json":
             continue
-        structural = {
-            "db": {"INPUT": {}, "LayerSettings": {}},
-            "CTS": {"max_fanout": 32},
-            "route": {"RT": {}},
-            "dreamplace": {"num_threads": 1},
-        }
-        config = deepcopy(configs.get(key, structural.get(key, {})))
+        config = deepcopy(configs.get(key, {}))
+        if path.is_file() and config:
+            from chipcompiler.utility import json_read
+
+            existing = json_read(path)
+            if isinstance(existing, dict):
+                config = _merge_config(existing, config)
         if not isinstance(config, dict):
             raise DescriptorError("invalid_tool_config", f"tool config must be an object: {key}")
-        if not json_write(path, config):
+        if config and not json_write(path, config):
             raise OSError(f"cannot write tool config: {path}")
     macro = workspace.config.get("macro_location")
     if macro is not None and not macro.exists():
         macro.write_text("# Macro placement commands are generated from design inputs.\n")
     return True
+
+
+def _merge_config(base: dict, overlay: dict) -> dict:
+    merged = deepcopy(base)
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_config(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
 
 
 def default_floorplan(pdk) -> dict | None:

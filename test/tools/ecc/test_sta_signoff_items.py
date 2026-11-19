@@ -123,10 +123,12 @@ def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
 
 
 def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
-    template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
+    template = Path(__file__).parents[2] / "pdk" / "fixtures" / "tool_defaults.json"
     sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir()
-    sta_config.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    sta_config.write_text(
+        json.dumps(json.loads(template.read_text(encoding="utf-8"))["sta"]), encoding="utf-8"
+    )
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),

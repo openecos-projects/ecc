@@ -449,39 +449,38 @@ def execute_fresh_run(
     if ws_locks is None:
         ws_locks = contextlib.ExitStack()
     try:
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            if not caller_locks:
-                ws_locks.enter_context(
-                    workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
-                )
-            try:
-                from chipcompiler.pdk.locking import lock_workspace_inputs
+        if not caller_locks:
+            ws_locks.enter_context(
+                workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
+            )
+        try:
+            from chipcompiler.pdk.locking import lock_workspace_inputs
 
-                description_path = lock_workspace_inputs(
-                    Path(project_dir), Path(pdk_root), cfg.pdk_name
-                )
-                workspace = create_workspace(
-                    directory=run_dir,
-                    origin_def=origin_def,
-                    origin_verilog=origin_verilog,
-                    pdk=cfg.pdk_name,
-                    parameters=parameters,
-                    input_filelist=input_filelist,
-                    pdk_root=pdk_root,
-                    pdk_json=description_path,
-                    pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
-                    flow_config=flow_config,
-                    sdc=inputs.sdc,
-                    spef=inputs.spef,
-                    golden_verilog=inputs.golden_netlist,
-                )
-                if workspace is not None:
-                    workspace.__dict__["_ecc_project_dir"] = project_dir
-            except Exception as exc:
-                return failed_workspace(str(exc))
-            finally:
-                if generated_filelist is not None:
-                    with contextlib.suppress(OSError):
+            description_path = lock_workspace_inputs(
+                Path(project_dir), Path(pdk_root), cfg.pdk_name
+            )
+            workspace = create_workspace(
+                directory=run_dir,
+                origin_def=origin_def,
+                origin_verilog=origin_verilog,
+                pdk=cfg.pdk_name,
+                parameters=parameters,
+                input_filelist=input_filelist,
+                pdk_root=pdk_root,
+                pdk_json=description_path,
+                pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+                flow_config=flow_config,
+                sdc=inputs.sdc,
+                spef=inputs.spef,
+                golden_verilog=inputs.golden_netlist,
+            )
+            if workspace is not None:
+                workspace.__dict__["_ecc_project_dir"] = project_dir
+        except Exception as exc:
+            return failed_workspace(str(exc))
+        finally:
+            if generated_filelist is not None:
+                with contextlib.suppress(OSError):
                     shutil.rmtree(os.path.dirname(generated_filelist))
 
         if workspace is None:

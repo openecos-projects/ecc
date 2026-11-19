@@ -1210,7 +1210,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         parameters={
             **default_ics55_parameters,
             "config_overrides": {
-                "cts": {"skew_bound": "0.05", "buffer_type": []},
+                "cts": {"skew_bound": "0.05"},
                 "dreamplace": {"num_threads": 12},
             },
         },

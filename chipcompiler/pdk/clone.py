@@ -68,7 +68,7 @@ def clone_with_pdk(source: Path, target: Path, root: Path) -> Path:
             manifest = json.loads(manifest_path.read_text())
             base = manifest["base_design"]
             base.update(top_module=cfg.design_top, clock=cfg.design_clock_port)
-            base["parameters"].update(
+            base.setdefault("parameters", {}).update(
                 top_module=cfg.design_top,
                 clock=cfg.design_clock_port,
                 frequency_max=cfg.design_frequency_mhz,

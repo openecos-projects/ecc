@@ -51,7 +51,7 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
     from chipcompiler.tools.ecc.emir_model import model_config
 
     resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-    emir_config = model_config(pdk, cfg.manifest_parameters)
+    emir_config = model_config(pdk, cfg.params_overrides)
     emir_config.update(build_config_overrides(resolved).get("emir", {}))
     return pdk_issues(pdk, step_names, check_sdc=False, emir_config=emir_config)
 

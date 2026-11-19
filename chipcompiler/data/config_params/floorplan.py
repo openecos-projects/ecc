@@ -33,7 +33,7 @@ SCHEMAS = (
         "floorplan",
         ("die_builder", "site_name"),
         "",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="PDK site name for standard-cell placement rows.",
     ),
     config_param(
@@ -50,7 +50,7 @@ SCHEMAS = (
         "floorplan",
         ("io_placer", "io_layer_list"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Metal layers allowed for IO pin placement.",
     ),
     config_param(
@@ -90,7 +90,7 @@ SCHEMAS = (
         "floorplan",
         ("pdn_generator", "rail"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Standard-cell row power-rail layers and widths in micrometers.",
         type="json",
     ),
@@ -99,7 +99,7 @@ SCHEMAS = (
         "floorplan",
         ("pdn_generator", "stripe"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Power-stripe layers, widths, pitches, and offsets in micrometers.",
         type="json",
     ),
@@ -108,7 +108,7 @@ SCHEMAS = (
         "floorplan",
         ("pdn_generator", "connect_layers"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Adjacent routing-layer pairs connected by power-distribution vias.",
         type="json",
     ),
@@ -117,7 +117,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "well_tap", "cell_name"),
         "",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="PDK well-tap cell inserted into standard-cell rows.",
     ),
     config_param(
@@ -133,7 +133,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "side_endcap", "left_cell_name"),
         "",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Endcap cell placed at the left edge of each standard-cell row.",
     ),
     config_param(
@@ -141,7 +141,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "side_endcap", "right_cell_name"),
         "",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Endcap cell placed at the right edge of each standard-cell row.",
     ),
     config_param(
@@ -149,7 +149,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "edge_endcap", "top_cell_name_list"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate endcap cells for the die top edge, selected by width.",
     ),
     config_param(
@@ -157,7 +157,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "edge_endcap", "bottom_cell_name_list"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate endcap cells for the die bottom edge, selected by width.",
     ),
     config_param(
@@ -165,7 +165,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "boundary_tap", "top_cell_name_list"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate tap cells for the die top boundary, selected by width.",
     ),
     config_param(
@@ -173,7 +173,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "boundary_tap", "bottom_cell_name_list"),
         [],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate tap cells for the die bottom boundary, selected by width.",
     ),
     config_param(

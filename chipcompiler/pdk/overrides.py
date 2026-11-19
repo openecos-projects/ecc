@@ -5,7 +5,7 @@ from .manifest import DescriptorError
 _PROTECTED = {
     "db": ("INPUT.tech_lef_path", "INPUT.lef_paths", "INPUT.lib_path"),
     "cts": ("buffer_type",),
-    "sta": ("liberty", "STA.-cell_catalog"),
+    "sta": ("STA.-cell_catalog",),
     "rcx": ("mapping_file", "pdk", "corners"),
     "emir": ("technology_file_path",),
     "floorplan": ("die_builder.site_name", "phy_placer", "pdn"),

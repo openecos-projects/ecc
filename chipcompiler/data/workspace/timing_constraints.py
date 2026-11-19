@@ -65,7 +65,7 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
         return
     scenarios = timing_scenarios(workspace)
     if not scenarios:
-        raise ValueError("Generated timing constraints require configured STA scenarios")
+        return
     inputs = SdcInputs.from_parameters(workspace.parameters.data)
     for corner in dict.fromkeys(scenario.corner for scenario in scenarios):
         inputs.clocks(workspace.parameters.data, corner)

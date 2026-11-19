@@ -169,29 +169,6 @@ def _create_workspace_from_spec(
             "Carried Workspace parameters are invalid for the new PDK",
             {"issues": carried_errors},
         )
-    parameters, parameter_errors = resolve_parameters(toml_overrides=resolved["parameters"])
-    if parameter_errors:
-        raise WorkspaceLifecycleError(
-            "workspace_spec_invalid",
-            "Workspace parameters are invalid",
-            {"issues": parameter_errors},
-        )
-    backend_parameters.update(build_backend_overrides(parameters, include_defaults=False))
-    config_override_parameters = None
-    if config_override_parameters is None:
-        requested_spec = _string_keyed_dict(spec)
-        requested_parameters = _string_keyed_dict(requested_spec.get("parameters"))
-        config_override_parameters = requested_parameters.keys()
-    explicit_config_parameters = set(config_override_parameters)
-    config_overrides = build_config_overrides(
-        item for item in parameters if item.param in explicit_config_parameters
-    )
-    if config_overrides:
-        carried_config = backend_parameters.get(CONFIG_OVERRIDES_KEY, {})
-        backend_parameters[CONFIG_OVERRIDES_KEY] = {
-            **(carried_config if isinstance(carried_config, dict) else {}),
-            **config_overrides,
-        }
     backend_parameters.update(
         {
             "design": resolved["design"]["name"],

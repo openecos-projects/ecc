@@ -25,7 +25,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "global_routing_rc"),
         {},
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Per-layer and via RC written to the hold-stage setRCFile. Values "
             "use ohm/um, pF/um and ohm. Supply characterized data "
@@ -38,7 +38,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "corner"),
         "",
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Source corner label for the configured placement unit wire RC; "
             "must match the selected PDK profile."
@@ -49,7 +49,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "resistance_ohm_per_um"),
         0.0,
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Placement wire resistance in ohm/um for the selected hold-pass parasitic model."
         ),
@@ -59,7 +59,7 @@ SCHEMAS = (
         "sizer",
         ("hold_stage", "placement_wire_rc", "capacitance_pf_per_um"),
         0.0,
-        applies="timing_opt",
+        applies="timing_optimization",
         description=(
             "Placement wire capacitance in pF/um for the selected hold-pass parasitic model."
         ),
