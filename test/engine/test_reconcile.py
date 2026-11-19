@@ -41,7 +41,7 @@ def _write_workspace(tmp_path, steps, states=None, flow_section=None, params=Non
     }
     (home / "flow.json").write_text(json.dumps(flow))
 
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     payload = params or {
         "pdk": "ics55",
@@ -58,7 +58,7 @@ def _flow_steps(workspace_dir):
 
 
 def _flow_section(workspace_dir):
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     return load_workspace_config(workspace_dir)["_flow"]
 
@@ -313,7 +313,7 @@ def test_adoption_failure_is_an_error_not_a_tolerated_stale_target(tmp_path, mon
         tmp_path, LEGACY_RTL2GDS_STEPS, flow_section={"preset": "rtl2gds"}
     )
     monkeypatch.setattr(
-        "chipcompiler.data.workspace_config.save_workspace_config", lambda *a, **k: False
+        "chipcompiler.data.workspace.config.save_workspace_config", lambda *a, **k: False
     )
 
     result = reconcile_workspace(workspace_dir, {"preset": "rtl2gds"})

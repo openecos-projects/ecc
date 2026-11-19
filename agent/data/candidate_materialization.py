@@ -353,7 +353,7 @@ def _write_parameters_config(workspace: Any, path: Path, config: dict) -> Path:
     Returns the canonical home/params.toml target, which receipts must hash.
     """
     from chipcompiler.data.parameter import Parameters, save_parameter
-    from chipcompiler.data.workspace_config import workspace_config_path
+    from chipcompiler.data.workspace.config import workspace_config_path
 
     parameters = Parameters()
     parameters.path = path
@@ -450,7 +450,7 @@ def _effective_step_value(
     workspace: Any, parameters: dict[str, Any], schema: Any, step: str
 ) -> Any:
     """The value *schema* resolves to at *step* from the loaded *parameters* store."""
-    from chipcompiler.data.workspace_parameters import workspace_param_value
+    from chipcompiler.data.workspace.parameters import workspace_param_value
 
     view = SimpleNamespace(
         parameters=SimpleNamespace(data=parameters),

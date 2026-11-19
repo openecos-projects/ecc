@@ -119,7 +119,7 @@ def _parameters(workspace, workspace_root: Path) -> dict:
     parameters = getattr(getattr(workspace, "parameters", None), "data", None)
     if isinstance(parameters, dict):
         return parameters
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     try:
         return load_workspace_config(workspace_root)

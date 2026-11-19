@@ -20,7 +20,7 @@ from chipcompiler.data.parameter_schema import (
     resolve_parameters,
     validate_value,
 )
-from chipcompiler.data.workspace_parameters import workspace_param_value
+from chipcompiler.data.workspace.parameters import workspace_param_value
 
 
 def _on_to_int(value: object) -> int:

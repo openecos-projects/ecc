@@ -11,12 +11,12 @@ from chipcompiler.data.schema_versions import (
     UnsupportedSchemaVersionError,
     ensure_supported_schema_version,
 )
-from chipcompiler.data.workspace_config import load_workspace_config
+from chipcompiler.data.workspace.config import load_workspace_config
 
 
 def test_current_params_and_flow_documents_load(tmp_path):
     from chipcompiler.data import OriginDesign
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
     from chipcompiler.engine.flow import EngineFlow
 
     workspace_dir = tmp_path / "workspace"

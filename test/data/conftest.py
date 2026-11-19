@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data.workspace_config import WORKSPACE_CONFIG_FILENAME
+from chipcompiler.data.workspace.config import WORKSPACE_CONFIG_FILENAME
 
 
 def create_minimal_sg13g2_pdk(root: Path) -> Path:

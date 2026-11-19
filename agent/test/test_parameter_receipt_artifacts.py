@@ -66,7 +66,7 @@ def _materialized_workspace(
     (origin / "filelist").write_text("top.v\n", encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir()
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(tmp_path, {"pdk_root": str(tmp_path / "pdk")})
     config = tmp_path / "config" / "dreamplace.json"

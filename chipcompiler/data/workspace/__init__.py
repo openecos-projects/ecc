@@ -39,10 +39,10 @@ from ..types import (
     StepBaseEnum,
     StepEnum,
 )
-from ..workspace_config import (
+from .config import (
     FLOW_POLICY_KEYS,
 )
-from ..workspace_config import (
+from .config import (
     workspace_config_path as workspace_config_toml_path,
 )
 from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
@@ -873,7 +873,7 @@ def create_workspace(
         from ..flow.options import sync_flow_options_projection
 
         sync_flow_options_projection(workspace)
-        from ..workspace_config import flow_section_from_flow_config
+        from .config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)
         if flow_section:
@@ -890,7 +890,7 @@ def create_workspace(
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
-        from ..workspace_config import validate_flow_config
+        from .config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
             {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}

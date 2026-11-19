@@ -76,7 +76,7 @@ def workspace(tmp_path: Path):
         {"RT": {"-bottom_routing_layer": "MET2", "-top_routing_layer": "MET5"}},
     )
     parameters_path = tmp_path / "home" / "params.toml"
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(
         tmp_path, {"core": {"utilitization": 0.6, "aspect_ratio": 1.0, "margin": [2, 2]}}

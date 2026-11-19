@@ -28,7 +28,7 @@ from typing import Any
 
 import tomli_w
 
-from .schema_versions import (
+from ..schema_versions import (
     PARAMS_TOML,
     SCHEMA_VERSION_FIELD,
     SUPPORTED_SCHEMA_VERSIONS,

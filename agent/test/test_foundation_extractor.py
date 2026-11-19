@@ -201,7 +201,7 @@ def _make_workspace(
             ],
         },
     )
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(
         ws,
@@ -2658,7 +2658,7 @@ def test_iccd_full_v1_variant_delta_requires_static_tables_in_base_manifest(tmp_
 def test_iccd_full_v1_design_id_is_stable_across_variant_parameters(tmp_path: Path):
     ws_a = _make_workspace(tmp_path / "a")
     ws_b = _make_workspace(tmp_path / "b")
-    from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
 
     params_b = load_workspace_config(ws_b)
     params_b["target_density"] = 0.66
@@ -4410,7 +4410,7 @@ def test_iccd_full_v1_pins_use_lef_geometry_electrical_context_and_route_attribu
     tmp_path: Path,
 ):
     ws = _make_workspace(tmp_path)
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(
         ws,

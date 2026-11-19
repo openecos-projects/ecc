@@ -828,7 +828,7 @@ def _run_project(
     # The resolved skip policy, LEC engine and inserted steps survive every
     # target override below (they come from configuration, never from the
     # target spelling).
-    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+    from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     policies = (
         {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}

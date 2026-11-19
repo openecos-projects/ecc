@@ -4,8 +4,8 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.data import Workspace, inserted_step_kind, save_parameter
+from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS, flow_section_from_flow_config
 from chipcompiler.data.workspace.inputs import persist_origin_inputs
-from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS, flow_section_from_flow_config
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
 from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun

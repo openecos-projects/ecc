@@ -80,7 +80,7 @@ def store_candidate_seed(workspace: Any, step_names: list[str], seed: int) -> No
     if not step_names:
         return
     from chipcompiler.data.parameter import save_parameter
-    from chipcompiler.data.workspace_parameters import update_workspace_param_value
+    from chipcompiler.data.workspace.parameters import update_workspace_param_value
 
     schema = _seed_schema()
     for name in step_names:

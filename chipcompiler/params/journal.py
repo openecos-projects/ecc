@@ -14,7 +14,7 @@ from chipcompiler.data.step_parameters import (
     step_values,
 )
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
-from chipcompiler.data.workspace_parameters import (
+from chipcompiler.data.workspace.parameters import (
     PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
     set_workspace_param,

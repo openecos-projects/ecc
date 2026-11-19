@@ -68,7 +68,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
 
-    from ..workspace_config import flow_range_for_preset, resolve_flow_selection
+    from ..workspace.config import flow_range_for_preset, resolve_flow_selection
 
     entries = _flow_entries_for_config(flow_config)
     start: str | None = None

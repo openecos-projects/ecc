@@ -683,7 +683,7 @@ def test_configuration_update_recovers_after_process_exit_during_commit_cleanup(
 
     child = os.fork()
     if child == 0:
-        import chipcompiler.data.workspace_transaction as transaction_module
+        import chipcompiler.data.workspace.transaction as transaction_module
 
         original_rmtree = transaction_module.shutil.rmtree
 

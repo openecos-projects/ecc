@@ -463,7 +463,7 @@ def _preset_plan(
 
 
 def _policy_keys(flow_config: "FlowConfig | None") -> Record:
-    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+    from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     if flow_config is None:
         return {}

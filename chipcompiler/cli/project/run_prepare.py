@@ -467,7 +467,7 @@ def execute_fresh_run(
                 # normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    from chipcompiler.data.workspace_config import (
+                    from chipcompiler.data.workspace.config import (
                         FLOW_POLICY_KEYS,
                         validate_flow_config,
                     )

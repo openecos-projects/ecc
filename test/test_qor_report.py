@@ -115,7 +115,7 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
             ],
         },
     )
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
     if with_metrics:

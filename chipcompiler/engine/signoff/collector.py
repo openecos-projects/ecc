@@ -75,7 +75,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             self._refresh_workspace_analysis(workspace_dir) if options.refresh_analysis else []
         )
 
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         parameters = self._read_parameters(workspace_config_path(workspace_dir))
         design = (
@@ -392,7 +392,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 add_file("initial.verilog", origin_rtl, rtl_destination, required=True)
         if origin_sdc is not None:
             add_file("initial.sdc", origin_sdc, f"initial/{design}.sdc", required=True)
-        from chipcompiler.data.workspace_config import workspace_config_path
+        from chipcompiler.data.workspace.config import workspace_config_path
 
         parameters_config = workspace_config_path(workspace_dir)
         add_file(

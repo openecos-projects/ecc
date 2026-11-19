@@ -41,7 +41,7 @@ def test_apply_parameter_overrides_copies_inputs():
 
 def test_routability_options_survive_workspace_toml_loading(tmp_path, dreamplace_default_config):
     from chipcompiler.data.parameter import load_parameter
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     overrides = {
         "l_shape_routability_flag": 1,

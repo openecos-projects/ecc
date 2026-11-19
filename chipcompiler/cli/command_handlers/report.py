@@ -165,7 +165,7 @@ def _design_name(workspace) -> str:
     if isinstance(parameters, dict):
         return parameters.get("design") or parameters.get("Design") or "design"
 
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     try:
         parameters = load_workspace_config(workspace.directory)

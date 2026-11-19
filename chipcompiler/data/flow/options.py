@@ -12,7 +12,7 @@ CLOCK_TREE_KEY = "clock_tree"
 def clock_tree_requested(workspace) -> bool:
     """Return the validated Workspace parameter, defaulting old workspaces to false."""
     from chipcompiler.data.parameter_schema import lookup_schema
-    from chipcompiler.data.workspace_parameters import workspace_param_value
+    from chipcompiler.data.workspace.parameters import workspace_param_value
 
     schema = lookup_schema("geometry.clock_tree")
     if schema is None:

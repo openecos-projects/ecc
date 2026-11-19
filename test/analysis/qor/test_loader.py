@@ -86,7 +86,7 @@ def _make_workspace(tmp_path, steps):
             ],
         },
     )
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(root, {"design": "gcd", "frequency_max": 50.0})
     # Every successful step emits a minimal valid payload unless a test
@@ -191,7 +191,7 @@ class TestParameterResolution:
         assert inputs.config_warnings == []
 
     def test_unknown_profile_warns_and_falls_back(self, tmp_path):
-        from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+        from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
 
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         parameters = load_workspace_config(workspace.directory)
@@ -202,7 +202,7 @@ class TestParameterResolution:
         assert inputs.config_warnings
 
     def test_nonpositive_budget_warns_and_undeclares(self, tmp_path):
-        from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+        from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
 
         workspace = _make_workspace(tmp_path, _FULL_FLOW)
         parameters = load_workspace_config(workspace.directory)

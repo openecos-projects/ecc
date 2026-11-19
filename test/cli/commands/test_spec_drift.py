@@ -12,7 +12,7 @@ import os
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
-from chipcompiler.data.workspace_config import save_workspace_config
+from chipcompiler.data.workspace.config import save_workspace_config
 from test.flow_fixture import step_fields
 
 SNAPSHOT = {

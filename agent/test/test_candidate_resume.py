@@ -212,7 +212,7 @@ def test_candidate_resume_restores_drifted_step_values_and_rejects_a_seed_mismat
     monkeypatch, tmp_path
 ) -> None:
     from chipcompiler.data.parameter import load_parameter
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     config = tmp_path / "config" / "dreamplace.json"
     config.parent.mkdir()
