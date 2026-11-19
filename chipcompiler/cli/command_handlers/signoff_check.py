@@ -11,8 +11,8 @@ from chipcompiler.cli.inspection.discovery import (
 )
 from chipcompiler.cli.inspection.evidence_summary import qor_score
 from chipcompiler.cli.inspection.project_checkers import checker_evidence
-from chipcompiler.data import SkippableStepEnum, StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data import CheckState, SkippableStepEnum, StateEnum, StepEnum
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.utility import JsonObject
 
 _PROFILES = {
@@ -77,7 +77,9 @@ def check(command_input, ctx: CommandContext) -> CommandResult:
         "sta_hold_clean": _metric_checker_gate(root, "sta", "sta_hold_violation_count"),
         "lec_proven": _lec_gate(root),
         "final_gds_available": _artifact_gate(
-            root, "Harden GDS", f"{STEP_DIRECTORIES[StepEnum.HARDEN.value]}/checklist.json"
+            root,
+            "Harden GDS",
+            f"{StepDirectories.at(root).name(StepEnum.HARDEN.value)}/checklist.json",
         ),
         "final_netlist_available": _netlist_artifact_gate(root),
     }
@@ -157,7 +159,7 @@ def _checklist_gate(review: dict) -> dict:
 
 
 def _checker_gate(root: Path, checker: str) -> dict:
-    step_directory = STEP_DIRECTORIES[checker]
+    step_directory = StepDirectories.at(root).name(checker)
     source_path = root / step_directory / "checklist.json"
     data = _read(source_path)
     if not data:
@@ -188,9 +190,11 @@ def _checker_gate(root: Path, checker: str) -> dict:
     failed_items = [
         item.get("title", "")
         for item in matching
-        if item.get("state") == "fail" or item.get("blocked") is True
+        if item.get("state") == CheckState.FAILED or item.get("blocked") is True
     ]
-    if any(item.get("state") == "fail" or item.get("blocked") is True for item in matching):
+    if any(
+        item.get("state") == CheckState.FAILED or item.get("blocked") is True for item in matching
+    ):
         return {
             "status": "fail",
             "reason": f"{checker}_violations",
@@ -226,7 +230,13 @@ def _metric_checker_gate(root: Path, checker: str, metric_id: str | None = None)
             for item in steps
             if isinstance(item, dict) and str(item.get("name", "")).lower() == checker
         ),
-        {"name": checker, "tool": "ecc", "state": "Success"},
+        # A checker the ledger does not run (skipped, or outside a derived
+        # range) has no evidence, whatever a step directory still holds.
+        {
+            "name": checker,
+            "tool": "ecc",
+            "state": StateEnum.Unstart.value if steps else StateEnum.Success.value,
+        },
     )
     evidence = checker_evidence(root, step, str(flow.get("design", "design")))
     counts = evidence.get("counts", {})
@@ -255,7 +265,7 @@ def _sta_gate(root: Path, analysis: str) -> dict:
     result = _checker_gate(root, "sta")
     if result["status"] == "unknown":
         return result
-    data = _read(root / STEP_DIRECTORIES[StepEnum.STA.value] / "checklist.json")
+    data = _read(root / StepDirectories.at(root).name(StepEnum.STA.value) / "checklist.json")
     items = data.get("checklist", []) if isinstance(data, dict) else []
     matching = [
         item
@@ -263,7 +273,7 @@ def _sta_gate(root: Path, analysis: str) -> dict:
         if isinstance(item, dict)
         and analysis in f"{item.get('id', '')} {item.get('title', '')}".lower()
     ]
-    source = f"{STEP_DIRECTORIES[StepEnum.STA.value]}/checklist.json"
+    source = f"{StepDirectories.at(root).name(StepEnum.STA.value)}/checklist.json"
     if not matching:
         return {
             "status": "unknown",
@@ -271,7 +281,9 @@ def _sta_gate(root: Path, analysis: str) -> dict:
             "source": source,
             "failed_items": [],
         }
-    failed_items = [item.get("title", "") for item in matching if item.get("state") != "pass"]
+    failed_items = [
+        item.get("title", "") for item in matching if item.get("state") != CheckState.PASS
+    ]
     return {
         "status": "fail" if failed_items else "pass",
         "reason": f"sta_{analysis}_{'violations' if failed_items else 'clean'}",
@@ -282,7 +294,9 @@ def _sta_gate(root: Path, analysis: str) -> dict:
 
 
 def _lec_gate(root: Path) -> dict:
-    result_path = root / STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value] / "output"
+    result_path = (
+        root / StepDirectories.at(root).name(SkippableStepEnum.POST_ROUTE_LEC.value) / "output"
+    )
     candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
     if len(candidates) != 1:
         return {
@@ -329,7 +343,7 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
     evidence = inspect_artifact(root, relative, include_hash=True)
     if evidence["availability"] != "available" or evidence["bytes"] == 0:
         return {"status": "unknown", "reason": "artifact_unavailable", "source": relative}
-    if item.get("state") != "pass" or item.get("blocked") is True:
+    if item.get("state") != CheckState.PASS or item.get("blocked") is True:
         return {"status": "fail", "reason": "artifact_checklist_failed", "source": relative}
     return {
         "status": "pass",
@@ -341,13 +355,17 @@ def _artifact_gate(root: Path, label: str, checklist: str) -> dict:
 
 
 def _netlist_artifact_gate(root: Path) -> dict:
-    result_path = root / STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value] / "output"
+    result_path = (
+        root / StepDirectories.at(root).name(SkippableStepEnum.POST_ROUTE_LEC.value) / "output"
+    )
     candidates = list(result_path.glob("*_result.json")) if result_path.is_dir() else []
     if len(candidates) != 1:
         return {
             "status": "unknown",
             "reason": "artifact_evidence_unavailable",
-            "source": (f"{STEP_DIRECTORIES[SkippableStepEnum.POST_ROUTE_LEC.value]}/output"),
+            "source": (
+                f"{StepDirectories.at(root).name(SkippableStepEnum.POST_ROUTE_LEC.value)}/output"
+            ),
         }
     result = _read(candidates[0])
     relative = result.get("gate_verilog")

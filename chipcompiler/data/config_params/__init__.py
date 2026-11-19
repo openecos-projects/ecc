@@ -2,6 +2,7 @@ from .cts import SCHEMAS as CTS_SCHEMAS
 from .dreamplace import SCHEMAS as DREAMPLACE_SCHEMAS
 from .dreamplace_buffering import SCHEMAS as DREAMPLACE_BUFFERING_SCHEMAS
 from .dreamplace_cooptimization import SCHEMAS as DREAMPLACE_COOPTIMIZATION_SCHEMAS
+from .dreamplace_legalization import SCHEMAS as DREAMPLACE_LEGALIZATION_SCHEMAS
 from .dreamplace_sizing import SCHEMAS as DREAMPLACE_SIZING_SCHEMAS
 from .emir import SCHEMAS as EMIR_SCHEMAS
 from .filler import SCHEMAS as FILLER_SCHEMAS
@@ -19,6 +20,7 @@ CONFIG_PARAM_SCHEMAS = (
     *DREAMPLACE_COOPTIMIZATION_SCHEMAS,
     *DREAMPLACE_SIZING_SCHEMAS,
     *DREAMPLACE_BUFFERING_SCHEMAS,
+    *DREAMPLACE_LEGALIZATION_SCHEMAS,
     *ROUTE_SCHEMAS,
     *FILLER_SCHEMAS,
     *RCX_SCHEMAS,
@@ -38,4 +40,11 @@ def validate_config_registry() -> list[str]:
         seen.add(schema.param)
         if schema.config_target is None and schema.pdk_target is None:
             errors.append(f"config parameter missing target: {schema.param}")
+        errors.extend(schema.applies_errors())
+        if schema.extra_config_targets and schema.config_target is None:
+            errors.append(f"extra config targets need a primary target: {schema.param}")
+        if any(target.element is not None for target in schema.config_targets) and not (
+            schema.type.startswith("list[")
+        ):
+            errors.append(f"element targets need a list parameter: {schema.param}")
     return errors

@@ -13,13 +13,21 @@ from chipcompiler.analysis.qor.summary_contract import summary_gates
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
     Checklist,
+    ChecklistItem,
+    CheckOwner,
+    CheckPolicy,
+    CheckState,
     SkippableStepEnum,
     StateEnum,
     StepEnum,
     Workspace,
     WorkspaceStep,
+    inserted_step_kind,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, all_step_directories, flow_step_directory
+from chipcompiler.data.step import StepDirectories
+from chipcompiler.tools.ecc.lec_gates import (
+    inserted_lec_results as _inserted_lec_results,
+)
 from chipcompiler.tools.ecc.lec_gates import (
     latest_pnr_output as _latest_pnr_output,
 )
@@ -111,22 +119,23 @@ def _item(
     source: dict | None = None,
     evidence: list[dict] | None = None,
 ) -> dict:
-    return {
-        "id": item_id,
-        "step": step,
-        "category": category,
-        "owner": owner,
-        "policy": policy,
-        "state": state,
-        "blocked": policy == "block" and state in {"failed", "unavailable"},
-        "title": title,
-        "summary": summary,
-        "source": source or {},
-        "evidence": evidence or [],
-    }
+    return ChecklistItem(
+        id=item_id,
+        step=step,
+        category=category,
+        owner=CheckOwner(owner),
+        policy=CheckPolicy(policy),
+        state=CheckState(state),
+        title=title,
+        summary=summary,
+        source=source or {},
+        evidence=evidence or [],
+    ).to_record()
 
 
-def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
+def _prefixed_evidence(
+    step_directory: str, evidence: list, step_directories: list[str]
+) -> list[dict]:
     result = []
     for entry in evidence:
         if not isinstance(entry, dict):
@@ -134,8 +143,7 @@ def _prefixed_evidence(step_directory: str, evidence: list) -> list[dict]:
         item = dict(entry)
         path = item.get("path")
         is_workspace_step_path = isinstance(path, str) and any(
-            path == directory or path.startswith(directory + "/")
-            for directory in all_step_directories()
+            path == directory or path.startswith(directory + "/") for directory in step_directories
         )
         if (
             isinstance(path, str)
@@ -230,7 +238,11 @@ def _quality_gate_items_from_summary(
                     "path": _path_text(workspace, summary_path),
                     "gate_id": gate_id,
                 },
-                evidence=_prefixed_evidence(step_directory_text, gate.get("evidence", [])),
+                evidence=_prefixed_evidence(
+                    step_directory_text,
+                    gate.get("evidence", []),
+                    StepDirectories.of(workspace).scan_names(),
+                ),
             )
         )
     return result
@@ -272,7 +284,7 @@ def _manual_macro_placement_items(workspace: Workspace, step: WorkspaceStep) -> 
                 else (
                     "macro.manual_placement is enabled, but macro.placements and "
                     f"{macro_location} are not ready. Place macros in Chip Viewer or run "
-                    "`ecc macro`, then rerun macroPlacement."
+                    "`ecc macro`, then rerun macro_placement."
                 )
             ),
         )
@@ -337,7 +349,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         report_state, report_summary = _file_state(report)
         return [
             _item(
-                item_id="artifact.poweranalysis.step",
+                item_id=f"artifact.{StepEnum.POWER_ANALYSIS.value}.step",
                 step=step.name,
                 category="artifact",
                 owner="checklist",
@@ -353,7 +365,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 evidence=[{"kind": "feature", "path": _path_text(workspace, artifact)}],
             ),
             _item(
-                item_id="artifact.poweranalysis.report",
+                item_id=f"artifact.{StepEnum.POWER_ANALYSIS.value}.report",
                 step=step.name,
                 category="report",
                 owner="checklist",
@@ -374,7 +386,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         state, summary = _file_state(report)
         return [
             _item(
-                item_id="artifact.antennacheck.report",
+                item_id=f"artifact.{StepEnum.ANTENNA_CHECK.value}.report",
                 step=step.name,
                 category="report",
                 owner="checklist",
@@ -513,7 +525,7 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
         ]
     elif step.name == StepEnum.SYNTHESIS.value:
         artifacts = (("netlist", "Mapped synthesis netlist", step.output.verilog),)
-    elif step.name in {SkippableStepEnum.LEC.value, SkippableStepEnum.POST_ROUTE_LEC.value}:
+    elif step.name == SkippableStepEnum.POST_ROUTE_LEC.value or inserted_step_kind(step.name):
         step_input = getattr(step, "input", None)
         return _lec_artifact_items(
             workspace,
@@ -772,25 +784,29 @@ def rebuild_home_checklist(
     workspace_dir = Path(workspace.directory)
     items = []
     loaded_step_checklists = set()
-    # LEC artifacts live under the engine the flow recorded (yosys_lec
-    # historically, kepler_formal today, lec_dual for cross-checking).
-    # Checklist snapshots of every INACTIVE LEC engine are stale evidence —
-    # an engine switch deliberately preserves them on disk — so only the
-    # ledger-recorded directory may contribute; the recorded postRouteLec
-    # itself is recomputed fresh below.
-    flow = getattr(workspace, "flow", None)
-    flow_steps = flow.steps() if flow is not None else None
-    post_route_lec_dir = flow_step_directory(flow_steps, SkippableStepEnum.POST_ROUTE_LEC.value)
-    from chipcompiler.data.step import inactive_lec_step_directories
-
-    inactive_lec_dirs = inactive_lec_step_directories(flow_steps)
-    for directory in all_step_directories():
-        if directory == post_route_lec_dir or directory in inactive_lec_dirs:
+    # The recorded post_route_lec is recomputed fresh below.
+    directories = StepDirectories.of(workspace)
+    post_route_lec_dir = directories.name(SkippableStepEnum.POST_ROUTE_LEC.value)
+    for directory in directories.scan_names():
+        if directory == post_route_lec_dir:
             continue
         data = json_read(workspace_dir / directory / "checklist.json")
         if data.get("schema_version") == 3 and data.get("kind") == "signoff_checklist":
             loaded_step_checklists.add(directory)
             items.extend(item for item in data.get("checklist", []) if isinstance(item, dict))
+    # Every inserted LEC the ledger records is required and judged fresh: a
+    # saved verdict may be stale, and its step checklist may be missing.
+    inserted = _inserted_lec_results(workspace)
+    items = [
+        item
+        for item in items
+        if not (
+            item.get("step") in inserted
+            and item.get("id") == f"artifact.{str(item['step']).lower()}.result"
+        )
+    ]
+    for step_name, result_json in inserted.items():
+        items.extend(_lec_artifact_items(workspace, step_name, result_json, None, None))
     if _requires_post_route_lec(workspace):
         design = getattr(getattr(workspace, "design", None), "name", "") or ""
         golden, gate = _post_route_lec_netlists(workspace)
@@ -806,7 +822,7 @@ def rebuild_home_checklist(
             )
         )
     for step_name, gate_ids in QOR_STEP_GATE_IDS.items():
-        step_directory = workspace_dir / STEP_DIRECTORIES[step_name]
+        step_directory = directories.path(step_name)
         if step_directory.name in loaded_step_checklists:
             continue
         items.extend(

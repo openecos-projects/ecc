@@ -23,11 +23,10 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         bindings = deepcopy(projection["workspaceBindings"])
     if not isinstance(spec, dict) or not isinstance(bindings, dict):
         raise ValueError(f"workspace has no workspace spec: {workspace_path}")
-    # A Project refresh owns structural settings only. Existing Workspace
-    # parameters are merged and marked as preserved by update_workspace_from_spec;
-    # carrying the Snapshot's resolved defaults here would incorrectly turn
-    # every one of them into an explicit request for the new flow.
-    spec["parameters"] = {}
+    # A Project refresh owns structural settings only. The Snapshot's derived
+    # parameter view is not part of the request; update_workspace_from_spec
+    # carries the existing Workspace parameters over itself.
+    spec.pop("parameters", None)
     spec["design"] = {
         "name": cfg.design_name,
         "topModule": cfg.design_top,
@@ -44,11 +43,10 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         input_specs.append({"inputId": input_id, "role": role})
         input_bindings[input_id] = path
 
-    from chipcompiler.cli.project.effective_config import _entry_step_for_target
-    from chipcompiler.rtl2gds import normalize_flow_step
+    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
 
-    entry_step = _entry_step_for_target(cfg, flow_config)
-    rtl_mode = normalize_flow_step(entry_step or "") == "Synthesis"
+    entry_step = fresh_entry_step(cfg, flow_config)
+    rtl_mode = str(entry_step or "") == "synthesis"
     if rtl_mode:
         for index, path in enumerate(inputs.rtl):
             add("rtl", path, index)
@@ -83,9 +81,7 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
         current_flow = {}
     flow = {"flowId": cfg.flow_preset or current_flow.get("flowId") or "custom"}
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        flow["fromStepId"] = normalize_flow_step(flow_config["start_step"])
-        flow["throughStepId"] = normalize_flow_step(
-            flow_config.get("end_step") or flow_config["start_step"]
-        )
+        flow["fromStepId"] = str(flow_config["start_step"])
+        flow["throughStepId"] = str(flow_config.get("end_step") or flow_config["start_step"])
     spec["flow"] = flow
     return spec, bindings

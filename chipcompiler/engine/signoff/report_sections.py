@@ -5,7 +5,9 @@ Each extractor resolves one metrics family through the shared query helper
 parameters/home fallback), mirroring the GUI extractor's section order.
 """
 
+from chipcompiler.data import StepEnum
 from chipcompiler.engine.signoff.report_data import (
+    PARAMETERS_STAGE,
     CongestionMetrics,
     DesignReportWarning,
     ExecutionMetrics,
@@ -14,7 +16,6 @@ from chipcompiler.engine.signoff.report_data import (
     RoutingMetrics,
     StageExecutionRecord,
     VerificationMetrics,
-    canonicalize_stage_name,
 )
 from chipcompiler.engine.signoff.report_extract import (
     _is_record,
@@ -24,7 +25,13 @@ from chipcompiler.engine.signoff.report_extract import (
 )
 from chipcompiler.utility import JsonObject
 
-_AREA_STAGES = ["Harden", "Route", "Legal", "Place", "PostFloorplan"]
+_AREA_STAGES = [
+    StepEnum.HARDEN,
+    StepEnum.ROUTING,
+    StepEnum.LEGALIZATION,
+    StepEnum.PLACEMENT,
+    StepEnum.POST_FLOORPLAN,
+]
 
 
 def _normalize_area(value):
@@ -90,7 +97,7 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         std_cell_area_um2=q(
             "Physical",
             "Standard Cell Area",
-            _AREA_STAGES + ["Synth"],
+            _AREA_STAGES + [StepEnum.SYNTHESIS],
             [
                 "Instances.total.area",
                 "Instances.logic.area",
@@ -105,27 +112,26 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         macro_area_um2=q(
             "Physical",
             "Macro Area",
-            ["Harden", "Route", "Place", "PostFloorplan"],
+            [StepEnum.HARDEN, StepEnum.ROUTING, StepEnum.PLACEMENT, StepEnum.POST_FLOORPLAN],
             ["Instances.macros.area", "macro_area", "macro_area_um2", "macroArea"],
         )[0],
         macro_count=q(
             "Physical",
             "Macro Count",
-            ["Harden", "Route", "Place", "PostFloorplan"],
+            [StepEnum.HARDEN, StepEnum.ROUTING, StepEnum.PLACEMENT, StepEnum.POST_FLOORPLAN],
             ["Instances.macros.num", "macro_count", "num_macros", "macroCount"],
         )[0],
         instance_count=q(
             "Physical",
             "Total Instances",
             [
-                "Harden",
-                "Route",
-                "Legal",
-                "Place",
-                "CTS",
-                "Fanout",
-                "PostFloorplan",
-                "Synth",
+                StepEnum.HARDEN,
+                StepEnum.ROUTING,
+                StepEnum.LEGALIZATION,
+                StepEnum.PLACEMENT,
+                StepEnum.CTS,
+                StepEnum.POST_FLOORPLAN,
+                StepEnum.SYNTHESIS,
             ],
             [
                 "Design Statis.num_instances",
@@ -141,7 +147,13 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         sequential_cell_count=q(
             "Physical",
             "Sequential Cell Count",
-            ["Harden", "Route", "CTS", "Place", "Synth"],
+            [
+                StepEnum.HARDEN,
+                StepEnum.ROUTING,
+                StepEnum.CTS,
+                StepEnum.PLACEMENT,
+                StepEnum.SYNTHESIS,
+            ],
             [
                 "Instances.clock.num",
                 "sequential_cells",
@@ -154,7 +166,7 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         combinational_cell_count=q(
             "Physical",
             "Combinational Cell Count",
-            ["Harden", "Route", "Place", "Synth"],
+            [StepEnum.HARDEN, StepEnum.ROUTING, StepEnum.PLACEMENT, StepEnum.SYNTHESIS],
             [
                 "Instances.logic.num",
                 "combinational_cells",
@@ -166,7 +178,7 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
         io_pin_count=q(
             "Physical",
             "IO Pin Count",
-            ["Harden", "Route", "PostFloorplan", "Synth"],
+            [StepEnum.HARDEN, StepEnum.ROUTING, StepEnum.POST_FLOORPLAN, StepEnum.SYNTHESIS],
             [
                 "Design Statis.num_iopins",
                 "Instances.total.pin_num",
@@ -182,14 +194,13 @@ def _extract_physical(q, warnings) -> PhysicalMetrics:
             "Physical",
             "Total Nets",
             [
-                "Harden",
-                "Route",
-                "Legal",
-                "Place",
-                "CTS",
-                "Fanout",
-                "PostFloorplan",
-                "Synth",
+                StepEnum.HARDEN,
+                StepEnum.ROUTING,
+                StepEnum.LEGALIZATION,
+                StepEnum.PLACEMENT,
+                StepEnum.CTS,
+                StepEnum.POST_FLOORPLAN,
+                StepEnum.SYNTHESIS,
             ],
             [
                 "Design Statis.num_nets",
@@ -207,7 +218,7 @@ def _extract_routing(q) -> RoutingMetrics:
     routing_completion_pct = q(
         "Routing",
         "Routing Completion",
-        ["Route", "Harden", "STA"],
+        [StepEnum.ROUTING, StepEnum.HARDEN, StepEnum.STA],
         [
             "routing_completion",
             "routing_completion_pct",
@@ -227,13 +238,13 @@ def _extract_routing(q) -> RoutingMetrics:
         hpwl_um=q(
             "Routing",
             "Half-Perimeter Wirelength",
-            ["Place", "PostFloorplan"],
+            [StepEnum.PLACEMENT, StepEnum.POST_FLOORPLAN],
             ["place_hpwl", "hpwl", "hpwl_um", "half_perimeter_wirelength"],
         )[0],
         estimated_wirelength_um=q(
             "Routing",
             "Estimated Wirelength",
-            ["Place", "CTS", "Route"],
+            [StepEnum.PLACEMENT, StepEnum.CTS, StepEnum.ROUTING],
             [
                 "place_flute_wirelength",
                 "place_grwl",
@@ -244,7 +255,7 @@ def _extract_routing(q) -> RoutingMetrics:
         routed_wirelength_um=q(
             "Routing",
             "Routed Wirelength",
-            ["Route", "Harden"],
+            [StepEnum.ROUTING, StepEnum.HARDEN],
             [
                 "route_dr_total_wirelength",
                 "route_wirelength",
@@ -258,7 +269,7 @@ def _extract_routing(q) -> RoutingMetrics:
         via_count=q(
             "Routing",
             "Via Count",
-            ["Route", "Harden"],
+            [StepEnum.ROUTING, StepEnum.HARDEN],
             [
                 "route_dr_total_via_count",
                 "route_via_count",
@@ -273,7 +284,7 @@ def _extract_routing(q) -> RoutingMetrics:
         route_drc_count=q(
             "Routing",
             "Route DRC Violations",
-            ["Route"],
+            [StepEnum.ROUTING],
             [
                 "route_dr_total_violation_count",
                 "route_drc_count",
@@ -289,7 +300,7 @@ def _extract_congestion(q) -> CongestionMetrics:
         global_overflow_total=q(
             "Congestion",
             "Global Overflow Total",
-            ["Route", "Place"],
+            [StepEnum.ROUTING, StepEnum.PLACEMENT],
             [
                 "route_la_total_overflow",
                 "place_congestion_egr_overflow_total",
@@ -301,19 +312,19 @@ def _extract_congestion(q) -> CongestionMetrics:
         global_overflow_pct=q(
             "Congestion",
             "Global Overflow Pct",
-            ["Route", "Place"],
+            [StepEnum.ROUTING, StepEnum.PLACEMENT],
             ["global_overflow_pct", "overflow_pct"],
         )[0],
         max_overflow=q(
             "Congestion",
             "Max Overflow",
-            ["Route", "Place"],
+            [StepEnum.ROUTING, StepEnum.PLACEMENT],
             ["place_congestion_egr_overflow_max", "max_overflow", "peak_overflow"],
         )[0],
         horizontal_congestion_pct=q(
             "Congestion",
             "Horizontal Congestion Pct",
-            ["Place", "Route"],
+            [StepEnum.PLACEMENT, StepEnum.ROUTING],
             [
                 "place_rudy_utilization_max",
                 "place_lutrudy_utilization_max",
@@ -324,13 +335,13 @@ def _extract_congestion(q) -> CongestionMetrics:
         vertical_congestion_pct=q(
             "Congestion",
             "Vertical Congestion Pct",
-            ["Place", "Route"],
+            [StepEnum.PLACEMENT, StepEnum.ROUTING],
             ["place_rudy_utilization_max", "vertical_congestion_pct", "v_congestion_pct"],
         )[0],
         hotspots_count=q(
             "Congestion",
             "Congestion Hotspots",
-            ["Route", "Place"],
+            [StepEnum.ROUTING, StepEnum.PLACEMENT],
             ["hotspots_count", "num_hotspots", "hotspot_count"],
         )[0],
     )
@@ -340,7 +351,7 @@ def _extract_power(q, params) -> PowerMetrics:
     dynamic_power_mw = q(
         "Power",
         "Dynamic Power",
-        ["Power", "STA", "Route", "Harden"],
+        [StepEnum.POWER_ANALYSIS, StepEnum.STA, StepEnum.ROUTING, StepEnum.HARDEN],
         [
             "dynamic_power",
             "dynamic_power_mw",
@@ -352,7 +363,7 @@ def _extract_power(q, params) -> PowerMetrics:
     leakage_power_mw = q(
         "Power",
         "Leakage Power",
-        ["Power", "STA", "Route", "Harden"],
+        [StepEnum.POWER_ANALYSIS, StepEnum.STA, StepEnum.ROUTING, StepEnum.HARDEN],
         [
             "leakage_power",
             "leakage_power_mw",
@@ -364,7 +375,7 @@ def _extract_power(q, params) -> PowerMetrics:
     total_power_mw = q(
         "Power",
         "Total Power",
-        ["Power", "STA", "Route", "Harden"],
+        [StepEnum.POWER_ANALYSIS, StepEnum.STA, StepEnum.ROUTING, StepEnum.HARDEN],
         [
             "total_power",
             "total_power_mw",
@@ -383,26 +394,26 @@ def _extract_power(q, params) -> PowerMetrics:
         switching_power_mw=q(
             "Power",
             "Switching Power",
-            ["Power", "STA", "Route", "Harden"],
+            [StepEnum.POWER_ANALYSIS, StepEnum.STA, StepEnum.ROUTING, StepEnum.HARDEN],
             ["switching_power", "switching_power_mw", "power.switching", "power_switching"],
         )[0],
         internal_power_mw=q(
             "Power",
             "Internal Power",
-            ["Power", "STA", "Route", "Harden"],
+            [StepEnum.POWER_ANALYSIS, StepEnum.STA, StepEnum.ROUTING, StepEnum.HARDEN],
             ["internal_power", "internal_power_mw", "power.internal", "power_internal"],
         )[0],
         leakage_power_mw=leakage_power_mw,
         voltage_v=q(
             "Power",
             "Operating Voltage",
-            ["Power", "STA", "Parameters"],
+            [StepEnum.POWER_ANALYSIS, StepEnum.STA, PARAMETERS_STAGE],
             ["voltage", "voltage_v", "VOLTAGE", "VDD", "vdd", "supply_voltage"],
         )[0],
         temperature_c=q(
             "Power",
             "Operating Temperature",
-            ["Power", "STA", "Parameters"],
+            [StepEnum.POWER_ANALYSIS, StepEnum.STA, PARAMETERS_STAGE],
             ["temperature", "temperature_c", "TEMPERATURE", "TEMP", "temp", "operating_temp"],
         )[0],
         corner=JsonObject(params).get_str("POWER_CORNER", None),
@@ -414,14 +425,14 @@ def _extract_verification(q) -> VerificationMetrics:
     drc_count = q(
         "Verification",
         "DRC Violations",
-        ["DRC", "Harden", "Route"],
+        [StepEnum.DRC, StepEnum.HARDEN, StepEnum.ROUTING],
         ["drc_count", "drc_violations", "violations_count", "errors", "drc_errors"],
     )[0]
     drc_status = "unrun" if drc_count is None else ("clean" if drc_count == 0 else "violations")
     lvs_mismatch_count = q(
         "Verification",
         "LVS Mismatches",
-        ["LVS", "Harden"],
+        [StepEnum.LVS, StepEnum.HARDEN],
         ["lvs_count", "lvs_mismatches", "mismatches", "lvs_errors"],
     )[0]
     lvs_status = (
@@ -437,25 +448,25 @@ def _extract_verification(q) -> VerificationMetrics:
         antenna_violations=q(
             "Verification",
             "Antenna Violations",
-            ["DRC", "Route"],
+            [StepEnum.DRC, StepEnum.ROUTING],
             ["antenna_violations", "antenna_errors", "antenna_count"],
         )[0],
         erc_violations=q(
             "Verification",
             "ERC Violations",
-            ["DRC", "LVS"],
+            [StepEnum.DRC, StepEnum.LVS],
             ["erc_violations", "erc_errors", "erc_count"],
         )[0],
         floating_nets_count=q(
             "Verification",
             "Floating Nets",
-            ["LVS", "DRC"],
+            [StepEnum.LVS, StepEnum.DRC],
             ["floating_nets", "floating_net_count"],
         )[0],
         unconnected_pins_count=q(
             "Verification",
             "Unconnected Pins",
-            ["LVS", "DRC"],
+            [StepEnum.LVS, StepEnum.DRC],
             ["unconnected_pins", "unconnected_pin_count"],
         )[0],
     )
@@ -488,7 +499,7 @@ def _extract_execution(flow) -> ExecutionMetrics:
             peak_memory_mb = memory_mb
         stages.append(
             StageExecutionRecord(
-                stage=canonicalize_stage_name(name),
+                stage=name,
                 tool=tool,
                 runtime_seconds=runtime_seconds,
                 runtime_formatted=format_duration(runtime_seconds),

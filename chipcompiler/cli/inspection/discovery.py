@@ -1,43 +1,27 @@
-import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli.core.output import (
     disclosure_cmd,
-    normalize_state,
-    normalize_step_name,
+    flow_step_status,
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-
-
-def resolve_run_dir(project_dir: str, run_id: str | None = None) -> tuple[str, str | None]:
-    if not run_id:
-        return os.path.join(project_dir, "runs", "default"), run_id
-
-    if run_id == "default":
-        return os.path.join(project_dir, "runs", "default"), "default"
-
-    if os.path.isabs(run_id):
-        return run_id, run_id
-
-    if os.sep in run_id or "/" in run_id:
-        return os.path.join(project_dir, run_id), run_id
-
-    return os.path.join(project_dir, "runs", run_id), run_id
-
+from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories
 
 CORRUPT_FLOW_JSON = "CORRUPT"
 
 
 def read_flow_json(run_dir: str) -> dict | str | None:
+    from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
+    from chipcompiler.data.workspace.flow_types import load_flow_document
+
     path = os.path.join(run_dir, "home", "flow.json")
     if not os.path.isfile(path):
         return None
     try:
-        with open(path) as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else CORRUPT_FLOW_JSON
-    except (json.JSONDecodeError, OSError):
+        return dict(load_flow_document(Path(path)))
+    except (UnsupportedSchemaVersionError, ValueError, OSError):
         return CORRUPT_FLOW_JSON
 
 
@@ -56,7 +40,7 @@ def get_run_status(flow_data: dict) -> str:
         return "unstart"
     states = set()
     for step in steps:
-        state = normalize_state(step.get("state", ""))
+        state = flow_step_status(step.get("state", ""))
         if state == "skipped":
             state = "success"
         if step.get("name") in ADVISORY_FLOW_STEPS and state == "incomplete":
@@ -79,52 +63,25 @@ def get_run_status(flow_data: dict) -> str:
 
 
 def discover_step_dirs(run_dir: str) -> dict[str, str]:
-    result = {}
+    """Step name -> directory of each step whose artifacts *run_dir* holds.
+
+    Ledger steps use their recorded directory; a step absent from a bounded
+    ledger uses its inherited, else its base ``<step>_<tool>``, directory.
+    """
     if not os.path.isdir(run_dir):
-        return result
-
+        return {}
     flow_data = read_flow_json(run_dir)
-    flow_dir_tokens = {}
-    if isinstance(flow_data, dict):
-        flow_dir_tokens = {
-            f"{step['name']}_{step['tool']}": normalize_step_name(step["name"])
-            for step in _safe_steps(flow_data)
-            if isinstance(step.get("name"), str) and isinstance(step.get("tool"), str)
-        }
-
-    for entry in os.listdir(run_dir):
-        full = os.path.join(run_dir, entry)
-        if not os.path.isdir(full):
-            continue
-        token = flow_dir_tokens.get(entry)
-        if token is None:
-            name = step_dir_step_name(full)
-            if name is None:
-                continue
-            token = normalize_step_name(name)
-        result[token] = full
-    return result
-
-
-def step_dir_step_name(step_path: str) -> str | None:
-    entry = os.path.basename(step_path)
-    if "_" not in entry:
-        return None
-    return entry.rpartition("_")[0]
-
-
-def step_dir_tool(step_path: str) -> str | None:
-    entry = os.path.basename(step_path)
-    if "_" not in entry:
-        return None
-    return entry.rpartition("_")[2]
+    steps = _safe_steps(flow_data) if isinstance(flow_data, dict) else []
+    directories = StepDirectories.from_records(Path(run_dir), steps)
+    names = dict.fromkeys([*directories.reader_step_names(), *STEP_DIRECTORIES])
+    return {step: str(directories.path(step)) for step in names if directories.path(step).is_dir()}
 
 
 def get_flow_step_names(run_dir: str) -> set[str]:
     flow_data = read_flow_json(run_dir)
     if not isinstance(flow_data, dict):
         return set()
-    return {normalize_step_name(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")}
+    return {s.get("name", "") for s in _safe_steps(flow_data) if s.get("name")}
 
 
 def _list_files(directory: str) -> list[str]:
@@ -156,9 +113,7 @@ def listing_step_order(run_dir: str) -> list[str]:
 
     flow_data = read_flow_json(run_dir)
     if isinstance(flow_data, dict):
-        flow_tokens = [
-            normalize_step_name(s.get("name", "")) for s in _safe_steps(flow_data) if s.get("name")
-        ]
+        flow_tokens = [s.get("name", "") for s in _safe_steps(flow_data) if s.get("name")]
         flow_set = set(flow_tokens)
         result = [t for t in flow_tokens if t in step_dirs]
         result.extend(sorted(t for t in step_dirs if t not in flow_set))
@@ -189,10 +144,10 @@ def resolve_command_workspace(workspace_arg, project, workspace_id, run_dir):
 
     The project workspace directory (`run_dir`) is already resolved by the
     command context. Wraps resolve_workspace_path with
-    load_workspace, which appends a workspace log entry and may migrate
-    workspace configs — read-only commands must use resolve_workspace_path
-    instead. Returns (workspace, error-record-or-None); the caller maps a
-    non-None record to a CommandResult.err.
+    load_workspace, which appends a workspace log entry. Read-only commands
+    must use resolve_workspace_path instead. Returns (workspace,
+    error-record-or-None); the caller maps a non-None record to
+    a CommandResult.err.
     """
     import inspect
 

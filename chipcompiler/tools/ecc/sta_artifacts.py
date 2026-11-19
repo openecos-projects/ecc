@@ -2,7 +2,7 @@
 
 iSTA writes timing reports to ``<work_dir>/timing_reporter`` and the SDF to
 ``<work_dir>/sdf_writer``. Power reporting belongs to the separate iPW
-``powerAnalysis`` step. This module validates the timing outputs and publishes
+``power_analysis`` step. This module validates the timing outputs and publishes
 them to the per-corner report/feature directories.
 """
 

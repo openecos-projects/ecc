@@ -17,8 +17,8 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
         base_design={},
         workspace_id="baseline",
         workspace_path="baseline",
-        start_step="Synth",
-        end_step="Harden",
+        start_step="synthesis",
+        end_step="harden",
     )
     manifest_path = tmp_path / "project.json"
     manifest_path.write_text(json.dumps(manifest))

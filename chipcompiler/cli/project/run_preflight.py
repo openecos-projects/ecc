@@ -4,8 +4,8 @@
 from dataclasses import asdict, fields
 from pathlib import Path
 
-_PDK_MAPPING_STEPS = frozenset({"filler", "Harden"})
-_PDK_SDC_STEPS = frozenset({"sta", "powerAnalysis", "Harden"})
+_PDK_MAPPING_STEPS = frozenset({"filler", "harden"})
+_PDK_SDC_STEPS = frozenset({"sta", "power_analysis", "harden"})
 
 
 def _issue(component: str, detail: str, remediation: str, *, required: bool = True) -> dict:
@@ -129,9 +129,9 @@ def config_issues(workspace, selected_steps) -> list[dict]:
     for step in selected_steps:
         for path in step_config_paths(workspace_dir, step.name, step.tool):
             # macro_location.tcl is a handoff written by macro placement and
-            # refreshed for postFloorplan; it is checked only when that step
+            # refreshed for post_floorplan; it is checked only when that step
             # actually consumes it.
-            if path.name == "macro_location.tcl" and step.name != "postFloorplan":
+            if path.name == "macro_location.tcl" and step.name != "post_floorplan":
                 continue
             if not path.is_file():
                 issues.append(

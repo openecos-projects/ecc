@@ -10,6 +10,7 @@ import pytest
 from agent import tools as eda
 from agent.data import parameter_runtime_observer as runtime_observer
 from agent.data.candidate_materialization import materialize_candidate_config
+from test.flow_fixture import step_fields
 
 
 def _ns(**kwargs: object) -> Any:
@@ -29,31 +30,60 @@ class _Scalar:
         return self.value
 
 
-def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypatch, tmp_path):
+def _placement_workspace(tmp_path: Path, logger: object) -> Any:
+    from chipcompiler.data.workspace_config import save_workspace_config
+
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
-    workspace = _ns(
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
+    return _ns(
         directory=str(tmp_path),
         config={"dreamplace": config_path},
+        parameters=_ns(path=tmp_path / "home" / "params.toml"),
         pdk=_ns(),
-        logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        logger=logger,
+        flow=_ns(
+            data={
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "placement",
+                        "tool": "dreamplace",
+                        **step_fields("placement", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
-    step = _ns(name="place", tool="dreamplace")
+
+
+def test_tool_runner_restores_candidate_step_values_before_the_step_build(monkeypatch, tmp_path):
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.step_parameters import step_config_patch
+    from chipcompiler.data.workspace_config import save_workspace_config
+
+    workspace = _placement_workspace(tmp_path, _ns())
+    step = _ns(name="placement", tool="dreamplace", directory=tmp_path / "placement_dreamplace")
+    step_config = step.directory / "config" / "dreamplace_ecc.json"
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.65}],
         candidate_id="place-rerun-001",
     )
+    # A refresh between materialization and the run drops the step value.
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
     consumed = []
 
-    def build_step_config(_workspace, _step):
-        _write_json(config_path, {"target_density": 0.2})
+    def build_step_config(workspace, step):
+        # Mirrors the DreamPlace build: baseline plus the step's stored values.
+        stored = load_parameter(workspace.parameters.path).data
+        config = json.loads(Path(workspace.config["dreamplace"]).read_text(encoding="utf-8"))
+        _write_json(step_config, config | step_config_patch(stored, step.name)["dreamplace"])
 
     def run_step(workspace, step, ecc_module):
         del workspace, step
-        consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["target_density"])
+        consumed.append(json.loads(step_config.read_text(encoding="utf-8")))
         return ecc_module
 
     tool = _ns(build_step_config=build_step_config, run_step=run_step)
@@ -61,7 +91,7 @@ def test_tool_runner_reapplies_candidate_overlay_after_builder_refresh(monkeypat
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
 
     assert eda.run_step(workspace, step, ecc_module=True) is True
-    assert consumed == [0.65]
+    assert consumed == [{"target_density": 0.65}]
 
 
 def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
@@ -69,9 +99,20 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
         directory=str(tmp_path),
         config={},
         logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "Timing optimization", "tool": "sizer"}]}),
+        flow=_ns(
+            data={
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "timing_optimization",
+                        "tool": "sizer",
+                        **step_fields("timing_optimization", "sizer"),
+                    }
+                ],
+            }
+        ),
     )
-    step = _ns(name="Timing optimization", tool="sizer")
+    step = _ns(name="timing_optimization", tool="sizer")
     runtime_root = tmp_path / "sizer"
     executable = runtime_root / "bin" / "Sizer"
     executable.parent.mkdir(parents=True)
@@ -102,19 +143,11 @@ def test_agent_sizer_runner_isolates_loader_environment(monkeypatch, tmp_path):
 
 
 def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace_ecc.json"
-    _write_json(config_path, {"target_density": 0.8})
-    workspace = _ns(
-        directory=str(tmp_path),
-        config={"dreamplace": config_path},
-        pdk=_ns(),
-        logger=_ns(exception=lambda *_args, **_kwargs: None),
-        flow=_ns(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
-    )
-    step = _ns(name="place", tool="dreamplace")
+    workspace = _placement_workspace(tmp_path, _ns(exception=lambda *_args, **_kwargs: None))
+    step = _ns(name="placement", tool="dreamplace")
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.65}],
         candidate_id="place-rerun-observed",
     )
@@ -150,43 +183,26 @@ def test_tool_runner_owns_candidate_runtime_report(monkeypatch, tmp_path):
     assert report["observation"]["density_operator_call_count"] == 2
 
 
-def test_legalization_runner_reapplies_real_dreamplace_overlay(monkeypatch, tmp_path):
-    config_path = tmp_path / "config" / "dreamplace_ecc.json"
-    _write_json(config_path, {"bndry_padding_x": 0})
-    workspace = _ns(
-        directory=str(tmp_path),
-        config={"dreamplace": config_path},
-        pdk=_ns(),
-        logger=_ns(),
-        flow=_ns(data={"steps": [{"name": "legalization", "tool": "dreamplace"}]}),
+def test_tool_runner_without_receipts_uses_the_shared_tool_contract(monkeypatch, tmp_path):
+    workspace = _ns(directory=tmp_path, config={}, logger=None)
+    step = _ns(name="routing", tool="ecc")
+    calls = []
+    tool = _ns(
+        build_step_config=lambda *_args: calls.append("build"),
+        run_step=lambda **_kwargs: calls.append("run") or True,
     )
-    step = _ns(name="legalization", tool="dreamplace")
-    materialize_candidate_config(
-        workspace,
-        "legalization",
-        [{"knob_id": "legalization.bndry_padding_x", "value": 16}],
-        candidate_id="legalization-rerun-001",
-    )
-    consumed = []
-
-    def build_step_config(_workspace, _step):
-        _write_json(config_path, {"bndry_padding_x": 0})
-
-    def run_step(workspace, step, ecc_module):
-        del workspace, step
-        consumed.append(json.loads(config_path.read_text(encoding="utf-8"))["bndry_padding_x"])
-        return ecc_module
-
-    tool = _ns(build_step_config=build_step_config, run_step=run_step)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
-    monkeypatch.setattr(eda, "log_workspace_step", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(eda, "log_workspace_step", lambda *_args: calls.append("log"))
 
-    assert eda.run_step(workspace, step, ecc_module=True) is True
-    assert consumed == [16]
+    assert eda.run_step(workspace, step) is True
+    assert calls == ["build", "log", "run"]
 
 
 @pytest.mark.parametrize("workers", [1, 2, 3, 4])
-def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path, workers):
+def test_candidate_sta_uses_shared_parallel_dispatch(monkeypatch, tmp_path, workers):
+    from chipcompiler.tools.ecc import runner as shared_runner
+    from chipcompiler.tools.ecc import sta_parallel as shared_sta
+
     calls = []
     config_path = tmp_path / "sta.json"
     _write_json(
@@ -204,18 +220,23 @@ def test_candidate_sta_routes_only_parallel_mode_to_agent(monkeypatch, tmp_path,
     step = _ns(name="sta", tool="ecc")
     tool = _ns(
         build_step_config=lambda *_: None,
-        run_step=lambda **_: calls.append("serial") or True,
+        run_step=shared_runner.run_step,
     )
     monkeypatch.setattr(os, "cpu_count", lambda: 8)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(8)), raising=False)
     monkeypatch.setattr(eda, "load_eda_module", lambda *_args, **_kwargs: tool)
     monkeypatch.setattr(eda, "log_workspace_step", lambda *_: None)
-    monkeypatch.setattr(eda, "reapply_materialized_candidate_config", lambda *_: None)
-    monkeypatch.setattr(eda, "run_with_parameter_observation", lambda *args: args[-1]())
+    monkeypatch.setattr(shared_sta, "sta_workers", lambda *_args: workers)
     monkeypatch.setattr(
-        eda,
+        shared_sta,
         "run_parallel_sta",
         lambda _workspace, _step, _module, count: calls.append(count) or True,
     )
+    monkeypatch.setattr(
+        shared_runner,
+        "run_sta",
+        lambda **_kwargs: calls.append("serial") or True,
+    )
+
     assert eda.run_step(workspace, step) is True
     assert calls == (["serial"] if workers == 1 else [workers])

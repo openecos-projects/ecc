@@ -43,7 +43,7 @@ def _step(tmp_path: Path, name: str):
 
 
 def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path):
-    cts = _step(tmp_path, "CTS")
+    cts = _step(tmp_path, "cts")
     legalization = _step(tmp_path, "legalization")
     flow = _Flow(cts, legalization)
     workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
@@ -51,7 +51,7 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
     receipt = bind_candidate_input(
         workspace,
         flow,
-        "CTS",
+        "cts",
         "legalization",
         candidate_id="cts-rerun-001",
     )
@@ -62,8 +62,8 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
     assert receipt["schema"] == "ecc.workspace.candidate_input_binding.v1"
     assert receipt["schema_version"] == 1
     assert receipt["candidate_id"] == "cts-rerun-001"
-    assert receipt["target_step"] == "CTS"
-    assert receipt["target"] == {"step": "CTS"}
+    assert receipt["target_step"] == "cts"
+    assert receipt["target"] == {"step": "cts"}
     assert receipt["source"] == {"step": "legalization"}
     assert receipt["inputs"]["def"] == {
         "ref": "legalization_ecc/output/gcd_legalization.def.gz",
@@ -71,10 +71,10 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
     }
 
     cts.input = {"def": Path("stale.def"), "verilog": Path("stale.v"), "db": Path("stale_db")}
-    assert reapply_candidate_input_binding(workspace, flow, "route") is None
+    assert reapply_candidate_input_binding(workspace, flow, "routing") is None
     assert cts.input["def"] == Path("stale.def")
 
-    applied = reapply_candidate_input_binding(workspace, flow, "CTS")
+    applied = reapply_candidate_input_binding(workspace, flow, "cts")
 
     assert applied is not None
     assert applied["inputs"]["def"]["sha256"] == _sha256(legalization.output["def"])
@@ -82,7 +82,7 @@ def test_bind_and_reapply_cts_from_legalization_uses_checkpoint_outputs(tmp_path
 
 
 def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
-    cts = EccStep(name="CTS", input=StepInput())
+    cts = EccStep(name="cts", input=StepInput())
     legalization_output = _step(tmp_path, "legalization").output
     legalization = EccStep(
         name="legalization",
@@ -98,7 +98,7 @@ def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
     bind_candidate_input(
         workspace,
         _Flow(cts, legalization),
-        "CTS",
+        "cts",
         "legalization",
         candidate_id="cts-rerun-typed-output",
     )
@@ -111,15 +111,15 @@ def test_bind_candidate_input_reads_typed_ecc_output_paths(tmp_path):
 @pytest.mark.parametrize(
     "target_step,source_step",
     [
-        ("Floorplan", "initial"),
-        ("Floorplan", "Synthesis"),
-        ("place", "Floorplan"),
-        ("CTS", "place"),
-        ("legalization", "CTS"),
-        ("route", "legalization"),
-        ("place", "CTS"),
-        ("legalization", "place"),
-        ("CTS", "legalization"),
+        ("floorplan", "initial"),
+        ("floorplan", "synthesis"),
+        ("placement", "floorplan"),
+        ("cts", "placement"),
+        ("legalization", "cts"),
+        ("routing", "legalization"),
+        ("placement", "cts"),
+        ("legalization", "placement"),
+        ("cts", "legalization"),
     ],
 )
 def test_canonical_candidate_input_edges_are_declared(tmp_path, target_step, source_step):
@@ -148,8 +148,8 @@ def test_canonical_candidate_input_edges_are_declared(tmp_path, target_step, sou
 
 
 def test_floorplan_accepts_a_verilog_only_synthesis_checkpoint(tmp_path):
-    floorplan = _step(tmp_path, "Floorplan")
-    synthesis = _step(tmp_path, "Synthesis")
+    floorplan = _step(tmp_path, "floorplan")
+    synthesis = _step(tmp_path, "synthesis")
     synthesis.output["def"].unlink()
     synthesis.output["def"] = None
     workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
@@ -157,8 +157,8 @@ def test_floorplan_accepts_a_verilog_only_synthesis_checkpoint(tmp_path):
     receipt = bind_candidate_input(
         workspace,
         _Flow(floorplan, synthesis),
-        "Floorplan",
-        "Synthesis",
+        "floorplan",
+        "synthesis",
         candidate_id="floorplan-from-synthesis",
     )
 
@@ -167,16 +167,16 @@ def test_floorplan_accepts_a_verilog_only_synthesis_checkpoint(tmp_path):
 
 
 def test_noncanonical_candidate_edge_is_rejected(tmp_path):
-    cts = _step(tmp_path, "CTS")
-    route = _step(tmp_path, "route")
+    cts = _step(tmp_path, "cts")
+    route = _step(tmp_path, "routing")
     workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
 
     with pytest.raises(CandidateInputBindingError):
         bind_candidate_input(
             workspace,
             _Flow(cts, route),
-            "CTS",
-            "route",
+            "cts",
+            "routing",
             candidate_id="invalid-edge",
         )
 
@@ -198,7 +198,7 @@ def test_filler_candidate_binding_is_rejected(tmp_path):
 
 @pytest.mark.parametrize("candidate_id", ["", "bad id", "../candidate"])
 def test_binding_rejects_invalid_candidate_id(tmp_path, candidate_id):
-    cts = _step(tmp_path, "CTS")
+    cts = _step(tmp_path, "cts")
     legalization = _step(tmp_path, "legalization")
     workspace = SimpleNamespace(directory=str(tmp_path), design=SimpleNamespace())
 
@@ -206,7 +206,7 @@ def test_binding_rejects_invalid_candidate_id(tmp_path, candidate_id):
         bind_candidate_input(
             workspace,
             _Flow(cts, legalization),
-            "CTS",
+            "cts",
             "legalization",
             candidate_id=candidate_id,
         )

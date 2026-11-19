@@ -149,7 +149,7 @@ def status(batch: Path):
     for row in summary["rows"]:
         if row["status"] != "running":
             continue
-        log = workspace(batch, row["case"]) / "place_dreamplace/log/place.log"
+        log = workspace(batch, row["case"]) / "placement_dreamplace/log/placement.log"
         if log.exists():
             with log.open("rb") as stream:
                 stream.seek(max(0, log.stat().st_size - 65536))

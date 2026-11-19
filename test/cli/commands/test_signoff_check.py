@@ -40,7 +40,7 @@ def test_flow_gate_requires_all_steps_success(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "flow.json").write_text(
-        json.dumps({"steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
+        json.dumps({"schema_version": 3, "steps": [{"state": "Success"}, {"state": "Ongoing"}]}),
         encoding="utf-8",
     )
 
@@ -109,7 +109,7 @@ def test_checker_gate_reports_failed_checklist_evidence(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
     (home / "checklist.json").write_text(
-        json.dumps({"checklist": [{"category": "drc", "state": "fail"}]}),
+        json.dumps({"checklist": [{"category": "drc", "state": "failed"}]}),
         encoding="utf-8",
     )
 
@@ -151,7 +151,7 @@ def test_overall_preserves_unknown_when_no_gate_fails():
 
 
 def test_lec_gate_requires_proven_result(tmp_path):
-    output = tmp_path / "postRouteLec_kepler_formal" / "output"
+    output = tmp_path / "post_route_lec_kepler_formal" / "output"
     output.mkdir(parents=True)
     (output / "run_result.json").write_text('{"status": "proven"}', encoding="utf-8")
 
@@ -159,7 +159,7 @@ def test_lec_gate_requires_proven_result(tmp_path):
 
 
 def test_artifact_gate_requires_one_nonempty_file(tmp_path):
-    output = tmp_path / "Harden_ecc" / "output"
+    output = tmp_path / "harden_ecc" / "output"
     output.mkdir(parents=True)
     artifact = output / "design.gds"
     artifact.write_bytes(b"gds")
@@ -172,29 +172,29 @@ def test_artifact_gate_requires_one_nonempty_file(tmp_path):
                     {
                         "title": "Harden GDS",
                         "state": "pass",
-                        "source": {"path": "Harden_ecc/output/design.gds"},
+                        "source": {"path": "harden_ecc/output/design.gds"},
                     }
                 ]
             }
         ),
         encoding="utf-8",
     )
-    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/checklist.json")
+    result = _artifact_gate(tmp_path, "Harden GDS", "harden_ecc/checklist.json")
     assert result["status"] == "pass"
 
 
 @pytest.mark.parametrize("checklist", [[None, "malformed"], "malformed"])
 def test_artifact_gate_ignores_malformed_checklist_entries(tmp_path, checklist):
-    checklist_path = tmp_path / "Harden_ecc" / "checklist.json"
+    checklist_path = tmp_path / "harden_ecc" / "checklist.json"
     checklist_path.parent.mkdir()
     checklist_path.write_text(json.dumps({"checklist": checklist}), encoding="utf-8")
 
-    result = _artifact_gate(tmp_path, "Harden GDS", "Harden_ecc/checklist.json")
+    result = _artifact_gate(tmp_path, "Harden GDS", "harden_ecc/checklist.json")
 
     assert result == {
         "status": "unknown",
         "reason": "artifact_evidence_unavailable",
-        "source": "Harden_ecc/checklist.json",
+        "source": "harden_ecc/checklist.json",
     }
 
 
@@ -215,7 +215,7 @@ def test_sta_gate_separates_setup_and_hold(tmp_path):
                         "id": "sta.hold",
                         "title": "STA hold closure",
                         "category": "quality_gate",
-                        "state": "fail",
+                        "state": "failed",
                     },
                 ]
             }
@@ -230,7 +230,9 @@ def test_sta_gate_separates_setup_and_hold(tmp_path):
 def test_flow_gate_reports_ongoing_as_fail(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Ongoing"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps({"schema_version": 3, "steps": [{"state": "Ongoing"}]}), encoding="utf-8"
+    )
 
     assert _flow_gate(tmp_path)["status"] == "fail"
 
@@ -242,7 +244,7 @@ def test_checker_gate_reports_drc_failure(tmp_path):
         json.dumps(
             {
                 "checklist": [
-                    {"category": "quality_gate", "state": "fail", "title": "DRC violations"}
+                    {"category": "quality_gate", "state": "failed", "title": "DRC violations"}
                 ]
             }
         ),
@@ -253,7 +255,7 @@ def test_checker_gate_reports_drc_failure(tmp_path):
 
 
 def test_lec_gate_reports_non_proven(tmp_path):
-    output = tmp_path / "postRouteLec_kepler_formal" / "output"
+    output = tmp_path / "post_route_lec_kepler_formal" / "output"
     output.mkdir(parents=True)
     (output / "run_result.json").write_text('{"status": "failed"}', encoding="utf-8")
 
@@ -261,7 +263,7 @@ def test_lec_gate_reports_non_proven(tmp_path):
 
 
 def test_netlist_gate_rejects_external_path(tmp_path):
-    output = tmp_path / "postRouteLec_kepler_formal" / "output"
+    output = tmp_path / "post_route_lec_kepler_formal" / "output"
     output.mkdir(parents=True)
     (output / "run_result.json").write_text(
         json.dumps({"gate_verilog": "/tmp/external.v.gz"}), encoding="utf-8"
@@ -294,7 +296,7 @@ def test_contract_gate_preserves_artifact_identity_fields():
     result = _contract_gate(
         {
             "status": "pass",
-            "source": "Harden_ecc/output/design.gds",
+            "source": "harden_ecc/output/design.gds",
             "bytes": 12,
             "sha256": "abc",
         }
@@ -318,7 +320,23 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "flow.json").write_text(json.dumps({"steps": [{"state": "Success"}]}), encoding="utf-8")
+    (home / "flow.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "harden",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "category": "PNR",
+                        "directory": "harden_ecc",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     (home / "qor_report.json").write_text(json.dumps({"score": 90}), encoding="utf-8")
     monkeypatch.setattr(
         module,
@@ -342,3 +360,34 @@ def test_signoff_contract_exit_code_matrix(monkeypatch, tmp_path, status, expect
     assert result.exit_code == expected_code
     assert result.records[0]["status"] == status
     assert all("status" in record for record in result.records[1:])
+
+
+@pytest.mark.parametrize(
+    ("checker", "metric_id"),
+    [
+        ("drc", "drc_count"),
+        ("lvs", "lvs_count"),
+        ("sta", "sta_setup_violation_count"),
+    ],
+)
+def test_skipped_checker_never_passes_signoff(tmp_path, checker, metric_id):
+    from chipcompiler.data.workspace import build_dynamic_flow_data
+
+    ledger = build_dynamic_flow_data({"preset": "rtl2gds", "skip_steps": [checker]})
+    (tmp_path / "home").mkdir()
+    (tmp_path / "home" / "flow.json").write_text(json.dumps(ledger))
+    # Clean evidence left in the tree (a copied or reused directory) is not
+    # evidence of a checker this ledger does not run.
+    _write_metric(tmp_path, checker, {metric_id: 0})
+
+    result = _metric_checker_gate(tmp_path, checker, metric_id)
+
+    assert result == {
+        "source": None,
+        "violation_count": None,
+        "failed_items": [],
+        "stale": False,
+        "provisional": True,
+        "status": "unknown",
+        "reason": f"{checker}_evidence_unavailable",
+    }

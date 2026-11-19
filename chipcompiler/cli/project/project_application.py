@@ -15,8 +15,8 @@ from chipcompiler.cli.project.config import (
 )
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
-from chipcompiler.cli.project.params import lookup_schema, parse_value, validate_value
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.params import parse_value, validate_value
 from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
 from chipcompiler.project.manifest_write import (
     base_design_from_config,
@@ -326,18 +326,8 @@ def _reconcile_workspace_state(
     blocking: bool,
     repairs: list[str],
 ) -> None:
-    from chipcompiler.data import load_workspace, recover_workspace_file_transaction
-    from chipcompiler.data.schema_migrations import (
-        ENGINEERING_SNAPSHOT,
-        read_file_schema_version,
-    )
+    from chipcompiler.data import recover_workspace_file_transaction
     from chipcompiler.engine.interrupted_run import recover_interrupted_run
-    from chipcompiler.engine.snapshot import (
-        LEGACY_SNAPSHOT_SCHEMA_VERSION,
-        SNAPSHOT_V3_SCHEMA_VERSION,
-        SNAPSHOT_V4_SCHEMA_VERSION,
-        migrate_engineering_snapshot,
-    )
     from chipcompiler.project.runtime_processes import (
         RuntimeProcessError,
         identity_is_live,
@@ -355,20 +345,6 @@ def _reconcile_workspace_state(
         if _reconcile_workspace_refresh_exchange(workspace):
             repairs.append(f"refresh_exchange:{workspace_id}")
         recover_workspace_file_transaction(workspace)
-        version = read_file_schema_version(ENGINEERING_SNAPSHOT, workspace)
-        if version in {
-            LEGACY_SNAPSHOT_SCHEMA_VERSION,
-            SNAPSHOT_V3_SCHEMA_VERSION,
-            SNAPSHOT_V4_SCHEMA_VERSION,
-        }:
-            loaded = load_workspace(workspace)
-            if loaded is None:
-                raise ProjectApplicationError(
-                    "workspace_invalid", "Workspace cannot be loaded for Snapshot migration"
-                )
-            migrate_engineering_snapshot(loaded)
-            repairs.append(f"snapshot:{workspace_id}")
-
         raw_processes = current.raw.get("runtime_processes", {})
         raw_entry = raw_processes.get(workspace_id) if isinstance(raw_processes, dict) else None
         if raw_entry is None:
@@ -633,6 +609,35 @@ def _validate_conflicts(
         )
 
 
+def _pdk_name(text: str) -> str | None:
+    """The ``[pdk] name`` declared in *text*, for PDK-specific parameter choices."""
+    import tomllib
+
+    try:
+        table = tomllib.loads(text).get("pdk")
+    except tomllib.TOMLDecodeError:
+        return None
+    name = table.get("name") if isinstance(table, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
+def _batch_pdk(text: str, parsed_sets: tuple[tuple[str, str], ...]) -> str | None:
+    """The PDK family the batch ends with: its last ``pdk.name`` set, else the text's."""
+    declared = [raw for key, raw in parsed_sets if key == "pdk.name" and raw]
+    return declared[-1] if declared else _pdk_name(text)
+
+
+def _parameter_key(key: str):
+    """``(step, schema)`` of a parameter key, ``<step>:``-qualified for a step value."""
+    from chipcompiler.data.step_parameters import parse_step_key
+
+    step, schema, error = parse_step_key(key)
+    if schema is not None and error is not None:
+        code = "parameter_step_required" if step is None else "parameter_not_applicable"
+        raise ProjectApplicationError(code, error, key=key)
+    return step, schema
+
+
 def _apply_text(
     text: str,
     *,
@@ -643,9 +648,11 @@ def _apply_text(
 ) -> tuple[str, list[str]]:
     changed: list[str] = []
     updated = text
+    # A batch may set pdk.name together with PDK-specific choices, in any order.
+    pdk = _batch_pdk(text, parsed_sets)
     for key, raw in parsed_sets:
         field = lookup_project_field(key)
-        schema = lookup_schema(key)
+        step, schema = _parameter_key(key) if field is None else (None, None)
         if field is not None:
             value = _parse_field_value(field, raw)
             updated = set_scoped_key(updated, field.table, field.name, value)
@@ -654,20 +661,20 @@ def _apply_text(
                 value = parse_value(raw, schema)
             except ValueError as exc:
                 raise ProjectApplicationError("invalid_value", str(exc), key=key) from exc
-            errors = validate_value(value, schema)
+            errors = validate_value(value, schema, pdk)
             if errors:
                 raise ProjectApplicationError("invalid_value", errors[0], key=key)
-            updated = set_parameter(updated, schema, value)
+            updated = set_parameter(updated, schema, value, step)
         else:
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         changed.append(key)
     for key in unsets:
         field = lookup_project_field(key)
-        schema = lookup_schema(key)
+        step, schema = _parameter_key(key) if field is None else (None, None)
         if field is not None:
             result = remove_scoped_key(updated, field.table, field.name)
         elif schema is not None:
-            result = unset_parameter(updated, schema)
+            result = unset_parameter(updated, schema, step)
         else:
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         if result is not None:

@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING
 
+from chipcompiler.data import StepEnum
+from chipcompiler.data.step_config_reads import ConfigRead
+
 from .builder import build_step, build_step_config, build_step_space
 from .checklist import EccChecklist
 from .metrics import build_step_metrics
@@ -27,7 +30,28 @@ else:
         return sorted(set(globals()) | _PLOT_EXPORTS)
 
 
+#: The workspace configs each ECC-Tools step reads (``ToolModule``).
+STEP_CONFIG_READS = {
+    StepEnum.PRE_FLOORPLAN: (ConfigRead("db"), ConfigRead("floorplan")),
+    StepEnum.POST_FLOORPLAN: (
+        ConfigRead("db"),
+        ConfigRead("floorplan"),
+        ConfigRead("macro_location"),
+    ),
+    StepEnum.PLACEMENT: (ConfigRead("db"),),
+    StepEnum.CTS: (ConfigRead("db"), ConfigRead("cts")),
+    StepEnum.ROUTING: (ConfigRead("db"), ConfigRead("routing")),
+    StepEnum.DRC: (ConfigRead("db"), ConfigRead("drc")),
+    StepEnum.ANTENNA_CHECK: (ConfigRead("db"),),
+    StepEnum.LEGALIZATION: (ConfigRead("db"),),
+    StepEnum.FILLER: (ConfigRead("db"), ConfigRead("filler")),
+    StepEnum.RCX: (ConfigRead("db"), ConfigRead("rcx")),
+    StepEnum.STA: (ConfigRead("db"), ConfigRead("rcx"), ConfigRead("sta")),
+    StepEnum.EMIR: (ConfigRead("db"), ConfigRead("emir")),
+}
+
 __all__ = [
+    "STEP_CONFIG_READS",
     "is_eda_exist",
     "build_step",
     "build_step_space",

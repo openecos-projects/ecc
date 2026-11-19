@@ -6,7 +6,6 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.data.types import StepEnum
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import PathArg, path_list, path_text
 
@@ -597,12 +596,7 @@ class ECCToolsModule:
         """
         generate step feature
         """
-        native_step = {
-            StepEnum.PLACEMENT.value: "placement",
-            StepEnum.CTS.value: "cts",
-            StepEnum.ROUTING.value: "routing",
-        }.get(step, step)
-        self.ecc.feature_tool(json_path, native_step)
+        self.ecc.feature_tool(json_path, step)
 
     def feature_eval_map(self, path: PathArg, bin_cnt_x: int, bin_cnt_y: int):
         return self.ecc.feature_eval_map(
@@ -953,8 +947,11 @@ class ECCToolsModule:
         analysis_mode = analysis_mode.lower()
         if not design_name:
             design_name = output_lib_path.stem
-            if design_name.endswith("_Harden"):
-                design_name = design_name[: -len("_Harden")]
+            from chipcompiler.data import StepEnum
+
+            harden_suffix = f"_{StepEnum.HARDEN.value}"
+            if design_name.endswith(harden_suffix):
+                design_name = design_name[: -len(harden_suffix)]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
         if not self.ecc.lib_init(lib_paths=lib_paths):

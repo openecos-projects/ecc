@@ -215,11 +215,6 @@ def prepare_workspaces(batch: Path):
             top_module=case["top"],
             clock=case["clock"],
             frequency_max=case["frequency_mhz"],
-            cell_padding_x=profile["cell_padding_x"],
-            target_density=profile["target_density"],
-            target_overflow=profile["stop_overflow"],
-            bottom_layer="MET2",
-            top_layer="MET5",
             config_overrides={"dreamplace": profile},
         )
         project = batch / "projects" / name
@@ -241,7 +236,7 @@ def prepare_workspaces(batch: Path):
         require(result is not None, f"Workspace creation failed: {name}")
         create_project_manifest(project, "placement-regression-" + name, name)
         original = read(out / "source-project.json")
-        design = original["base_design"]
+        design = {k: v for k, v in original["base_design"].items() if k != "parameters"}
         design.update(
             origin_def=case["inputs"]["def"],
             netlist=case["inputs"]["verilog"],
@@ -253,18 +248,6 @@ def prepare_workspaces(batch: Path):
             ),
             name,
         )
-        patch = original["workspaces"][-1]["parameter_patch"]
-        patch.update(
-            {
-                key: {"from": None, "to": parameters[key]}
-                for key in (
-                    "cell_padding_x",
-                    "target_density",
-                    "target_overflow",
-                    "config_overrides",
-                )
-            }
-        )
         mutate_project_manifest(
             project,
             {
@@ -272,7 +255,6 @@ def prepare_workspaces(batch: Path):
                 "workspace_id": "placement",
                 "name": name,
                 "workspace_path": str(target),
-                "parameter_patch": patch,
             },
         )
         cfg = read(target / "config/dreamplace_ecc.json")

@@ -6,24 +6,32 @@ import pytest
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.inspection.step_outputs import output_records
 from chipcompiler.engine.snapshot import _write_snapshot, create_engineering_snapshot
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
 def indexed_workspace(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)
-    steps = [{"name": "place", "tool": "dreamplace", "state": "Success"}]
-    (root / "home" / "flow.json").write_text(json.dumps({"steps": steps}))
+    steps = [
+        {
+            "name": "placement",
+            "tool": "dreamplace",
+            "state": "Success",
+            **step_fields("placement", "dreamplace"),
+        }
+    ]
+    (root / "home" / "flow.json").write_text(json.dumps({"schema_version": 3, "steps": steps}))
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": steps}),
+        flow=SimpleNamespace(data={"schema_version": 3, "steps": steps}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
     snapshot = create_engineering_snapshot(workspace, workspace_id="workspace")
     snapshot["stepOutputs"]["steps"] = [
         {
-            "step": "place",
+            "step": "placement",
             "tool": "dreamplace",
             "state": "Success",
             "verilog": {"path": "output.v", "exists": True},
@@ -47,7 +55,7 @@ def test_outputs_cli_reads_real_snapshot_without_writes(indexed_workspace, capsy
         [
             "report",
             "step",
-            "place",
+            "placement",
             "--workspace",
             str(root),
             "--section",
@@ -121,7 +129,7 @@ def test_outputs_retained_after_rerun_are_not_current(indexed_workspace, state):
 
 def test_outputs_honors_snapshot_invalidation(indexed_workspace):
     root, snapshot = indexed_workspace
-    snapshot["stalePredecessor"] = {"workspaceRevision": 1, "invalidatedStepIds": ["place"]}
+    snapshot["stalePredecessor"] = {"workspaceRevision": 1, "invalidatedStepIds": ["placement"]}
     _write_snapshot(root / "home" / "engineering-snapshot.json", snapshot)
     assert {record["validity"] for record in output_records(str(root), "placement", "success")} == {
         "not_current"
@@ -137,7 +145,7 @@ def test_outputs_corrupt_snapshot_is_unavailable(indexed_workspace, payload):
     assert path.read_text() == payload
 
 
-def test_outputs_legacy_snapshot_is_not_migrated(indexed_workspace):
+def test_outputs_older_snapshot_is_rejected_without_writes(indexed_workspace):
     root, snapshot = indexed_workspace
     snapshot["schemaVersion"] = 3
     snapshot.pop("stepOutputs")
@@ -153,9 +161,14 @@ def test_outputs_check_current_files_without_trusting_cached_exists(tmp_path, mo
     (tmp_path / "output.def").write_text("DEF")
     snapshot = {
         "stepOutputs": {
+            "schema_version": 3,
             "steps": [
-                {"step": "place", "verilog": None, "def": {"path": "output.def", "exists": False}}
-            ]
+                {
+                    "step": "placement",
+                    "verilog": None,
+                    "def": {"path": "output.def", "exists": False},
+                }
+            ],
         }
     }
     monkeypatch.setattr(
@@ -181,7 +194,8 @@ def test_outputs_check_current_files_without_trusting_cached_exists(tmp_path, mo
 def test_outputs_do_not_stat_external_paths(tmp_path, monkeypatch):
     snapshot = {
         "stepOutputs": {
-            "steps": [{"step": "sta", "def": {"path": "../external.def", "exists": True}}]
+            "schema_version": 3,
+            "steps": [{"step": "sta", "def": {"path": "../external.def", "exists": True}}],
         }
     }
     monkeypatch.setattr(

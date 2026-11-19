@@ -176,15 +176,13 @@ def _sweep_stale_staging(target: Path) -> None:
 
 
 def _reset_step_suffix(engine_flow, reset_from_step: str) -> list:
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    identity = normalize_flow_step(reset_from_step).casefold()
+    identity = str(reset_from_step)
     workspace_steps = list(getattr(engine_flow, "workspace_steps", []))
     index = next(
         (
             position
             for position, step in enumerate(workspace_steps)
-            if normalize_flow_step(str(getattr(step, "name", ""))).casefold() == identity
+            if str(getattr(step, "name", "")) == identity
         ),
         -1,
     )

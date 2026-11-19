@@ -11,7 +11,7 @@ def _ns(**kwargs: object) -> Any:
 
 
 def test_placement_checklist_writes_current_empty_v3_snapshot(tmp_path):
-    checklist_path = tmp_path / "place_dreamplace" / "checklist.json"
+    checklist_path = tmp_path / "placement_dreamplace" / "checklist.json"
     step = _ns(
         name=StepEnum.PLACEMENT.value,
         checklist=ChecklistState(path=checklist_path),

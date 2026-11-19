@@ -42,7 +42,7 @@ def test_benchmark_records_dedicated_power_summary_and_requires_timing_coverage(
         "sta_corner_count": 1,
         "sta_missing_corner_count": 0,
     }
-    for stage in ("sta_ecc", "Harden_ecc"):
+    for stage in ("sta_ecc", "harden_ecc"):
         root = tmp_path / stage
         (root / "analysis").mkdir(parents=True)
         (root / "analysis/qor_metrics.json").write_text(
@@ -52,11 +52,11 @@ def test_benchmark_records_dedicated_power_summary_and_requires_timing_coverage(
     corner = tmp_path / "sta_ecc/feature/MAX/RCworst"
     corner.mkdir(parents=True)
     (corner / "qor_summary.json").write_text("{}")
-    power_summary = tmp_path / "powerAnalysis_ecc/feature/power_summary.json"
+    power_summary = tmp_path / "power_analysis_ecc/feature/power_summary.json"
     power_summary.parent.mkdir(parents=True)
     power_summary.write_text("{}")
 
     payload = _metric_payload(tmp_path)
 
     assert payload["sta_ecc/metrics"] == metrics
-    assert payload["powerAnalysis_ecc/feature/power_summary.json"] == {}
+    assert payload["power_analysis_ecc/feature/power_summary.json"] == {}

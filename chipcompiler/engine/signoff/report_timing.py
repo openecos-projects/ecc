@@ -7,8 +7,8 @@ depend on that rollup.
 """
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.engine.signoff.report_data import (
+    PARAMETERS_STAGE,
     ClockMetrics,
     CornerTimingRecord,
     TimingMetrics,
@@ -25,7 +25,7 @@ def _extract_corner_records(store, inputs) -> list[CornerTimingRecord]:
     """Merge STA corner payloads from stage stores and corner reports."""
     merged_corners: dict[str, dict] = {}
     corner_sources = []
-    for stage_name in ("STA", STEP_DIRECTORIES[StepEnum.STA.value], "Synth"):
+    for stage_name in (StepEnum.STA, StepEnum.SYNTHESIS):
         stage_data = store.stage(stage_name)
         corners = stage_data.get("corners") if _is_record(stage_data) else None
         if _is_record(corners):
@@ -147,7 +147,14 @@ def _timing_targets(q, inputs):
     period_value = q(
         "Timing",
         "Target Clock Period",
-        ["STA", "CTS", "Route", "Place", "Synth", "Parameters", "Home"],
+        [
+            StepEnum.STA,
+            StepEnum.CTS,
+            StepEnum.ROUTING,
+            StepEnum.PLACEMENT,
+            StepEnum.SYNTHESIS,
+            PARAMETERS_STAGE,
+        ],
         [
             "clock_period",
             "CLOCK_PERIOD",
@@ -169,7 +176,7 @@ def _timing_targets(q, inputs):
     freq_value = q(
         "Timing",
         "Target Frequency",
-        ["STA", "Parameters", "Home", "Synth"],
+        [StepEnum.STA, PARAMETERS_STAGE, StepEnum.SYNTHESIS],
         [
             "Frequency max [MHz]",
             "Frequency max",
@@ -201,7 +208,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "setup_wns_ns": q(
             "Timing",
             "Setup WNS",
-            ["STA", "Route", "CTS", "Place", "Synth"],
+            [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.PLACEMENT, StepEnum.SYNTHESIS],
             [
                 "sta_setup_wns",
                 "setup_wns",
@@ -217,7 +224,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "setup_tns_ns": q(
             "Timing",
             "Setup TNS",
-            ["STA", "Route", "CTS", "Place", "Synth"],
+            [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.PLACEMENT, StepEnum.SYNTHESIS],
             [
                 "sta_setup_tns",
                 "setup_tns",
@@ -232,7 +239,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "hold_wns_ns": q(
             "Timing",
             "Hold WNS",
-            ["STA", "Route", "CTS", "Place"],
+            [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.PLACEMENT],
             [
                 "sta_hold_wns",
                 "hold_wns",
@@ -245,7 +252,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "hold_tns_ns": q(
             "Timing",
             "Hold TNS",
-            ["STA", "Route", "CTS", "Place"],
+            [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.PLACEMENT],
             [
                 "sta_hold_tns",
                 "hold_tns",
@@ -257,7 +264,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "violating_endpoints_setup": q(
             "Timing",
             "Setup Violating Endpoints",
-            ["STA", "Route"],
+            [StepEnum.STA, StepEnum.ROUTING],
             [
                 "violating_endpoints_setup",
                 "setup.nvp",
@@ -271,7 +278,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
         "violating_endpoints_hold": q(
             "Timing",
             "Hold Violating Endpoints",
-            ["STA", "Route"],
+            [StepEnum.STA, StepEnum.ROUTING],
             [
                 "violating_endpoints_hold",
                 "hold.nvp",
@@ -288,7 +295,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
     fmax_mhz = q(
         "Timing",
         "Achieved Fmax",
-        ["STA", "Route", "CTS"],
+        [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS],
         [
             "sta_frequency_mhz",
             "frequency_mhz",
@@ -310,7 +317,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
     slew_violations = q(
         "Timing",
         "Max Slew Violations",
-        ["STA", "Route", "CTS", "Synth"],
+        [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.SYNTHESIS],
         [
             "slew_violations",
             "max_slew_violations",
@@ -327,7 +334,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
     cap_violations = q(
         "Timing",
         "Max Cap Violations",
-        ["STA", "Route", "CTS", "Synth"],
+        [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.SYNTHESIS],
         [
             "cap_violations",
             "max_cap_violations",
@@ -343,7 +350,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
     fanout_violations = q(
         "Timing",
         "Max Fanout Violations",
-        ["STA", "Route", "Fanout", "CTS", "Synth"],
+        [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.SYNTHESIS],
         [
             "fanout_violations",
             "max_fanout_violations",
@@ -360,7 +367,7 @@ def _extract_timing(q, inputs, corners) -> TimingMetrics:
     critical_path_delay_ns = q(
         "Timing",
         "Critical Path Delay",
-        ["STA", "Route", "CTS", "Synth"],
+        [StepEnum.STA, StepEnum.ROUTING, StepEnum.CTS, StepEnum.SYNTHESIS],
         [
             "critical_path_delay",
             "critical_path_delay_ns",
@@ -398,7 +405,7 @@ def _extract_clock(q) -> ClockMetrics:
     skew_value, _stage, skew_key = q(
         "Clock",
         "Clock Skew",
-        ["CTS", "STA", "Route"],
+        [StepEnum.CTS, StepEnum.STA, StepEnum.ROUTING],
         [
             "cts_worst_optimized_skew_ns",
             "worst_optimized_skew_ns",
@@ -422,7 +429,7 @@ def _extract_clock(q) -> ClockMetrics:
     clock_buffer_count = q(
         "Clock",
         "Clock Buffer Count",
-        ["CTS", "Route", "Place", "PostFloorplan"],
+        [StepEnum.CTS, StepEnum.ROUTING, StepEnum.PLACEMENT, StepEnum.POST_FLOORPLAN],
         [
             "cts_buffer_count",
             "CTS.buffer_num",
@@ -435,13 +442,13 @@ def _extract_clock(q) -> ClockMetrics:
     clock_inverter_count = q(
         "Clock",
         "Clock Inverter Count",
-        ["CTS", "Route"],
+        [StepEnum.CTS, StepEnum.ROUTING],
         ["cts_inverter_count", "clock_inverter_count", "clock_inverters", "num_clock_inverters"],
     )[0]
     clock_cell_count = q(
         "Clock",
         "Clock Cell Count",
-        ["CTS", "Route", "Harden"],
+        [StepEnum.CTS, StepEnum.ROUTING, StepEnum.HARDEN],
         ["Instances.clock.num", "clock_cell_count", "clock_cells"],
     )[0]
     if clock_cell_count is not None:
@@ -456,7 +463,7 @@ def _extract_clock(q) -> ClockMetrics:
         clock_latency_ns=q(
             "Clock",
             "Clock Insertion Latency",
-            ["CTS", "STA", "Route"],
+            [StepEnum.CTS, StepEnum.STA, StepEnum.ROUTING],
             [
                 "cts_worst_max_insertion_latency_ns",
                 "worst_max_insertion_latency_ns",
@@ -473,7 +480,7 @@ def _extract_clock(q) -> ClockMetrics:
         clock_wirelength_um=q(
             "Clock",
             "Clock Wirelength",
-            ["CTS", "Route"],
+            [StepEnum.CTS, StepEnum.ROUTING],
             [
                 "total_clock_wirelength",
                 "CTS.total_clock_wirelength",
@@ -485,7 +492,7 @@ def _extract_clock(q) -> ClockMetrics:
         clock_max_wirelength_um=q(
             "Clock",
             "Max Clock Wirelength",
-            ["CTS", "Route"],
+            [StepEnum.CTS, StepEnum.ROUTING],
             ["cts_clock_wirelength_max", "max_clock_wirelength", "CTS.max_clock_wirelength"],
         )[0],
         clock_buffer_count=clock_buffer_count,
@@ -494,31 +501,31 @@ def _extract_clock(q) -> ClockMetrics:
         clock_buffer_area_um2=q(
             "Clock",
             "Clock Buffer Area",
-            ["CTS", "Route"],
+            [StepEnum.CTS, StepEnum.ROUTING],
             ["cts_buffer_area", "CTS.buffer_area", "buffer_area", "clock_buffer_area"],
         )[0],
         clock_path_max_buffer=q(
             "Clock",
             "Clock Path Max Buffer",
-            ["CTS"],
+            [StepEnum.CTS],
             ["clock_path_max_buffer", "CTS.clock_path_max_buffer", "max_buffer_per_path"],
         )[0],
         clock_path_min_buffer=q(
             "Clock",
             "Clock Path Min Buffer",
-            ["CTS"],
+            [StepEnum.CTS],
             ["clock_path_min_buffer", "CTS.clock_path_min_buffer", "min_buffer_per_path"],
         )[0],
         clock_nets_count=q(
             "Clock",
             "Clock Nets Count",
-            ["CTS", "Route", "Harden"],
+            [StepEnum.CTS, StepEnum.ROUTING, StepEnum.HARDEN],
             ["Nets.num_clock", "num_clock_nets", "clock_nets", "num_clock"],
         )[0],
         clock_tree_levels=q(
             "Clock",
             "Clock Tree Levels",
-            ["CTS", "STA"],
+            [StepEnum.CTS, StepEnum.STA],
             [
                 "cts_clock_tree_max_level",
                 "CTS.max_level_of_clock_tree",

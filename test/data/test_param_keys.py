@@ -2,7 +2,6 @@
 
 from chipcompiler.data.param_keys import (
     AGENT_KNOB_MAP,
-    DIE_AREA_MODE_TO_DIE_BUILDER_MODE,
     DISPLAY_KEY_MAP,
     AgentKnob,
     display_key_for,
@@ -47,11 +46,6 @@ def test_knob_value_transforms_follow_the_agent_contract():
     assert by_id["design.frequency_max"].value_transform is None
     assert AgentKnob("place.num_threads").value_transform is None
     assert "floorplan.utilitization" not in by_id
-
-
-def test_die_area_mode_values_select_die_builder_mode():
-    assert DIE_AREA_MODE_TO_DIE_BUILDER_MODE["width_height"] == "die_size"
-    assert DIE_AREA_MODE_TO_DIE_BUILDER_MODE["utilitization_margin"] == "die_util"
 
 
 def test_parameter_catalog_records_carry_display_key_and_knob_id():

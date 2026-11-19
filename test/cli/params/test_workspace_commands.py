@@ -18,6 +18,8 @@ class _Flow:
 def _workspace(workspace_dir):
     parameters_path = workspace_dir / "home" / "params.toml"
     parameters_path.parent.mkdir(parents=True)
+    dreamplace_config = workspace_dir / "dreamplace_ecc.json"
+    dreamplace_config.write_text('{"target_density": 0.2}')
     return SimpleNamespace(
         directory=workspace_dir,
         parameters=Parameters(
@@ -27,18 +29,42 @@ def _workspace(workspace_dir):
                 "design": "gcd",
                 "top_module": "gcd",
                 "clock": "clk",
-                "dreamplace": {"target_density": 0.2},
             },
         ),
-        config={},
+        config={"dreamplace": dreamplace_config},
         flow=SimpleNamespace(
             path=parameters_path.parent / "flow.json",
             data={
+                "schema_version": 3,
                 "steps": [
-                    {"name": "Synthesis", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                    {"name": "place", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                    {"name": "route", "state": "Success", "runtime": "", "peak memory (mb)": 0},
-                ]
+                    {
+                        "name": "synthesis",
+                        "tool": "yosys",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "synthesis_yosys",
+                    },
+                    {
+                        "name": "placement",
+                        "tool": "dreamplace",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "placement_dreamplace",
+                    },
+                    {
+                        "name": "routing",
+                        "tool": "ecc",
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "category": "PNR",
+                        "directory": "routing_ecc",
+                    },
+                ],
             },
         ),
     )
@@ -58,7 +84,7 @@ def _write_manifest(project_dir: str) -> None:
                     "top_module": "gcd",
                     "clock": "clk",
                     "rtl_list": ["rtl/gcd.v"],
-                    "parameters": {"design": "gcd", "frequency_max": 100},
+                    "frequency_mhz": 100,
                 },
                 "workspaces": [
                     {
@@ -147,7 +173,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
         [
             "param",
             "set",
-            "place.target_density",
+            "placement:place.target_density",
             "0.65",
             "--workspace",
             "baseline",
@@ -160,9 +186,9 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
     assert record["value"] == "0.65"
-    assert record["from_step"] == "place"
-    assert record["invalidated_steps"] == "['place', 'route']"
-    assert workspace.parameters.data["dreamplace"]["target_density"] == 0.65
+    assert record["from_step"] == "placement"
+    assert record["invalidated_steps"] == "['placement', 'routing']"
+    assert workspace.parameters.data["step_params"] == {"placement": {"place.target_density": 0.65}}
     assert [step["state"] for step in workspace.flow.data["steps"]] == [
         "Success",
         "Unstart",
@@ -174,7 +200,7 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
         [
             "param",
             "unset",
-            "place.target_density",
+            "placement:place.target_density",
             "--workspace",
             "baseline",
             "--project",
@@ -185,7 +211,8 @@ def test_workspace_param_set_persists_and_invalidates_suffix(
 
     assert rc == 0
     assert plain_records(capsys.readouterr().out)[0]["value"] == "0.2"
-    assert workspace.parameters.data["dreamplace"]["target_density"] == 0.2
+    # Unset drops the step value again: the step had none before the set.
+    assert "step_params" not in workspace.parameters.data
 
 
 def test_workspace_param_refresh_failure_rolls_back_params(
@@ -210,7 +237,7 @@ def test_workspace_param_refresh_failure_rolls_back_params(
         [
             "param",
             "set",
-            "place.target_density",
+            "placement:place.target_density",
             "0.65",
             "--workspace",
             "baseline",
@@ -255,7 +282,7 @@ def test_workspace_param_list_honors_step_filter(
             "--workspace",
             "baseline",
             "--step",
-            "place",
+            "placement",
             "--project",
             project_dir,
             "--plain",
@@ -327,7 +354,7 @@ def test_workspace_param_list_matches_first_step_configuration(
     records = plain_records(capsys.readouterr().out)
     assert [record["id"] for record in records] == synthesis_parameter_ids
     assert records[0]["record"] == "parameter"
-    assert records[0]["step_id"] == "Synthesis"
+    assert records[0]["step_id"] == "synthesis"
     assert records[0]["type"] == "float"
     assert records[0]["applies_to"] == "synthesis"
     assert records[0]["value_literal"] == "100.0"
@@ -365,4 +392,4 @@ def test_workspace_param_list_hydrates_persisted_flow_ledger(
     assert rc == 0
     records = plain_records(capsys.readouterr().out)
     assert [record["id"] for record in records] == synthesis_parameter_ids
-    assert records[0]["step_id"] == "Synthesis"
+    assert records[0]["step_id"] == "synthesis"

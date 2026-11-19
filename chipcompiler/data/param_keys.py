@@ -11,17 +11,11 @@ Display keys use the corrected spelling ``utilization``. Older GUI builds
 emit the misspelling ``utilitization`` or the alias ``core_utilization`` for
 the same field; both denote ``DISPLAY_KEY_MAP["utilization"]``.
 
-The legacy-tree geometry aliases consumed by
-:mod:`chipcompiler.data.parameter_keys` (``die_width``/``die_height``/
-``utilitization``/``margin`` folded into the ``die``/``core`` subtrees of
-``workspace.parameters.data``) are a different vocabulary and stay there;
-this module maps display keys onto the flat ``PARAM_REGISTRY`` spec keys.
+This module maps display keys onto the flat ``PARAM_REGISTRY`` spec keys.
 
 Value-shape notes mirrored from the GUI seed data:
 
 - ``margin`` is a single scalar the GUI expands to ``[margin, margin]``.
-- ``die_area_mode`` selects the die-builder strategy; see
-  :data:`DIE_AREA_MODE_TO_DIE_BUILDER_MODE`.
 """
 
 from collections.abc import Callable
@@ -54,18 +48,12 @@ DISPLAY_KEY_MAP: dict[str, str] = {
     "margin": "floorplan.core_margin",
     "die_width": "floorplan.die_builder.die_size.width_micron",
     "die_height": "floorplan.die_builder.die_size.height_micron",
-    "die_area_mode": "floorplan.die_builder.mode",
     "max_fanout": "cts.max_fanout",
     "sta_max_parallel_corners": "sta.max_parallel_corners",
     "target_density": "place.target_density",
-    "target_overflow": "place.target_overflow",
+    "target_overflow": "place.stop_overflow",
     "clock_tree": "geometry.clock_tree",
     "manual_macro_placement": "macro.manual_placement",
-}
-
-DIE_AREA_MODE_TO_DIE_BUILDER_MODE: dict[str, str] = {
-    "width_height": "die_size",
-    "utilitization_margin": "die_util",
 }
 
 AGENT_KNOB_MAP: dict[str, AgentKnob] = {
@@ -74,11 +62,10 @@ AGENT_KNOB_MAP: dict[str, AgentKnob] = {
     "floorplan.aspect_ratio": AgentKnob("floorplan.aspect_ratio"),
     "floorplan.die_width": AgentKnob("floorplan.die_builder.die_size.width_micron"),
     "floorplan.die_height": AgentKnob("floorplan.die_builder.die_size.height_micron"),
-    "floorplan.global_right_padding": AgentKnob("place.global_right_padding"),
     "place.target_density": AgentKnob("place.target_density"),
-    "place.target_overflow": AgentKnob("place.target_overflow"),
+    "place.target_overflow": AgentKnob("place.stop_overflow"),
     "place.cell_padding_x": AgentKnob("place.cell_padding_x"),
-    "place.routability_opt": AgentKnob("place.routability_opt", _boolean_to_int),
+    "place.routability_opt": AgentKnob("place.routability_opt_flag", _boolean_to_int),
     "cts.max_fanout": AgentKnob("cts.max_fanout"),
     "route.bottom_layer": AgentKnob("route.bottom_layer"),
     "route.top_layer": AgentKnob("route.top_layer"),

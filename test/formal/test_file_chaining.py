@@ -33,7 +33,7 @@ STEP_TYPE_COUNT: int = len(STEP_TYPE_MAP)
 SYNTHESIS_ONLY_STEPS: set[StepEnum] = {StepEnum.SYNTHESIS}
 
 # Steps whose success contract is a proven result JSON, not physical outputs.
-JSON_ONLY_STEPS: set[StepBaseEnum] = {SkippableStepEnum.LEC, SkippableStepEnum.POST_ROUTE_LEC}
+JSON_ONLY_STEPS: set[StepBaseEnum] = {StepEnum.LEC, SkippableStepEnum.POST_ROUTE_LEC}
 
 
 def _expected_output_keys(

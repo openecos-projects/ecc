@@ -39,9 +39,9 @@ def run_case(batch: Path, name: str):
                     "--workspace",
                     target.name,
                     "--from",
-                    "place",
+                    "placement",
                     "--to",
-                    "route",
+                    "routing",
                     "--plain",
                 ],
                 cwd=out,
@@ -52,9 +52,9 @@ def run_case(batch: Path, name: str):
         require(result.returncode == 0, f"Placement failed: {name}")
         inspection = inspect_placement(batch, case)
         report = inspection.report
-        route_dir = workspace(batch, name) / "route_ecc" / "output"
-        route_def = route_dir / f"{name}_route.def.gz"
-        route_netlist = route_dir / f"{name}_route.v.gz"
+        route_dir = workspace(batch, name) / "routing_ecc" / "output"
+        route_def = route_dir / f"{name}_routing.def.gz"
+        route_netlist = route_dir / f"{name}_routing.v.gz"
         require(route_def.exists(), f"Missing final route DEF: {name}")
         require(route_netlist.exists(), f"Missing final route netlist: {name}")
         require(

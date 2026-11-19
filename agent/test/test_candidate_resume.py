@@ -11,19 +11,21 @@ from agent.candidate_resume import (
 )
 from agent.data.candidate_artifacts import sha256_path
 from agent.data.candidate_materialization import materialize_candidate_config
+from agent.data.candidate_step_values import store_candidate_seed
 from agent.operations import RuntimeOperationManager
 from agent.requests import CandidateResumeRequest
 from agent.runtime_support import AgentApplicationError as RuntimeApiError
 from agent.workspace_api import FlowAgentRuntimeApi, _workspace_state_sha256
+from test.flow_fixture import step_fields
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
 
 
 def test_candidate_resume_slice_starts_at_first_non_success_step() -> None:
     records = [
-        {"name": "place", "tool": "dreamplace", "state": "Success"},
-        {"name": "CTS", "tool": "ecc", "state": "Incomplete"},
-        {"name": "Harden", "tool": "ecc", "state": "Unstart"},
+        {"name": "placement", "tool": "dreamplace", "state": "Success"},
+        {"name": "cts", "tool": "ecc", "state": "Incomplete"},
+        {"name": "harden", "tool": "ecc", "state": "Unstart"},
     ]
     steps = tuple(SimpleNamespace(name=item["name"], tool=item["tool"]) for item in records)
     flow = SimpleNamespace(
@@ -33,9 +35,9 @@ def test_candidate_resume_slice_starts_at_first_non_success_step() -> None:
         ),
     )
 
-    resumed = _candidate_resume_steps(flow, "place")
+    resumed = _candidate_resume_steps(flow, list(steps))
 
-    assert [step.name for step in resumed] == ["CTS", "Harden"]
+    assert [step.name for step in resumed] == ["cts", "harden"]
 
 
 def test_workspace_state_hash_tracks_cts_config(tmp_path) -> None:
@@ -57,11 +59,27 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
     candidate_id = "candidate-1"
     candidate = tmp_path / ".agent" / "candidates" / candidate_id
     flow_data = {
+        "schema_version": 3,
         "steps": [
-            {"name": "place", "tool": "dreamplace", "state": "Success"},
-            {"name": "CTS", "tool": "ecc", "state": "Incomplete"},
-            {"name": "Harden", "tool": "ecc", "state": "Unstart"},
-        ]
+            {
+                "name": "placement",
+                "tool": "dreamplace",
+                "state": "Success",
+                **step_fields("placement", "dreamplace"),
+            },
+            {
+                "name": "cts",
+                "tool": "ecc",
+                "state": "Incomplete",
+                **step_fields("cts", "ecc"),
+            },
+            {
+                "name": "harden",
+                "tool": "ecc",
+                "state": "Unstart",
+                **step_fields("harden", "ecc"),
+            },
+        ],
     }
     flow_path = candidate / "home" / "flow.json"
     flow_path.parent.mkdir(parents=True)
@@ -74,16 +92,16 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
         config={"dreamplace": config},
         flow=SimpleNamespace(data=flow_data, path=flow_path),
     )
-    target_output = candidate / "place_dreamplace" / "output"
-    cts_output = candidate / "CTS_ecc" / "output"
-    harden_output = candidate / "Harden_ecc" / "output"
+    target_output = candidate / "placement_dreamplace" / "output"
+    cts_output = candidate / "cts_ecc" / "output"
+    harden_output = candidate / "harden_ecc" / "output"
     for directory in (target_output, cts_output, harden_output):
         directory.mkdir(parents=True)
         (directory / "existing").write_text("evidence", encoding="utf-8")
     steps = (
-        SimpleNamespace(name="place", tool="dreamplace", output={"dir": target_output}),
-        SimpleNamespace(name="CTS", tool="ecc", output={"dir": cts_output}),
-        SimpleNamespace(name="Harden", tool="ecc", output={"dir": harden_output}),
+        SimpleNamespace(name="placement", tool="dreamplace", output={"dir": target_output}),
+        SimpleNamespace(name="cts", tool="ecc", output={"dir": cts_output}),
+        SimpleNamespace(name="harden", tool="ecc", output={"dir": harden_output}),
     )
     flow = _Flow(workspace, steps)
     parent = {
@@ -93,7 +111,7 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
         "flow_sha256": "sha256:" + "1" * 64,
         "state_sha256": "sha256:" + "2" * 64,
     }
-    manifest = {"target_step": "place", "parent_candidate_root_ref": None}
+    manifest = {"target_step": "placement", "parent_candidate_root_ref": None}
     api = FlowAgentRuntimeApi(_EccApi(SimpleNamespace(directory=tmp_path)))
     monkeypatch.setattr(
         "agent.candidate_resume._load_candidate_resume",
@@ -126,8 +144,8 @@ def test_candidate_resume_runs_in_place_and_preserves_successful_target_artifact
     )
     terminal = _wait_for_terminal(api.ecc_api.operations, started["operationId"])
 
-    assert terminal["result"] == {"candidateId": candidate_id, "resumeStep": "CTS"}
-    assert run_steps == ["CTS", "Harden"]
+    assert terminal["result"] == {"candidateId": candidate_id, "resumeStep": "cts"}
+    assert run_steps == ["cts", "harden"]
     assert (target_output / "existing").is_file()
     assert not (cts_output / "existing").exists()
     assert not (harden_output / "existing").exists()
@@ -157,8 +175,8 @@ def test_candidate_resume_manifest_rejects_illegal_state_missing_receipt_and_sta
         "candidate_id": candidate_id,
         "candidate_root_ref": candidate_ref,
         "terminal_state": "failed",
-        "target_step": "place",
-        "end_step": "Harden",
+        "target_step": "placement",
+        "end_step": "harden",
         "execution_scope": "full_flow",
         "candidate_flow_sha256": sha256_path(flow),
         "candidate_state_sha256": _workspace_state_sha256(candidate),
@@ -190,58 +208,74 @@ def test_candidate_resume_manifest_rejects_illegal_state_missing_receipt_and_sta
         _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
 
 
-def test_candidate_resume_restores_drifted_target_config_before_strict_validation(
+def test_candidate_resume_restores_drifted_step_values_and_rejects_a_seed_mismatch(
     monkeypatch, tmp_path
 ) -> None:
+    from chipcompiler.data.parameter import load_parameter
+    from chipcompiler.data.workspace_config import save_workspace_config
+
     config = tmp_path / "config" / "dreamplace.json"
     config.parent.mkdir()
-    config.write_text('{"random_seed": 17, "target_density": 0.5}', encoding="utf-8")
+    config.write_text('{"target_density": 0.5}', encoding="utf-8")
+    params_path = tmp_path / "home" / "params.toml"
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.5}})
     workspace = SimpleNamespace(
         directory=tmp_path,
         config={"dreamplace": config},
-        flow=SimpleNamespace(data={"steps": [{"name": "place", "tool": "dreamplace"}]}),
+        parameters=load_parameter(params_path),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "placement",
+                        "tool": "dreamplace",
+                        **step_fields("placement", "dreamplace"),
+                    }
+                ],
+            }
+        ),
     )
+    store_candidate_seed(workspace, ["placement"], 17)
     materialize_candidate_config(
         workspace,
-        "place",
+        "placement",
         [{"knob_id": "place.target_density", "value": 0.6}],
         "candidate-1",
     )
-    config.write_text('{"random_seed": 17, "target_density": 0.9}', encoding="utf-8")
+    # A refresh drops the candidate's step values.
+    assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.5}})
+    drifted = params_path.read_bytes()
     monkeypatch.setattr("agent.candidate_resume._reapply_candidate_input", lambda *_args: None)
 
-    with pytest.raises(RuntimeApiError, match="seed binding"):
-        _validate_candidate_resume_binding(
+    def resume(seed: int) -> list[dict]:
+        return _validate_candidate_resume_binding(
             workspace,
             SimpleNamespace(),
-            {"target_step": "place", "artifacts": {}},
+            {"target_step": "placement", "artifacts": {}},
             CandidateResumeRequest(
                 workspace_id="workspace-1",
                 candidate_id="candidate-1",
-                idempotency_key="episode-1.resume-invalid",
+                idempotency_key=f"episode-1.resume-{seed}",
                 context_sha256=CONTEXT_SHA256,
                 parameter_card_sha256=CONTEXT_SHA256,
-                seed=18,
+                seed=seed,
             ),
+            ["placement"],
         )
-    assert json.loads(config.read_text(encoding="utf-8"))["target_density"] == 0.9
 
-    patch = _validate_candidate_resume_binding(
-        workspace,
-        SimpleNamespace(),
-        {"target_step": "place", "artifacts": {}},
-        CandidateResumeRequest(
-            workspace_id="workspace-1",
-            candidate_id="candidate-1",
-            idempotency_key="episode-1.resume-1",
-            context_sha256=CONTEXT_SHA256,
-            parameter_card_sha256=CONTEXT_SHA256,
-            seed=17,
-        ),
-    )
+    with pytest.raises(RuntimeApiError, match="seed binding"):
+        resume(18)
+    assert params_path.read_bytes() == drifted
 
-    assert patch == [{"knob_id": "place.target_density", "value": 0.6}]
-    assert json.loads(config.read_text(encoding="utf-8"))["target_density"] == 0.6
+    assert resume(17) == [{"knob_id": "place.target_density", "value": 0.6}]
+    assert load_parameter(params_path).data["step_params"] == {
+        "placement": {"place.random_seed": 17, "place.target_density": 0.6}
+    }
+    assert workspace.parameters.data["step_params"] == {
+        "placement": {"place.random_seed": 17, "place.target_density": 0.6}
+    }
+    assert config.read_text(encoding="utf-8") == '{"target_density": 0.5}'
 
 
 class _EccApi:

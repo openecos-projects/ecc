@@ -12,6 +12,6 @@ class _Discovery(CollectorDiscoveryMixin):
 def test_design_discovery_reads_the_step_directory_table(tmp_path):
     output = tmp_path / STEP_DIRECTORIES[StepEnum.HARDEN.value] / "output"
     output.mkdir(parents=True)
-    (output / "gcd_Harden.gds").write_bytes(b"")
+    (output / "gcd_harden.gds").write_bytes(b"")
 
     assert _Discovery()._design_from_outputs(tmp_path) == "gcd"

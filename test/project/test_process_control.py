@@ -7,6 +7,7 @@ import pytest
 import chipcompiler.project.process_control as process_control
 from chipcompiler.project.process_control import reconcile_process
 from chipcompiler.project.runtime_processes import RuntimeProcessError, default_log_path
+from test.flow_fixture import step_fields
 
 
 def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, str]:
@@ -21,7 +22,7 @@ def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, st
                 "schema_version": 1,
                 "steps": [
                     {
-                        "name": "Synthesis",
+                        "name": "synthesis",
                         "tool": "yosys",
                         "state": "Ongoing",
                         "info": {
@@ -31,6 +32,7 @@ def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, st
                                 "started_at": 1.0,
                             }
                         },
+                        **step_fields("synthesis", "yosys"),
                     }
                 ],
             }
@@ -65,8 +67,8 @@ def _project(tmp_path: Path, *, registered: bool = True) -> tuple[Path, Path, st
                     {
                         "workspace_id": "baseline",
                         "workspace_path": "baseline",
-                        "start_step": "Synth",
-                        "end_step": "Harden",
+                        "start_step": "synthesis",
+                        "end_step": "harden",
                         "status": "not_started",
                     }
                 ],
@@ -83,7 +85,7 @@ def test_registered_reconcile_recovers_flow_then_removes_matching_entry(tmp_path
 
     recovered = reconcile_process(project, "baseline", run_id, blocking=False)
 
-    assert recovered == ("Synthesis",)
+    assert recovered == ("synthesis",)
     manifest = json.loads((project / "project.json").read_text())
     assert manifest["runtime_processes"] == {}
     step = json.loads((workspace / "home" / "flow.json").read_text())["steps"][0]
@@ -107,7 +109,7 @@ def test_registered_reconcile_run_id_mismatch_changes_nothing(tmp_path):
 def test_orphan_reconcile_recovers_without_registry(tmp_path):
     project, workspace, _run_id = _project(tmp_path, registered=False)
 
-    assert reconcile_process(project, "baseline", None, blocking=False) == ("Synthesis",)
+    assert reconcile_process(project, "baseline", None, blocking=False) == ("synthesis",)
     step = json.loads((workspace / "home" / "flow.json").read_text())["steps"][0]
     assert step["state"] == "Incomplete"
 
@@ -178,7 +180,7 @@ def test_orphan_reconcile_clears_the_entry_of_a_run_that_died_on_this_host(tmp_p
     project, workspace, _run_id = _project(tmp_path)
     _register_on_this_host(project)
 
-    assert reconcile_process(project, "baseline", None, blocking=False) == ("Synthesis",)
+    assert reconcile_process(project, "baseline", None, blocking=False) == ("synthesis",)
 
     assert json.loads((project / "project.json").read_text())["runtime_processes"] == {}
     step = json.loads((workspace / "home" / "flow.json").read_text())["steps"][0]
@@ -190,7 +192,7 @@ def test_orphan_reconcile_clears_an_entry_from_before_the_current_boot(tmp_path)
     project, workspace, _run_id = _project(tmp_path)
     _register_on_this_host(project, boot="earlier-boot")
 
-    assert reconcile_process(project, "baseline", None, blocking=False) == ("Synthesis",)
+    assert reconcile_process(project, "baseline", None, blocking=False) == ("synthesis",)
 
     assert json.loads((project / "project.json").read_text())["runtime_processes"] == {}
     step = json.loads((workspace / "home" / "flow.json").read_text())["steps"][0]

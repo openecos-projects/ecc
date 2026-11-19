@@ -48,19 +48,19 @@ write_json "$workspace/home/flow.json" <<'JSON'
 {
   "schema_version": 2,
   "steps": [
-    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-    {"name": "postFloorplan", "tool": "ecc", "state": "Success"},
-    {"name": "place", "tool": "dreamplace", "state": "Success"},
-    {"name": "drc", "tool": "ecc", "state": "Success"},
-    {"name": "lvs", "tool": "ecc", "state": "Success"},
-    {"name": "sta", "tool": "ecc", "state": "Success"},
-    {"name": "postRouteLec", "tool": "kepler_formal", "state": "Success"},
-    {"name": "Harden", "tool": "ecc", "state": "Success"}
+    {"name": "synthesis", "tool": "yosys", "directory": "synthesis_yosys", "state": "Success"},
+    {"name": "post_floorplan", "tool": "ecc", "directory": "post_floorplan_ecc", "state": "Success"},
+    {"name": "placement", "tool": "dreamplace", "directory": "placement_dreamplace", "state": "Success"},
+    {"name": "drc", "tool": "ecc", "directory": "drc_ecc", "state": "Success"},
+    {"name": "lvs", "tool": "ecc", "directory": "lvs_ecc", "state": "Success"},
+    {"name": "sta", "tool": "ecc", "directory": "sta_ecc", "state": "Success"},
+    {"name": "post_route_lec", "tool": "kepler_formal", "directory": "post_route_lec_kepler_formal", "state": "Success"},
+    {"name": "harden", "tool": "ecc", "directory": "harden_ecc", "state": "Success"}
   ]
 }
 JSON
 
-write_json "$workspace/Synthesis_yosys/analysis/qor_metrics.json" <<'JSON'
+write_json "$workspace/synthesis_yosys/analysis/qor_metrics.json" <<'JSON'
 {
   "schema_version": 3,
   "metrics": [
@@ -69,7 +69,7 @@ write_json "$workspace/Synthesis_yosys/analysis/qor_metrics.json" <<'JSON'
 }
 JSON
 
-write_json "$workspace/postFloorplan_ecc/analysis/qor_metrics.json" <<'JSON'
+write_json "$workspace/post_floorplan_ecc/analysis/qor_metrics.json" <<'JSON'
 {
   "schema_version": 3,
   "metrics": [
@@ -138,7 +138,7 @@ gate_sha="$(sha256sum "$workspace/gate.v" | awk '{print $1}')"
 golden_size="$(stat -c %s "$workspace/golden.v")"
 gate_size="$(stat -c %s "$workspace/gate.v")"
 
-write_json "$workspace/postRouteLec_kepler_formal/output/${design}_postRouteLec_result.json" <<JSON
+write_json "$workspace/post_route_lec_kepler_formal/output/${design}_post_route_lec_result.json" <<JSON
 {
   "status": "proven",
   "golden_verilog": "golden.v",
@@ -150,7 +150,7 @@ write_json "$workspace/postRouteLec_kepler_formal/output/${design}_postRouteLec_
 }
 JSON
 
-write_json "$workspace/Harden_ecc/analysis/qor_metrics.json" <<'JSON'
+write_json "$workspace/harden_ecc/analysis/qor_metrics.json" <<'JSON'
 {
   "schema_version": 3,
   "metrics": [
@@ -162,7 +162,7 @@ write_json "$workspace/Harden_ecc/analysis/qor_metrics.json" <<'JSON'
 }
 JSON
 
-mkdir -p "$workspace/Harden_ecc/output"
+mkdir -p "$workspace/harden_ecc/output"
 for artifact in gds lef lib; do
-  printf '%s' "$artifact" > "$workspace/Harden_ecc/output/${design}_Harden.${artifact}"
+  printf '%s' "$artifact" > "$workspace/harden_ecc/output/${design}_harden.${artifact}"
 done

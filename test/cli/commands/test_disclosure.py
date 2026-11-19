@@ -40,7 +40,7 @@ class TestDisclosureCommands:
         project_dir = create_cli_project()
         run_dir = os.path.join(project_dir, "default")
 
-        step_dir = os.path.join(run_dir, "Synthesis_yosys", "log")
+        step_dir = os.path.join(run_dir, "synthesis_yosys", "log")
         os.makedirs(step_dir, exist_ok=True)
         with open(os.path.join(step_dir, "synthesis.log"), "w") as f:
             f.write("Error: something failed\n")
@@ -68,7 +68,7 @@ class TestDisclosureCommands:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:01"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:01"},
             ],
         )
 

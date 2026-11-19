@@ -52,7 +52,7 @@ def resolve_workspace_step_outputs(workspace: Any, step: str = "") -> dict[str, 
                 }
             )
     except (AttributeError, KeyError, TypeError, ValueError):
-        # Partially migrated Workspaces may not have enough configuration to
+        # Partially initialized workspaces may not have enough configuration to
         # construct builders. Keep their known flow order visible to repair UI.
         steps = [
             {

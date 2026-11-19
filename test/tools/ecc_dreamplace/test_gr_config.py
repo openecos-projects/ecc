@@ -4,13 +4,10 @@ import json
 
 import pytest
 
-from chipcompiler.cli.project.params import (
-    build_config_overrides,
-    parse_toml_params,
-    resolve_parameters,
-)
 from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.step_parameters import step_parameter_view
 from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+from chipcompiler.params import build_step_params, parse_toml_params, resolve_parameters
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 
 from .test_module import FakeParams
@@ -29,14 +26,13 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
         "piecewise_gradient_mode": "native_piecewise",
         "timing_surrogate_mode": "mixed",
     }
-    parsed, errors = parse_toml_params({"place": values})
+    parsed, errors = parse_toml_params({"step": {"placement": {"place": values}}})
     assert errors == []
-    resolved, errors = resolve_parameters(toml_overrides=parsed)
-    assert errors == []
+    step_params = build_step_params(resolve_parameters(toml_overrides=parsed)[0])
     path = tmp_path / "dreamplace.json"
     path.write_text(json.dumps(dreamplace_default_config))
     apply_config_overrides(
-        {"dreamplace": path}, {"config_overrides": build_config_overrides(resolved)}
+        {"dreamplace": path}, step_parameter_view({"step_params": step_params}, "placement")
     )
     workspace = Workspace(
         directory=tmp_path,
@@ -49,7 +45,11 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     step = EccStep(
         name=StepEnum.PLACEMENT.value,
         data=EccData(steps={StepEnum.PLACEMENT.value: tmp_path / "pl"}),
+        directory=tmp_path / "placement",
     )
+    step_config = tmp_path / "placement" / "config" / "dreamplace_ecc.json"
+    step_config.parent.mkdir(parents=True)
+    step_config.write_text(path.read_text())
     module = DreamplaceModule(workspace, step, None, None, None, None, None)
     actual = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
     assert {key: getattr(actual, key) for key in values} == {

@@ -2,7 +2,7 @@
 
 Full ``MAPPED_COMPATIBLE`` verification needs a NetMapping contract that
 the toolchain does not emit yet: CTS inserts clock-tree nets and neither
-``place.map.json`` nor the route DB carries per-net data. Until such an
+``placement.map.json`` nor the route DB carries per-net data. Until such an
 artifact exists the route side is conservatively INCOMPATIBLE and the
 route-referencing ratios evaluate strictly to UNKNOWN; the same-stage
 place ratios (one netlist, EXACT population) stay computable. QI then

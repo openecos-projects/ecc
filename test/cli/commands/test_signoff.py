@@ -38,7 +38,7 @@ REVIEW = {
     "groups": [
         {
             "id": "harden",
-            "label": "Harden",
+            "label": "harden",
             "status": "ready",
             "available": 4,
             "expected": 4,

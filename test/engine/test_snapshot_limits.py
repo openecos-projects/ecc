@@ -11,6 +11,7 @@ from chipcompiler.engine.snapshot import (
     read_engineering_snapshot,
 )
 from chipcompiler.engine.snapshot_limits import ENGINEERING_SNAPSHOT_MAX_BYTES
+from test.flow_fixture import step_fields
 
 
 def _sta_workspace(tmp_path):
@@ -18,7 +19,19 @@ def _sta_workspace(tmp_path):
     (root / "home").mkdir(parents=True)
     return SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]}),
+        flow=SimpleNamespace(
+            data={
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            }
+        ),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -65,6 +78,7 @@ def test_snapshot_indexes_step_subflow_artifact(tmp_path):
     (step_dir / "subflow.json").write_text(
         json.dumps(
             {
+                "schema_version": 3,
                 "path": str(step_dir / "subflow.json"),
                 "steps": [
                     {
@@ -97,58 +111,79 @@ def test_snapshot_indexes_lec_reports_and_rcx_feature_facts(tmp_path):
         directory=root,
         flow=SimpleNamespace(
             data={
+                "schema_version": 3,
                 "steps": [
-                    {"name": "postRouteLec", "tool": "yosys_lec", "state": "Success"},
-                    {"name": "RCX", "tool": "ecc", "state": "Success"},
-                ]
+                    {
+                        "name": "post_route_lec",
+                        "tool": "kepler_formal",
+                        "state": "Success",
+                        **step_fields("post_route_lec", "kepler_formal"),
+                    },
+                    {
+                        "name": "rcx",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("rcx", "ecc"),
+                    },
+                ],
             }
         ),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
     )
-    lec_report = root / "postRouteLec_yosys_lec" / "report"
+    lec_report = root / "post_route_lec_kepler_formal" / "report"
     lec_report.mkdir(parents=True)
     (lec_report / "run_lec_status.rpt").write_text("status", encoding="utf-8")
     (lec_report / "equiv_status.rpt").write_text("equiv", encoding="utf-8")
-    rcx_feature = root / "RCX_ecc" / "feature"
+    rcx_feature = root / "rcx_ecc" / "feature"
     rcx_feature.mkdir(parents=True)
-    (rcx_feature / "RCX.step.json").write_text('{"rcx": {}}', encoding="utf-8")
+    (rcx_feature / "rcx.step.json").write_text('{"rcx": {}}', encoding="utf-8")
 
     snapshot = create_engineering_snapshot(workspace, workspace_id="engineering-gcd")
 
     lec_reports = [
         artifact["reference"]
         for artifact in snapshot["artifacts"]
-        if artifact["kind"] == "report_text" and artifact["stepId"] == "postRouteLec"
+        if artifact["kind"] == "report_text" and artifact["stepId"] == "post_route_lec"
     ]
     assert lec_reports == [
-        "postRouteLec_yosys_lec/report/run_lec_status.rpt",
-        "postRouteLec_yosys_lec/report/equiv_status.rpt",
+        "post_route_lec_kepler_formal/report/run_lec_status.rpt",
+        "post_route_lec_kepler_formal/report/equiv_status.rpt",
     ]
     rcx_facts = [
         artifact for artifact in snapshot["artifacts"] if artifact["kind"] == "rcx_feature_facts"
     ]
-    assert [artifact["reference"] for artifact in rcx_facts] == ["RCX_ecc/feature/RCX.step.json"]
+    assert [artifact["reference"] for artifact in rcx_facts] == ["rcx_ecc/feature/rcx.step.json"]
     assert rcx_facts[0]["availability"] == "available"
 
 
 def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
     root = tmp_path / "workspace"
     (root / "home").mkdir(parents=True)
-    report = root / "powerAnalysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
+    report = root / "power_analysis_ecc" / "data" / "pw" / "power_reporter" / "power.rpt"
     report.parent.mkdir(parents=True)
     report.write_text("legacy power report\n", encoding="utf-8")
-    published_report = root / "powerAnalysis_ecc" / "report" / "powerAnalysis.rpt"
+    published_report = root / "power_analysis_ecc" / "report" / "power_analysis.rpt"
     published_report.parent.mkdir(parents=True)
     published_report.write_text("Total Dynamic Power = 1.0 mW\n", encoding="utf-8")
-    summary = root / "powerAnalysis_ecc" / "feature" / "power_summary.json"
+    summary = root / "power_analysis_ecc" / "feature" / "power_summary.json"
     summary.parent.mkdir(parents=True)
     summary.write_text('{"schema_version": 1}\n', encoding="utf-8")
     workspace = SimpleNamespace(
         directory=root,
         flow=SimpleNamespace(
-            data={"steps": [{"name": "powerAnalysis", "tool": "ecc", "state": "Success"}]}
+            data={
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "power_analysis",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("power_analysis", "ecc"),
+                    }
+                ],
+            }
         ),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -162,8 +197,8 @@ def test_snapshot_indexes_power_analysis_artifacts(tmp_path):
         if artifact["kind"] in {"power_report", "power_summary"}
     ]
     assert [(artifact["kind"], artifact["reference"]) for artifact in power_artifacts] == [
-        ("power_report", "powerAnalysis_ecc/report/powerAnalysis.rpt"),
-        ("power_summary", "powerAnalysis_ecc/feature/power_summary.json"),
+        ("power_report", "power_analysis_ecc/report/power_analysis.rpt"),
+        ("power_summary", "power_analysis_ecc/feature/power_summary.json"),
     ]
     assert all(artifact["availability"] == "available" for artifact in power_artifacts)
     artifact_ids = [artifact["artifactId"] for artifact in snapshot["artifacts"]]
@@ -227,7 +262,7 @@ def test_checklist_projection_cap_is_a_producer_error(tmp_path):
     )
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 3, "steps": []}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -262,7 +297,7 @@ def test_checklist_projection_exposes_requirement_state(tmp_path):
     )
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": []}),
+        flow=SimpleNamespace(data={"schema_version": 3, "steps": []}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -280,11 +315,17 @@ def test_artifact_index_cap_is_a_producer_error(tmp_path):
     # 7 indexed artifacts per step (3 analysis files, layout image, geometry
     # manifest, 2 reports): 586 steps overshoot the 4096-entry index limit.
     steps = [
-        {"name": f"Step{index:04d}", "tool": "ecc", "state": "Unstart"} for index in range(586)
+        {
+            "name": f"Step{index:04d}",
+            "tool": "ecc",
+            "state": "Unstart",
+            **step_fields(f"Step{index:04d}", "ecc"),
+        }
+        for index in range(586)
     ]
     workspace = SimpleNamespace(
         directory=root,
-        flow=SimpleNamespace(data={"steps": steps}),
+        flow=SimpleNamespace(data={"schema_version": 3, "steps": steps}),
         home=SimpleNamespace(data={}),
         parameters=SimpleNamespace(data={"design": "gcd"}),
         design=SimpleNamespace(name="gcd"),
@@ -325,6 +366,7 @@ def _snapshot_with_step_outputs(step_count, *, references_per_step=0, extra_refe
         steps.append(step)
     return {
         "stepOutputs": {
+            "schema_version": 3,
             "directory": ".",
             "design": "gcd",
             "steps": steps,

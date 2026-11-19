@@ -115,14 +115,6 @@ relative_path() {
   printf '%s' "$p"
 }
 
-step_tool() {
-  local name="$1"
-  [[ -f "${flow_file}" ]] || return 0
-  jq -r --arg name "${name}" \
-    '([.steps[]? | select(.name == $name) | .tool // ""] | .[0]) // ""' \
-    "${flow_file}" 2>/dev/null || true
-}
-
 step_state() {
   local name="$1"
   [[ -f "${flow_file}" ]] || return 0
@@ -131,25 +123,17 @@ step_state() {
     "${flow_file}" 2>/dev/null || true
 }
 
+# The directory the flow ledger records for a step; empty when it records none.
 step_directory() {
   local name="$1"
-  local tool
-  case "$name" in
-    sta) printf 'sta_ecc' ;;
-    drc) printf 'drc_ecc' ;;
-    Harden) printf 'Harden_ecc' ;;
-    postRouteLec)
-      tool="$(step_tool postRouteLec)"
-      tool="${tool,,}"
-      case "$tool" in
-        kepler_formal) printf 'postRouteLec_kepler_formal' ;;
-        yosys_lec) printf 'postRouteLec_yosys_lec' ;;
-        lec_dual) printf 'postRouteLec_dual' ;;
-        *) printf 'postRouteLec_kepler_formal' ;;
-      esac
-      ;;
-    *) printf '%s_ecc' "$name" ;;
-  esac
+  local recorded
+  [[ -f "${flow_file}" ]] || return 0
+  recorded="$(jq -r --arg name "${name}" \
+    '([.steps[]? | select(.name == $name) | .directory // empty] | .[0]) // ""' \
+    "${flow_file}" 2>/dev/null || true)"
+  if [[ -n "${recorded}" && "${recorded}" != */* && "${recorded}" != . && "${recorded}" != .. ]]; then
+    printf '%s' "${recorded}"
+  fi
 }
 
 json_metric_value() {
@@ -282,7 +266,7 @@ collect_lec() {
   csv_row status golden_verilog golden_sha256 golden_size_bytes gate_verilog gate_sha256 gate_size_bytes source present
 
   local ledger_state
-  ledger_state="$(step_state postRouteLec)"
+  ledger_state="$(step_state post_route_lec)"
   if [[ -z "${ledger_state}" ]]; then
     csv_row skipped "" "" "" "" "" "" "" false
     return 0
@@ -293,14 +277,14 @@ collect_lec() {
   fi
 
   local preferred
-  preferred="$(step_directory postRouteLec)"
+  preferred="$(step_directory post_route_lec)"
   local result=""
   local p
   if [[ -d "${workspace}/${preferred}/output" ]]; then
     while IFS= read -r p; do
       result="$p"
       break
-    done < <(find "${workspace}/${preferred}/output" -maxdepth 1 -type f -name '*_postRouteLec_result.json' -print 2>/dev/null | sort || true)
+    done < <(find "${workspace}/${preferred}/output" -maxdepth 1 -type f -name '*_post_route_lec_result.json' -print 2>/dev/null | sort || true)
   fi
 
   if [[ -z "${result}" ]]; then
@@ -335,7 +319,7 @@ collect_harden() {
   csv_row kind metric value unit source present sha256 bytes
 
   local harden_dir
-  harden_dir="$(step_directory Harden)"
+  harden_dir="$(step_directory harden)"
   local metrics="${workspace}/${harden_dir}/analysis/qor_metrics.json"
   local source
   source="$(relative_path "${metrics}")"
@@ -354,7 +338,7 @@ collect_harden() {
 
   local artifact path present sha bytes
   for artifact in gds lef lib; do
-    path="$(find "${workspace}/${harden_dir}/output" -maxdepth 1 -type f -name "*_Harden.${artifact}" -print 2>/dev/null | sort | sed -n '1p' || true)"
+    path="$(find "${workspace}/${harden_dir}/output" -maxdepth 1 -type f -name "*_harden.${artifact}" -print 2>/dev/null | sort | sed -n '1p' || true)"
     path="${path:-}"
     source="$(relative_path "${path}")"
     if [[ -n "${path}" && -f "${path}" ]]; then
@@ -376,14 +360,15 @@ collect_area() {
   local step dir source metrics value present
   local metric unit
   for spec in \
-    "Synthesis Synthesis_yosys synthesis_cell_area um^2" \
-    "postFloorplan postFloorplan_ecc die_area um^2" \
-    "postFloorplan postFloorplan_ecc core_area um^2" \
-    "postFloorplan postFloorplan_ecc core_utilization ratio" \
-    "Harden Harden_ecc die_area um^2" \
-    "Harden Harden_ecc core_area um^2" \
-    "Harden Harden_ecc core_utilization ratio"; do
-    read -r step dir metric unit <<< "${spec}"
+    "synthesis synthesis_cell_area um^2" \
+    "post_floorplan die_area um^2" \
+    "post_floorplan core_area um^2" \
+    "post_floorplan core_utilization ratio" \
+    "harden die_area um^2" \
+    "harden core_area um^2" \
+    "harden core_utilization ratio"; do
+    read -r step metric unit <<< "${spec}"
+    dir="$(step_directory "${step}")"
     metrics="${workspace}/${dir}/analysis/qor_metrics.json"
     source="$(relative_path "${metrics}")"
     value="$(json_metric_value "${metrics}" "${metric}")"

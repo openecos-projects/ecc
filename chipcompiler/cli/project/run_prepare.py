@@ -135,27 +135,6 @@ def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) ->
     return CommandResult.err([record])
 
 
-def _fresh_entry_step_name(cfg, flow_config) -> str | None:
-    """The canonical first step a fresh workspace target will execute.
-
-    An explicit start step (CLI range or manifest range) wins; otherwise the
-    preset builder's first step. None when the target declares neither.
-    """
-    if isinstance(flow_config, dict) and flow_config.get("start_step"):
-        from chipcompiler.rtl2gds import normalize_flow_step
-
-        return normalize_flow_step(flow_config["start_step"])
-    from chipcompiler import rtl2gds as rtl2gds_api
-
-    builders = rtl2gds_api.get_flow_builders()
-    if cfg.flow_preset in builders:
-        first = next(iter(builders[cfg.flow_preset]()), None)
-        if first is not None:
-            step = first[0]
-            return step.value if hasattr(step, "value") else str(step)
-    return None
-
-
 def _materialize_rtl_filelist(cfg) -> str:
     """Write the declared multi-entry rtl list as one generated filelist.
 
@@ -247,6 +226,7 @@ def execute_fresh_run(
 
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project.config import (
+        resolve_max_parallel_steps,
         resolve_pdk_overrides,
         resolve_pdk_root,
         resolve_rtl,
@@ -345,37 +325,6 @@ def execute_fresh_run(
                 problems.append(f"previous workspace left at {backup_path}: {exc}")
         return problems
 
-    base = None
-    if cfg.manifest_parameters:
-        # Manifest base layer: ecc.toml/--set values overlay it, not the
-        # other way around. Values were validated up front by
-        # effective_config.validate_effective (shared with `ecc check`);
-        # this coercion is defense-in-depth for that contract, so a failure
-        # here must not strand a freshly created run target — and it runs
-        # before filelist materialization so no ecc-rtl-* temp artifacts
-        # can leak either. Keys an ecc.toml/--set override actually
-        # replaces are skipped: their higher-layer value wins anyway.
-        from chipcompiler.cli.project.effective_config import effective_override_keys
-        from chipcompiler.cli.project.params import coerce_manifest_parameters
-        from chipcompiler.data.parameter_keys import geometry_to_parameters
-
-        base, coerce_errors = coerce_manifest_parameters(
-            geometry_to_parameters(cfg.manifest_parameters),
-            skip_params=effective_override_keys(cfg, cli_overrides),
-        )
-        if coerce_errors:
-            cleanup_failed_target()
-            return CommandResult.err(
-                [
-                    {
-                        "kind": "error",
-                        "error": "config_error",
-                        "reason": f"project.json: {err}",
-                    }
-                    for err in coerce_errors
-                ]
-            )
-
     def failed_workspace(reason: str | None) -> CommandResult:
         rollback_problems = cleanup_failed_target()
         if rollback_problems:
@@ -395,8 +344,10 @@ def execute_fresh_run(
     # The declared netlist is the synthesis OUTPUT consumed by a
     # post-synthesis entry step. A flow entering at Synthesis must use the
     # declared RTL, even when a netlist is also present in ecc.toml.
-    entry_step = _fresh_entry_step_name(cfg, flow_config)
-    uses_netlist_input = bool(inputs.netlist) and entry_step != "Synthesis"
+    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
+
+    entry_step = fresh_entry_step(cfg, flow_config)
+    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
     if uses_netlist_input:
         origin_verilog = inputs.netlist
         input_filelist = ""
@@ -417,79 +368,85 @@ def execute_fresh_run(
         parameters["_input_mode"] = "postSynthesis"
     pdk_root = resolve_pdk_root(cfg)
 
-    if base is not None:
-        update_parameters(parameters, base)
-        parameters = base
-
     if cfg.params_overrides or cli_overrides:
-        from chipcompiler.cli.project.params import (
+        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
+        from chipcompiler.params import (
             build_backend_overrides,
             build_config_overrides,
             build_pdk_overrides,
+            build_step_params,
             resolve_parameters,
         )
 
         resolved, _ = resolve_parameters(
             toml_overrides=cfg.params_overrides,
             cli_overrides=cli_overrides,
+            pdk=cfg.pdk_name or None,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
         config_overrides = build_config_overrides(resolved)
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
         pdk_cli_overrides = build_pdk_overrides(resolved)
+        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
+        step_params = build_step_params(resolved)
+        if step_params:
+            parameters[STEP_PARAMS_KEY] = step_params
     else:
         pdk_cli_overrides = {}
+        param_sources = {}
+    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
+        # [design] frequency_mhz is not a [params] key; a value ecc.toml leaves
+        # unset was filled from project.json.
+        explicit = "design.frequency_mhz" in cfg._explicit_keys
+        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
+    if param_sources:
+        from chipcompiler.params import PARAM_SOURCES_KEY
 
-    from chipcompiler.cli.project import migrate_fs
+        parameters[PARAM_SOURCES_KEY] = param_sources
+
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    # Lock order is always migration → workspace, and the workspace lock
-    # is taken BEFORE the target becomes discoverable (flow.json appears
-    # in create_workspace): a concurrent `ecc run` can never classify
-    # this target as existing and win the race to execute it. The lock
-    # file lives next to the workspace, so it predates and survives the
-    # creation. It stays held through seeding and engine execution below —
-    # the same execution ownership as the existing-run path — while the
-    # migration lock is released right after creation so a run never pins
-    # project-wide migration for minutes. The caller's stack already holds
-    # the lock when it took the overwrite rename; entering here would be a
-    # no-op on the same path, so only a self-owned stack enters it.
+    # The workspace lock is taken BEFORE the target becomes discoverable
+    # (flow.json appears in create_workspace), so a concurrent `ecc run` cannot
+    # classify this target as existing and win the race to execute it. The lock
+    # stays held through seeding and engine execution. The caller's stack
+    # already holds it after an overwrite rename, so only a self-owned stack
+    # enters it here.
     caller_locks = ws_locks is not None
     if ws_locks is None:
         ws_locks = contextlib.ExitStack()
     try:
-        with migrate_fs.project_migrate_lock(project_dir, exclusive=False):
-            if not caller_locks:
-                ws_locks.enter_context(
-                    workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
-                )
-            try:
-                workspace = create_workspace(
-                    directory=run_dir,
-                    origin_def=origin_def,
-                    origin_verilog=origin_verilog,
-                    pdk=cfg.pdk_name,
-                    parameters=parameters,
-                    input_filelist=input_filelist,
-                    pdk_root=pdk_root,
-                    pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
-                    flow_config=flow_config,
-                    sdc=inputs.sdc,
-                    spef=inputs.spef,
-                    golden_verilog=inputs.golden_netlist,
-                )
-                if workspace is not None:
-                    workspace.__dict__["_ecc_project_dir"] = project_dir
-            except Exception as exc:
-                return failed_workspace(str(exc))
-            finally:
-                if generated_filelist is not None:
-                    with contextlib.suppress(OSError):
-                        shutil.rmtree(os.path.dirname(generated_filelist))
+        if not caller_locks:
+            ws_locks.enter_context(
+                workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
+            )
+        try:
+            workspace = create_workspace(
+                directory=run_dir,
+                origin_def=origin_def,
+                origin_verilog=origin_verilog,
+                pdk=cfg.pdk_name,
+                parameters=parameters,
+                input_filelist=input_filelist,
+                pdk_root=pdk_root,
+                pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+                flow_config=flow_config,
+                sdc=inputs.sdc,
+                spef=inputs.spef,
+                golden_verilog=inputs.golden_netlist,
+            )
+            if workspace is not None:
+                workspace.__dict__["_ecc_project_dir"] = project_dir
+        except Exception as exc:
+            return failed_workspace(str(exc))
+        finally:
+            if generated_filelist is not None:
+                with contextlib.suppress(OSError):
+                    shutil.rmtree(os.path.dirname(generated_filelist))
 
-            if workspace is None:
-                return failed_workspace(None)
+        if workspace is None:
+            return failed_workspace(None)
 
         # Seeding writes are part of the replacement construction: they run
         # before the commit point inside the recovery boundary, so a write
@@ -505,19 +462,23 @@ def execute_fresh_run(
 
             if not flow_config_selects_steps(flow_config):
                 # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy or LEC engine rides
-                # along, normalized (validate_flow_config is the normalizer).
+                # their target; a declared skip policy, LEC engine or inserted
+                # steps ride along, normalized (validate_flow_config is the
+                # normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    flow_section: dict = {"preset": cfg.flow_preset}
-                    policies: dict = {}
-                    if isinstance(flow_config, dict) and "skip_steps" in flow_config:
-                        policies["skip_steps"] = flow_config["skip_steps"]
-                    if isinstance(flow_config, dict) and "lec_engine" in flow_config:
-                        policies["lec_engine"] = flow_config["lec_engine"]
-                    if policies:
-                        from chipcompiler.data.workspace_config import validate_flow_config
+                    from chipcompiler.data.workspace_config import (
+                        FLOW_POLICY_KEYS,
+                        validate_flow_config,
+                    )
 
+                    flow_section: dict = {"preset": cfg.flow_preset}
+                    policies = (
+                        {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
+                        if isinstance(flow_config, dict)
+                        else {}
+                    )
+                    if policies:
                         flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
                     workspace_parameters.data["_flow"] = flow_section
                     if not save_parameter(workspace_parameters):
@@ -530,18 +491,23 @@ def execute_fresh_run(
         # can never race this ledger or its outputs.
         try:
             engine_flow = EngineFlow(workspace=workspace)
+            engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
             flow_builders = rtl2gds_api.get_flow_builders()
             if not engine_flow.has_init():
                 # No-arg preset builders stay canonical; the configured LEC
-                # engine and skip policy apply to their output so every
-                # ledger-creation path filters through the same resolvers.
+                # engine, skip policy and inserted steps apply to their output
+                # so every ledger-creation path filters through the same
+                # resolvers.
+                lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
                 seeded = rtl2gds_api.substitute_lec_engine(
-                    flow_builders[cfg.flow_preset](),
-                    rtl2gds_api.resolve_lec_engine(flow_config),
+                    flow_builders[cfg.flow_preset](), lec_engine
                 )
-                for step, tool, state in rtl2gds_api.filter_flow_steps(
-                    seeded,
-                    rtl2gds_api.resolve_skip_steps(flow_config),
+                for step, tool, state in rtl2gds_api.insert_flow_steps(
+                    rtl2gds_api.filter_flow_steps(
+                        seeded, rtl2gds_api.resolve_skip_steps(flow_config)
+                    ),
+                    rtl2gds_api.resolve_insert_steps(flow_config),
+                    lec_engine,
                 ):
                     engine_flow.add_step(step=step, tool=tool, state=state)
 
@@ -658,9 +624,11 @@ def execute_fresh_run(
             from contextlib import nullcontext
 
             from chipcompiler.cli.rendering.progress import (
-                run_flow_with_progress,
+                preserve_cli_stdio,
+                run_progress_event_sink,
                 should_enable_run_progress,
             )
+            from chipcompiler.engine import ExecutionPlan, execute
 
             if workspace_registered:
                 from chipcompiler.cli.project.run_process import managed_run_process
@@ -675,12 +643,15 @@ def execute_fresh_run(
             else:
                 process_context = nullcontext()
             with process_context:
+                plan = ExecutionPlan(intent="run")
                 if should_enable_run_progress(ctx, sys.stderr):
-                    flow_ok = run_flow_with_progress(engine_flow, ctx, project, sys.stderr)
+                    with (
+                        preserve_cli_stdio(),
+                        run_progress_event_sink(engine_flow, ctx, project, sys.stderr) as sink,
+                    ):
+                        flow_ok = execute(engine_flow, plan, event_sink=sink).succeeded
                 else:
-                    from chipcompiler.engine import ExecutionPlan, execute
-
-                    flow_ok = execute(engine_flow, ExecutionPlan(intent="run")).succeeded
+                    flow_ok = execute(engine_flow, plan).succeeded
 
             if not flow_ok:
                 failure_records = [

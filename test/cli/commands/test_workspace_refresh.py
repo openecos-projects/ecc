@@ -82,7 +82,7 @@ def test_refresh_failure_restores_the_previous_workspace(
         [manifest_stubs.entry(project_path, "baseline", status="success")],
     )
     create_flow_json(workspace_dir)
-    sentinel = Path(workspace_dir, "Synthesis_yosys", "output", "gcd.v.gz")
+    sentinel = Path(workspace_dir, "synthesis_yosys", "output", "gcd.v.gz")
     sentinel.parent.mkdir(parents=True)
     sentinel.write_text("previous artifacts")
 
