@@ -16,7 +16,7 @@ from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.data.flow.document import FlowDocument
 from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.engine.flow.runner import EngineFlow
-from chipcompiler.engine.step_chain import iter_workspace_steps
+from chipcompiler.engine.step.chain import iter_workspace_steps
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
 from test.flow_fixture import publish_response, step_directory
@@ -262,7 +262,7 @@ def _answer_earlier_steps(workspace, ledger, step_name) -> None:
 
 
 def _run_worker(monkeypatch, workspace, payload, run_step):
-    from chipcompiler.engine import step_subprocess
+    from chipcompiler.engine.step import process as step_subprocess
 
     monkeypatch.setattr(
         "chipcompiler.data.load_workspace",

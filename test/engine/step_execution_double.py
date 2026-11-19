@@ -10,7 +10,7 @@ from chipcompiler.data import is_sta_step
 from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
-from chipcompiler.engine.step_execution import (
+from chipcompiler.engine.step.execution import (
     StepExecutionResult,
     _prepare_log_file,
     get_process_rss_mb,

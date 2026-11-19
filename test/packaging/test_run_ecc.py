@@ -39,10 +39,10 @@ def test_step_worker_flag_selects_worker_entrypoint(monkeypatch):
     monkeypatch.setattr(
         sys,
         "argv",
-        [os.path.join("dist", "ecc"), "--ecc-worker", "chipcompiler.engine.step_subprocess"],
+        [os.path.join("dist", "ecc"), "--ecc-worker", "chipcompiler.engine.step.process"],
     )
     monkeypatch.setattr(
-        "chipcompiler.engine.step_subprocess.main", lambda: calls.append("worker") or 7
+        "chipcompiler.engine.step.process.main", lambda: calls.append("worker") or 7
     )
 
     assert module.main() == 7

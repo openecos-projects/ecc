@@ -34,7 +34,7 @@ from chipcompiler.data.handshake import (
 from chipcompiler.data.types import AnalysisData
 from chipcompiler.engine import worker
 from chipcompiler.engine.resource_observation import new_attempt_id, start_observation
-from chipcompiler.engine.step_execution import (
+from chipcompiler.engine.step.execution import (
     STEP_WORKER_MODULE,
     StepExecutionResult,
     _prepare_log_file,

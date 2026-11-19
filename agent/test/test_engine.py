@@ -8,7 +8,7 @@ from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Wor
 from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine.flow.completion import sync_step_checklist
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine.step.execution import StepExecutionResult
 from test.flow_fixture import step_directory, step_fields
 
 

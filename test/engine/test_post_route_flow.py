@@ -101,7 +101,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     )
 
     # Read-only workspace projections must use the same bypass as execution.
-    from chipcompiler.engine.step_chain import iter_workspace_steps
+    from chipcompiler.engine.step.chain import iter_workspace_steps
 
     projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
     for name in ("lvs", "drc", "rcx", "sta", "power_analysis", "emir", "harden"):

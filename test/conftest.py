@@ -10,7 +10,7 @@ TEST_DIR = Path(__file__).resolve().parent
 def _step_worker_double(monkeypatch, request):
     if request.node.get_closest_marker("real_step_worker") is not None:
         return
-    from chipcompiler.engine import step_execution
+    from chipcompiler.engine.step import execution as step_execution
     from test.engine.step_execution_double import execute_in_process
 
     monkeypatch.setattr(step_execution, "_execute_in_worker", execute_in_process)

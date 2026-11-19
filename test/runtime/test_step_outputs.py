@@ -6,7 +6,7 @@ import pytest
 
 from chipcompiler.data.flow.document import FlowDocument
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
+from chipcompiler.engine.step.outputs import resolve_workspace_step_outputs
 
 _STEPS: list[dict[str, str]] = [
     {"name": "synthesis", "tool": "yosys", "state": "Success"},

@@ -31,7 +31,7 @@ from chipcompiler.data import (
 from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.flow.policy import FlowInputResolver, FlowInputStepError
 from chipcompiler.engine.signoff.models import SIGNOFF_REQUIRED_QOR_STEPS, SignoffPackageIssue
-from chipcompiler.engine.step_chain import apply_info_spef_override, build_workspace_step_for_info
+from chipcompiler.engine.step.chain import apply_info_spef_override, build_workspace_step_for_info
 
 
 class CollectorAnalysisMixin:

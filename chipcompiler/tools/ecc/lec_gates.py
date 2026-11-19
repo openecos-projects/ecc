@@ -63,7 +63,7 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
 
 
 def _post_route_gate(workspace: Workspace) -> Path | None:
-    from chipcompiler.engine.step_chain import build_workspace_step_for_info
+    from chipcompiler.engine.step.chain import build_workspace_step_for_info
 
     records = workspace.flow.steps()
     resolver = FlowInputResolver(records)

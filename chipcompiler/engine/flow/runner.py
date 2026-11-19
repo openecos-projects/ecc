@@ -67,7 +67,7 @@ from chipcompiler.engine.signoff import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.engine.step_execution import (
+from chipcompiler.engine.step.execution import (
     STEP_WORKER_MODULE,
     execute_tool_step,
     record_tool_failure,
@@ -455,7 +455,7 @@ class EngineFlow:
             )
             # save workspace step
             if eda_step is not None:
-                from chipcompiler.engine.step_chain import apply_info_spef_override
+                from chipcompiler.engine.step.chain import apply_info_spef_override
 
                 apply_info_spef_override(step, eda_step)
                 rcx_step = resolver.created_step(StepEnum.RCX.value)

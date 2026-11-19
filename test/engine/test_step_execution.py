@@ -8,7 +8,7 @@ from chipcompiler import tools
 from chipcompiler.data import EccFeature, EccStep, StateEnum, Workspace
 from chipcompiler.engine.flow import runner as flow_module
 from chipcompiler.engine.flow.runner import EngineFlow
-from chipcompiler.engine.step_execution import STEP_WORKER_MODULE, StepExecutionResult
+from chipcompiler.engine.step.execution import STEP_WORKER_MODULE, StepExecutionResult
 from test.flow_fixture import step_fields
 
 
@@ -54,8 +54,9 @@ def test_engine_flow_passes_worker_module_and_layout_policy(monkeypatch, tmp_pat
 
 
 def test_run_steps_never_initializes_native_db_or_redirects_in_parent(monkeypatch, tmp_path):
-    from chipcompiler.engine import EngineDB, step_execution
-    from chipcompiler.engine.step_execution import StepExecutionResult
+    from chipcompiler.engine import EngineDB
+    from chipcompiler.engine.step import execution as step_execution
+    from chipcompiler.engine.step.execution import StepExecutionResult
     from chipcompiler.tools.ecc.module import ECCToolsModule
 
     workspace: Any = Workspace(directory=tmp_path)
@@ -151,8 +152,8 @@ def test_engine_flow_worker_failure_marks_incomplete_not_success(
     engine_flow.workspace_steps = [workspace_step]
     engine_flow.engine_db = SimpleNamespace(engine=None)
 
-    from chipcompiler.engine import step_execution
-    from chipcompiler.engine.step_execution import StepExecutionResult
+    from chipcompiler.engine.step import execution as step_execution
+    from chipcompiler.engine.step.execution import StepExecutionResult
 
     monkeypatch.setattr(
         step_execution,

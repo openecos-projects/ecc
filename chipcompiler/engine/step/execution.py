@@ -8,7 +8,7 @@ from chipcompiler.utility.log import Logger, flush_cstdio
 
 logger = logging.getLogger(__name__)
 
-STEP_WORKER_MODULE = "chipcompiler.engine.step_subprocess"
+STEP_WORKER_MODULE = "chipcompiler.engine.step.process"
 
 
 @dataclass(frozen=True)
@@ -43,7 +43,7 @@ def _execute_in_worker(
     worker_module: str = STEP_WORKER_MODULE,
     layout_image: bool = True,
 ) -> StepExecutionResult:
-    from chipcompiler.engine import step_subprocess
+    from chipcompiler.engine.step import process as step_subprocess
 
     return step_subprocess.execute_step_subprocess(
         workspace,

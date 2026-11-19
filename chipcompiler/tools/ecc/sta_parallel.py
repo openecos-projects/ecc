@@ -16,7 +16,7 @@ from tempfile import TemporaryDirectory
 
 from chipcompiler.data import is_sta_step
 from chipcompiler.engine.memory import read_memory_status
-from chipcompiler.engine.step_execution import get_process_rss_mb
+from chipcompiler.engine.step.execution import get_process_rss_mb
 from chipcompiler.engine.worker import arm_parent_death_signal as _arm_parent_death_signal
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.module import ECCToolsModule

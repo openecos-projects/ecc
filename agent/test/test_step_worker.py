@@ -16,7 +16,7 @@ from chipcompiler.data import StateEnum, Workspace
 from chipcompiler.data.handshake import build_step_request, write_request
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.step_subprocess import run_step_worker
+from chipcompiler.engine.step.process import run_step_worker
 from test.flow_fixture import publish_response
 
 

@@ -383,7 +383,7 @@ def _build_snapshot(
     }
     if schema_version != SNAPSHOT_SCHEMA_VERSION:
         snapshot["schemaVersion"] = schema_version
-    from chipcompiler.engine.step_outputs import resolve_workspace_step_outputs
+    from chipcompiler.engine.step.outputs import resolve_workspace_step_outputs
     from chipcompiler.engine.workspace.configuration import (
         build_workspace_configuration_projection,
     )

@@ -13,7 +13,7 @@ from chipcompiler.data.flow.document import load_flow_document
 from chipcompiler.data.flow.ledger import ledger_lock
 from chipcompiler.data.workspace import Flow
 from chipcompiler.engine import EngineFlow
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine.step.execution import StepExecutionResult
 from test.flow_fixture import current_flow_document
 
 _RESOURCES = {"attempt_id": "attempt-1", "isolated": True}

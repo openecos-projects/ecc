@@ -10,7 +10,7 @@ import pytest
 
 from chipcompiler.data import OutputPaths
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine import step_subprocess
+from chipcompiler.engine.step import process as step_subprocess
 
 
 def _ns(**kwargs: object) -> Any:
@@ -428,7 +428,7 @@ def test_worker_writes_parameter_evidence_for_every_attempt(monkeypatch, tmp_pat
     step = _workspace_step(tmp_path)
     written = []
     monkeypatch.setattr(
-        "chipcompiler.engine.step_subprocess.write_step_parameter_evidence",
+        "chipcompiler.engine.step.process.write_step_parameter_evidence",
         lambda _workspace, built_step, directory: written.append((built_step.name, directory)),
     )
 

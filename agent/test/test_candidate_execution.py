@@ -16,7 +16,7 @@ from chipcompiler.data.handshake import load_response
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow, load_workspace
 from chipcompiler.engine import EngineDB
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine.step.execution import StepExecutionResult
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from test.data.handshake.helpers import answer
 
@@ -183,7 +183,7 @@ def _write_success_outputs(step):
 
 
 def test_candidate_rerun_parent_has_no_native_db_or_stdio(monkeypatch, tmp_path):
-    from chipcompiler.engine import step_execution
+    from chipcompiler.engine.step import execution as step_execution
 
     api = workspace_api.FlowAgentRuntimeApi(
         _EccApi(
@@ -331,7 +331,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent import tools as agent_tools
-from chipcompiler.engine import step_subprocess
+from chipcompiler.engine.step import process as step_subprocess
 from chipcompiler.engine.flow.runner import EngineFlow
 
 

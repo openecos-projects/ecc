@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from chipcompiler.engine.step_chain import iter_workspace_steps
+from chipcompiler.engine.step.chain import iter_workspace_steps
 
 
 def _artifact(path: Any, workspace_root: Path) -> dict[str, Any] | None:

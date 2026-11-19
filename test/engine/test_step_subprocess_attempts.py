@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.engine import step_subprocess
-from chipcompiler.engine.step_execution import execute_tool_step
+from chipcompiler.engine.step import process as step_subprocess
+from chipcompiler.engine.step.execution import execute_tool_step
 from test.engine import step_worker_fakes as fakes
 
 pytestmark = pytest.mark.real_step_worker

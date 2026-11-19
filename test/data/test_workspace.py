@@ -543,7 +543,7 @@ def test_build_flow_for_dynamic_workspace_initializes_step_metadata_files(
     )
     assert workspace is not None
 
-    from chipcompiler.engine.step_chain import build_flow_for_workspace
+    from chipcompiler.engine.step.chain import build_flow_for_workspace
 
     build_flow_for_workspace(workspace)
 

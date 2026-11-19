@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.engine import step_subprocess
-from chipcompiler.engine.step_execution import execute_tool_step
+from chipcompiler.engine.step import process as step_subprocess
+from chipcompiler.engine.step.execution import execute_tool_step
 from test.engine import step_worker_fakes as fakes
 
 pytestmark = pytest.mark.real_step_worker
@@ -21,9 +21,7 @@ def test_cli_dispatches_step_worker(monkeypatch):
 
     monkeypatch.setattr(step_subprocess, "main", lambda: 17)
 
-    assert (
-        app_module.invoke_typer_app(["--ecc-worker", "chipcompiler.engine.step_subprocess"]) == 17
-    )
+    assert app_module.invoke_typer_app(["--ecc-worker", "chipcompiler.engine.step.process"]) == 17
 
 
 def test_rcx_worker_restores_outputs_and_preserves_shared_sta_list(monkeypatch, tmp_path):
@@ -231,7 +229,7 @@ def test_frozen_execution_uses_packaged_worker_dispatch(monkeypatch, tmp_path):
     result = execute_tool_step(fakes.workspace(tmp_path), step, None)
 
     assert result.error is None
-    assert commands == [[sys.executable, "--ecc-worker", "chipcompiler.engine.step_subprocess"]]
+    assert commands == [[sys.executable, "--ecc-worker", "chipcompiler.engine.step.process"]]
 
 
 def test_execute_tool_step_selects_worker_module(monkeypatch, tmp_path):

@@ -5,9 +5,9 @@ operations on whole workspaces.
 
 ## Layout
 
-- Workspace operations go in `workspace/`, signoff in `signoff/`. The existing prefixed groups
-  (`flow*`, `step_*`, `snapshot*`, `qor*`, `signoff_*`) are covered by the root Module Layout
-  rule.
+- Subpackages: `flow/` (the flow runner), `step/` (executing one step), `snapshot/` (the
+  Engineering Snapshot), `signoff/`, `workspace/` (operations on whole workspaces). A new
+  module goes into the package of its concept, never beside them as a prefixed sibling.
 
 ## Imports
 
