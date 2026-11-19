@@ -295,9 +295,10 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     if cfg._timing_input_error:
         errors.append(cfg._timing_input_error)
     else:
-        if not no_clock.enabled and not cfg.design_clock_port:
+        requires_timing = bool(cfg.design_clock_port) or not no_clock.enabled
+        if requires_timing and not cfg.design_clock_port:
             errors.append("design.clock_port is required")
-        if not no_clock.enabled and cfg.design_frequency_mhz <= 0:
+        if requires_timing and cfg.design_frequency_mhz <= 0:
             errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")

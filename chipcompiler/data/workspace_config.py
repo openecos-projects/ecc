@@ -338,8 +338,6 @@ def flow_section_from_flow_config(
         if decision.enabled:
             flow_config = {**flow_config, "no_clock": True}
 
-    from chipcompiler.rtl2gds import resolve_no_clock
-
     no_clock = resolve_no_clock(flow_config, materials=materials).enabled
 
     # A preset-shaped flow_config selects the preset's canonical range.

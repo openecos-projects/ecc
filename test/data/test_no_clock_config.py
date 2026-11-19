@@ -42,6 +42,42 @@ def test_project_config_no_clock_relaxes_clock_requirements(tmp_path):
     assert cfg._no_clock_source == "explicit"
 
 
+def test_project_config_no_clock_with_clock_still_requires_frequency(tmp_path):
+    cfg = ProjectConfig(
+        design_name="combo",
+        design_top="top",
+        design_clock_port="clk",
+        design_frequency_mhz=0,
+        pdk_name="ics55",
+        pdk_root=str(tmp_path),
+        flow_preset="rtl2gds",
+        flow_no_clock=True,
+        project_dir=str(tmp_path),
+    )
+    cfg._explicit_keys = frozenset({"flow.no_clock"})
+    errors = validate_project_config(cfg)
+    assert not any("clock_port" in e for e in errors)
+    assert any("frequency_mhz" in e for e in errors)
+
+
+def test_project_config_no_clock_with_clock_accepts_positive_frequency(tmp_path):
+    cfg = ProjectConfig(
+        design_name="combo",
+        design_top="top",
+        design_clock_port="clk",
+        design_frequency_mhz=100.0,
+        pdk_name="ics55",
+        pdk_root=str(tmp_path),
+        flow_preset="rtl2gds",
+        flow_no_clock=True,
+        project_dir=str(tmp_path),
+    )
+    cfg._explicit_keys = frozenset({"flow.no_clock"})
+    errors = validate_project_config(cfg)
+    assert not any("clock_port" in e for e in errors)
+    assert not any("frequency_mhz" in e for e in errors)
+
+
 def test_project_config_empty_clock_port_infers_no_clock(tmp_path):
     cfg = ProjectConfig(
         design_name="combo",
