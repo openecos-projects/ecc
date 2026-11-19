@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.cli.project.params import (
-    build_config_overrides,
+from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.workspace import init_workspace_config
+from chipcompiler.params import (
+    build_step_params,
     parse_cli_overrides,
     parse_toml_params,
     resolve_parameters,
 )
-from chipcompiler.data import PDK, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.workspace import init_workspace_config
 from chipcompiler.tools.ecc_dreamplace import builder
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.utility import json_read
@@ -32,13 +32,16 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     from dreamplace.flows.diff_sizing import _validate_action_profile
     from dreamplace.Params import Params
 
-    public = {"place.diff_sizing_coefficients": override}
-    cli, errors = parse_cli_overrides(["place.diff_sizing_coefficients=" + json.dumps(override)])
+    public = {"diff_sizing:place.diff_sizing_coefficients": override}
+    cli, errors = parse_cli_overrides(
+        ["diff_sizing:place.diff_sizing_coefficients=" + json.dumps(override)]
+    )
     assert (cli, errors) == (public, [])
-    toml, errors = parse_toml_params({"place": {"diff_sizing_coefficients": override}})
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"diff_sizing_coefficients": override}}}}
+    )
     assert (toml, errors) == (public, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     placement_weights = {
         "timing_wns_coeff": 2.5,
         "timing_tns_coeff": 0.025,
@@ -54,7 +57,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
         parameters=make_ics55_parameters(
             {
                 "dreamplace": placement_weights,
-                "config_overrides": build_config_overrides(resolved),
+                "step_params": step_params,
             }
         ),
     )
@@ -141,76 +144,70 @@ def test_old_config_uses_s50_defaults_without_inheriting_gp_weights(dreamplace_d
 
 @pytest.mark.parametrize("steps", [0, 1, 3])
 def test_public_continuous_steps_parse_and_resolve(steps):
-    expected = {"place.diff_sizing_continuous_steps": steps}
-    cli, errors = parse_cli_overrides([f"place.diff_sizing_continuous_steps={steps}"])
+    expected = {"diff_sizing:place.diff_sizing_continuous_steps": steps}
+    cli, errors = parse_cli_overrides([f"diff_sizing:place.diff_sizing_continuous_steps={steps}"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"diff_sizing_continuous_steps": steps}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.diff_sizing_continuous_steps"
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"diff_sizing_continuous_steps": steps}}}}
     )
-    assert actual == steps
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.diff_sizing_continuous_steps": steps}}
 
 
 @pytest.mark.parametrize("enabled", [0, 1])
 def test_public_terminal_gr_sta_flag_parse_and_resolve(enabled):
-    expected = {"place.diff_sizing_terminal_gr_sta_enabled": enabled}
-    cli, errors = parse_cli_overrides([f"place.diff_sizing_terminal_gr_sta_enabled={enabled}"])
-    assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"diff_sizing_terminal_gr_sta_enabled": enabled}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.diff_sizing_terminal_gr_sta_enabled"
+    expected = {"diff_sizing:place.diff_sizing_terminal_gr_sta_enabled": enabled}
+    cli, errors = parse_cli_overrides(
+        [f"diff_sizing:place.diff_sizing_terminal_gr_sta_enabled={enabled}"]
     )
-    assert actual == enabled
+    assert (cli, errors) == (expected, [])
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"diff_sizing_terminal_gr_sta_enabled": enabled}}}}
+    )
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.diff_sizing_terminal_gr_sta_enabled": enabled}}
 
 
 def test_public_action_gradient_mode_parses_and_resolves():
-    expected = {"place.timing_action_gradient_mode": "lut_action"}
-    cli, errors = parse_cli_overrides(["place.timing_action_gradient_mode=lut_action"])
+    expected = {"diff_sizing:place.timing_action_gradient_mode": "lut_action"}
+    cli, errors = parse_cli_overrides(["diff_sizing:place.timing_action_gradient_mode=lut_action"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"timing_action_gradient_mode": "lut_action"}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.timing_action_gradient_mode"
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"timing_action_gradient_mode": "lut_action"}}}}
     )
-    assert actual == "lut_action"
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.timing_action_gradient_mode": "lut_action"}}
 
 
 @pytest.mark.parametrize("objective", ["loss", "tns", "wns"])
 def test_public_action_score_objective_parses_and_resolves(objective):
-    expected = {"place.timing_action_score_objective": objective}
-    cli, errors = parse_cli_overrides([f"place.timing_action_score_objective={objective}"])
-    assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"timing_action_score_objective": objective}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.timing_action_score_objective"
+    expected = {"diff_sizing:place.timing_action_score_objective": objective}
+    cli, errors = parse_cli_overrides(
+        [f"diff_sizing:place.timing_action_score_objective={objective}"]
     )
-    assert actual == objective
+    assert (cli, errors) == (expected, [])
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"timing_action_score_objective": objective}}}}
+    )
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.timing_action_score_objective": objective}}
 
 
 @pytest.mark.parametrize("rc_mode", ["placement", "gr"])
 def test_public_diff_sizing_timing_rc_mode_parses_and_resolves(rc_mode):
-    expected = {"place.diff_sizing_timing_rc_mode": rc_mode}
-    cli, errors = parse_cli_overrides([f"place.diff_sizing_timing_rc_mode={rc_mode}"])
+    expected = {"diff_sizing:place.diff_sizing_timing_rc_mode": rc_mode}
+    cli, errors = parse_cli_overrides([f"diff_sizing:place.diff_sizing_timing_rc_mode={rc_mode}"])
     assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"diff_sizing_timing_rc_mode": rc_mode}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.diff_sizing_timing_rc_mode"
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"diff_sizing_timing_rc_mode": rc_mode}}}}
     )
-    assert actual == rc_mode
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.diff_sizing_timing_rc_mode": rc_mode}}
 
 
 def test_diff_sizing_timing_rc_mode_defaults_to_gr_and_respects_explicit_choice(
@@ -241,17 +238,17 @@ def test_public_diff_sizing_optimization_flows_parse_and_resolve():
         ["down", 1, [500, 5, 1, 1], 0.1],
         ["quad", 10, [500, 5, 1, 1], 1],
     ]
-    expected = {"place.diff_sizing_optimization_flows": flows}
-    cli, errors = parse_cli_overrides(["place.diff_sizing_optimization_flows=" + json.dumps(flows)])
-    assert (cli, errors) == (expected, [])
-    toml, errors = parse_toml_params({"place": {"diff_sizing_optimization_flows": flows}})
-    assert (toml, errors) == (expected, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    actual = next(
-        item.value for item in resolved if item.param == "place.diff_sizing_optimization_flows"
+    expected = {"diff_sizing:place.diff_sizing_optimization_flows": flows}
+    cli, errors = parse_cli_overrides(
+        ["diff_sizing:place.diff_sizing_optimization_flows=" + json.dumps(flows)]
     )
-    assert actual == flows
+    assert (cli, errors) == (expected, [])
+    toml, errors = parse_toml_params(
+        {"step": {"diff_sizing": {"place": {"diff_sizing_optimization_flows": flows}}}}
+    )
+    assert (toml, errors) == (expected, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    assert step_params == {"diff_sizing": {"place.diff_sizing_optimization_flows": flows}}
 
 
 def test_diff_sizing_optimization_flows_set_total_stage_rounds(
@@ -307,8 +304,7 @@ def test_diff_sizing_optimization_flows_reject_invalid_phases(dreamplace_default
     ("extra_args", "expected_rc_mode"),
     [
         ([], "gr"),
-        (["place.timing_rc_mode=placement"], "placement"),
-        (["place.diff_sizing_timing_rc_mode=placement"], "placement"),
+        (["diff_sizing:place.diff_sizing_timing_rc_mode=placement"], "placement"),
     ],
 )
 def test_public_lut_action_mode_survives_step_resolution(
@@ -316,15 +312,16 @@ def test_public_lut_action_mode_survives_step_resolution(
 ):
     from dreamplace.Params import Params
 
-    cli, errors = parse_cli_overrides(["place.timing_action_gradient_mode=lut_action", *extra_args])
+    cli, errors = parse_cli_overrides(
+        ["diff_sizing:place.timing_action_gradient_mode=lut_action", *extra_args]
+    )
     assert errors == []
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
         pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
-        parameters=make_ics55_parameters({"config_overrides": build_config_overrides(resolved)}),
+        parameters=make_ics55_parameters({"step_params": step_params}),
     )
     step = builder.build_step(
         workspace,

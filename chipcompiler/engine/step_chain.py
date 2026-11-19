@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from chipcompiler.data import EccOutput, StepEnum
+from chipcompiler.data.step import recorded_step_directory
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.tools.registry import load_builder
 
@@ -32,6 +33,7 @@ def build_workspace_step_for_info(workspace, flow_step: FlowStepEntry, input_sou
         input_def=input_def,
         input_verilog=input_verilog,
         input_db=input_db,
+        step_directory=Path(workspace.directory) / recorded_step_directory(flow_step),
     )
 
 

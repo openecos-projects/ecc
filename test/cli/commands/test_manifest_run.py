@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 
 class TestVirginFirstRun:
@@ -34,14 +35,13 @@ class TestVirginFirstRun:
         (entry,) = manifest["workspaces"]
         assert entry["workspace_id"] == "default"
         assert entry["workspace_path"] == run_dir
-        assert entry["start_step"] == "Synth"
-        assert entry["end_step"] == "Harden"
+        assert entry["start_step"] == "synthesis"
+        assert entry["end_step"] == "harden"
         # Flow state belongs to flow.json. The manifest status is legacy
         # compatibility data and is not changed by a run.
         assert entry["status"] == "not_started"
         assert manifest["runtime_processes"] == {}
-        assert entry["parameter_patch"] == {}
-        # The complete D3 source shape, GUI-flat parameters included.
+        # The complete source shape: identity, sources and frequency only.
         assert manifest["base_design"] == {
             "pdk": "ics55",
             "pdk_root": str(tmp_path / "ics55"),
@@ -49,13 +49,7 @@ class TestVirginFirstRun:
             "clock": "clk",
             "rtl_list": ["rtl/gcd.v"],
             "origin_verilog": "rtl/gcd.v",
-            "parameters": {
-                "design": "gcd",
-                "top_module": "gcd",
-                "clock": "clk",
-                "frequency_max": 100.0,
-                "die_area_mode": "utilitization_margin",
-            },
+            "frequency_mhz": 100.0,
         }
 
     def test_virgin_run_set_values_stay_out_of_manifest(
@@ -67,8 +61,8 @@ class TestVirginFirstRun:
 
         assert rc == 0
         manifest = json.loads((tmp_path / "gcd" / "project.json").read_text())
-        assert "max_fanout" not in manifest["base_design"]["parameters"]
-        assert manifest["base_design"]["parameters"]["frequency_max"] == 100.0
+        assert "parameters" not in manifest["base_design"]
+        assert manifest["base_design"]["frequency_mhz"] == 100.0
 
     def test_virgin_run_holds_workspace_lock_through_flow_execution(
         self, tmp_path, capsys, create_cli_project, flow_mocks, monkeypatch
@@ -270,7 +264,7 @@ class TestOriginDefResolution:
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
                 "origin_def": origin_def,
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
         )
         if hybrid:
@@ -328,7 +322,7 @@ class TestHybridLayering:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"frequency_max": 50, "max_fanout": 12},
+                "frequency_mhz": 50,
             },
         )
         # Partial ecc.toml: only the frequency is overridden.
@@ -345,7 +339,6 @@ class TestHybridLayering:
         assert rc == 0
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
         assert parameters["frequency_max"] == 200.0  # ecc.toml wins
-        assert parameters["max_fanout"] == 12  # manifest base survives
         assert flow_mocks.capture["create_kwargs"]["directory"] == str(project_dir / "ws_0001")
 
     def test_manifest_origin_verilog_fallback(self, tmp_path, capsys, flow_mocks):
@@ -365,7 +358,7 @@ class TestHybridLayering:
                 "clock": "clk",
                 "rtl_list": [],
                 "origin_verilog": "src/gcd.v",
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": [
                 {
@@ -392,7 +385,7 @@ class TestExistingRunGuards:
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
         from chipcompiler.data.workspace_config import save_workspace_config
 
         assert save_workspace_config(
@@ -451,8 +444,8 @@ class TestHybridFullLayering:
                 {
                     "workspace_id": "ws_0001",
                     "workspace_path": str(project_dir / "ws_0001"),
-                    "start_step": "Place",
-                    "end_step": "Route",
+                    "start_step": "placement",
+                    "end_step": "routing",
                 }
             ],
         )
@@ -529,57 +522,7 @@ class TestHybridFullLayering:
 
 
 class TestManifestRunCoercion:
-    """Manifest parameter values reach create_workspace type-coerced; keys an
-    ecc.toml/--set override actually replaces are skipped so the higher layer
-    wins even when the manifest value is invalid."""
-
-    def test_run_coerced_bool_reaches_create_workspace(
-        self, tmp_path, capsys, flow_mocks, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": "false"},
-            },
-        )
-
-        rc = cli_main.run(["run", "--project", str(project_dir)])
-
-        assert rc == 0
-        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["run_analysis"] is False
-
-    def test_run_set_overrides_invalid_manifest_bool(
-        self, tmp_path, capsys, flow_mocks, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "run_analysis": "maybe"},
-            },
-        )
-
-        rc = cli_main.run(
-            ["run", "--project", str(project_dir), "--set", "flow.run_analysis=false"]
-        )
-
-        assert rc == 0
-        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["run_analysis"] is False
+    """An explicit ecc.toml frequency wins even when the manifest value is invalid."""
 
     def test_run_explicit_design_frequency_overrides_invalid_manifest_frequency(
         self, tmp_path, capsys, flow_mocks, manifest_stubs
@@ -594,7 +537,7 @@ class TestManifestRunCoercion:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": "abc"},
+                "frequency_mhz": "abc",
             },
         )
         (project_dir / "ecc.toml").write_text(
@@ -611,111 +554,6 @@ class TestManifestRunCoercion:
         parameters = flow_mocks.capture["create_kwargs"]["parameters"]
         assert parameters["frequency_max"] == 100.0
 
-    def test_run_params_override_supersedes_invalid_manifest_fanout(
-        self, tmp_path, capsys, flow_mocks, manifest_stubs
-    ):
-        project_dir = tmp_path / "proj"
-        manifest_stubs.write(
-            project_dir,
-            [manifest_stubs.entry(project_dir, "ws_0001")],
-            base_design={
-                "pdk": "ics55",
-                "pdk_root": str(project_dir / "pdk"),
-                "top_module": "gcd",
-                "clock": "clk",
-                "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100, "max_fanout": "xyz"},
-            },
-        )
-        (project_dir / "ecc.toml").write_text(
-            '[design]\nname = "gcd"\ntop = "gcd"\nrtl = ["rtl/gcd.v"]\nclock_port = "clk"\n'
-            '\n[pdk]\nname = "ics55"\nroot = "'
-            + str(project_dir / "pdk")
-            + '"\n\n[flow]\npreset = "rtl2gds"\n\n[params.cts]\nmax_fanout = 20\n'
-        )
-
-        rc = cli_main.run(["run", "--project", str(project_dir)])
-
-        assert rc == 0
-        parameters = flow_mocks.capture["create_kwargs"]["parameters"]
-        assert parameters["max_fanout"] == 20
-
-
-class TestFreshRunCoercionCleanup:
-    """Defense-in-depth for the run preparation itself: a coercion failure
-    past handler validation must not strand the freshly created run target,
-    and a target this process does not own must survive untouched."""
-
-    @staticmethod
-    def _config(tmp_path, rtl):
-        from chipcompiler.cli.project.config import ProjectConfig
-
-        return ProjectConfig(
-            design_name="gcd",
-            design_top="gcd",
-            design_rtl=rtl,
-            design_clock_port="clk",
-            design_frequency_mhz=100.0,
-            pdk_name="ics55",
-            pdk_root=str(tmp_path / "pdk"),
-            flow_preset="rtl2gds",
-            project_dir=str(tmp_path),
-            manifest_parameters={"run_analysis": "maybe"},
-        )
-
-    @staticmethod
-    def _execute(tmp_path, cfg, monkeypatch, owns_target):
-        from types import SimpleNamespace
-
-        from chipcompiler.cli.project import run_prepare
-
-        materializations = []
-        monkeypatch.setattr(
-            run_prepare,
-            "_materialize_rtl_filelist",
-            lambda cfg: materializations.append(cfg) or "filelist",
-        )
-        run_dir = tmp_path / "ws_bad"
-        run_dir.mkdir()
-        (run_dir / "marker.txt").write_text("keep")
-        result = run_prepare.execute_fresh_run(
-            SimpleNamespace(),
-            SimpleNamespace(project=None, project_dir=str(tmp_path)),
-            cfg,
-            str(run_dir),
-            "ws_bad",
-            {},
-            None,
-            "manifest",
-            [],
-            workspace_registered=False,
-            owns_target=owns_target,
-        )
-        return result, run_dir, materializations
-
-    def test_owned_target_cleaned_up_on_coercion_failure(self, tmp_path, monkeypatch):
-        cfg = self._config(tmp_path, ["rtl/a.v", "rtl/b.v"])
-
-        result, run_dir, materializations = self._execute(
-            tmp_path, cfg, monkeypatch, owns_target=True
-        )
-
-        assert result.exit_code == 1
-        assert [r["error"] for r in result.records] == ["config_error"]
-        assert "expected bool for flow.run_analysis" in result.records[0]["reason"]
-        assert not run_dir.exists()
-        # Materialization never ran, so no ecc-rtl-* temp dirs can leak.
-        assert materializations == []
-
-    def test_foreign_target_preserved_on_coercion_failure(self, tmp_path, monkeypatch):
-        cfg = self._config(tmp_path, ["rtl/a.v"])
-
-        result, run_dir, _ = self._execute(tmp_path, cfg, monkeypatch, owns_target=False)
-
-        assert result.exit_code == 1
-        assert run_dir.exists()
-        assert (run_dir / "marker.txt").read_text() == "keep"
-
 
 class TestExplicitRunLogOrdering:
     """§13.1 step 2: an explicit --log-file owns stdout/stderr before the
@@ -731,15 +569,17 @@ class TestExplicitRunLogOrdering:
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "place",
+                            "name": "placement",
                             "tool": "ecc",
                             "state": "Success",
                             "runtime": "",
                             "info": {},
+                            **step_fields("placement", "ecc"),
                         }
-                    ]
+                    ],
                 },
                 f,
             )
@@ -816,4 +656,4 @@ class TestExplicitRunLogOrdering:
         (record,) = manifest_stubs.records()
         assert record["error"] == "run_log_open_failed"
         ledger = json.loads(Path(run_dir, "home", "flow.json").read_text())
-        assert [step["name"] for step in ledger["steps"]] == ["place"]
+        assert [step["name"] for step in ledger["steps"]] == ["placement"]

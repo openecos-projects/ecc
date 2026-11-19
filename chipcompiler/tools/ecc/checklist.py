@@ -107,7 +107,7 @@ class EccChecklist:
                 step=step.value,
                 type=type,
                 item=item,
-                state=CheckState.Unstart.value,
+                state=CheckState.UNAVAILABLE,
             )
 
     def set_item_state(self, step: str, type: str, item: str, state: CheckState, info: str = ""):
@@ -161,9 +161,9 @@ class EccChecklist:
     ) -> bool:
         warnings = warnings or set()
         for type, item, success, info in checks:
-            state = CheckState.Passed
+            state = CheckState.PASS
             if not success:
-                state = CheckState.Warning if item in warnings else CheckState.Failed
+                state = CheckState.WARNING if item in warnings else CheckState.FAILED
             self.set_item_state(
                 step=step,
                 type=type,
@@ -473,11 +473,11 @@ class EccFillerChecklist(EccChecklist):
                 step=step,
                 type=type,
                 item=item,
-                state=CheckState.Passed if success else CheckState.Failed,
+                state=CheckState.PASS if success else CheckState.FAILED,
                 info="" if success else f"{item} check failed",
             )
 
-        drc_state = CheckState.Warning
+        drc_state = CheckState.WARNING
         self.set_item_state(
             step=step,
             type="Signoff",

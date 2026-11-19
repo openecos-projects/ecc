@@ -3,21 +3,14 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import StateEnum, load_workspace, save_parameter
-from chipcompiler.data.param_keys import display_key_for, knob_id_for
-from chipcompiler.data.parameter_schema import (
-    list_schemas,
-    lookup_schema,
-    validate_schema_type,
-    validate_value,
+from chipcompiler.data.step_parameters import (
+    ParameterStepError,
+    check_parameter_step,
+    is_step_scoped,
+    split_step_key,
+    step_key,
 )
 from chipcompiler.data.workspace import workspace_config_paths
-from chipcompiler.data.workspace_parameters import (
-    unset_workspace_param,
-    update_workspace_param_value,
-    workspace_param_diff,
-    workspace_param_step,
-    workspace_param_value,
-)
 from chipcompiler.data.workspace_transaction import WorkspaceFileTransaction
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.rerun import invalidate_after, invalidate_from
@@ -30,9 +23,28 @@ from chipcompiler.engine.snapshot import (
     open_workspace_snapshot,
     refresh_engineering_snapshot,
 )
-from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
+from chipcompiler.params import (
+    display_key_for,
+    knob_id_for,
+    list_schemas,
+    lookup_schema,
+    unset_workspace_param,
+    update_workspace_param_value,
+    validate_schema_type,
+    validate_value,
+    workspace_param_step,
+    workspace_param_value,
+)
+from chipcompiler.rtl2gds import get_flow_builders
 from chipcompiler.utility import JsonReadError
 
+from .macro_location_handoff import (
+    prune_macro_location_after_write as _prune_macro_location_after_write,
+)
+from .macro_location_handoff import (
+    verify_published_macro_location as _verify_published_macro_location,
+)
+from .parameter_steps import earliest_flow_step, edit_scope, require_flow_step, step_catalog
 from .workspace_lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
@@ -92,88 +104,6 @@ def apply_workspace_parameters(
     )
 
 
-def _prune_macro_location_after_write(workspace, written: set[str]) -> None:
-    """Keep config/macro_location.tcl consistent when a committed write
-    emptied macro.placements (§20.5.4): no stale placeInstance lines."""
-    if "macro.placements" in written:
-        from chipcompiler.data.workspace.macro_location import prune_macro_location_tcl
-
-        prune_macro_location_tcl(workspace)
-
-
-def _verify_published_macro_location(workspace) -> None:
-    """Ensure the committed parameters and the postFloorplan handoff agree."""
-    from chipcompiler.data.workspace.macro_location import (
-        macro_placements,
-        parse_macro_location_tcl,
-        render_macro_location_tcl,
-    )
-
-    expected = macro_placements(workspace)
-    target = workspace.config.get("macro_location")
-    path = Path(target) if target else None
-    if not expected:
-        if path is None or not path.is_file():
-            return
-        try:
-            actual = parse_macro_location_tcl(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError) as exc:
-            raise WorkspaceLifecycleError(
-                "step_output_invalid",
-                f"Published macro location handoff is invalid: {exc}",
-            ) from exc
-        if not actual:
-            return
-        raise WorkspaceLifecycleError(
-            "step_output_mismatch",
-            "Published macro location handoff does not match macro.placements",
-            {"expectedCount": 0, "actualCount": len(actual)},
-        )
-
-    if path is None or not path.is_file():
-        raise WorkspaceLifecycleError(
-            "step_output_not_published",
-            "Workspace has no published macro location handoff",
-            {"expectedCount": len(expected)},
-        )
-    try:
-        actual = parse_macro_location_tcl(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError) as exc:
-        raise WorkspaceLifecycleError(
-            "step_output_invalid",
-            f"Published macro location handoff is invalid: {exc}",
-        ) from exc
-
-    # The handoff is the canonical physical representation; compare against
-    # the same render/parse round-trip used to produce it rather than rejecting
-    # harmless float formatting differences in the parameter value.
-    try:
-        expected = parse_macro_location_tcl(render_macro_location_tcl(expected))
-    except ValueError as exc:
-        raise WorkspaceLifecycleError(
-            "step_output_invalid",
-            f"macro.placements cannot be rendered to a handoff: {exc}",
-        ) from exc
-
-    def identity(entries: list[dict]) -> list[tuple[str, float, float, str]]:
-        return sorted(
-            (
-                str(entry["instance"]),
-                float(entry["x"]),
-                float(entry["y"]),
-                str(entry["orientation"]),
-            )
-            for entry in entries
-        )
-
-    if identity(actual) != identity(expected):
-        raise WorkspaceLifecycleError(
-            "step_output_mismatch",
-            "Published macro location handoff does not match macro.placements",
-            {"expectedCount": len(expected), "actualCount": len(actual)},
-        )
-
-
 def _apply_workspace_parameters(
     target: Path,
     expected_workspace_revision: int,
@@ -221,32 +151,37 @@ def _apply_workspace_parameters(
     allowed: set[str] | None = None
     step: str | None = None
     if step_id is not None:
-        step, step_schemas = _step_catalog(workspace, step_id)
+        step, step_schemas = step_catalog(workspace, step_id)
         allowed = {schema.param for schema in step_schemas}
 
     schemas = {}
+    scopes: dict[str, str | None] = {}
+    identities: set[tuple[str | None, str]] = set()
     normalized_sets = {}
     affected_steps = []
     for parameter in (*sets, *unsets):
-        schema = lookup_schema(parameter)
+        # A key may name its step (``placement:place.target_density``).
+        key_step, name = split_step_key(parameter)
+        schema = lookup_schema(name)
         if schema is None or schema.pdk_target is not None:
             raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
-        if allowed is not None and parameter not in allowed:
-            raise WorkspaceLifecycleError(
-                "parameter_not_applicable",
-                f"Parameter {parameter} is not configurable at {step_id}",
-            )
+        scope = edit_scope(schema, parameter, key_step, step, allowed, identities)
         try:
-            affected_step = workspace_param_step(schema)
+            check_parameter_step(schema, scope if is_step_scoped(schema) else key_step)
+            affected_step = workspace_param_step(schema, workspace, scope)
+        except ParameterStepError as exc:
+            raise WorkspaceLifecycleError(exc.code, str(exc)) from exc
         except ValueError as exc:
             raise WorkspaceLifecycleError("parameter_requires_refresh", str(exc)) from exc
         if affected_step is not None:
+            require_flow_step(workspace, parameter, affected_step, step_value=scope is not None)
             affected_steps.append(affected_step)
         schemas[parameter] = schema
+        scopes[parameter] = scope
     for parameter, value in sets.items():
         schema = schemas[parameter]
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if parameter == "macro.placements" and isinstance(normalized, list):
             from chipcompiler.data.workspace.macro_location import validate_placements
 
@@ -255,25 +190,21 @@ def _apply_workspace_parameters(
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
         normalized_sets[parameter] = normalized
 
-    first_step = _earliest_flow_step(workspace, affected_steps) if affected_steps else None
+    first_step = earliest_flow_step(workspace, affected_steps) if affected_steps else None
     if commit_step_output:
         if step is None or first_step is None:
             raise WorkspaceLifecycleError(
                 "step_output_commit_requires_step",
                 "commit_step_output requires parameters scoped to a Flow Step",
             )
-        if normalize_flow_step(step).casefold() != normalize_flow_step(first_step).casefold():
+        if str(step) != str(first_step):
             raise WorkspaceLifecycleError(
                 "step_output_scope_mismatch",
                 "Published step output must belong to the earliest affected Flow Step",
                 {"step": step, "firstAffectedStep": first_step},
             )
         selected = next(
-            (
-                item
-                for item in workspace.flow.steps()
-                if str(item.get("name", "")).casefold() == first_step.casefold()
-            ),
+            (item for item in workspace.flow.steps() if item.get("name") == first_step),
             None,
         )
         if selected is None or selected.get("state") != StateEnum.Success.value:
@@ -284,15 +215,13 @@ def _apply_workspace_parameters(
             )
 
     changed = False
-    existing_overrides = {item["key"] for item in workspace_param_diff(workspace)}
     for parameter, value in normalized_sets.items():
-        schema = schemas[parameter]
-        if workspace_param_value(workspace, schema) != value:
-            update_workspace_param_value(workspace, schema, value)
+        schema, scope = schemas[parameter], scopes[parameter]
+        if workspace_param_value(workspace, schema, step=scope) != value:
+            update_workspace_param_value(workspace, schema, value, step=scope)
             changed = True
     for parameter in unsets:
-        if parameter in existing_overrides:
-            unset_workspace_param(workspace, schemas[parameter])
+        if unset_workspace_param(workspace, schemas[parameter], scopes[parameter]) is not None:
             changed = True
 
     if not changed:
@@ -363,15 +292,9 @@ def _apply_workspace_parameters(
     return _load_committed_workspace(target)
 
 
-def _earliest_flow_step(workspace: Any, affected_steps: list[str]) -> str:
-    identities = {normalize_flow_step(step).casefold() for step in affected_steps}
-    for step in workspace.flow.steps():
-        name = str(step.get("name", ""))
-        if normalize_flow_step(name).casefold() in identities:
-            return name
-    raise WorkspaceLifecycleError(
-        "parameter_not_in_flow", "No affected parameter step exists in this Workspace flow"
-    )
+def _value_errors(workspace: Any, value: object, schema: Any) -> list[str]:
+    """Range and choice errors of *value* under the Workspace's PDK family."""
+    return validate_value(value, schema, workspace.pdk.name)
 
 
 def _update_workspace_configuration(
@@ -425,9 +348,14 @@ def _update_workspace_configuration(
         if schema is None or schema.pdk_target is not None:
             raise WorkspaceLifecycleError("unknown_parameter", f"Unknown parameter: {parameter}")
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
+        if is_step_scoped(schema):
+            raise WorkspaceLifecycleError(
+                "parameter_step_required",
+                f"{parameter} is set per step; update it through its step configuration",
+            )
         if workspace_param_value(workspace, schema) != normalized:
             update_workspace_param_value(workspace, schema, normalized)
             changed = True
@@ -492,23 +420,29 @@ def read_workspace_configuration(workspace: Any, *, strict: bool = False) -> dic
 def build_workspace_configuration_projection(
     workspace: Any, *, strict: bool = False
 ) -> dict[str, Any]:
-    """Build configuration fields without reading Snapshot metadata."""
+    """Build configuration fields without reading Snapshot metadata.
+
+    A step-scoped (DreamPlace) parameter is also projected at each declared
+    step in the flow under ``<step>:<param>``, with that step's value.
+    """
+    steps = workspace.flow.steps()
+    flow_names = [str(step.get("name", "")) for step in steps if step.get("name")]
     parameters = {}
     for schema in list_schemas():
         if schema.pdk_target is not None:
             continue
-        try:
-            parameters[schema.param] = workspace_param_value(
-                workspace,
-                schema,
-                strict=strict,
-            )
-        except (OSError, ValueError, JsonReadError):
-            if strict:
-                raise
-            continue
-    steps = workspace.flow.steps()
-    flow_names = [str(step.get("name", "")) for step in steps if step.get("name")]
+        scopes = [None]
+        if is_step_scoped(schema):
+            scopes += [step for step in schema.steps if step in flow_names]
+        for scope in scopes:
+            key = schema.param if scope is None else step_key(scope, schema.param)
+            try:
+                parameters[key] = workspace_param_value(
+                    workspace, schema, step=scope, strict=strict
+                )
+            except (OSError, ValueError, JsonReadError):
+                if strict:
+                    raise
     flow = {"flowId": _flow_id(flow_names)}
     if flow_names:
         flow.update({"fromStepId": flow_names[0], "throughStepId": flow_names[-1]})
@@ -550,7 +484,7 @@ def build_workspace_configuration_projection(
 
 
 def read_step_configuration(workspace: Any, step_id: str) -> dict[str, Any]:
-    step, schemas = _step_catalog(workspace, step_id)
+    step, schemas = step_catalog(workspace, step_id)
     snapshot = _read_snapshot_metadata(workspace)
     if not schemas:
         raise WorkspaceLifecycleError(
@@ -564,7 +498,7 @@ def read_step_configuration(workspace: Any, step_id: str) -> dict[str, Any]:
     return {
         "step": step,
         "stepId": step,
-        "parameters": [_public_parameter_record(workspace, schema) for schema in schemas],
+        "parameters": [_public_parameter_record(workspace, schema, step) for schema in schemas],
         "workspaceId": snapshot["workspaceId"],
         "workspaceRevision": snapshot["workspaceRevision"],
     }
@@ -632,7 +566,7 @@ def _update_workspace_step_configuration(
                 "actualWorkspaceRevision": snapshot["workspaceRevision"],
             },
         )
-    step, schemas = _step_catalog(workspace, step_id)
+    step, schemas = step_catalog(workspace, step_id)
     allowed = {schema.param: schema for schema in schemas}
     changed = False
     changed_schemas = []
@@ -646,11 +580,12 @@ def _update_workspace_step_configuration(
                 f"Parameter {parameter} is not configurable at {step}",
             )
         normalized, type_error = validate_schema_type(value, schema)
-        errors = [type_error] if type_error else validate_value(normalized, schema)
+        errors = [type_error] if type_error else _value_errors(workspace, normalized, schema)
         if errors:
             raise WorkspaceLifecycleError("invalid_parameter", str(errors[0]))
-        if workspace_param_value(workspace, schema) != normalized:
-            update_workspace_param_value(workspace, schema, normalized)
+        scope = step if is_step_scoped(schema) else None
+        if workspace_param_value(workspace, schema, step=scope) != normalized:
+            update_workspace_param_value(workspace, schema, normalized, step=scope)
             changed = True
             changed_schemas.append(schema)
 
@@ -685,12 +620,21 @@ def _update_workspace_step_configuration(
             updated["workspaceRevision"],
         )
         return _load_committed_workspace(target)
-    invalidate_from(EngineFlow(workspace), step)
+    # A workspace-wide value edited from this step's view may feed earlier steps.
+    affected = [
+        step,
+        *(
+            workspace_param_step(schema, workspace, step if is_step_scoped(schema) else None)
+            for schema in changed_schemas
+        ),
+    ]
+    first_step = earliest_flow_step(workspace, [name for name in affected if name is not None])
+    invalidate_from(EngineFlow(workspace), first_step)
     updated = invalidate_engineering_snapshot(
         workspace,
         workspace_id=snapshot["workspaceId"],
         cause="workspace.step_configuration_updated",
-        first_invalidated_step=step,
+        first_invalidated_step=first_step,
     )
     write_workspace_command(
         target,
@@ -702,34 +646,15 @@ def _update_workspace_step_configuration(
     return _load_committed_workspace(target)
 
 
-def _step_catalog(workspace: Any, step_id: str):
-    identity = normalize_flow_step(step_id).casefold()
-    steps = [str(step.get("name", "")) for step in workspace.flow.steps() if step.get("name")]
-    step = next(
-        (candidate for candidate in steps if normalize_flow_step(candidate).casefold() == identity),
-        None,
-    )
-    if step is None:
-        raise WorkspaceLifecycleError("unknown_flow_step", f"Flow Step not found: {step_id}")
-    first = normalize_flow_step(steps[0]).casefold()
-    schemas = tuple(
-        schema
-        for schema in list_schemas()
-        if schema.pdk_target is None
-        and (
-            normalize_flow_step(schema.applies).casefold() == identity
-            or (schema.applies == "all" and identity == first)
-        )
-    )
-    return step, schemas
-
-
-def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
+def _public_parameter_record(workspace: Any, schema, step: str) -> dict[str, Any]:
+    pdk = workspace.pdk.name
     record = {
         "param": schema.param,
         "type": schema.type,
-        "value": workspace_param_value(workspace, schema),
-        "default": deepcopy(schema.default),
+        "value": workspace_param_value(
+            workspace, schema, step=step if is_step_scoped(schema) else None
+        ),
+        "default": deepcopy(schema.default_for(pdk)),
         "applies": schema.applies,
         **({"output_only": True} if schema.output_only else {}),
         "description": schema.description,
@@ -737,7 +662,7 @@ def _public_parameter_record(workspace: Any, schema) -> dict[str, Any]:
         "knob_id": knob_id_for(schema.param),
     }
     for field in ("range", "choices", "unit"):
-        value = getattr(schema, field)
+        value = schema.choices_for(pdk) if field == "choices" else getattr(schema, field)
         if value is not None:
             record[field] = list(value) if isinstance(value, tuple) else value
     return record

@@ -2,8 +2,8 @@ import json
 import shlex
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.engine.workspace_spec import describe_workspace_spec
+from chipcompiler.params import list_schemas
 
 
 def _records(output: str) -> list[dict[str, str]]:
@@ -23,7 +23,8 @@ def test_parameter_catalog_is_context_free_and_typed(tmp_path, monkeypatch, caps
     density = next(record for record in records if record["id"] == "place.target_density")
     assert json.loads(density["default_literal"]) == 0.4
     assert json.loads(density["range_literal"]) == [0.1, 1.0]
-    assert json.loads(density["maps_to_literal"]) == {"dreamplace": "target_density"}
+    core_util = next(record for record in records if record["id"] == "floorplan.core_util")
+    assert json.loads(core_util["maps_to_literal"]) == {"core": "utilitization"}
 
 
 def test_flow_catalog_is_context_free_and_ordered(tmp_path, monkeypatch, capsys):

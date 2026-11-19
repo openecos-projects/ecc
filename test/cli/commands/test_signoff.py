@@ -38,7 +38,7 @@ REVIEW = {
     "groups": [
         {
             "id": "harden",
-            "label": "Harden",
+            "label": "harden",
             "status": "ready",
             "available": 4,
             "expected": 4,
@@ -289,6 +289,29 @@ class TestSignoffExport:
         assert rc == 1
         assert plain_records(capsys.readouterr().out)[0]["error"] == "invalid_additional_files"
         assert calls == []
+
+    def test_export_reports_additional_file_on_a_packaged_path(
+        self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records
+    ):
+        from chipcompiler.engine.signoff_export import SignoffAdditionalFileError
+
+        project_dir = create_cli_project()
+        os.makedirs(os.path.join(project_dir, "default"))
+        _patch_export(
+            monkeypatch,
+            error=SignoffAdditionalFileError(
+                "additional file path is already used by the signoff package: harden/gcd.gds"
+            ),
+        )
+
+        rc = cli_main.run(
+            ["signoff", "export", "-o", "/tmp/pkg.tar.gz", "--project", project_dir, "--plain"]
+        )
+
+        record = plain_records(capsys.readouterr().out)[0]
+        assert rc == 1
+        assert record["error"] == "invalid_additional_files"
+        assert "harden/gcd.gds" in record["reason"]
 
     def test_export_incomplete_maps_to_error(
         self, tmp_path, capsys, monkeypatch, create_cli_project, workspace_stub, plain_records

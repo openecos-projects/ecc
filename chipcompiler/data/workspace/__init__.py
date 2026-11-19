@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 
-from collections.abc import Callable
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Final
-
-from typing_extensions import deprecated
 
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
@@ -21,19 +18,16 @@ from ..parameter import (
     load_parameter as load_parameter,
 )
 from ..pdk import PDK, get_pdk, invalid_io_liberty_errors
-from ..types import (
-    SkippableStepEnum,
-    StepBaseEnum,
-    StepEnum,
-)
+from ..step_config_reads import step_config_keys as step_config_keys
 from ..types import (
     StateEnum as StateEnum,
 )
-from ..workspace_config import (
-    legacy_parameters_fallback as legacy_parameters_fallback,
+from ..types import (
+    StepBaseEnum,
+    StepEnum,
 )
 from ..workspace_config import (
-    migrate_legacy_parameters as migrate_legacy_parameters,
+    FLOW_POLICY_KEYS,
 )
 from ..workspace_config import (
     workspace_config_path as workspace_config_toml_path,
@@ -81,6 +75,7 @@ class Flow:
 
     path: Path | None = None  # flow file path
     data: FlowDocument = field(default_factory=lambda: FlowDocument())  # flow steps
+    read_only: bool = False
 
     def steps(self) -> list[FlowStepEntry]:
         data = self.data
@@ -93,7 +88,7 @@ class Flow:
         return [step for step in raw_steps if isinstance(step, dict)]
 
     def get_step(self, name: str | StepBaseEnum, tool: str | None = None) -> FlowStepEntry | None:
-        step_name = name.value if isinstance(name, StepBaseEnum) else name
+        step_name = str(name)
         for step in self.steps():
             if step.get("name") != step_name:
                 continue
@@ -127,9 +122,9 @@ class Workspace:
 
 
 def step_group_to_dict(group: Any) -> dict:
-    """Project a typed path group back to its legacy-key dict for logging.
+    """Project a typed path group to its flat dictionary for logging.
 
-    Reproduces the pre-migration per-builder key set: a scalar/path field is
+    Reproduces the established per-builder key set: a scalar/path field is
     emitted only when populated (so a variant's inherited-but-unset fields — e.g.
     ``db`` on a synthesis output, or ``sizer_env`` on a non-sizer script — do not
     appear), while list/mapping payloads (``spef``/``steps``/``checklist``) are
@@ -183,7 +178,7 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.DRC.value: "drc_ecc.json",
     StepEnum.FLOORPLAN.value: "floorplan_ecc.json",
     "macro_location": "macro_location.tcl",
-    StepEnum.ROUTING.value: "route_ecc.json",
+    StepEnum.ROUTING.value: "routing_ecc.json",
     StepEnum.FILLER.value: "filler_ecc.json",
     StepEnum.RCX.value: "rcx_ecc.json",
     StepEnum.STA.value: "sta_ecc.json",
@@ -191,53 +186,6 @@ _WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
     StepEnum.EMIR.value: "emir_ecc.json",
     "dreamplace": "dreamplace_ecc.json",
 }
-
-_LEGACY_WORKSPACE_CONFIG_FILENAMES: Final[dict[str, str]] = {
-    "db": "db_default_config.json",
-    StepEnum.CTS.value: "cts_default_config.json",
-    StepEnum.DRC.value: "drc_default_config.json",
-    StepEnum.FLOORPLAN.value: "fp_default_config.json",
-    "macro_location": "macro_localtion.tcl",
-    StepEnum.ROUTING.value: "rt_default_config.json",
-    StepEnum.FILLER.value: "pl_default_config.json",
-    StepEnum.RCX.value: "rcx.json",
-    StepEnum.STA.value: "sta.json",
-    "sizer": "sizer_default_config.json",
-    "dreamplace": "dreamplace.json",
-}
-
-_STEP_BY_VALUE: Final[dict[str, StepBaseEnum]] = {
-    step.value: step for step in (*StepEnum, *SkippableStepEnum)
-}
-
-_STEP_CONFIG_KEYS: Final[dict[tuple[StepBaseEnum, str], tuple[str, ...]]] = {
-    (StepEnum.PRE_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value),
-    (StepEnum.MACRO_PLACEMENT, "dreamplace"): ("dreamplace", "macro_location"),
-    (StepEnum.POST_FLOORPLAN, "ecc"): ("db", StepEnum.FLOORPLAN.value, "macro_location"),
-    (StepEnum.PREPLACE, "sizer"): ("db",),
-    (StepEnum.PLACEMENT, "ecc"): ("db",),
-    (StepEnum.CTS, "ecc"): ("db", StepEnum.CTS.value),
-    (StepEnum.ROUTING, "ecc"): ("db", StepEnum.ROUTING.value),
-    (StepEnum.DRC, "ecc"): ("db", StepEnum.DRC.value),
-    (StepEnum.ANTENNA_CHECK, "ecc"): ("db",),
-    (StepEnum.LEGALIZATION, "ecc"): ("db",),
-    (StepEnum.FILLER, "ecc"): ("db", StepEnum.FILLER.value),
-    (StepEnum.RCX, "ecc"): ("db", StepEnum.RCX.value),
-    (StepEnum.STA, "ecc"): ("db", StepEnum.RCX.value, StepEnum.STA.value),
-    (StepEnum.EMIR, "ecc"): ("db", StepEnum.EMIR.value),
-    (StepEnum.PLACEMENT, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.DIFF_OPT, "dreamplace"): ("dreamplace",),
-    (StepEnum.DIFF_BUFFERING, "dreamplace"): ("dreamplace",),
-    (StepEnum.DIFF_SIZING, "dreamplace"): ("dreamplace",),
-    (StepEnum.LEGALIZATION, "dreamplace"): ("dreamplace",),
-    (SkippableStepEnum.TIMING_OPT, "sizer"): ("db", "sizer", "dreamplace"),
-}
-
-
-def _workspace_step_enum(step: str | StepBaseEnum) -> StepBaseEnum | None:
-    if isinstance(step, StepBaseEnum):
-        return step
-    return _STEP_BY_VALUE.get(step)
 
 
 def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
@@ -251,33 +199,8 @@ def workspace_config_paths(workspace_dir: str | Path) -> dict[str, Path]:
     }
 
 
-@deprecated(
-    "legacy parameters.json -> params.toml migration; slated for removal once "
-    "legacy workspaces are phased out",
-    category=None,
-)
-def migrate_workspace_config_filenames(workspace_dir: str | Path) -> None:
-    """Rename legacy workspace configs before resolving their canonical paths."""
-    config_dir = Path(workspace_dir) / "config"
-    if not config_dir.is_dir():
-        return
-
-    for config_key, legacy_filename in _LEGACY_WORKSPACE_CONFIG_FILENAMES.items():
-        legacy_path = config_dir / legacy_filename
-        canonical_path = config_dir / _WORKSPACE_CONFIG_FILENAMES[config_key]
-        if legacy_path.is_file() and not canonical_path.exists():
-            legacy_path.rename(canonical_path)
-
-
 def workspace_config_key_path(workspace_dir: str | Path, config_key: str) -> Path | None:
     return workspace_config_paths(workspace_dir).get(config_key)
-
-
-def step_config_keys(step: str | StepBaseEnum, tool: str | None) -> tuple[str, ...]:
-    step_enum = _workspace_step_enum(step)
-    if step_enum is None or tool is None:
-        return ()
-    return _STEP_CONFIG_KEYS.get((step_enum, tool), ())
 
 
 def step_config_paths(
@@ -304,107 +227,6 @@ def build_workspace_config_paths(workspace: Workspace) -> dict[str, Path]:
     return workspace_config_paths(workspace.directory)
 
 
-@dataclass(frozen=True)
-class WorkspaceConfigParameterMapping:
-    parameter_key: str
-    config_key: str
-    json_path: tuple[str, ...]
-    to_config: Callable[[Any], Any] | None = None
-    to_parameter: Callable[[Any], Any] | None = None
-
-
-def _flag_to_int(value: Any) -> int:
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "yes", "on"}:
-            return 1
-        if normalized in {"false", "no", "off", ""}:
-            return 0
-        try:
-            return int(float(normalized))
-        except ValueError:
-            return 1
-    return int(bool(value))
-
-
-PARAMETER_CONFIG_FIELD_MAPPINGS = (
-    WorkspaceConfigParameterMapping(
-        "max_fanout",
-        StepEnum.CTS.value,
-        ("max_fanout",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "bottom_layer",
-        "db",
-        ("LayerSettings", "routing_layer_1st"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "bottom_layer",
-        StepEnum.ROUTING.value,
-        ("RT", "-bottom_routing_layer"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "top_layer",
-        StepEnum.ROUTING.value,
-        ("RT", "-top_routing_layer"),
-    ),
-    WorkspaceConfigParameterMapping(
-        "target_density",
-        "dreamplace",
-        ("target_density",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "target_overflow",
-        "dreamplace",
-        ("stop_overflow",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "cell_padding_x",
-        "dreamplace",
-        ("cell_padding_x",),
-    ),
-    WorkspaceConfigParameterMapping(
-        "routability_opt_flag",
-        "dreamplace",
-        ("routability_opt_flag",),
-        to_config=_flag_to_int,
-        to_parameter=_flag_to_int,
-    ),
-)
-
-
-_MISSING = object()
-
-
-def _get_nested_value(data: dict, path: tuple[str, ...]):
-    current = data
-    for key in path:
-        if not isinstance(current, dict) or key not in current:
-            return _MISSING
-        current = current[key]
-    return current
-
-
-def _set_nested_value(data: dict, path: tuple[str, ...], value) -> None:
-    current = data
-    for key in path[:-1]:
-        child = current.get(key)
-        if not isinstance(child, dict):
-            child = {}
-            current[key] = child
-        current = child
-    current[path[-1]] = value
-
-
-def _mapping_config_path(
-    workspace: Workspace,
-    mapping: WorkspaceConfigParameterMapping,
-) -> Path | None:
-    if not workspace.config:
-        workspace.config = build_workspace_config_paths(workspace)
-    return workspace.config.get(mapping.config_key)
-
-
 def _reload_workspace_parameters(workspace: Workspace) -> None:
     parameter_path = workspace.parameters.path
     if parameter_path is None:
@@ -412,61 +234,11 @@ def _reload_workspace_parameters(workspace: Workspace) -> None:
     workspace.parameters = reload_parameter(parameter_path, workspace.parameters)
 
 
-def _apply_parameter_mappings_to_workspace_config(workspace: Workspace) -> None:
-    from chipcompiler.utility import json_read, json_write
-
-    configs: dict[Path, dict] = {}
-    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
-        if mapping.parameter_key not in workspace.parameters.data:
-            continue
-
-        path = _mapping_config_path(workspace, mapping)
-        if not path:
-            continue
-
-        config = configs.setdefault(path, json_read(path))
-        value = workspace.parameters.data[mapping.parameter_key]
-        if mapping.to_config is not None:
-            value = mapping.to_config(value)
-        _set_nested_value(config, mapping.json_path, value)
-
-    for path, config in configs.items():
-        json_write(path, config)
-
-
-def _coerce_legacy_dreamplace_routability_flag(workspace: Workspace, dreamplace: dict) -> None:
-    dreamplace_overrides = workspace.parameters.data.get("dreamplace", {})
-    if isinstance(dreamplace_overrides, dict) and "routability_opt_flag" in dreamplace_overrides:
-        return
-    if "routability_opt_flag" in workspace.parameters.data:
-        dreamplace["routability_opt_flag"] = _flag_to_int(
-            workspace.parameters.data["routability_opt_flag"]
-        )
-
-
 def _load_default_floorplan_config() -> dict:
     from chipcompiler.utility import json_read
 
     root_dir = Path(__file__).resolve().parent.parent.parent
     return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
-
-
-def _default_emir_technology_file() -> Path:
-    import sys
-
-    bundle_root = getattr(sys, "_MEIPASS", None)
-    if bundle_root:
-        return (
-            Path(bundle_root)
-            / "chipcompiler"
-            / "tools"
-            / "ecc"
-            / "configs"
-            / "ics55_synthetic.tech"
-        )
-
-    root_dir = Path(__file__).resolve().parent.parent.parent
-    return root_dir / "tools" / "ecc" / "configs" / "ics55_synthetic.tech"
 
 
 def _refresh_emir_config(workspace: Workspace) -> None:
@@ -481,13 +253,8 @@ def _refresh_emir_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"EMIR config missing or corrupt: {config_path}")
 
     technology_path = config_path.parent / "ics55_synthetic.tech"
-    configured = config.get("technology_file_path")
-    if configured:
-        configured_path = Path(str(configured)).expanduser()
-        if configured_path == technology_path:
-            return
-        if configured_path != _default_emir_technology_file().expanduser():
-            return
+    if config.get("technology_file_path"):
+        return
 
     if not technology_path.is_file():
         raise FileNotFoundError(f"Workspace EMIR technology file is missing: {technology_path}")
@@ -574,28 +341,16 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
         "site_name", default_die_builder.get("site_name", "")
     )
 
+    # Margin, utilization and aspect ratio values are written from the workspace
+    # parameters by derive_parameter_configs; restore any missing leaf here.
     default_margin = default_die_builder.get("margin", {})
     margin_config = die_builder.setdefault("margin", {})
-    core = workspace.parameters.data.get("core", {})
-    margin = core.get("margin", [])
-    if len(margin) < 2:
-        margin = [
-            margin_config.get("left_micron", default_margin.get("left_micron", 10.0)),
-            margin_config.get("bottom_micron", default_margin.get("bottom_micron", 10.0)),
-        ]
-    margin_config["left_micron"] = margin[0]
-    margin_config["right_micron"] = margin[0]
-    margin_config["top_micron"] = margin[1]
-    margin_config["bottom_micron"] = margin[1]
-
+    for side in ("left", "right", "top", "bottom"):
+        margin_config.setdefault(f"{side}_micron", default_margin.get(f"{side}_micron", 10.0))
     default_die_util = default_die_builder.get("die_util", {})
     die_util = die_builder.setdefault("die_util", {})
-    die_util["aspect_ratio"] = core.get(
-        "aspect_ratio", die_util.get("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
-    )
-    die_util["utilization"] = core.get(
-        "utilitization", die_util.get("utilization", default_die_util.get("utilization", 0.5))
-    )
+    die_util.setdefault("aspect_ratio", default_die_util.get("aspect_ratio", 1.0))
+    die_util.setdefault("utilization", default_die_util.get("utilization", 0.5))
 
     default_die_size = default_die_builder.get("die_size", {})
     die_size = die_builder.setdefault("die_size", {})
@@ -607,16 +362,6 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
         die_size["width_micron"] = die_dimensions[0]
         die_size["height_micron"] = die_dimensions[1]
         die_builder["mode"] = "die_size"
-    for legacy_key in (
-        "core_width_to_height_ratio",
-        "core_utilization",
-        "left_margin_micron",
-        "right_margin_micron",
-        "top_margin_micron",
-        "bottom_margin_micron",
-    ):
-        die_builder.pop(legacy_key, None)
-
     phy_placer = floorplan.setdefault("phy_placer", {})
     well_tap = phy_placer.setdefault("well_tap", {})
     well_tap["cell_name"] = workspace.pdk.tap_cell or well_tap.get("cell_name", "")
@@ -627,6 +372,12 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
     json_write(config_path, floorplan)
+
+    from chipcompiler.params.targets import derive_parameter_configs
+
+    derive_parameter_configs(
+        workspace.config, workspace.parameters.data, only=(StepEnum.FLOORPLAN.value,)
+    )
 
 
 def _ensure_writable(path: str | Path):
@@ -684,8 +435,6 @@ def init_workspace_config(workspace: Workspace) -> None:
     ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
     dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
 
-    migrate_workspace_config_filenames(workspace.directory)
-
     _copy_missing_files(ecc_config_dir, config_dir)
     if not workspace.config["dreamplace"].exists():
         shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
@@ -696,6 +445,7 @@ def init_workspace_config(workspace: Workspace) -> None:
 
 def refresh_workspace_config(workspace: Workspace) -> None:
     """Reload the workspace configuration and refresh configs derived from parameters/PDK."""
+    from chipcompiler.params.targets import derive_parameter_configs
     from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
 
@@ -721,11 +471,8 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     db["INPUT"]["lib_path"] = [str(path) for path in workspace.pdk.libs]
     db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
     db["INPUT"]["spef"] = str(workspace.pdk.spef or "")
-    db["LayerSettings"]["routing_layer_1st"] = workspace.parameters.data.get("bottom_layer", "")
     if not json_write(workspace.config["db"], db):
         raise OSError(f"Failed to write DB config: {workspace.config['db']}")
-
-    max_fanout = workspace.parameters.data.get("max_fanout", 32)
 
     filler_path = workspace.config[f"{StepEnum.FILLER.value}"]
     filler = json_read(filler_path)
@@ -733,9 +480,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
         raise FileNotFoundError(f"Filler config missing or corrupt: {filler_path}")
     min_filler_width = filler.get("-min_filler_width")
     if min_filler_width is None:
-        nested = filler.get("PL", {})
-        nested = nested.get("Filler", {}) if isinstance(nested, dict) else {}
-        min_filler_width = nested.get("min_filler_width", 1) if isinstance(nested, dict) else 1
+        raise ValueError(f"filler config requires -min_filler_width: {filler_path}")
     json_write(filler_path, {"-min_filler_width": min_filler_width})
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
@@ -744,7 +489,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"CTS config missing or corrupt: {workspace.config[f'{StepEnum.CTS.value}']}"
         )
     cts["buffer_type"] = workspace.pdk.buffers
-    cts["max_fanout"] = max_fanout
     json_write(workspace.config[f"{StepEnum.CTS.value}"], cts)
 
     router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
@@ -753,13 +497,9 @@ def refresh_workspace_config(workspace: Workspace) -> None:
             f"Routing config missing or corrupt (no 'RT' key): "
             f"{workspace.config[f'{StepEnum.ROUTING.value}']}"
         )
-    router["RT"]["-bottom_routing_layer"] = workspace.parameters.data.get("bottom_layer", "")
-    router["RT"]["-top_routing_layer"] = workspace.parameters.data.get("top_layer", "")
-    json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     _refresh_floorplan_config(workspace)
-
-    _apply_parameter_mappings_to_workspace_config(workspace)
+    derive_parameter_configs(workspace.config, workspace.parameters.data)
     _refresh_emir_config(workspace)
 
     # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
@@ -779,7 +519,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     ]
     dreamplace["base_design_name"] = workspace.design.name
     dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
-    _coerce_legacy_dreamplace_routability_flag(workspace, dreamplace)
     json_write(workspace.config["dreamplace"], dreamplace)
 
     from .config_manifest import record_derived_config
@@ -806,57 +545,14 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     record_derived_config(workspace)
 
 
-def sync_workspace_config_to_parameters(workspace: Workspace, config_path: Path) -> bool:
-    """Sync managed fields from one workspace config file back into the workspace configuration."""
-    from chipcompiler.utility import json_read
-
-    _reload_workspace_parameters(workspace)
-
-    if not workspace.config:
-        workspace.config = build_workspace_config_paths(workspace)
-
-    resolved_config_path = Path(config_path).expanduser().resolve()
-    changed = False
-    for mapping in PARAMETER_CONFIG_FIELD_MAPPINGS:
-        mapped_path = _mapping_config_path(workspace, mapping)
-        if mapped_path is None or mapped_path.expanduser().resolve() != resolved_config_path:
-            continue
-
-        config = json_read(mapped_path)
-        value = _get_nested_value(config, mapping.json_path)
-        if value is _MISSING:
-            continue
-
-        if mapping.to_parameter is not None:
-            value = mapping.to_parameter(value)
-
-        if workspace.parameters.data.get(mapping.parameter_key) != value:
-            workspace.parameters.data[mapping.parameter_key] = value
-            changed = True
-
-    if changed and not save_parameter(workspace.parameters):
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Failed to persist parameter sync changes; changes exist only in memory"
-        )
-
-    return changed
-
-
 def _reset_workspace_checklist(workspace: Workspace) -> None:
-    from chipcompiler.utility import json_write
-
-    from ..checklist import workspace_checklist_path
+    from ..checklist import Checklist, workspace_checklist_path
 
     checklist_path = workspace_checklist_path(workspace.directory)
-    json_write(
-        checklist_path,
-        {
-            "path": str(checklist_path),
-            "checklist": [],
-        },
-    )
+    checklist = Checklist(checklist_path)
+    checklist.data["checklist"] = []
+    if not checklist.save():
+        raise OSError(f"failed to reset workspace checklist: {checklist_path}")
 
 
 def _reset_workspace_runtime_parameters(workspace: Workspace) -> None:
@@ -928,10 +624,6 @@ def prepare_workspace_for_rerun(
             step_directory.unlink()
         else:
             shutil.rmtree(step_directory)
-
-    from .loader import remove_legacy_home_files
-
-    remove_legacy_home_files(workspace_root)
 
     if hasattr(engine_flow, "clear_states"):
         engine_flow.clear_states()
@@ -1083,14 +775,15 @@ def create_workspace(
         - input_filelist takes priority over origin_verilog for synthesis when both exist
         - All input files are copied to workspace/origin/ directory
     """
-    # The skip policy, the LEC engine, the selected range, and the resulting
-    # ledger are fully resolved before anything on disk is touched: invalid
-    # configuration (including a preset target whose endpoint the policy
+    # The skip policy, the LEC engine, the inserted steps, the selected range,
+    # and the resulting ledger are fully resolved before anything on disk is
+    # touched: invalid configuration (including a preset target whose endpoint the policy
     # skips) is an error, never a partial workspace.
-    from chipcompiler.rtl2gds import resolve_lec_engine, resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_insert_steps, resolve_lec_engine, resolve_skip_steps
 
     resolve_skip_steps(flow_config)
     resolve_lec_engine(flow_config)
+    resolve_insert_steps(flow_config)
     dynamic_flow_data = build_dynamic_flow_data(flow_config)
 
     # create workspace directory
@@ -1197,16 +890,14 @@ def create_workspace(
             steps[0].setdefault("info", {})["spef"] = str(workspace.pdk.spef)
         if not save_ledger(workspace.flow):
             raise OSError(f"Failed to write initial flow.json: {workspace.flow.path}")
-    elif isinstance(flow_config, dict) and (
-        "skip_steps" in flow_config or "lec_engine" in flow_config
-    ):
+    elif isinstance(flow_config, dict) and any(key in flow_config for key in FLOW_POLICY_KEYS):
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
         from ..workspace_config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
-            {key: flow_config[key] for key in ("skip_steps", "lec_engine") if key in flow_config}
+            {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
         )
 
     if workspace.pdk.root:
@@ -1234,30 +925,18 @@ def create_workspace(
     return workspace
 
 
-def _persisted_golden_verilog(workspace_dir: Path) -> tuple[Path | None, bool]:
-    """Golden netlist recorded at workspace creation.
+def _persisted_golden_verilog(workspace_dir: Path) -> Path | None:
+    """The golden netlist explicitly recorded in the current flow ledger."""
+    from chipcompiler.data.workspace.flow_types import load_flow_document
 
-    Returns ``(path, True)`` when the flow ledger declares a golden netlist,
-    ``(None, True)`` when a current-format ledger declares none, and
-    ``(None, False)`` for legacy ledgers without step info, where the
-    ``golden_*`` filename convention still applies.
-    """
-    from chipcompiler.utility import json_read
-
-    flow_data = json_read(workspace_dir / "home" / "flow.json")
-    steps = flow_data.get("steps", []) if isinstance(flow_data, dict) else []
-    if not steps or not isinstance(steps[0], dict):
-        return None, False
-    if not isinstance(steps[0].get("info"), dict):
-        return None, False
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        info = step.get("info")
-        golden = info.get("golden_verilog") if isinstance(info, dict) else None
+    for step in load_flow_document(workspace_dir / "home" / "flow.json").get("steps", []):
+        info = step.get("info") or {}
+        if not isinstance(info, dict):
+            raise ValueError("flow step info must be an object; create a new workspace")
+        golden = info.get("golden_verilog")
         if golden and Path(golden).is_file():
-            return Path(golden), True
-    return None, True
+            return Path(golden)
+    return None
 
 
 def load_workspace(directory: str | Path, *, read_only: bool = False) -> Workspace:

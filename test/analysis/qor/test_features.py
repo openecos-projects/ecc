@@ -29,10 +29,10 @@ def test_power_analysis_leakage_fraction_uses_signoff_metrics():
     inputs = make_inputs(
         {
             "power_analysis_dynamic_uw": make_metric(
-                "power_analysis_dynamic_uw", 59.6078, step="powerAnalysis"
+                "power_analysis_dynamic_uw", 59.6078, step="power_analysis"
             ),
             "power_analysis_leakage_uw": make_metric(
-                "power_analysis_leakage_uw", 1.6772, step="powerAnalysis"
+                "power_analysis_leakage_uw", 1.6772, step="power_analysis"
             ),
         }
     )
@@ -46,14 +46,14 @@ def test_power_analysis_leakage_fraction_uses_signoff_metrics():
     ]
 
 
-def test_power_analysis_leakage_fraction_reads_legacy_metric_ids():
+def test_power_analysis_leakage_fraction_reads_current_metric_ids():
     inputs = make_inputs(
         {
-            "synthesis_power_dynamic_uw": make_metric(
-                "synthesis_power_dynamic_uw", 8.0, step="powerAnalysis"
+            "power_analysis_dynamic_uw": make_metric(
+                "power_analysis_dynamic_uw", 8.0, step="power_analysis"
             ),
-            "synthesis_power_leakage_uw": make_metric(
-                "synthesis_power_leakage_uw", 2.0, step="powerAnalysis"
+            "power_analysis_leakage_uw": make_metric(
+                "power_analysis_leakage_uw", 2.0, step="power_analysis"
             ),
         }
     )
@@ -62,6 +62,6 @@ def test_power_analysis_leakage_fraction_reads_legacy_metric_ids():
 
     assert feature.value == pytest.approx(0.2)
     assert feature.input_metric_ids == [
-        "synthesis_power_dynamic_uw",
-        "synthesis_power_leakage_uw",
+        "power_analysis_dynamic_uw",
+        "power_analysis_leakage_uw",
     ]

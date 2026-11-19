@@ -38,8 +38,8 @@ def _project(tmp_path: Path) -> tuple[Path, Path]:
                     {
                         "workspace_id": "baseline",
                         "workspace_path": "baseline",
-                        "start_step": "Synth",
-                        "end_step": "Harden",
+                        "start_step": "synthesis",
+                        "end_step": "harden",
                         "status": "not_started",
                     }
                 ],

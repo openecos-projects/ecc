@@ -17,17 +17,9 @@ ICS55_PARAMETERS_TEMPLATE = {
         "margin": [2, 2],
         "aspect_ratio": 1,
     },
-    "max_fanout": 32,
-    "target_density": 0.4,
-    "target_overflow": 0.1,
-    "global_right_padding": 0,
-    "cell_padding_x": 200,
-    "routability_opt_flag": 1,
     "run_analysis": True,
     "clock": "",
     "frequency_max": 100,
-    "bottom_layer": "MET2",
-    "top_layer": "MET5",
     "sta_max_paths": 1000,
 }
 SG13G2_PARAMETERS_TEMPLATE = {
@@ -43,17 +35,9 @@ SG13G2_PARAMETERS_TEMPLATE = {
         "margin": [17.5, 17.5],
         "aspect_ratio": 1,
     },
-    "max_fanout": 32,
-    "target_density": 0.65,
-    "target_overflow": 0.1,
-    "global_right_padding": 0,
-    "cell_padding_x": 0,
-    "routability_opt_flag": 1,
     "run_analysis": True,
     "clock": "",
     "frequency_max": 100,
-    "bottom_layer": "Metal2",
-    "top_layer": "Metal5",
     "sta_max_paths": 1000,
     "floorplan": {
         "tap_distance": 0,
@@ -110,9 +94,6 @@ ICS55_DESIGN_PARAMETERS = {
         "top_module": "gcd",
         "clock": "clk",
         "frequency_max": 100,
-        "lec": {
-            "use_undef": True,
-        },
     }
 }
 
@@ -142,11 +123,7 @@ def _workspace_dir_for(path: Path) -> Path:
 
 
 def load_parameter(path: Path) -> Parameters:
-    from .workspace_config import (
-        LEGACY_PARAMETERS_FILENAME,
-        legacy_parameters_fallback,
-        load_workspace_config,
-    )
+    from .workspace_config import load_workspace_config
 
     parameter = Parameters()
     parameter.path = Path(path)
@@ -154,13 +131,7 @@ def load_parameter(path: Path) -> Parameters:
     try:
         payload = load_workspace_config(workspace_dir)
     except FileNotFoundError:
-        if parameter.path.name == LEGACY_PARAMETERS_FILENAME:
-            # An explicit legacy parameters.json read on a workspace whose
-            # TOML migration was deferred: load the JSON itself (normalized)
-            # instead of silently returning nothing.
-            parameter.data = legacy_parameters_fallback(workspace_dir)
-        else:
-            parameter.data = {}
+        parameter.data = {}
         return parameter
     flow = payload.pop("_flow", {})
     parameter.data = payload

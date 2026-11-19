@@ -26,8 +26,8 @@ class FakeLogger(Logger):
 
 
 def test_copy_rcx_spef_outputs_publishes_to_step_output_dir(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     source_path = data_dir / "spef_writer" / "gcd_Cworst_125C.spef"
     source_path.parent.mkdir(parents=True)
     source_path.write_text("*SPEF\n", encoding="utf-8")
@@ -49,8 +49,8 @@ def test_copy_rcx_spef_outputs_publishes_to_step_output_dir(tmp_path):
 
 
 def test_copy_rcx_spef_outputs_fails_when_declared_spef_source_is_missing(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "present.spef").write_text("*SPEF\n", encoding="utf-8")
@@ -68,8 +68,8 @@ def test_copy_rcx_spef_outputs_fails_when_declared_spef_source_is_missing(tmp_pa
 
 
 def test_copy_rcx_spef_outputs_fails_when_source_spef_is_zero_byte(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "empty.spef").write_text("", encoding="utf-8")
@@ -86,8 +86,8 @@ def test_copy_rcx_spef_outputs_fails_when_source_spef_is_zero_byte(tmp_path):
 
 
 def test_copy_rcx_spef_outputs_fails_and_keeps_stale_destination_when_source_missing(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "good.spef").write_text("*SPEF\nfresh\n", encoding="utf-8")
@@ -111,8 +111,8 @@ def test_copy_rcx_spef_outputs_fails_and_keeps_stale_destination_when_source_mis
 
 
 def test_copy_rcx_spef_outputs_fails_without_partial_copy_when_one_source_is_empty(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "good.spef").write_text("*SPEF\n", encoding="utf-8")
@@ -137,8 +137,8 @@ def test_copy_rcx_spef_outputs_fails_without_partial_copy_when_one_source_is_emp
 def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(
     tmp_path, monkeypatch, partial_content
 ):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "a.spef").write_text("*SPEF\na\n", encoding="utf-8")
@@ -173,8 +173,8 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_a_copy_fails(
 def test_copy_rcx_spef_outputs_cleans_partial_publication_when_validation_fails(
     tmp_path, monkeypatch, second_write
 ):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "a.spef").write_text("*SPEF\na\n", encoding="utf-8")
@@ -208,8 +208,8 @@ def test_copy_rcx_spef_outputs_cleans_partial_publication_when_validation_fails(
 def test_copy_rcx_spef_outputs_restores_previous_spef_when_a_later_copy_fails(
     tmp_path, monkeypatch
 ):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "a.spef").write_text("*SPEF\nfresh a\n", encoding="utf-8")
@@ -245,8 +245,8 @@ def test_copy_rcx_spef_outputs_restores_previous_spef_when_a_later_copy_fails(
 
 
 def test_copy_rcx_spef_outputs_removes_backups_after_successful_republish(tmp_path):
-    data_dir = tmp_path / "RCX_ecc" / "data"
-    output_dir = tmp_path / "RCX_ecc" / "output"
+    data_dir = tmp_path / "rcx_ecc" / "data"
+    output_dir = tmp_path / "rcx_ecc" / "output"
     spef_writer = data_dir / "spef_writer"
     spef_writer.mkdir(parents=True)
     (spef_writer / "a.spef").write_text("*SPEF\nfresh a\n", encoding="utf-8")
@@ -276,14 +276,14 @@ def test_resolve_rcx_dirs_anchors_step_directories_at_the_workspace(tmp_path):
     step = EccStep(
         name=StepEnum.RCX.value,
         tool="ecc",
-        data=EccData(dir=Path("/RCX_ecc/data")),
-        output=EccOutput(dir=Path("/RCX_ecc/output")),
+        data=EccData(dir=Path("/rcx_ecc/data")),
+        output=EccOutput(dir=Path("/rcx_ecc/output")),
     )
 
     data_dir, output_dir = rcx_artifacts.resolve_rcx_dirs(workspace, step)
 
-    assert data_dir == tmp_path / "RCX_ecc" / "data"
-    assert output_dir == tmp_path / "RCX_ecc" / "output"
+    assert data_dir == tmp_path / "rcx_ecc" / "data"
+    assert output_dir == tmp_path / "rcx_ecc" / "output"
 
 
 def test_resolve_rcx_dirs_keeps_the_legacy_lowercase_prefix(tmp_path):

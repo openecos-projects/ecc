@@ -35,6 +35,7 @@ from chipcompiler.data.workspace import Flow
 from chipcompiler.data.workspace.flow_types import FlowStepEntry
 from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.utility import Logger
+from test.flow_fixture import step_fields
 
 # Map StateEnum values to z3 integers.
 STATE_MAP: dict[StateEnum, int] = {
@@ -71,6 +72,9 @@ TERMINAL_STATES: set[StateEnum] = {
     StateEnum.Imcomplete,
     StateEnum.Invalid,
 }
+
+#: Real flow step names: the ledger rejects unknown steps.
+_STEPS = ("synthesis", "pre_floorplan", "placement", "cts", "routing")
 
 
 def _valid_transition_constraint(s_old: ArithRef, s_new: ArithRef) -> Any:
@@ -219,22 +223,23 @@ def _make_workspace(tmp_path: Path, num_steps: int = 3) -> Workspace:
     for i in range(num_steps):
         steps.append(
             {
-                "name": f"step_{i}",
+                "name": _STEPS[i],
                 "tool": "mock",
                 "state": StateEnum.Unstart.value,
                 "runtime": "",
                 "peak memory (mb)": 0,
                 "info": {},
+                **step_fields(_STEPS[i], "mock"),
             }
         )
 
     with open(flow_path, "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
 
     return Workspace(
         directory=Path(ws_dir),
         design=OriginDesign(name="test", top_module="test"),
-        flow=Flow(path=Path(flow_path), data={"steps": steps}),
+        flow=Flow(path=Path(flow_path), data={"schema_version": 3, "steps": steps}),
         logger=Logger(),
     )
 
@@ -251,28 +256,28 @@ def test_clear_states_resets_all(tmp_path: Path) -> None:
     flow: EngineFlow = EngineFlow(workspace=ws)
 
     # Set Ongoing via set_state (lifecycle: Unstart → Ongoing)
-    flow.set_state(name="step_0", tool="mock", state=StateEnum.Ongoing)
+    flow.set_state(name="synthesis", tool="mock", state=StateEnum.Ongoing)
 
     # Set Success via set_state (lifecycle: Unstart → Ongoing → Success)
-    flow.set_state(name="step_1", tool="mock", state=StateEnum.Ongoing)
-    flow.set_state(name="step_1", tool="mock", state=StateEnum.Success)
+    flow.set_state(name="pre_floorplan", tool="mock", state=StateEnum.Ongoing)
+    flow.set_state(name="pre_floorplan", tool="mock", state=StateEnum.Success)
 
     # Set terminal states directly (simulating batch reset or prior persistence)
     for i, state in [(2, StateEnum.Imcomplete), (3, StateEnum.Invalid), (4, StateEnum.Pending)]:
-        step = flow.get_step(name=f"step_{i}", tool="mock")
+        step = flow.get_step(name=_STEPS[i], tool="mock")
         assert step is not None
         step["state"] = state.value
     flow.save()
 
     for i in range(5):
-        step = flow.get_step(name=f"step_{i}", tool="mock")
+        step = flow.get_step(name=_STEPS[i], tool="mock")
         assert step is not None
         assert step["state"] != StateEnum.Unstart.value
 
     flow.clear_states()
 
     for i in range(5):
-        step = flow.get_step(name=f"step_{i}", tool="mock")
+        step = flow.get_step(name=_STEPS[i], tool="mock")
         assert step is not None
         assert step["state"] == StateEnum.Unstart.value, (
             f"step_{i} should be Unstart after clear_states(), got {step['state']}"
@@ -292,7 +297,7 @@ def test_run_steps_does_not_refresh_workspace_config_directly(
     monkeypatch.setattr("chipcompiler.data.init_workspace_config", refresh_config)
 
     flow: EngineFlow = EngineFlow(workspace=ws)
-    flow.workspace_steps.append(WorkspaceStep(name="step_0", tool="mock"))
+    flow.workspace_steps.append(WorkspaceStep(name="synthesis", tool="mock"))
     flow.run_step = lambda workspace_step, rerun=False: StateEnum.Success  # type: ignore[assignment]
 
     assert flow.run_steps(rerun=False)
@@ -317,7 +322,7 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         os.makedirs(output_dir, exist_ok=True)
 
         ws_step = EccStep(
-            name=f"step_{i}",
+            name=_STEPS[i],
             tool="mock",
             directory=Path(step_dir),
             output=EccOutput(
@@ -330,7 +335,7 @@ def test_run_steps_stops_on_failure(tmp_path: Path, fail_index: int) -> None:
         flow.workspace_steps.append(ws_step)
 
     def mock_run_step(workspace_step: WorkspaceStep, *, rerun: bool = False) -> StateEnum:
-        idx: int = int(workspace_step.name.split("_")[1])
+        idx: int = _STEPS.index(workspace_step.name)
         executed.append(idx)
 
         # Simulate lifecycle: Unstart → Ongoing → Success/Incomplete

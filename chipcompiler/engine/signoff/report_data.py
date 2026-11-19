@@ -1,75 +1,13 @@
 """Data contract for the design-summary report.
 
-Mirrors ecos/gui/packages/shared/src/contracts/designReport.ts (snake_case)
-plus the stage-name canonicalization table shared by extraction and
-formatting.
+Mirrors ecos/gui/packages/shared/src/contracts/designReport.ts (snake_case).
+Report stages are flow step names (``placement``, ``sta``).
 """
 
 import dataclasses
 
-STAGE_CANONICAL_NAMES = {
-    "synthesis": "Synth",
-    "synth": "Synth",
-    "synthesis_yosys": "Synth",
-    "yosys": "Synth",
-    "prefloorplan": "PreFloorplan",
-    "pre_floorplan": "PreFloorplan",
-    "prefloorplan_ecc": "PreFloorplan",
-    "macroplacement": "MacroPlacement",
-    "macro_placement": "MacroPlacement",
-    "macroplacement_dreamplace": "MacroPlacement",
-    "postfloorplan": "PostFloorplan",
-    "post_floorplan": "PostFloorplan",
-    "postfloorplan_ecc": "PostFloorplan",
-    "lec": "LEC",
-    "lec_yosys_lec": "LEC",
-    "lec_kepler_formal": "LEC",
-    "lec_dual": "LEC",
-    "postroutelec": "LEC",
-    "postroutelec_yosys_lec": "LEC",
-    "postroutelec_kepler_formal": "LEC",
-    "postroutelec_dual": "LEC",
-    "placement": "Place",
-    "place": "Place",
-    "place_dreamplace": "Place",
-    "dreamplace": "Place",
-    "global_placement": "Place",
-    "detailed_placement": "Place",
-    "diff_sizing": "DiffSizing",
-    "diff_opt": "DiffOpt",
-    "diff_buffering": "DiffBuffering",
-    "diff_buffering_dreamplace": "DiffBuffering",
-    "diff_opt_dreamplace": "DiffOpt",
-    "cts": "CTS",
-    "cts_ecc": "CTS",
-    "legalization": "Legal",
-    "legal": "Legal",
-    "legalization_dreamplace": "Legal",
-    "routing": "Route",
-    "route": "Route",
-    "route_ecc": "Route",
-    "global_route": "Route",
-    "detail_route": "Route",
-    "drc": "DRC",
-    "drc_ecc": "DRC",
-    "lvs": "LVS",
-    "lvs_ecc": "LVS",
-    "filler": "Filler",
-    "filler_ecc": "Filler",
-    "rcx": "RCX",
-    "rcx_ecc": "RCX",
-    "sta": "STA",
-    "sta_ecc": "STA",
-    "sta_signoff": "STA",
-    "signoff": "STA",
-    "post_route_sta": "STA",
-    "sta_corner": "STA",
-    "power": "Power",
-    "power_ecc": "Power",
-    "sta_power": "Power",
-    "harden": "Harden",
-    "harden_ecc": "Harden",
-}
+#: The report stage of values taken from the workspace parameters, not a step.
+PARAMETERS_STAGE = "parameters"
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +220,3 @@ class ParsedQorSummaryMetrics:
     hold_wns: float | None = None
     hold_tns: float | None = None
     hold_nvp: float | None = None
-
-
-def canonicalize_stage_name(name: str) -> str:
-    return STAGE_CANONICAL_NAMES.get(name.lower(), name)

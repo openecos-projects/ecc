@@ -230,8 +230,8 @@ class TestPrettyDefaultOutput:
         create_flow_json(
             os.path.join(project_dir, "default"),
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
-                {"name": "CTS", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:05"},
+                {"name": "cts", "tool": "ecc", "state": "Success", "runtime": "0:00:04"},
             ],
         )
         rc = cli_main.run(["status", "--project", project_dir])
@@ -284,7 +284,7 @@ class TestPrettyDefaultOutput:
         monkeypatch.setattr("chipcompiler.engine.EngineFlow", DummyFlow)
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",

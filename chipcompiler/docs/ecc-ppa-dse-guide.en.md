@@ -192,7 +192,7 @@ measurement. The example values are not universal recommendations.
     "fixed_sdc_frequency_pdk": true,
     "parameters": {
       "floorplan.core_util": [0.25, 0.30, 0.35],
-      "place.target_density": [0.15, 0.20, 0.25]
+      "placement:place.target_density": [0.15, 0.20, 0.25]
     },
     "first_round_max_candidates": 3,
     "max_search_candidates": 8,
@@ -209,7 +209,7 @@ measurement. The example values are not universal recommendations.
   "acceptance": {
     "deliverable_scope": "full_rtl2gds",
     "signoff_profile": "rtl2gds",
-    "required_checkers": ["drc", "lvs", "postRouteLec", "sta"],
+    "required_checkers": ["drc", "lvs", "post_route_lec", "sta"],
     "required_artifacts": ["gds", "final_netlist", "spef"],
     "require_applicable_checklist_pass": true,
     "require_fresh_full_validation": true
@@ -233,8 +233,8 @@ Report exhausted budgets or unmet goals; do not automatically add validation run
 
 required_checkers is an independent acceptance requirement. It does not enable checks
 skipped by the flow policy. For synthesis-level LEC, verify that the flow actually
-includes/enables it and that public configuration is sufficient. If not, disclose the
-gap instead of equating declaration with verification. Inspect real postRouteLec
+inserts it (`lec@synthesis` in `[flow] insert_steps`) and that public configuration is sufficient. If not, disclose the
+gap instead of equating declaration with verification. Inspect real post_route_lec
 proven evidence rather than only execution success. The signoff profile does not
 replace required checkers, all checklist items, or additional physical acceptance.
 
@@ -371,7 +371,7 @@ Thread/corner parallelism controls resources; it is not inherently a PPA improve
 | synthesis_cell_area | µm²; synthesis output | Early screening only, not final area |
 | Setup/hold WS | ns; signed worst slack across all required corners | Larger positive values indicate margin; also inspect TNS/NVP |
 | Setup/hold TNS and NVP | ns and count | One worst path is insufficient; missing is not zero |
-| Total/dynamic/leakage power | µW or W; activity, corner, source_kind | Do not directly compare synthesis and powerAnalysis values |
+| Total/dynamic/leakage power | µW or W; activity, corner, source_kind | Do not directly compare synthesis and power_analysis values |
 | HPWL/GRWL/route wirelength/vias | Same stage, net population, and units | Diagnostic proxies, not final timing/DRC acceptance |
 | Runtime/peak memory | s/MB; threads and device | Budget and benefit assessment |
 
@@ -430,7 +430,7 @@ Check record success and valid values before using these QoR paths:
 
 dimension is timing/interconnect/area/power/robustness. Supplement raw area and
 per-corner timing with report step metrics. Not every step emits all metrics.
-If a powerAnalysis analysis lacks a power metric, check whether QoR power provides
+If a power_analysis analysis lacks a power metric, check whether QoR power provides
 a valid total_uw with consistent provenance. Do not substitute zero or infer that
 power was never measured from one missing interface.
 
@@ -442,21 +442,23 @@ and the persisted flow determine execution.
 
 | Parameter | Meaning/type | Use | Usual earliest affected stage |
 | --- | --- | --- | --- |
-| `floorplan.core_util` | float; planned utilization in die_util mode | Area/routability tradeoff | preFloorplan |
-| `floorplan.aspect_ratio` | float; width/height | Wirelength, channels, outline | preFloorplan |
-| `floorplan.core_margin` | JSON pair of integers, µm | Edge/IO/PDN space | floorplan |
+| `floorplan.core_util` | float; planned utilization in die_util mode | Area/routability tradeoff | pre_floorplan |
+| `floorplan.aspect_ratio` | float; width/height | Wirelength, channels, outline | pre_floorplan |
+| `floorplan.core_margin` | JSON pair of numbers, µm | Edge/IO/PDN space | floorplan |
 | `floorplan.die_builder.mode`, die_size width/height_micron | Mode and fixed dimensions | Fixed-die experiments | floorplan |
-| `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | place |
-| `place.target_overflow` | float; 0–1 | Placement stopping threshold | place |
-| `place.routability_opt` | int; 0/1 | Congestion-driven placement | place |
-| `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | place |
-| `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | place |
+| `place.target_density` | float; current range 0.1–0.95 | Placement compactness/congestion | placement |
+| `place.stop_overflow` | float; 0–1 | Placement stopping threshold | placement |
+| `place.routability_opt_flag` | int; 0/1 | Congestion-driven placement | placement |
+| `place.cell_padding_x` | int; database units (dbu) | Pin access/congestion tradeoff | placement |
+| `place.random_seed`, `place.deterministic_flag` | Check schema types and conditions | Reproduction; seed validation when needed | placement |
 | `cts.skew_bound` | Current schema: str; physical quantity: ns | CTS skew/area/power tradeoff | CTS |
 | `cts.max_fanout` | int; current range 1–200 | Clock-tree structure | CTS; may also affect generated SDC, so inspect invalidation |
 | `cts.routing_layer`, `cts.buffer_type` | JSON lists | Supported clock layers/buffer cells | CTS |
-| `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | Timing optimization |
-| `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | May affect placement routing proxies and Sizer; inspect invalidation |
-| `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macroPlacement |
+| `timing_opt.hold_margin` | float; current default 0.04 ns; negatives rejected by tool | Sizer hold-only margin | timing_optimization |
+| `route.bottom_layer`, `route.top_layer` | Process-layer strings | Routing capacity, RC, vias/wirelength | Workspace-wide (unqualified keys); invalidates from the earliest step reading their target configs (`route.bottom_layer`: pre_floorplan; `route.top_layer`: macro_placement/placement), and may affect Sizer; inspect invalidation |
+| `macro.placements` / `ecc macro` | Legal macro positions/orientations | Macro channels and critical wires | macro_placement |
+
+The `place.*` rows are DreamPlace parameters held per flow step: set and read them with the step in the key (`placement:place.target_density`), never as bare names. The names in this table are the parameter names.
 
 floorplan.core_util, place.target_density, and final core_utilization are distinct.
 Density does not directly determine die area. A higher target_density is not itself
@@ -465,7 +467,6 @@ inspect the effective configuration.
 
 Do not initially use these as PPA search variables:
 
-- `place.global_right_padding` currently has no actual tool-field mapping.
 - `place.num_threads` and `sta.max_parallel_corners` mainly manage resources.
 - Process rules, PDN, and acceptance corners cannot be weakened as optimization knobs.
 - Invented keys such as `cts.target_skew` or guessed sizing/DRC fields do not replace schema keys.
@@ -492,7 +493,7 @@ acceptance. Keep synthesis strategy fixed in the first round.
 to check the local region, then fresh full validation.** Avoid the Cartesian product
 of ten parameters; add a parameter group only when evidence supports it.
 
-Early PNR provides a lower-cost entry. `workspace derive --from` preserves a
+Early PNR provides a lower-cost entry. `workspace fork --from` preserves a
 valid prefix, and `run --from --to` controls checkpoints. Current sweep has no range
 options and is not a staged DSE scheduler. Early rankings cannot depend on final
 overall QoR. See §17 for reuse conditions, metrics, and commands.
@@ -553,7 +554,7 @@ ecc status --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc report step --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ecc param diff --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --plain
 ecc param show floorplan.core_util --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" --json
 ```
 
 If there is no trustworthy baseline, create a full baseline using an unused name:
@@ -577,7 +578,7 @@ ecc report checklist --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   -o "$PPA_EVIDENCE/baseline-checklist.txt" --json
 ecc report step sta --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   --section analysis --json > "$PPA_EVIDENCE/baseline-sta.json"
-ecc report step poweranalysis --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
+ecc report step power_analysis --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   --section feature --section analysis --json > "$PPA_EVIDENCE/baseline-power.json"
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_BASELINE" \
   -o "$PPA_EVIDENCE/baseline.snapshot.json" --json
@@ -605,7 +606,7 @@ core_util=0.30, target_density=0.20, and all other inputs/parameters fixed:
 ```bash
 PPA_CANDIDATE=ppa-density-015-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.15 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.15 --plain
 
 ecc status --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
 ecc report step placement --project "$PPA_PROJECT" --workspace "$PPA_CANDIDATE" --json
@@ -637,7 +638,7 @@ For the same verified baseline, hold core_util constant and search placement den
 PPA_SWEEP=ppa-density-r1
 ecc sweep create --project "$PPA_PROJECT" --name "$PPA_SWEEP" \
   --param floorplan.core_util=0.30 \
-  --param place.target_density=0.15,0.20,0.25
+  --param placement:place.target_density=0.15,0.20,0.25
 ecc sweep show --project "$PPA_PROJECT" --name "$PPA_SWEEP" --json
 ecc sweep run --project "$PPA_PROJECT" --name "$PPA_SWEEP" --max-candidates 3
 ecc sweep verify --project "$PPA_PROJECT" --name "$PPA_SWEEP"
@@ -723,8 +724,8 @@ PPA_ITER=ppa-iter-001
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-before.snapshot.json" --json
 ecc param apply --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
-  --set place.target_density=0.25 --set place.target_overflow=0.08 --plain
-ecc param show place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
+  --set placement:place.target_density=0.25 --set placement:place.stop_overflow=0.08 --plain
+ecc param show placement:place.target_density --project "$PPA_PROJECT" --workspace "$PPA_ITER" --json
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_ITER" --resume --plain
 ecc report snapshot --project "$PPA_PROJECT" --workspace "$PPA_ITER" \
   -o "$PPA_EVIDENCE/iter-after.snapshot.json" --json
@@ -734,8 +735,8 @@ ecc compare run --baseline "$PPA_EVIDENCE/iter-before.snapshot.json" \
 
 Create and run ppa-iter-001 beforehand; the example does not apply to an unknown
 workspace. Reuse only when the reported invalidation covers the real changes and
-the upstream prefix remains valid. `--only place --force` invalidates downstream
-steps. After running just place or place→route, restore the full suffix before
+the upstream prefix remains valid. `--only placement --force` invalidates downstream
+steps. After running just place or placement→routing, restore the full suffix before
 using STA/power/Harden as current final evidence.
 
 ### 11.1 Current compare boundaries
@@ -812,7 +813,7 @@ This is a two-parameter example; carry every actual winner difference:
 ```bash
 PPA_FINAL=ppa-final-001
 ecc run --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --preset rtl2gds \
-  --set floorplan.core_util=0.30 --set place.target_density=0.25 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.25 --plain
 ecc signoff inspect --project "$PPA_PROJECT" --workspace "$PPA_FINAL" --json
 ecc report qor --project "$PPA_PROJECT" --workspace "$PPA_FINAL" \
   -o "$PPA_EVIDENCE/final-qor.txt" --json > "$PPA_EVIDENCE/final-qor.json"
@@ -942,25 +943,25 @@ not automatic RTL architecture rewrites.
 | --- | --- | --- |
 | Fresh `run --from A --to B --set …` | Available | Create an independent candidate and execute only its range |
 | `workspace create --from A --to B --set …` | Available | Register a candidate before executing it |
-| `workspace derive SOURCE TARGET --from STEP` | Available | Preserve earlier state/artifacts, reset the named step and its suffix |
+| `workspace fork SOURCE TARGET --from STEP` | Available | Preserve earlier state/artifacts, reset the named step and its suffix |
 | Workspace `param set/apply` | Available | Modify a branch, regenerate configuration, invalidate affected suffix |
 | report step feature/analysis/checklist/outputs | Available | Read metrics, execution evidence, intermediate DEF/Verilog |
 | report snapshot and same-workspace compare run | Available | Save checkpoints and inspect before/after iteration |
 | Sweep range options, early stopping, staged advancement | Unavailable | Orchestrate public CLI calls through an AI |
 | Measured stage objectives and Pareto | User/AI responsibility | Compare matching measured metrics externally, separate from overall ECC QoR |
 
-`derive --from place` means rerun place and subsequent steps. It does not mean
+`fork --from placement` means rerun place and subsequent steps. It does not mean
 copy only files starting at place. Current implementation copies the source workspace,
 clears the selected suffix's states/artifacts/checklists in the target, and preserves
 earlier steps. The source remains unchanged; the target receives a new engineering
 identity and branch registration. This is not a hard-link cache or zero-copy operation;
 budget disk space and copying time.
-**Without `--from`, derive prepares the entire flow for rerun and does not save
+**Without `--from`, fork prepares the entire flow for rerun and does not save
 synthesis/early-stage execution.**
 
 The source must be managed and have an Engineering Snapshot. Do not forcibly copy
-an old workspace or manufacture a missing snapshot. Use public compatibility/migration
-procedures or a fresh range entry below. Derivation does not prove prefix validity;
+an old workspace or manufacture a missing snapshot. Create a current workspace
+or use a fresh range entry below. Derivation does not prove prefix validity;
 verify inputs, parameters, successful states, and complete artifacts.
 
 ### 17.2 Stage boundaries and useful variables
@@ -968,8 +969,8 @@ verify inputs, parameters, successful states, and complete artifacts.
 The usual early rtl2gds sequence is:
 
 ```text
-Synthesis → lec (subject to the existing skip policy) → preFloorplan → macroPlacement
-→ postFloorplan → place → CTS → legalization → Timing optimization → route → …
+synthesis → lec@synthesis (when [flow] insert_steps inserts it) → pre_floorplan → macro_placement
+→ post_floorplan → placement → cts → legalization → timing_optimization → routing → …
 ```
 
 Start by covering through place. Execute CTS/legalization only for a shortlist.
@@ -978,16 +979,16 @@ If hold is a real bottleneck, then explore the existing Sizer's
 
 | Stage | Initial variables | Results to screen | Reuse boundary after changes |
 | --- | --- | --- | --- |
-| preFloorplan / postFloorplan | `floorplan.core_util`, `floorplan.aspect_ratio`; core_margin/supported die_size when needed | Outline, area, actual core utilization, available capacity, macro/channel/PDN evidence | Reuse fixed synthesis; rerun floorplan and later stages |
-| macroPlacement | Public `macro.placements` / macro commands; legal coordinates/orientations | Macro legality, channels, pin access, later routability | Reuse only the unchanged prefix before macro placement |
-| place | `place.target_density`, `place.cell_padding_x`, `place.routability_opt` | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid postFloorplan; rerun place and later stages |
-| CTS / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
-| Timing optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
+| pre_floorplan / post_floorplan | `floorplan.core_util`, `floorplan.aspect_ratio`; core_margin/supported die_size when needed | Outline, area, actual core utilization, available capacity, macro/channel/PDN evidence | Reuse fixed synthesis; rerun floorplan and later stages |
+| macro_placement | Public `macro.placements` / macro commands; legal coordinates/orientations | Macro legality, channels, pin access, later routability | Reuse only the unchanged prefix before macro placement |
+| placement | `place.target_density`, `place.cell_padding_x`, `place.routability_opt_flag` (set as `placement:place.*`) | HPWL, GRWL, EGR overflow, RUDY; convergence, artifacts, applicable checklist | Reuse the candidate's valid post_floorplan; rerun placement and later stages |
+| cts / legalization | `cts.skew_bound`; add max_fanout/buffer_type/routing_layer with evidence | Skew, clock wirelength, buffer count/area, tree depth, legalization | Reuse valid placement subject to actual param invalidation |
+| timing_optimization | `timing_opt.hold_margin` | Real hold-pass output, insertion cost, later setup/hold risks | Reuse the valid prefix; validate full RCX/STA last |
 
 Do not explore every variable in round one. Hold macros/CTS fixed and find a feasible
 region with one floorplan and one placement variable. In macro designs, resolve
 macros/channels before cell density. If GCD has no relevant hard-macro search benefit,
-do not invent a macroPlacement dimension.
+do not invent a macro_placement dimension.
 
 core_util controls floorplan capacity/dimensions; target_density is a placement
 objective. They are not interchangeable and need not be equal. Check the tool's
@@ -995,7 +996,7 @@ definitions of placeable area, macros/blockages, and padding before changing the
 Schema validity does not establish capacity. Fixed die_size also does not imply
 core_util changes shrink the die.
 
-place.target_overflow is a placement stopping objective; EGR overflow is a different
+place.stop_overflow is a placement stopping objective; EGR overflow is a different
 congestion observation. Lowering the stopping threshold does not prove routing
 violations are eliminated. Relaxing the stopping condition is not quality improvement.
 Freeze seed, threads, and device in round one. Measure random robustness separately
@@ -1009,12 +1010,12 @@ explanations. Coverage varies by version, design, and tools.
 
 | Reporting stage | Example metrics | Interpretation limits |
 | --- | --- | --- |
-| postFloorplan | `die_area`, `die_width`, `die_height`, `die_utilization`, `core_utilization` | Current outline/utilization; placement changes on a fixed floorplan need not reduce die_area |
+| post_floorplan | `die_area`, `die_width`, `die_height`, `die_utilization`, `core_utilization` | Current outline/utilization; placement changes on a fixed floorplan need not reduce die_area |
 | place | `place_hpwl`, `place_grwl`, `place_flute_wirelength` | Interconnect proxies, generally lower is better; not final routed length/timing |
 | place | `place_congestion_egr_overflow_total/max`, `place_rudy_utilization_max`, `place_lutrudy_utilization_max` | Congestion proxies; interpret hotspots/layers/net population, not routed DRC |
 | CTS | `cts_buffer_count`, `cts_buffer_area`, `clock_wirelength`, `clock_path_max_buffer` | Clock-tree cost/structure proxies, not full clock power |
 | CTS | `cts_worst_optimized_skew_ns`, `cts_worst_max_insertion_latency_ns`, `cts_skew_target_unmet_count`, `cts_clock_tree_max_level` | Current CTS timing_quality evidence, not final setup/hold across all corners |
-| legalization / Timing optimization | Actual feature/analysis/checklist results from this run | Unreported legality or intermediate STA cannot be marked passed |
+| legalization / timing_optimization | Actual feature/analysis/checklist results from this run | Unreported legality or intermediate STA cannot be marked passed |
 
 Early stages generally lack final power, multi-corner setup/hold, RC, and routed
 DRC/LVS evidence. Record proxies only when tools actually provide them and identify
@@ -1056,7 +1057,7 @@ scope or obtain reports. Do not substitute zero or delete gates to fake acceptan
    it once. When deriving from a full managed baseline, identify preserved steps
    and why their evidence remains valid.
 2. **Screen floorplans.** Try three neighboring core_util values with aspect_ratio
-   fixed. Run through postFloorplan first if useful, reject capacity/macro/artifact
+   fixed. Run through post_floorplan first if useful, reject capacity/macro/artifact
    problems, and retain feasible regions with different area/utilization.
 3. **Screen placement.** Run feasible floorplans through place and compare
    HPWL/GRWL/congestion/cost. Explore target_density locally on only one or two
@@ -1102,12 +1103,12 @@ mkdir -p "$DSE_EVIDENCE"
 
 ecc run --project "$DSE_PROJECT" --workspace dse-place-001 \
   --from synthesis --to placement \
-  --set floorplan.core_util=0.30 --set place.target_density=0.20 --plain
+  --set floorplan.core_util=0.30 --set placement:place.target_density=0.20 --plain
 
-ecc report step postFloorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
+ecc report step post_floorplan --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.floorplan.json"
-ecc report step place --project "$DSE_PROJECT" --workspace dse-place-001 \
+ecc report step placement --project "$DSE_PROJECT" --workspace dse-place-001 \
   --section feature --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/dse-place-001.place.json"
 ecc report snapshot --project "$DSE_PROJECT" --workspace dse-place-001 \
@@ -1126,59 +1127,59 @@ accepts analogous range/override options; subsequent run must not use `--set`.
 Check the persisted target and specify checkpoints explicitly. Do not assume an
 arbitrary `--resume` advances a range workspace to the full flow.
 
-### 17.6 Method B: derive from a trusted workspace
+### 17.6 Method B: fork from a trusted workspace
 
 The source must include the explored steps, with a successful prefix and usable artifacts.
 A full baseline already contains later steps and supports checkpoint execution.
 A source range ending at place does not automatically acquire CTS/route through
-derive. Inspect the persisted target and use the corresponding public entry for later stages.
+fork. Inspect the persisted target and use the corresponding public entry for later stages.
 
-**Placement candidates: reuse the same floorplan.** Derive from a full managed baseline:
+**Placement candidates: reuse the same floorplan.** Fork from a full managed baseline:
 
 ```bash
 DSE_SOURCE=baseline-001
 DSE_CANDIDATE=dse-density-025
-ecc workspace derive "$DSE_SOURCE" "$DSE_CANDIDATE" \
-  --project "$DSE_PROJECT" --from place --plain
-ecc param set place.target_density 0.25 \
+ecc workspace fork "$DSE_SOURCE" "$DSE_CANDIDATE" \
+  --project "$DSE_PROJECT" --from placement --plain
+ecc param set placement:place.target_density 0.25 \
   --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --plain
 ecc param diff --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ecc status --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" --json
 ```
 
 Read parameter invalidation and states before execution. If the change returns
-`from_step=place` and invalidates only its suffix, use this range.
+`from_step=placement` and invalidates only its suffix, use this range.
 If invalidation starts earlier, rerun from that actual earliest step:
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
-  --from place --to place --plain
-ecc report step place --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
+  --from placement --to placement --plain
+ecc report step placement --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.place.json"
 ```
 
 **Floorplan candidates: reuse synthesis and rerun early PNR.**
-Derive with `--from preFloorplan`, set the candidate's floorplan parameters,
-then run from actual invalidation through postFloorplan or place.
+Fork with `--from pre_floorplan`, set the candidate's floorplan parameters,
+then run from actual invalidation through post_floorplan or place.
 If parameter application requires earlier invalidation/full refresh, follow that
 contract instead of retaining an invalid prefix. Macro changes cannot preserve
-postFloorplan from the old macro placement.
+post_floorplan from the old macro placement.
 
 **Advance a placement shortlist to CTS/legalization.** Operate on the actual candidate:
 
 ```bash
 ecc run --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
-  --from CTS --to legalization --plain
+  --from cts --to legalization --plain
 ecc report step CTS --project "$DSE_PROJECT" --workspace "$DSE_CANDIDATE" \
   --section analysis --section checklist --section outputs --json \
   > "$DSE_EVIDENCE/$DSE_CANDIDATE.cts.json"
 ```
 
-Existing workspace endpoints use persisted names such as `place`, `CTS`,
-`legalization`, and `Timing optimization`. Creation-time aliases do not all
-apply to existing workspaces. For CTS variants, derive from trusted placement
-with `--from CTS`, then set public CTS parameters.
+Existing workspace endpoints use persisted names such as `placement`, `cts`,
+`legalization`, and `timing_optimization`. Creation-time aliases do not all
+apply to existing workspaces. For CTS variants, fork from trusted placement
+with `--from cts`, then set public CTS parameters.
 cts.max_fanout also affects generated SDC. Inspect actual invalidation when dependencies
 span stages; the parameter name does not prove CTS is the only affected stage.
 
@@ -1199,11 +1200,11 @@ parameters. New-project defaults are not the baseline.
 | Fresh range entry | Required inputs | Reusable source |
 | --- | --- | --- |
 | synthesis | `design.rtl` | Fixed RTL; synthesis still runs |
-| preFloorplan | `design.netlist` | Verified synthesized netlist; skip synthesis |
-| macroPlacement / postFloorplan / preplace / place / diff_sizing | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
-| CTS / legalization / Timing optimization / route / filler / lvs / drc / Harden | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
+| pre_floorplan | `design.netlist` | Verified synthesized netlist; skip synthesis |
+| macro_placement / post_floorplan / preplace / placement / diff_sizing | `design.def` + `design.netlist` | Matching checkpoint from the preceding stage |
+| cts / legalization / timing_optimization / routing / filler / lvs / drc / harden | `design.def` + `design.netlist` | Matching completed preceding checkpoint |
 | sta | Both above + `design.spef` | Real RCX and matching design; early placement is not equivalent |
-| antennaCheck / powerAnalysis / emir | No entry-input contract | Start from an earlier validated checkpoint; these steps rely on chained upstream artifacts |
+| antenna_check / power_analysis / emir | No entry-input contract | Start from an earlier validated checkpoint; these steps rely on chained upstream artifacts |
 
 An explicitly declared SDC is also validated. Macro models and physical libraries
 must remain complete. Do not combine an arbitrary DEF with another candidate's
@@ -1214,7 +1215,7 @@ check existence, types, and pairing. The interface does not scan arbitrary direc
 an old workspace with no registered output does not establish discovery.
 
 Assume a prepared independent physical project and paired output from one
-postFloorplan. Fresh placement density experiments can then use:
+post_floorplan. Fresh placement density experiments can then use:
 
 ```bash
 DSE_PHYSICAL_PROJECT=/absolute/path/to/prepared-dse-physical-project
@@ -1223,11 +1224,11 @@ DSE_INPUT_NETLIST=/absolute/path/to/verified-postfloorplan.v.gz
 ecc project set design.def "$DSE_INPUT_DEF" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc project set design.netlist "$DSE_INPUT_NETLIST" --project "$DSE_PHYSICAL_PROJECT" --plain
 ecc run --project "$DSE_PHYSICAL_PROJECT" --workspace dse-place-025 \
-  --from placement --to placement --set place.target_density=0.25 --plain
+  --from placement --to placement --set placement:place.target_density=0.25 --plain
 ```
 
-For floorplan exploration, use a fixed synthesized netlist with a preFloorplan→place
-range and regenerate the floorplan. Supplying an old postFloorplan DEF, changing
+For floorplan exploration, use a fixed synthesized netlist with a pre_floorplan→placement
+range and regenerate the floorplan. Supplying an old post_floorplan DEF, changing
 core_util, and running only place does not test new floorplan dimensions.
 Input changes do not update existing candidate snapshots. Use fresh names;
 avoid accidentally erasing saved experiments with refresh.
@@ -1263,13 +1264,13 @@ variables that actually control dimensions and validating fully.
 | run_state / checklist / stage_decision | Execution, real stage checks, screening state/reason |
 | cost / promotion_reason / final_result | Copy/EDA cost, advancement reason, final PPA/checker/signoff |
 
-Derived candidates have different workspaceId values, so compare run may return
+Forked candidates have different workspaceId values, so compare run may return
 different_workspace. Align external comparisons as described in §12.
 Use snapshot compare for before/after changes within one workspace.
 report project can display candidate step matrices, but early null QoR must not
 be ranked as zero.
 
-A shortlist derived from a full baseline retains the complete flow and can run
+A shortlist forked from a full baseline retains the complete flow and can run
 remaining steps once its prefix is valid. For pure range candidates, use the
 persisted target/public intermediate-input entry; a bare run does not necessarily
 complete rtl2gds. The final winner must return to the original RTL project for a
@@ -1403,7 +1404,7 @@ Pure PPA/DSE normally freezes existing RTL, PDK, frequency, and acceptance const
    Diagnose configuration/input/environment failures instead of searching blindly.
 4. Generate a baseline within budget if none is trustworthy. Save input digests,
    full effective parameters, and evidence. If project defaults differ from an
-   old workspace, explicitly carry fixed values or derive from the trusted workspace.
+   old workspace, explicitly carry fixed values or fork from the trusted workspace.
 5. Select a few legal variables/candidates for the goal. Record hypotheses, budget,
    and range; use unused names. Default to serial. Use §17 checkpoints for staged
    tasks; full sweep is not an early-stage scheduler.
@@ -1457,7 +1458,7 @@ Run serial experiments within parameter allowlists, tolerances, and budget.
 Record the complete effective parameter vector and provenance.
 Diagnose required blockers first. Preserve raw metrics, step/checklist states,
 exit codes, and costs for every candidate.
-Use ranges/derive and stage screening for early DSE; use raw PPA/Pareto and actual
+Use ranges/fork and stage screening for early DSE; use raw PPA/Pareto and actual
 acceptance for complete optimization.
 Iterate autonomously within authorization without repeatedly asking for each round.
 Do not expand scope or budgets without authorization.
@@ -1484,7 +1485,7 @@ After a sweep, export the verified front without selecting a winner:
 
 ```bash
 ecc explore promote --project ./project --name ppa-grid --pareto \
-  --objective postFloorplan/core_area:um^2:minimize \
+  --objective post_floorplan/core_area:um^2:minimize \
   --objective sta/sta_frequency_mhz:MHz:maximize
 ```
 

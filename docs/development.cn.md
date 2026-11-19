@@ -247,7 +247,7 @@ pyproject.toml                    # scripts.ecc = "chipcompiler.cli.main:main"
 chipcompiler/cli/main.py          # run(argv) / main()，仅做薄封装
 chipcompiler/cli/app.py           # 根 typer app；invoke_typer_app() 统一执行与退出码；version / gdsview / chipview 直接注册于此
 chipcompiler/cli/commands/        # typer 命令定义层（薄）
-  ├── project.py                  # init/check/run/status/log/config/migrate 的注册与参数声明
+  ├── project.py                  # init/check/run/status/log/config 的注册与参数声明
   ├── doctor.py                   # doctor 顶层命令（环境体检）
   ├── param.py                    # param 子应用（list/show/set/unset/diff）
   ├── macro.py                    # macro 子应用（set/remove/show/import）
@@ -260,7 +260,7 @@ chipcompiler/cli/commands/        # typer 命令定义层（薄）
   ├── chipview.py                 # 打开 geometry snapshot 的原生 Chip Viewer
   └── gds_view.py                 # 在 KLayout 中打开 step 的 GDS
 chipcompiler/cli/command_handlers/  # 业务处理层（唯一的处理器包，有状态/重逻辑）
-  ├── project.py                  # init / check / run / migrate / workspace refresh（含 preset 解析与环境预检）
+  ├── project.py                  # init / check / run / workspace refresh（含 preset 解析与环境预检）
   ├── inspect.py                  # status / log / config
   ├── doctor.py                   # doctor（组装 env_probe 结果为 records）
   ├── param.py                    # param 五子命令（校验 + 经 cli/project/toml_edit.py 做 TOML 定点改写）
@@ -287,7 +287,7 @@ chipcompiler/cli/inspection/      # 只读探查逻辑
   ├── step_view.py                # `ecc report step` 的逐步骤查看记录
   ├── env_probe.py                # doctor/run 预检的环境探查（ProbeResult 体系）
   └── tool_versions.py            # ecc version 的环境工具版本（yosys/sizer/klayout）
-chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ workspace_location.py（显式路径规范化校验）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ migrate*.py（旧布局迁移）/ run_*.py（run 目标解析与分发）
+chipcompiler/cli/project/         # config.py（ecc.toml 解析校验）/ config_fields.py（`ecc project` 的项目声明 schema）/ params.py（参数注册表）/ toml_edit.py（TOML 定点改写）/ workspace_params.py（workspace 局部覆盖记录）/ manifest.py（项目形态分类）/ manifest_write.py（project.json 状态写回）/ workspace_registration.py（外部 workspace 登记）/ workspace_location.py（显式路径规范化校验）/ effective_config.py / pdk_root_fallback.py（PDK root 环境变量回退警告）/ spec_drift.py（workspace_spec_drift 披露）/ design_inputs.py（`[design]` 输入声明）/ config_params/（直配参数 schema）/ run_*.py（run 目标解析与分发）
 chipcompiler/cli/rendering/       # 输出渲染（render / renderers / pretty / progress）
 chipcompiler/engine/signoff/      # 签核收集器 + 设计/checklist 报告（包，见下文）
 chipcompiler/analysis/qor/ # QoR v3 唯一分析、评分与报告契约
@@ -308,9 +308,10 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
    execute_command("check", command_input, project_handlers.check)
    ```
 3. `core/invocation.py::execute_command()`（`cli/core/invocation.py`）依次：
-   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目用单段 `--workspace NAME` 从 `project.json` workspace 表解析；绝对 `--workspace PATH` 则先规范化为项目外路径，并优先按路径匹配，再按 basename 推导新 ID。唯一活跃 workspace 自动选中，多个时必须选择；新的 run workspace 会在创建文件前登记。legacy 项目必须先迁移才能 `ecc run`；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，并在 `CommandContext`（`cli/core/types.py`）中记录是否为显式路径选择器以及 `project_state` / `manifest_error`。
+   - `build_context()`：解析项目目录（`--project`，缺省为 cwd）→ 读项目唯一的 `ecc.toml`（不可读时记入 `config_error`）→ `cli/project/manifest.py::classify_project()` 判定项目形态（manifest / legacy / virgin）。manifest 项目用单段 `--workspace NAME` 从 `project.json` workspace 表解析；绝对 `--workspace PATH` 则先规范化为项目外路径，并优先按路径匹配，再按 basename 推导新 ID。唯一活跃 workspace 自动选中，多个时必须选择；新的 run workspace 会在创建文件前登记。legacy 项目直接报 `legacy_workspace_unsupported`，不再迁移；清单损坏为 `manifest_invalid`。随后由 `--plain` 推导 `OutputMode`，并在 `CommandContext`（`cli/core/types.py`）中记录是否为显式路径选择器以及 `project_state` / `manifest_error`。
    - 调 handler：`handler(command_input, ctx) -> CommandResult`。
-   - handler 返回后按需追加记录（`_with_legacy_hint` / `_with_config_shadow_hint`）：legacy 项目的 `run/check/status` 附加迁移提示（指向 `ecc migrate`）；workspace 的 `home/` 同时存在 `params.toml` 与旧 `parameters.json` 时打 `workspace_config_shadowed` 警告（旧 JSON 已失效）。
+   - legacy `runs/` 项目直接报 `legacy_workspace_unsupported`，不再迁移。
+
    - 渲染：`rendering/renderers.py::render_command_result()` 先查 `RENDERERS[(render_key, output_mode)]` 定制渲染器，没有则落到通用 `rendering/render.py::render_result()`。
    - `raise typer.Exit(code=result.exit_code)` 把退出码透传给 `invoke_typer_app`。
 4. `invoke_typer_app` 运行 click 命令并捕获成功/失败退出时抛出的 `SystemExit`，转换成进程退出码，保证测试里 `cli_main.run([...])` 能拿到返回值。
@@ -404,7 +405,7 @@ chipcompiler/engine/qor_report.py # CLI QoR facade，委托 analysis.qor
 
 #### 新增可调参数（param 体系）
 
-旧的语义参数仍在 `chipcompiler/data/parameter_schema.py::_LEGACY_PARAM_REGISTRY`；`cli/project/params.py` 现在只是该目录的兼容 facade。工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 只能拥有一种目标：旧的 `maps_to`、JSON `config_target` 或白名单 PDK `pdk_target`。
+参数功能统一从 `chipcompiler.params` 导入，其子模块只是内部划分。语义参数位于 `chipcompiler/data/parameter_schema.py::_SEMANTIC_PARAM_REGISTRY`；工具 JSON 的直配字段按 owner 分别放在 `data/config_params/`（`cts.py`、`floorplan.py`、`dreamplace.py` 等），每项都必须人工审核。`ParamSchema` 要么存放在 workspace payload（`maps_to`），要么通过一个或多个 `config_target` 写入工具 config（目标可以扇出、做值转换或承载列表的一个元素），要么是白名单 PDK `pdk_target`。`pdk_variants` 提供按 PDK 区分的默认值与可选值，`fork=True` 表示每次 refresh 把 PDK 有效默认值分发到所有目标。唯一的派生步骤是 `chipcompiler/params/targets.py::derive_parameter_configs`。
 
 已审核的静态模板字段使用 `config_param()` 声明（`description` 为必填关键字参数，逐参数人工撰写，`test/data/test_descriptions.py` 会校验）：
 
@@ -443,7 +444,7 @@ config_param(
 
 #### 扩展环境探查（doctor / 预检）
 
-`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围：先构建 preset 的步骤链（先做 skip 过滤），再经 `_TOOL_COMPONENTS` 把每个步骤的工具映射为组件（`ecc` → ecc-tools，`yosys`/`yosys_lec` → yosys，`dreamplace` → dreamplace，`sizer` → sizer），因此每个所需组件恰好探查一次。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
+`cli/inspection/env_probe.py` 是唯一的探查层：`ProbeResult(component, status, required, detail, remediation)` + 每组件一个 probe 函数（yosys / yosys-slang / ecc-tools / dreamplace / klayout / sizer / pdk）。新增组件 = 加一个 probe 函数并登记进 `_PROBES`/`ALL_COMPONENTS`；`probe_environment()` 对异常兜底（探查失败计为 fail 而非崩溃）。`probe_components_for_preset()` 决定当前 run 预检范围：先构建 preset 的步骤链（先做 skip 过滤），再经 `_TOOL_COMPONENTS` 把每个步骤的工具映射为组件（`ecc` → ecc-tools，`yosys` → yosys，`kepler_formal` → kepler-formal，`dreamplace` → dreamplace，`sizer` → sizer），因此每个所需组件恰好探查一次。PDK 由配置校验覆盖，slang 留给综合步骤；Sizer 也是 doctor 的必需组件。
 
 #### 扩展签核（`ecc signoff inspect/export`）
 
@@ -463,7 +464,7 @@ config_param(
 
 - `ecc project set/unset/add/remove/show` 的可编辑键在 `cli/project/config_fields.py::PROJECT_FIELDS` 声明（`key` / TOML 表 / 字段名 / 类型 / `list_value`）。加一个字段五个子命令自动生效；`add`/`remove` 硬性只支持 `design.rtl`（其余键报 `unsupported_project_collection`）。manifest 项目中的 `set`/`unset`/`add`/`remove` 经 `project_application.apply_project` 在一次加锁写入中同步 `ecc.toml` 与 `project.json.base_design`；legacy/virgin 项目仍只写 `ecc.toml`。
 - `ecc workspace refresh` 把当前 Project 结构投影到 Engine 的 Workspace update transaction。事务校验 expected revision，在 staging 中构造新 Workspace，保留 Workspace 局部参数覆盖，然后交换目录并只增加一次 revision。它仍执行新建 Workspace 的环境预检（`ecc.toml` 的 `preset: rtl2gds` 要求全套工具就绪，即使并不真正执行步骤）；非 manifest 项目报 `workspace_refresh_requires_managed_workspace`。事务开始前会把 `config/*.json` 与上次派生记录 `home/config-derived-manifest.json` 比对；检测到差异时以 `derived_configs_modified` 拒绝，除非给出 `--force`。
-- 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。旧布局迁移也会在 migration lock 内通过已绑定的目录 fd 重新检查目标后使用普通 rename。目标冲突始终 fail closed，绝不静默覆盖。
+- 目录发布会优先使用 Linux `renameat2` 的 exchange/no-replace 操作。NFS 等文件系统可能以 `EINVAL` 拒绝这些 flag；此时 refresh 在锁内使用三次 rename 完成交换，并保留 Snapshot/command ledger 证据供崩溃后的 `project reconcile` 恢复。目标冲突始终 fail closed，绝不静默覆盖。
 - workspace 局部 `param set/unset/list/diff --workspace NAME` 经 `cli/command_handlers/workspace_params.py` 修改 `home/params.toml`（记录到 `workspace_param_overrides`，经 `chipcompiler.engine.rerun` 失效后缀步骤）；项目级 `param` 走 `cli/command_handlers/param.py`。
 
 ## CLI 用法
@@ -506,7 +507,7 @@ uv run ecc pdk show
 
 ### Flow Preset 覆盖
 
-`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 20 步，含 Synthesis 后紧跟的综合级 LEC，默认策略会跳过该步，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
+`ecc run --preset <name>` 单次覆盖 `[flow] preset`，不改 `ecc.toml`。合法名从 `chipcompiler/rtl2gds/builder.py` 自动发现（`rtl2gds | syn_sta | synthesis_lec`）；`rtl2gds` preset 是完整的综合到 Harden 链（规范链 22 步；除 `post_route_lec` 外的 LEC 检查通过 `[flow] insert_steps` 插入，见下文「可跳过的 Flow Step」；Harden 产出 GDS + 抽象 LEF + 时序 LIB）：
 
 ```bash
 uv run ecc run --project gcd --preset rtl2gds
@@ -514,34 +515,34 @@ uv run ecc run --project gcd --preset rtl2gds
 
 ### 可跳过的 Flow Step
 
-默认布线后流程为 `route → filler → lvs → drc → antennaCheck → postRouteLec
-→ RCX → sta → powerAnalysis → emir → Harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
-等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antennaCheck 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
+默认布线后流程为 `routing → filler → lvs → drc → antenna_check → post_route_lec
+→ rcx → sta → power_analysis → emir → harden`。LVS、DRC 和天线检查先检查填充后的版图，随后执行布线后
+等价性检查，再由 RCX 为时序和功耗分析提供寄生参数。LEC、antenna_check 和 emir 不向后续步骤传递物理产物：RCX 绕过天线检查和 LEC，
 Harden 绕过 emir，因此 advisory 步骤失败不会导致后续步骤缺少物理输入。
 新顺序适用于新建的预设流程及规范步骤范围；已有工作区的执行记录和显式
 自定义流程仍保留原顺序。
 
-这条流程中除 `postRouteLec` 外，LVS、DRC、`antennaCheck`、RCX、STA、
-`powerAnalysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
+这条流程中除 `post_route_lec` 外，LVS、DRC、`antenna_check`、RCX、STA、
+`power_analysis`、EMIR 和 Harden 均加载 `filler` 的 DEF、Verilog 和数据库
 作为物理设计输入。各 checker 自己生成的 DEF、Verilog 和数据库只是证据或
-报告快照，不会成为后续物理设计源。`postRouteLec` 是例外：它比较综合 golden
+报告快照，不会成为后续物理设计源。`post_route_lec` 是例外：它比较综合 golden
 网表和 filler gate 网表。
 
-`antennaCheck` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
+`antenna_check` 调用 iMJ 的 `init_mj → check_antenna → destroy_mj`，只检查，
 不插入二极管、不自动修复。原生报告为
-`antennaCheck_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
-`antennaCheck_ecc/report/antennaCheck.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
-调用失败仍保留 `Incomplete` 执行状态。antennaCheck 和 emir 在首页及步骤 checklist 中
+`antenna_check_ecc/data/mj/antenna_checker/antenna_check.rpt`，原样复制到
+`antenna_check_ecc/report/antenna_check.rpt`。发现违例、原生调用失败或未生成本次报告均不阻断后续 flow；
+调用失败仍保留 `Incomplete` 执行状态。antenna_check 和 emir 在首页及步骤 checklist 中
 均作为非阻断的 attention 项，执行成功后仍提示人工审阅报告和检查覆盖。步骤 `Success` 只表示执行和报告输出完成，不表示
 天线检查通过：LEF 缺少天线规则或引脚 gate-area 信息时可能没有实际检查覆盖。
 请结合原生日志查看报告。不需要单独的天线检查 JSON 配置。
 
-EMIR 使用 `powerAnalysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
+EMIR 使用 `power_analysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `filler`
 物理数据库。运行前，通过 `ecc param set emir.technology_file_path /绝对路径/process.tech`
 或 `ecc.toml` 的 `[emir]` 配置真实工艺文件。此值会在创建或刷新工作区时写入
 `config/emir_ecc.json`；仅修改生成的 JSON 不会持久保留。
 默认空值只是占位，未填写时该步骤会停止。
-电源激励使用 iFP 输出的 `postFloorplan_ecc/data/fp/pdn_generator/power.ploc`，
+电源激励使用 iFP 输出的 `post_floorplan_ecc/data/fp/pdn_generator/power.ploc`，
 通过 `ploc_file_path` 传入，不同时启用 `add_ploc_from_top_def`。这些是电源条带
 交点上的理想电源假设，不代表实际封装或 pad。原生结果输出到 `emir_ecc/data/emir/`；
 保存成功后，`data/emir/emir_reporter/` 下的全部报告会发布到 `emir_ecc/report/`，
@@ -551,23 +552,25 @@ CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM �
 模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
 用于签核。普通项目不会自动使用这个文件。
 
-三个可选 step 可在创建 workspace 时按配置排除：综合级 LEC（`lec`）、布线后 LEC（`postRouteLec`）、时序优化（`Timing optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
+rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不限于三个可选 step：placement 寄生优化（`diff_opt`）、布线后 LEC（`post_route_lec`）、时序优化（`timing_optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 
 策略在两个配置面声明，优先级与其他键一致（ecc.toml 显式声明覆盖 project.json 基准层）：
 
 1. `ecc.toml` → `[flow] skip_steps`（项目级；显式声明——包括显式空数组——优先于 workspace entry），
 2. `project.json` → `workspaces[].skip_steps`（per-workspace 基准层），
-3. 两者都未声明时的代码默认 `("lec",)`。
+3. 两者都未声明时的代码默认 `("diff_opt",)`。
 
 两个配置面声明的策略实际值不同时，`ecc run`/`ecc check` 会发出 `skip_steps_shadowed` 警告并指明生效来源。
 
-显式 `skip_steps = []` 表示全部执行，是启用综合级 LEC 的唯一方式。有效策略包含 `lec` 时选择 `synthesis_lec` preset 是创建期配置错误；解决办法是 `skip_steps = []`。条目接受与 flow 范围相同的别名（如 `LEC`、`postlec`、`TimingOpt`），并按可跳过集合校验。
+显式 `skip_steps = []` 表示全部执行，包括 `diff_opt`。条目接受与 flow 范围相同的别名（如 `postlec`、`synth`、`cts`、`TimingOpt`），并按链中的 step 校验，未知名称会被拒绝。`lec` 已不是链中的 step：`resolve_skip_steps` 会丢弃它，列出它的旧文件仍可加载。project.json 的 skip 策略仍可写 `lec`：`manifest_flow.manifest_synthesis_lec` 把声明策略保留 `lec` 的 workspace 条目转成插入步骤 `lec@synthesis`。project.json 的范围使用 flow 步骤名，也可以以插入步骤为边界；以 `lec@synthesis` 为边界的范围改以 `synthesis` 加该插入步骤为边界（`manifest_flow.entry_flow_config`）。
+
+`[flow] insert_steps`（如 `["lec@cts"]`）在一个构建设计的 step 之后插入 LEC，锚点可为 `rtl2gds.lec_insert_anchors()` 中任一 step（`synthesis` .. `routing`）。LEC 是 `data.types.INSERTABLE_FLOW_STEPS` 的唯一条目：它不修改也不提供设计数据，`FlowInputResolver` 本就跳过 LEC 记录，因此其后的链不变。插入步骤的 ledger 名为 `lec@<step>`（`rtl2gds.inserted_step_name` / `parse_inserted_step`），每个锚点唯一，各按名称索引的层（ledger、`req.json` 上游链接、`--from/--only`、snapshot）照常工作；`flow_step_policy` 把它解析为 `lec` 策略。插入在 skip 过滤与范围切片之后进行（`rtl2gds.insert_flow_steps`），覆盖所有构建 ledger 的路径（`build_dynamic_flow_data`、`run_prepare.py` 的新建 run、reconcile 目标、`workspace_reset`），因此插入步骤当且仅当其锚点存在时存在。`EngineFlow.create_step_workspaces` 连接 golden：`lec@synthesis` 取 Synthesis 读入的 RTL（`tools.yosys.builder.synthesis_rtl`：filelist，否则 RTL 文件），其余插入的 LEC 取 `post_route_lec` 的 golden。`tools.kepler_formal.builder.checks_rtl` 为 `lec@synthesis` 选择 kepler-formal 的 SEC 配置（`format: sv2v`、`verification: sec`）。RTL 经生成的 `data/rtl.f`（`sec_rtl_filelist_text`）以 `sv_design1_flist` 传入：先 `+define+SYNTHESIS`（与 Synthesis 读取方式一致），再是 RTL 文件或 `-F <filelist>`，使 filelist 的相对路径源文件与 `+incdir+` 相对其自身目录、而非 kepler-formal 运行的 step 目录解析。runner 原样读入 RTL，并接受 SEC 的双轨证明措辞（`No binary-defined difference was found.`）。`synthesis_lec` preset 构建 `synthesis` + `lec@synthesis`。`insert_steps` 与 `skip_steps`、`lec_engine` 同属 `workspace_config.FLOW_POLICY_KEYS`，是持久化 flow 目标（`home/params.toml` `_flow`）与 mismatch 检查的一部分。ECOS Studio 尚不认识插入步骤名（`flowStepRegistry.ts` 把未知 step 归一为 `Synth`）。`ecc flow edit` 的交互列表中按 `i` 插入 LEC，或用 `--insert`/`--remove`；有插入时一并写出 `insert_steps`。
 
 ```toml
 [flow]
 preset = "rtl2gds"
-# LEC is skipped by default; clear the list to enable it.
-skip_steps = ["lec"]
+skip_steps = ["diff_opt"]
+insert_steps = ["lec@synthesis"]
 ```
 
 ### 报告
@@ -613,7 +616,7 @@ root = "/path/to/ics55"
 
 [flow]
 preset = "rtl2gds" # rtl2gds | syn_sta | synthesis_lec
-# 可选：skip_steps = ["lec"]（默认）；[] 全部执行（启用 LEC）
+# 可选：skip_steps = ["diff_opt"]（默认）；可列出链中任一 step（用 `ecc flow status` 检查）；[] 全部执行
 ```
 
 filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["rtl/filelist.f"]`。多 RTL 源应列在 filelist 里，而不是写多个 `design.rtl` 条目。
@@ -720,11 +723,11 @@ workspace=default
 .venv/bin/ecc run --project "$project" --workspace "$workspace" --resume
 
 # 重跑持久化 flow 中包含式的 CTS 到 route 范围。
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --from CTS --to route
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --from cts --to routing
 
 # 只跑一个步骤；已成功过则加 --force。
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place
-.venv/bin/ecc run --project "$project" --workspace "$workspace" --only place --force
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement
+.venv/bin/ecc run --project "$project" --workspace "$workspace" --only placement --force
 ```
 
 `--resume`、`--only` 与范围三者互斥，`--force` 只能与 `--only` 组合。`--workspace` 可与 `--project` 组合；新范围不能与 `--overwrite` 组合。步骤名使用规范的 flow 别名。
@@ -736,7 +739,7 @@ Python 层调试可直接调同一 CLI 模块：
 ```bash
 .venv/bin/python -m chipcompiler.cli.main run \
   --workspace "$workspace" \
-  --only place \
+  --only placement \
   --force
 ```
 

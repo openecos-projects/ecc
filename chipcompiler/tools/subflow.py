@@ -88,7 +88,7 @@ class SubFlow:
     def update_step(self, step_name: str, state: str | StateEnum, info: dict | None = None):
         if info is None:
             info = {}
-        state = state.value if isinstance(state, StateEnum) else state
+        state = str(state)
         runtime = self.get_runtime()
         peak_memory = self.get_peak_memory() - self.start_memory
         peak_memory = 0 if peak_memory < 0 else round(peak_memory, 3)

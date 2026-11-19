@@ -88,7 +88,7 @@ WORKSPACE_GATES = (
     WorkspaceGateSpec(
         "GATE_HARDEN_ARTIFACTS",
         "HARDEN",
-        "Harden",
+        "harden",
         "harden_artifact_missing_count",
         ("qor.mpc.maximum_area",),
     ),

@@ -14,13 +14,14 @@ from chipcompiler.analysis.qor.summary_contract import (
     gate_reason,
     is_supported_summary,
     summary_analysis_revision,
-    summary_blocking_issues,
     summary_gates,
     summary_missing_metrics,
     summary_quality_status,
 )
 from chipcompiler.data import (
     LEC_STEP_TOOLS,
+    ChecklistItem,
+    CheckState,
     EccOutput,
     StateEnum,
     StepEnum,
@@ -137,12 +138,17 @@ class CollectorAnalysisMixin:
     def _qor_summary_issues(
         self, workspace_dir: Path, flow_data: dict
     ) -> list[SignoffPackageIssue]:
+        from chipcompiler.data.step import StepDirectories
+
+        directories = StepDirectories.from_records(
+            workspace_dir, flow_data.get("steps", []) if isinstance(flow_data, dict) else []
+        )
         issues: list[SignoffPackageIssue] = []
         for flow_step in flow_data.get("steps", []):
             if not isinstance(flow_step, dict) or flow_step.get("state") != StateEnum.Success.value:
                 continue
             step_name = str(flow_step.get("name", ""))
-            step_dir = self._step_dirs().get(step_name)
+            step_dir = directories.by_step.get(step_name)
             if not step_name or not step_dir:
                 continue
             summary_path = workspace_dir / step_dir / "analysis" / "qor_summary.json"
@@ -169,22 +175,6 @@ class CollectorAnalysisMixin:
                         required=required,
                         reason="qor_summary.json has no current analysis revision",
                         kind="freshness",
-                    )
-                )
-
-            for blocking_issue in summary_blocking_issues(summary):
-                metric_id = str(blocking_issue.get("metric_id", "QoR blocking issue"))
-                reason = str(blocking_issue.get("reason", "Current QoR analysis blocked signoff."))
-                value = blocking_issue.get("value")
-                if value is not None:
-                    reason = f"{reason} actual={value}"
-                issues.append(
-                    self._analysis_issue(
-                        step_name=step_name,
-                        required=required,
-                        label=metric_id,
-                        reason=reason,
-                        kind="analysis",
                     )
                 )
 
@@ -253,45 +243,26 @@ class CollectorAnalysisMixin:
         )
 
     def _checklist_counts(self, checklist_data: dict) -> dict:
-        counts = {"passed": 0, "warning": 0, "failed": 0}
-        for item in checklist_data.get("checklist", []):
-            if not isinstance(item, dict):
-                continue
-            state = str(item.get("state", "")).lower()
-            if state == "passed":
-                counts["passed"] += 1
-            elif state == "warning":
-                counts["warning"] += 1
-            elif state == "failed":
-                counts["failed"] += 1
-        return counts
+        states = [item.state for item in _checklist_items(checklist_data)]
+        return {
+            "passed": states.count(CheckState.PASS),
+            "warning": states.count(CheckState.WARNING),
+            "failed": states.count(CheckState.FAILED),
+        }
 
     def _checklist_issues(self, checklist_data: dict) -> list[SignoffPackageIssue]:
-        issues = []
-        for item in checklist_data.get("checklist", []):
-            if not isinstance(item, dict):
-                continue
-            state = str(item.get("state", "")).strip()
-            normalized_state = state.lower()
-            if normalized_state not in {"warning", "failed"}:
-                continue
-            scope = " / ".join(
-                str(item.get(key, "")).strip()
-                for key in ("step", "type", "item")
-                if str(item.get(key, "")).strip()
+        return [
+            SignoffPackageIssue(
+                kind="checklist",
+                label=item.title,
+                location=f"{item.step} / {item.category}",
+                reason=f"{item.state}: {item.summary}" if item.summary else str(item.state),
+                required=False,
+                destination="final/reports/checklist.json",
             )
-            info = str(item.get("info", "")).strip()
-            issues.append(
-                SignoffPackageIssue(
-                    kind="checklist",
-                    label=str(item.get("item", "Checklist item")).strip() or "Checklist item",
-                    location=scope or "home/checklist.json",
-                    reason=f"{state or normalized_state.title()}{f': {info}' if info else ''}",
-                    required=False,
-                    destination="final/reports/checklist.json",
-                )
-            )
-        return issues
+            for item in _checklist_items(checklist_data)
+            if item.state in {CheckState.WARNING, CheckState.FAILED}
+        ]
 
     def _sta_matrix(self, sta_config: dict) -> list[dict]:
         liberty_by_corner = {
@@ -325,3 +296,11 @@ class CollectorAnalysisMixin:
         except (TypeError, ValueError):
             pass
         return str(temperature).replace("-", "m").replace(".", "p")
+
+
+def _checklist_items(checklist_data: dict) -> list[ChecklistItem]:
+    """The items of a stored checklist; an invalid checklist has none."""
+    try:
+        return [ChecklistItem.from_record(item) for item in checklist_data.get("checklist", [])]
+    except (TypeError, ValueError, AttributeError):
+        return []

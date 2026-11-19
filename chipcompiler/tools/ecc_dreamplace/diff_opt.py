@@ -1,6 +1,6 @@
 """ECC ``diff_opt`` step configuration and terminal bridge.
 
-``diff_opt`` replaces the historical ``diff_buffering`` step.  It owns the
+``diff_opt`` owns the placement-parasitic optimization lane. It owns the
 placement-parasitic sizing/buffering/joint configuration, while the existing
 ``diff_sizing`` step keeps its independent GR/RRR configuration.
 """
@@ -10,17 +10,8 @@ from pathlib import Path
 
 from chipcompiler.utility import json_write
 
-from .diff_buffering import prepare_drive_table, resolve_diff_buffering_settings
+from .diff_buffering import prepare_drive_table
 from .discrete_timing_config import apply_discrete_timing_defaults
-from .timing_coefficients import resolve_timing_coefficients
-
-_LEGACY_BUFFERING_ROUNDS = 10
-_LEGACY_BUFFERING_COEFFICIENTS = {
-    "wns": 500.0,
-    "tns": 5.0,
-    "cap": 1.0,
-    "slew": 1.0,
-}
 
 
 def _validate_parasitic_source(params):
@@ -33,42 +24,6 @@ def _validate_parasitic_source(params):
             f"got diff_opt_parasitic_source={source!r}"
         )
     params["diff_opt_parasitic_source"] = "placement"
-
-
-def _validate_explicit_legacy_conflict(params, *, mode, flows_value):
-    """Reject non-default legacy buffering settings beside canonical flows.
-
-    The resolved parameter object always contains legacy defaults, so defaults
-    are intentionally tolerated. A non-default legacy round/coefficient is an
-    explicit old contract and must not silently override a canonical flow list.
-    """
-
-    from dreamplace.flows.diff_opt_spec import TimingCoefficients
-
-    if flows_value is None:
-        return
-    rounds = params.get("diff_buffering_rounds", _LEGACY_BUFFERING_ROUNDS)
-    coefficients = resolve_timing_coefficients(params, "diff_buffering_coefficients")
-    rounds_changed = rounds != _LEGACY_BUFFERING_ROUNDS
-    coefficients_changed = coefficients != _LEGACY_BUFFERING_COEFFICIENTS
-    if not (rounds_changed or coefficients_changed):
-        return
-    if mode != "buffering":
-        raise ValueError(
-            "diff_optimization_flows conflicts with explicit legacy "
-            "diff_buffering settings; remove diff_buffering_rounds/coefficients"
-        )
-    first = flows_value[0] if isinstance(flows_value, (list, tuple)) and flows_value else None
-    if not isinstance(first, (list, tuple)) or len(first) != 3 or str(first[0]).lower() != "bf":
-        raise ValueError(
-            "diff_optimization_flows conflicts with explicit legacy "
-            "diff_buffering settings; the canonical buffering flow must be used"
-        )
-    if rounds_changed and first[1] != rounds:
-        raise ValueError("diff_optimization_flows conflicts with diff_buffering_rounds")
-    canonical_coefficients = TimingCoefficients.from_value(first[2]).to_dict()
-    if coefficients_changed and canonical_coefficients != coefficients:
-        raise ValueError("diff_optimization_flows conflicts with diff_buffering_coefficients")
 
 
 def _apply_common_diff_opt_defaults(result, *, mode, flows):
@@ -88,7 +43,7 @@ def _apply_common_diff_opt_defaults(result, *, mode, flows):
         continuous_size_dynamics_mode="none",
         joint_quality_profile="",
         buffering_continuous_steps=flows[0].steps,
-        buffering_route_b_selection_fraction=result.get("diff_buffering_selection_fraction", 0.001),
+        buffering_route_b_selection_fraction=0.001,
         timing_action_gradient_mode=result.get("timing_action_gradient_mode", "lut_action"),
     )
     if mode == "buffering":
@@ -109,16 +64,9 @@ def apply_diff_opt_defaults(params: dict) -> dict:
     _validate_parasitic_source(result)
     mode = str(result.get("diff_optimization_mode", "buffering") or "buffering").strip().lower()
     flows_value = result.get("diff_optimization_flows")
-    _validate_explicit_legacy_conflict(result, mode=mode.strip().lower(), flows_value=flows_value)
-    if flows_value is None and mode == "buffering":
-        legacy_rounds, _fraction, legacy_coefficients = resolve_diff_buffering_settings(result)
-        flows_value = [["bf", legacy_rounds, legacy_coefficients]]
     mode, flows = parse_diff_opt_flows(mode, flows_value)
     result = _apply_common_diff_opt_defaults(result, mode=mode, flows=flows)
 
-    if any(spec.action == "bf" for spec in flows):
-        _rounds, fraction, _coefficients = resolve_diff_buffering_settings(result)
-        result["buffering_route_b_selection_fraction"] = fraction
     if mode == "buffering":
         result.update(sizing_parameterization="logits", global_place_flag=1)
     elif mode == "sizing":

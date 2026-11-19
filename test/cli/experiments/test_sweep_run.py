@@ -30,8 +30,8 @@ def _project(tmp_path):
                     {
                         "workspace_id": "baseline",
                         "workspace_path": "baseline",
-                        "start_step": "Synth",
-                        "end_step": "Harden",
+                        "start_step": "synthesis",
+                        "end_step": "harden",
                         "status": "not_started",
                     }
                 ],
@@ -51,8 +51,8 @@ def _declare_workspace(project, workspace_id):
         {
             "workspace_id": workspace_id,
             "workspace_path": workspace_id,
-            "start_step": "Synth",
-            "end_step": "Harden",
+            "start_step": "synthesis",
+            "end_step": "harden",
             "status": "not_started",
         }
     )

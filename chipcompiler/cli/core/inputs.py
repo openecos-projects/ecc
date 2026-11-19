@@ -29,6 +29,28 @@ class FlowValidateInput:
 
 
 @dataclass(frozen=True)
+class FlowStatusInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    enable: tuple[str, ...] = ()
+    disable: tuple[str, ...] = ()
+    insert: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FlowEditInput:
+    output: OutputOptions
+    project: ProjectOptions = ProjectOptions()
+    enable: tuple[str, ...] = ()
+    disable: tuple[str, ...] = ()
+    insert: tuple[str, ...] = ()
+    remove: tuple[str, ...] = ()
+    max_parallel_steps: int | None = None
+    yes: bool = False
+
+
+@dataclass(frozen=True)
 class InitInput:
     name: str
     output: OutputOptions
@@ -140,13 +162,6 @@ class ProcessReconcileInput:
     workspace: str | None
     run_id: str | None = None
     no_wait: bool = False
-
-
-@dataclass(frozen=True)
-class MigrateInput:
-    output: OutputOptions
-    project: ProjectOptions
-    yes: bool = False
 
 
 @dataclass(frozen=True)
@@ -313,6 +328,14 @@ class ParamApplyInput:
 
 
 @dataclass(frozen=True)
+class ParamEditInput:
+    output: OutputOptions
+    project: ProjectOptions
+    workspace: str | None = None
+    step: str | None = None
+
+
+@dataclass(frozen=True)
 class ProjectSetInput:
     output: OutputOptions
     project: ProjectOptions
@@ -397,11 +420,11 @@ class WorkspaceImportInput:
 
 
 @dataclass(frozen=True)
-class WorkspaceDeriveInput:
+class WorkspaceForkInput:
     output: OutputOptions
     project: ProjectOptions
-    workspace: str
-    target_workspace: str
+    workspace: str | None = None
+    target_workspace: str | None = None
     from_step: str | None = None
     to_step: str | None = None
     command_id: str = ""

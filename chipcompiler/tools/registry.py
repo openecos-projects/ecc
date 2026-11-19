@@ -37,9 +37,7 @@ TOOLS: dict[ToolName, ToolSpec] = {
         skip_dependency_check=True,
         closes_db_after_step=True,
     ),
-    ToolName.YOSYS_LEC: ToolSpec("yosys_lec"),
     ToolName.KEPLER_FORMAL: ToolSpec("kepler_formal"),
-    ToolName.LEC_DUAL: ToolSpec("lec_dual"),
     ToolName.KLAYOUT: ToolSpec("klayout_tool"),
 }
 
@@ -82,7 +80,7 @@ def load_tool(name: object, *, check_dependency: bool = True):
     failure, a contract mismatch and a False ``is_eda_exist()`` all log and
     return None; a dependency check that raises propagates to the caller.
     """
-    from chipcompiler.tools.protocol import ToolModule, tool_module_functions
+    from chipcompiler.tools.protocol import ToolModule, tool_module_members
 
     identity = _module_identity(name)
     if identity is None:
@@ -97,7 +95,7 @@ def load_tool(name: object, *, check_dependency: bool = True):
         return None
 
     if not isinstance(eda_module, ToolModule):
-        missing = [f for f in tool_module_functions() if not hasattr(eda_module, f)]
+        missing = [f for f in tool_module_members() if not hasattr(eda_module, f)]
         logging.error("EDA tool '%s': module loaded but missing interface: %s", name, missing)
         return None
 

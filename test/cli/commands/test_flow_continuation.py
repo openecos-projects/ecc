@@ -4,10 +4,11 @@ from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.rtl2gds import build_rtl2gds_flow
+from test.flow_fixture import step_fields
 
 
 def _write_existing_workspace(
-    run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None
+    run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None, cts=None
 ):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
     from chipcompiler.data.workspace_config import save_workspace_config
@@ -27,19 +28,25 @@ def _write_existing_workspace(
             "runtime": "",
             "peak memory (mb)": 0,
             "info": {},
+            **step_fields(name, tools[name]),
         }
         for name, state in zip(step_names, states, strict=True)
     ]
     home = os.path.join(run_dir, "home")
     os.makedirs(home, exist_ok=True)
     with open(os.path.join(home, "flow.json"), "w") as f:
-        json.dump({"steps": steps}, f)
+        json.dump({"schema_version": 3, "steps": steps}, f)
     parameters = {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"}
     if pdk_root is not None:
         parameters["pdk_root"] = str(pdk_root)
     if extra:
         parameters.update(extra)
     assert save_workspace_config(run_dir, parameters, {"preset": preset})
+    if cts is not None:
+        config_dir = os.path.join(run_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        with open(os.path.join(config_dir, "cts_ecc.json"), "w") as f:
+            json.dump(cts, f)
 
 
 RTL2GDS_NAMES = [
@@ -56,7 +63,7 @@ def test_diverging_parameter_fix_quotes_json_values_and_workspace_names(monkeypa
     from chipcompiler.cli.project.run_existing import _diverging_workspace_param_fixes
 
     monkeypatch.setattr(
-        "chipcompiler.data.workspace_parameters.workspace_param_value",
+        "chipcompiler.params.workspace_param_value",
         lambda _workspace, _schema: [1, 2],
     )
     fixes = _diverging_workspace_param_fixes(
@@ -291,9 +298,7 @@ class TestFlowContinuation:
         with open(os.path.join(project_dir, "ecc.toml"), "a") as f:
             f.write("\n[params.cts]\nmax_fanout = 16\n")
         run_dir = os.path.join(project_dir, "default")
-        _write_existing_workspace(
-            run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, extra={"max_fanout": 16}
-        )
+        _write_existing_workspace(run_dir, RTL2GDS_NAMES, pdk_root=pdk_root, cts={"max_fanout": 16})
 
         class Flow:
             def __init__(self, workspace):
@@ -372,7 +377,7 @@ def _write_manifest_with_workspace(project_dir, run_dir, pdk_root):
                     "top_module": "gcd",
                     "clock": "clk",
                     "rtl_list": ["rtl/gcd.v"],
-                    "parameters": {"design": "gcd", "frequency_max": 100},
+                    "frequency_mhz": 100,
                 },
                 "workspaces": [
                     {
@@ -401,8 +406,8 @@ class TestFlowMismatchZeroMutation:
         run_dir = os.path.join(project_dir, "ws_0001")
         # The persisted ledger diverges from the configured preset at step one
         # (every preset chain starts with Synthesis).
-        _write_existing_workspace(run_dir, ["place"])
-        output_path = os.path.join(run_dir, "Synthesis_yosys", "output", "gcd.v")
+        _write_existing_workspace(run_dir, ["placement"])
+        output_path = os.path.join(run_dir, "synthesis_yosys", "output", "gcd.v")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
             f.write("module gcd; endmodule // sentinel\n")
@@ -423,15 +428,14 @@ class TestFlowMismatchZeroMutation:
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
         """A per-workspace project.json skip policy wins over the
-        workspace's undeclared one on an existing run: enabling the LEC
-        (skip_steps = []) against a without-LEC ledger is a mismatch that
-        never inserts the step."""
+        workspace's undeclared one on an existing run: keeping the LEC
+        (skip_steps = [], which inserts lec@synthesis) against a ledger without
+        it is a mismatch that never inserts the step."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         # A post-default-policy ledger: the canonical chain without the LEC.
-        without_lec = [name for name in RTL2GDS_NAMES if name != "lec"]
-        prefix = without_lec[:3]
+        prefix = RTL2GDS_NAMES[:3]
         _write_existing_workspace(
             run_dir, prefix, states=["Success"] * 2 + ["Unstart"], pdk_root=pdk_root
         )
@@ -449,45 +453,45 @@ class TestFlowMismatchZeroMutation:
         errors = [r for r in _records(capsys, plain_records) if r.get("error") == "flow_mismatch"]
         assert len(errors) == 1
         ledger = json.loads((Path(run_dir) / "home" / "flow.json").read_text())
-        assert "lec" not in [step["name"] for step in ledger["steps"]]
+        assert "lec@synthesis" not in [step["name"] for step in ledger["steps"]]
 
-    def test_legacy_parameters_mismatch_never_migrates(
+    def test_parameter_mismatch_does_not_rewrite_workspace(
         self, tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
     ):
-        """AC-14 with a legacy-parameters workspace: the mismatch refusal must
-        not migrate parameters.json, create params.toml/lock files, or touch
-        any other path."""
+        """A flow mismatch refusal must not rewrite configs or create locks."""
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
         run_dir = os.path.join(project_dir, "ws_0001")
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
-        # Legacy shape: long-key parameters.json, no params.toml, and a ledger
-        # that diverges from the project preset at step one.
-        with open(os.path.join(home, "parameters.json"), "w") as f:
-            json.dump(
-                {
-                    "PDK": "ics55",
-                    "Design": "gcd",
-                    "Top module": "gcd",
-                    "Clock": "clk",
-                    "Frequency max [MHz]": 250,
-                },
-                f,
-            )
+        # Current config with a ledger that diverges from the project preset.
+        Path(home, "params.toml").write_text(
+            """schema_version = 4
+[design]
+name = "gcd"
+top = "gcd"
+clock_port = "clk"
+frequency_mhz = 250.0
+[pdk]
+name = "ics55"
+[params]
+"""
+        )
         with open(os.path.join(home, "flow.json"), "w") as f:
             json.dump(
                 {
+                    "schema_version": 3,
                     "steps": [
                         {
-                            "name": "place",
+                            "name": "placement",
                             "tool": "ecc",
                             "state": "Success",
                             "runtime": "",
                             "peak memory (mb)": 0,
                             "info": {},
+                            **step_fields("placement", "ecc"),
                         }
-                    ]
+                    ],
                 },
                 f,
             )

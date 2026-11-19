@@ -2,99 +2,223 @@
 
 from copy import deepcopy
 
+from chipcompiler.data.config_params.common import WORKSPACE_WIDE, ConfigTarget
 from chipcompiler.data.parameter import update_parameters
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
     build_backend_overrides,
     build_config_overrides,
 )
+from chipcompiler.data.step_config_reads import step_config_reads
+from chipcompiler.data.step_parameters import (
+    ParameterStepError,
+    check_parameter_step,
+    is_step_scoped,
+    set_step_value,
+    step_value,
+    unset_step_value,
+)
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
 from chipcompiler.utility import json_read
 
 WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
-_APPLIES_TO_STEP = {
-    "synthesis": "Synthesis",
-    "floorplan": "Floorplan",
-    "placement": "place",
-    "macro": "macroPlacement",
-    "cts": "CTS",
-    "routing": "route",
-    "filler": "filler",
-    "rcx": "RCX",
-    "sta": "sta",
-    "emir": "emir",
-    "timing_opt": "Timing optimization",
-}
+# Layer (``ecc.toml`` / ``cli``) that supplied each explicit parameter at creation.
+PARAM_SOURCES_KEY = "_param_sources"
 _MISSING = object()
 
 
-def workspace_param_step(schema) -> str | None:
+def workspace_param_step(schema, workspace=None, step: str | None = None) -> str | None:
+    """The earliest flow step a parameter change invalidates.
+
+    A step-scoped parameter invalidates the *step* whose value changed. Any
+    other parameter invalidates from the earliest flow step that either is
+    one of its declared steps or reads a field it writes
+    (:func:`~chipcompiler.data.step_config_reads.step_config_reads`): a routing
+    layer also written into the floorplan ``db`` config invalidates the
+    floorplan, while a router thread count invalidates only routing.
+    A workspace-wide parameter invalidates the Workspace's first step.
+    Without a Workspace the declared order decides (``"all"`` for a
+    workspace-wide parameter).
+    """
     if schema.output_only:
         return None
-    step = _APPLIES_TO_STEP.get(schema.applies)
-    if step is None:
-        raise ValueError(f"{schema.param} requires a full workspace refresh")
-    return step
-
-
-def workspace_param_value(workspace, schema, *, strict: bool = False) -> object:
     if schema.pdk_target is not None:
         raise ValueError(f"{schema.param} requires a full workspace refresh")
-    if schema.maps_to is not None:
-        return _parameter_target_value(workspace.parameters.data, schema.maps_to, schema.default)
-    if schema.config_target is not None:
-        config_path = workspace.config.get(schema.config_target.config_key)
-        if config_path is None:
-            raise ValueError(f"workspace config missing target: {schema.config_target.config_key}")
-        if strict:
-            from chipcompiler.utility import json_read_strict
+    if is_step_scoped(schema) and step is not None:
+        return check_parameter_step(schema, step)
+    flow = _flow_steps(workspace)
+    if schema.workspace_wide:
+        return flow[0][0] if flow else WORKSPACE_WIDE
+    targets = () if is_step_scoped(schema) else schema.config_targets
+    for name, tool in flow:
+        reads = step_config_reads(name, tool)
+        if schema.applies_to(name) or any(
+            read.overlaps(target.config_key, target.json_path)
+            for read in reads
+            for target in targets
+        ):
+            return name
+    return schema.steps[0]
 
-            config = json_read_strict(config_path)
-            if not isinstance(config, dict):
-                raise ValueError(f"workspace config must be an object: {config_path}")
-        else:
-            config = json_read(config_path)
-        value = _nested_value(config, schema.config_target.json_path)
-        return schema.default if value is _MISSING else value
+
+def _flow_steps(workspace) -> list[tuple[str, str | None]]:
+    """``(name, tool)`` of each step of *workspace*'s flow, in order."""
+    if workspace is None:
+        return []
+    # ``load_workspace`` keeps the flow ledger lazy; the accessor hydrates it.
+    flow = workspace.flow
+    steps = flow.steps() if hasattr(flow, "steps") else flow.data.get("steps", [])
+    return [
+        (str(item.get("name", "")), item.get("tool"))
+        for item in steps
+        if isinstance(item, dict) and item.get("name")
+    ]
+
+
+def workspace_param_value(
+    workspace, schema, *, step: str | None = None, strict: bool = False
+) -> object:
+    """The value *schema* holds in *workspace* (at *step* for a step-scoped parameter).
+
+    A step-scoped parameter reads the step's stored value, else the value
+    the workspace baseline config carries; generated step configs are never
+    read, since they are stale until the step runs again.
+    """
+    if schema.pdk_target is not None:
+        raise ValueError(f"{schema.param} requires a full workspace refresh")
+    if step is not None and is_step_scoped(schema):
+        stored = step_value(workspace.parameters.data, step, schema.param, _MISSING)
+        if stored is not _MISSING:
+            return stored
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
+    default = schema.default_for(pdk)
+    if schema.maps_to is not None:
+        return _parameter_target_value(workspace.parameters.data, schema.maps_to, default)
+    if schema.config_target is not None:
+        return _config_target_value(workspace, schema, default, strict=strict)
     raise ValueError(f"{schema.param} has no workspace configuration target")
 
 
-def set_workspace_param(workspace, schema, value: object) -> tuple[object, str | None]:
-    baseline = update_workspace_param_value(workspace, schema, value)
-    return baseline, workspace_param_step(schema)
+def _read_target(workspace, target: ConfigTarget, *, strict: bool) -> object:
+    """The parameter-side value stored at *target*, or ``_MISSING``."""
+    config_path = workspace.config.get(target.config_key)
+    if config_path is None:
+        raise ValueError(f"workspace config missing target: {target.config_key}")
+    if strict:
+        from chipcompiler.utility import json_read_strict
+
+        config = json_read_strict(config_path)
+        if not isinstance(config, dict):
+            raise ValueError(f"workspace config must be an object: {config_path}")
+    else:
+        config = json_read(config_path)
+    value = _nested_value(config, target.json_path)
+    return value if value is _MISSING else target.parse(value)
 
 
-def update_workspace_param_value(workspace, schema, value: object) -> object:
+def _config_target_value(workspace, schema, default: object, *, strict: bool) -> object:
+    targets = schema.config_targets
+    if all(target.element is None for target in targets):
+        value = _read_target(workspace, targets[0], strict=strict)
+        return default if value is _MISSING else value
+    # A list parameter fanned out per element: read each element from its
+    # first target; any missing element falls back to the default list.
+    size = 1 + max(target.element for target in targets if target.element is not None)
+    elements: list[object] = []
+    for index in range(size):
+        target = next((item for item in targets if item.element == index), None)
+        value = _MISSING if target is None else _read_target(workspace, target, strict=strict)
+        if value is _MISSING:
+            return default
+        elements.append(value)
+    return elements
+
+
+def set_workspace_param(
+    workspace, schema, value: object, step: str | None = None
+) -> tuple[object, str | None]:
+    baseline = update_workspace_param_value(workspace, schema, value, step=step)
+    return baseline, workspace_param_step(schema, workspace, _scope(schema, step))
+
+
+def update_workspace_param_value(
+    workspace, schema, value: object, *, step: str | None = None
+) -> object:
+    """Journal and apply *value*; a step-scoped parameter needs its *step*.
+
+    Raises :class:`~chipcompiler.data.step_parameters.ParameterStepError`
+    for a missing or inapplicable step.
+    """
+    scope = _checked_scope(workspace, schema, step)
     records = _override_records(workspace.parameters.data)
-    record = next((item for item in records if item["key"] == schema.param), None)
+    record = _find_record(records, schema.param, scope)
     if record is None:
         record = {
             "key": schema.param,
-            "baseline": deepcopy(workspace_param_value(workspace, schema)),
+            "baseline": deepcopy(workspace_param_value(workspace, schema, step=scope)),
         }
+        if scope is not None:
+            record["step"] = scope
+            # Unset removes the step value again unless the step already had one.
+            record["stored"] = (
+                step_value(workspace.parameters.data, scope, schema.param, _MISSING) is not _MISSING
+            )
         records.append(record)
     record["value"] = deepcopy(value)
     _set_override_records(workspace.parameters.data, records)
-    _apply_workspace_value(workspace, schema, value)
+    _apply_workspace_value(workspace, schema, value, scope)
     return record["baseline"]
 
 
-def unset_workspace_param(workspace, schema) -> tuple[object, str | None] | None:
+def unset_workspace_param(
+    workspace, schema, step: str | None = None
+) -> tuple[object, str | None] | None:
+    scope = _checked_scope(workspace, schema, step)
     records = _override_records(workspace.parameters.data)
-    record = next((item for item in records if item["key"] == schema.param), None)
+    record = _find_record(records, schema.param, scope)
     if record is None:
         return None
     records.remove(record)
     _set_override_records(workspace.parameters.data, records)
-    _apply_workspace_value(workspace, schema, record["baseline"])
-    return record["baseline"], workspace_param_step(schema)
+    if scope is not None and not record.get("stored", True):
+        unset_step_value(workspace.parameters.data, scope, schema.param)
+    else:
+        _apply_workspace_value(workspace, schema, record["baseline"], scope)
+    return record["baseline"], workspace_param_step(schema, workspace, scope)
+
+
+def _checked_scope(workspace, schema, step: str | None) -> str | None:
+    """The validated journal scope of an edit; a step value's step must be in the flow."""
+    scope = check_parameter_step(schema, _scope(schema, step))
+    if scope is not None and scope not in {name for name, _tool in _flow_steps(workspace)}:
+        raise ParameterStepError(
+            "unknown_flow_step",
+            schema.param,
+            scope,
+            f"step {scope} is not in this workspace's flow",
+        )
+    return scope
+
+
+def _scope(schema, step: str | None) -> str | None:
+    """The journal scope of an edit: its step for a step-scoped parameter, else none."""
+    return step if is_step_scoped(schema) else None
+
+
+def _find_record(records: list[dict], param: str, step: str | None) -> dict | None:
+    return next(
+        (item for item in records if item["key"] == param and item.get("step") == step), None
+    )
 
 
 def workspace_param_diff(workspace) -> list[dict]:
     return _override_records(workspace.parameters.data)
 
 
-def _apply_workspace_value(workspace, schema, value: object) -> None:
+def _apply_workspace_value(workspace, schema, value: object, step: str | None = None) -> None:
+    if step is not None:
+        set_step_value(workspace.parameters.data, step, schema.param, value)
+        return
     resolved = ResolvedParam(schema.param, value, schema.default, "workspace", schema)
     update_parameters(build_backend_overrides([resolved]), workspace.parameters.data)
     config_overrides = build_config_overrides([resolved])

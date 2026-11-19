@@ -33,7 +33,7 @@ def project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", NotingFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -50,11 +50,14 @@ def project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     config = directory / "ecc.toml"
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     yield directory
-    # The logger is named after the design and keeps its handlers for the process.
-    logger = logging.getLogger(DESIGN)
-    for handler in list(logger.handlers):
-        logger.removeHandler(handler)
-        handler.close()
+    # Each workspace logger is named after the design and its workspace, and
+    # keeps its handlers for the process.
+    for name in list(logging.Logger.manager.loggerDict):
+        if name == DESIGN or name.startswith(f"{DESIGN}:"):
+            logger = logging.getLogger(name)
+            for handler in list(logger.handlers):
+                logger.removeHandler(handler)
+                handler.close()
 
 
 def test_fresh_plain_run_keeps_logger_warnings_off_stdout(capsys, project, plain_records):
@@ -64,7 +67,8 @@ def test_fresh_plain_run_keeps_logger_warnings_off_stdout(capsys, project, plain
 
     captured = capsys.readouterr()
     assert NOTE not in captured.out
-    assert f"{DESIGN} - WARNING - {NOTE}" in captured.err
+    workspace = (project / "fresh").resolve()
+    assert f"{DESIGN}:{workspace} - WARNING - {NOTE}" in captured.err
     lines = [line for line in captured.out.splitlines() if line.strip()]
     records = plain_records(captured.out)
     assert len(records) == len(lines), captured.out

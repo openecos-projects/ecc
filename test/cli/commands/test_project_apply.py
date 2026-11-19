@@ -37,7 +37,7 @@ def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatc
             "--set",
             "design.sdc=fast.tcl",
             "--set",
-            "place.target_density=0.7",
+            "placement:place.target_density=0.7",
             "--add-rtl",
             "rtl/extra.v",
         ]
@@ -47,9 +47,10 @@ def test_project_apply_commits_config_and_manifest_together(tmp_path, monkeypatc
     config = (project / "ecc.toml").read_text()
     manifest = json.loads((project / "project.json").read_text())
     assert tomllib.loads(config)["design"]["sdc"] == "fast.tcl"
-    assert "target_density = 0.7" in config
+    params = tomllib.loads(config)["params"]
+    assert params["step"] == {"placement": {"place": {"target_density": 0.7}}}
     assert manifest["base_design"]["pdk_root"] == str(pdk)
-    assert manifest["base_design"]["parameters"]["frequency_max"] == 250.0
+    assert manifest["base_design"]["frequency_mhz"] == 250.0
 
 
 def test_project_apply_invalid_batch_changes_nothing(tmp_path, monkeypatch):
@@ -66,7 +67,7 @@ def test_project_apply_invalid_batch_changes_nothing(tmp_path, monkeypatch):
             "--set",
             f"pdk.root={pdk}",
             "--set",
-            "place.target_density=2.0",
+            "placement:place.target_density=2.0",
         ]
     )
 

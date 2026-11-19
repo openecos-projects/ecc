@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 from chipcompiler.analysis.pareto import Objective
 from chipcompiler.cli.app import app
 from chipcompiler.cli.experiments import pareto
+from test.flow_fixture import step_fields
 
 
 @pytest.fixture
@@ -36,7 +37,17 @@ def sweep(tmp_path, monkeypatch):
     def snapshot(workspace):
         score = 90.0 if workspace.name.endswith("1") else 85.0
         return {
-            "flow": {"steps": [{"name": "sta", "tool": "ecc", "state": "Success"}]},
+            "flow": {
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "sta",
+                        "tool": "ecc",
+                        "state": "Success",
+                        **step_fields("sta", "ecc"),
+                    }
+                ],
+            },
             "checklist": {"status": "ready", "checklist": [{"step": "sta", "state": "pass"}]},
             "workspaceSpec": {"parameters": {"floorplan.core_util": 0.35}},
             "qorSnapshotExtension": {"status": "available", "score": score},
@@ -121,7 +132,7 @@ def test_objective_contract_rejects_unknown_units_and_polarity(sweep, objective)
 
 def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
     artifacts = []
-    for step, value in (("postFloorplan", 100), ("place", 110)):
+    for step, value in (("post_floorplan", 100), ("placement", 110)):
         reference = f"{step}_ecc/analysis/qor_metrics.json"
         path = tmp_path / reference
         path.parent.mkdir(parents=True)
@@ -147,11 +158,44 @@ def test_step_selector_resolves_metrics_without_silently_taking_first(tmp_path):
         )
     facts = {
         "artifacts": artifacts,
-        "flow": {"steps": [{"name": step, "tool": "ecc"} for step in ("postFloorplan", "place")]},
+        "flow": {
+            "schema_version": 3,
+            "steps": [
+                {
+                    "name": step,
+                    "tool": "ecc",
+                    **step_fields(step, "ecc"),
+                }
+                for step in ("post_floorplan", "placement")
+            ],
+        },
     }
     with pytest.raises(ValueError, match="ambiguous"):
         pareto._measurement(tmp_path, facts, Objective("core_area", "um^2", "minimize"))
     result = pareto._measurement(
-        tmp_path, facts, Objective("postFloorplan/core_area", "um^2", "minimize")
+        tmp_path, facts, Objective("post_floorplan/core_area", "um^2", "minimize")
     )
     assert result["value"] == 100
+
+
+def test_candidate_layer_choices_follow_the_snapshot_pdk(sweep, monkeypatch):
+    project, root = sweep
+    plan = json.loads((root / "sweep.json").read_text())
+    for candidate in plan["candidates"]:
+        candidate["parameters"] = {"route.bottom_layer": "Metal3"}
+    (root / "sweep.json").write_text(json.dumps(plan))
+    base_snapshot = pareto.read_engineering_snapshot_from_directory
+
+    def sg13g2_snapshot(workspace):
+        facts = base_snapshot(workspace)
+        facts["workspaceSpec"] = {
+            "pdk": {"familyId": "sg13g2"},
+            "parameters": {"route.bottom_layer": "Metal3"},
+        }
+        return facts
+
+    monkeypatch.setattr(pareto, "read_engineering_snapshot_from_directory", sg13g2_snapshot)
+
+    report = pareto.sweep_pareto(project, "example", ["qor_score:score:maximize"])
+
+    assert [row["id"] for row in report["front"]] == ["candidate_0001"]

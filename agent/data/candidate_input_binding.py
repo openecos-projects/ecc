@@ -3,6 +3,8 @@
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.types import SkippableStepEnum, StepEnum
+
 from .candidate_artifacts import (
     canonical_json_bytes,
     read_json_object,
@@ -21,32 +23,32 @@ INPUT_BINDING_FILENAME = "candidate_input_binding.v1.json"
 CANONICAL_INPUT_EDGES = frozenset(
     {
         # Current flow topology: the floorplan phase runs as the sub-steps
-        # preFloorplan -> macroPlacement -> postFloorplan sharing the
-        # "Floorplan" configuration.
-        ("preFloorplan", "Synthesis"),
-        ("macroPlacement", "preFloorplan"),
-        ("postFloorplan", "macroPlacement"),
-        ("place", "postFloorplan"),
-        ("Timing optimization", "legalization"),
-        ("route", "Timing optimization"),
-        ("filler", "route"),
-        ("RCX", "filler"),
-        ("sta", "RCX"),
-        ("lvs", "sta"),
-        ("postRouteLec", "lvs"),
-        ("drc", "postRouteLec"),
-        ("Harden", "drc"),
+        # pre_floorplan -> macro_placement -> post_floorplan sharing the
+        # "floorplan" configuration.
+        (StepEnum.PRE_FLOORPLAN.value, StepEnum.SYNTHESIS.value),
+        (StepEnum.MACRO_PLACEMENT.value, StepEnum.PRE_FLOORPLAN.value),
+        (StepEnum.POST_FLOORPLAN.value, StepEnum.MACRO_PLACEMENT.value),
+        (StepEnum.PLACEMENT.value, StepEnum.POST_FLOORPLAN.value),
+        (SkippableStepEnum.TIMING_OPT.value, StepEnum.LEGALIZATION.value),
+        (StepEnum.ROUTING.value, SkippableStepEnum.TIMING_OPT.value),
+        (StepEnum.FILLER.value, StepEnum.ROUTING.value),
+        (StepEnum.RCX.value, StepEnum.FILLER.value),
+        (StepEnum.STA.value, StepEnum.RCX.value),
+        (StepEnum.LVS.value, StepEnum.STA.value),
+        (SkippableStepEnum.POST_ROUTE_LEC.value, StepEnum.LVS.value),
+        (StepEnum.DRC.value, SkippableStepEnum.POST_ROUTE_LEC.value),
+        (StepEnum.HARDEN.value, StepEnum.DRC.value),
         # RPC-level floorplan target binding (see prepare_floorplan_mode).
-        ("Floorplan", "initial"),
-        ("Floorplan", "Synthesis"),
+        (StepEnum.FLOORPLAN.value, "initial"),
+        (StepEnum.FLOORPLAN.value, StepEnum.SYNTHESIS.value),
         # Legacy single-step floorplan topology and sanctioned resume edges.
-        ("place", "Floorplan"),
-        ("CTS", "place"),
-        ("legalization", "CTS"),
-        ("route", "legalization"),
-        ("place", "CTS"),
-        ("legalization", "place"),
-        ("CTS", "legalization"),
+        (StepEnum.PLACEMENT.value, StepEnum.FLOORPLAN.value),
+        (StepEnum.CTS.value, StepEnum.PLACEMENT.value),
+        (StepEnum.LEGALIZATION.value, StepEnum.CTS.value),
+        (StepEnum.ROUTING.value, StepEnum.LEGALIZATION.value),
+        (StepEnum.PLACEMENT.value, StepEnum.CTS.value),
+        (StepEnum.LEGALIZATION.value, StepEnum.PLACEMENT.value),
+        (StepEnum.CTS.value, StepEnum.LEGALIZATION.value),
     }
 )
 
@@ -55,9 +57,9 @@ class CandidateInputBindingError(ValueError):
     """A candidate input binding is outside the declared physical-flow edges."""
 
 
-# The RPC-level "Floorplan" target names the shared floorplan configuration,
+# The RPC-level "floorplan" target names the shared floorplan configuration,
 # not a flow step; the phase input binds on its first sub-step when the flow
-# runs the split phase instead of a literal "Floorplan" step.
+# runs the split phase instead of a literal "floorplan" step.
 
 
 def _flow_step_name(engine_flow: Any, target_step: str) -> str:
@@ -163,7 +165,7 @@ def _path_or_none(value: Any) -> Path | None:
 def _validate_source_inputs(source_step: str, inputs: dict[str, Path | None]) -> None:
     def_hash = sha256_path(inputs["def"]) if inputs["def"] else None
     verilog_hash = sha256_path(inputs["verilog"]) if inputs["verilog"] else None
-    if source_step not in {"initial", "Synthesis"} and def_hash is None:
+    if source_step not in {"initial", StepEnum.SYNTHESIS.value} and def_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no DEF checkpoint")
     if def_hash is None and verilog_hash is None:
         raise CandidateInputBindingError(f"candidate source {source_step} has no design checkpoint")

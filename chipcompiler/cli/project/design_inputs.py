@@ -7,8 +7,12 @@ by the first requested flow step; it never writes step configuration files.
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
+
+if TYPE_CHECKING:
+    from chipcompiler.cli.project.config import ProjectConfig
 
 
 @dataclass(frozen=True)
@@ -23,36 +27,33 @@ class ResolvedDesignInputs:
 
 _PHYSICAL_STEPS = frozenset(
     {
-        "macroPlacement",
-        "postFloorplan",
+        "macro_placement",
+        "post_floorplan",
         "preplace",
-        "place",
+        "placement",
         "diff_opt",
-        "diff_buffering",
         "diff_sizing",
-        "CTS",
+        "cts",
         "legalization",
-        "Timing optimization",
-        "route",
+        "timing_optimization",
+        "routing",
         "filler",
-        "RCX",
+        "rcx",
         "drc",
         "lvs",
-        "Harden",
+        "harden",
     }
 )
 
 
 def required_inputs_for_step(step: str) -> tuple[str, ...]:
     """Return the declared ``[design]`` fields required to enter *step*."""
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    canonical = normalize_flow_step(step)
-    if canonical == "Synthesis":
+    canonical = str(step)
+    if canonical == "synthesis":
         return ("rtl",)
-    if canonical in {"lec", "postRouteLec"}:
+    if canonical == "post_route_lec":
         return ("netlist", "golden_netlist")
-    if canonical == "preFloorplan":
+    if canonical == "pre_floorplan":
         return ("netlist",)
     if canonical == "sta":
         return ("def", "netlist", "spef")
@@ -61,7 +62,7 @@ def required_inputs_for_step(step: str) -> tuple[str, ...]:
     return ()
 
 
-def resolve_design_inputs(cfg) -> ResolvedDesignInputs:
+def resolve_design_inputs(cfg: "ProjectConfig") -> ResolvedDesignInputs:
     """Resolve declared input paths against the project root."""
     from chipcompiler.cli.project.config import _resolve_path
 
@@ -78,7 +79,7 @@ def resolve_design_inputs(cfg) -> ResolvedDesignInputs:
     )
 
 
-def validate_entry_inputs(cfg, entry_step: str | None) -> list[str]:
+def validate_entry_inputs(cfg: "ProjectConfig", entry_step: str | None) -> list[str]:
     """Validate only files needed by the requested entry step.
 
     Declared timing inputs are copied into the workspace and used to generate
@@ -100,7 +101,7 @@ def validate_entry_inputs(cfg, entry_step: str | None) -> list[str]:
         value = values[field_name]
         if field_name == "rtl":
             if not value:
-                errors.append("step_input_missing: Synthesis requires design.rtl")
+                errors.append("step_input_missing: synthesis requires design.rtl")
                 continue
             errors.extend(_validate_rtl_sources(value))
             continue

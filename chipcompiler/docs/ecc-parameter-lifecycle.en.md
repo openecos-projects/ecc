@@ -16,12 +16,15 @@ one value per key wins through this precedence (highest first):
 | --- | --- | --- |
 | 1 | `ecc run --set key=value` (repeatable) | fresh runs only |
 | 2 | `ecc.toml` `[params.*]` | fresh runs only |
-| 3 | `project.json` `base_design.parameters` merged with the selected workspace entry's `parameter_patch` (manifest base layer) | manifest projects |
+| 3 | `project.json` `base_design.frequency_mhz` (the design clock frequency only; the manifest carries no other parameters) | manifest projects |
 | 4 | schema defaults (`chipcompiler/data/config_params/`, legacy registry templates) | always |
 
 The manifest base layer is a floor, not an override: `ecc.toml` and `--set`
 values are merged over it, so a declared base value loses to any higher
-layer and wins only over the schema default.
+layer and wins only over the schema default. Manifests written before
+`frequency_mhz` existed are still read through their legacy
+`base_design.parameters.frequency_max`; tunable parameters are never read from
+`project.json` and are set in `ecc.toml` or in each workspace's `params.toml`.
 
 An **existing** workspace reuses its persisted `home/params.toml` and never
 re-resolves the matrix:
@@ -36,8 +39,8 @@ re-resolves the matrix:
 
 `skip_steps` follows the same convergence: an explicit `ecc.toml`
 `[flow] skip_steps` (including `[]`) wins over the `project.json`
-workspace entry, which wins over the code default `("lec", "diff_opt")`.
-Set `["lec"]` to enable `diff_opt`. When both
+workspace entry, which wins over the code default `("diff_opt",)`.
+Set `[]` to enable `diff_opt`. When both
 surfaces declare different policies, `ecc run`/`ecc check` emit a
 `skip_steps_shadowed` warning naming the winning source.
 
@@ -59,6 +62,41 @@ surfaces declare different policies, `ecc run`/`ecc check` emit a
   a CLI session converge on the same `config/*.json` for the same
   `home/params.toml`.
 
+## Where a step's parameters are recorded
+
+A Workspace Spec carries structure only (design, inputs, PDK, flow); it holds
+no parameters. A new workspace starts from the PDK template and schema
+defaults, and parameters are set afterwards with `ecc param set --workspace`
+or `apply_workspace_parameters`. Rebuilding a workspace through
+`update_workspace_from_spec` carries the stored parameters, the direct config
+patch, the per-step values and the baseline journal over; carried values are
+revalidated against the new PDK family.
+
+DreamPlace parameters are recorded per step. The workspace
+`config/dreamplace_ecc.json` is only the baseline; macro_placement, placement,
+diff_opt, diff_sizing, legalization and timing_optimization's inner
+legalization each resolve `<step dir>/config/dreamplace_ecc.json` from it plus
+that step's values in `[params.step_params.<step>]`. A DreamPlace parameter is
+always set with a step (`<step>:<param>` keys, `--step` on `param apply`,
+`[params.step.<step>]` in `ecc.toml`), only on the steps its schema declares,
+and a change invalidates from that step only. A step that is not in the
+workspace's flow is rejected with `unknown_flow_step`, an unqualified key with
+`parameter_step_required`, and a step the parameter does not declare with
+`parameter_not_applicable`. Workspace-wide (non-step) parameters invalidate from
+the earliest flow step that reads any of their target configs, not only from
+the step they declare: `route.bottom_layer` also writes the floorplan db config
+(from pre_floorplan) and `route.top_layer` feeds the DreamPlace gpugr layers
+(from macro_placement/placement).
+
+Each step directory also gets a `params.json` beside `req.json`/`rsp.json`,
+written by the step worker after the tool has finalized its config. It lists
+every parameter applicable to the step with its `value`, `default` and
+`source` (`default`, `ecc.toml`, `cli`, `project.json` or `workspace`) and the
+tool-config values those parameters currently hold, keyed by config file and
+JSON path; DreamPlace parameters report the step's own value and config. It is evidence for developers and agents to trace a step's inputs;
+nothing reads it back. The creation-time layer of each explicit parameter is
+persisted in `home/params.toml` under `[params._param_sources]`.
+
 ## CLI vs GUI
 
 | Concern | CLI (`ecc`) | GUI (ECOS Studio) |
@@ -75,25 +113,19 @@ editing `ecc.toml` and refreshing) over hand-editing generated files.
 
 ## schema versioning
 
-Workspace files carry an explicit schema version so newer files fail loudly
-instead of parsing silently:
+Only current workspace formats are supported. Older files are not migrated;
+recreate the workspace with this ECC.
 
-| File | Field | Current version | Notes |
-| --- | --- | --- | --- |
-| `home/params.toml` | `schema_version` | 2 | absent = version 0 (pre-versioning); version 0 migrates through the legacy `parameters.json` path and version 1 is deduplicated to v2 |
-| `home/flow.json` | `schema_version` | 1 | absent = version 0; writers stamp it, reconcile rejects newer versions |
-| `home/engineering-snapshot.json` | `schemaVersion` | 4 | shared with the GUI; v2/v3 are read and rebuilt to v4, while unsupported versions fail closed with `snapshot_rebuild_required` |
+| File | Field | Required version |
+| --- | --- | --- |
+| `home/params.toml` | `schema_version` | 4 |
+| `home/flow.json` | `schema_version` | 3 |
+| `home/engineering-snapshot.json` | `schemaVersion` | 7 |
 
-The registry lives in `chipcompiler/data/schema_migrations.py`:
-`{file type: {target version: migration}}`, applied in ascending order at
-workspace open. A `params.toml` or `flow.json` declaring a version newer than
-supported raises `unsupported_schema_version` with the file path and version —
-never a silent parse. The Snapshot registry supports v2, v3, and v4 with target
-version 4. Legacy v2/v3 snapshots are read and explicitly rebuilt into the v4
-contract by `migrate_engineering_snapshot`; v4 is already current and is not
-migrated. A corrupt or structurally invalid file raises
-`EngineeringSnapshotError` (`invalid Engineering Snapshot: <path>`), and an
-unsupported or newer `schemaVersion` fails closed with
+`chipcompiler/data/schema_versions.py` checks the declared version before a
+file is loaded. An older version fails with a recreate-workspace error, and a
+newer version fails closed rather than being parsed. Invalid snapshots raise
+`EngineeringSnapshotError`; unsupported versions report
 `snapshot_rebuild_required`.
 
 ## Engineering Snapshot payload bounds

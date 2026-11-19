@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.data.checklist import (
     CHECKLIST_REVISION,
     CHECKLIST_SCHEMA_VERSION,
@@ -30,16 +32,18 @@ def test_checklist_creates_current_signoff_contract(tmp_path):
     assert data["generated_at"].endswith("Z")
 
 
-def test_checklist_replaces_legacy_data_with_current_snapshot(tmp_path):
+def test_checklist_rejects_incompatible_existing_data(tmp_path):
     path = tmp_path / "checklist.json"
     path.write_text(
         json.dumps({"checklist": [{"step": "drc", "item": "obsolete check"}]}),
         encoding="utf-8",
     )
 
-    checklist = Checklist(path)
-    assert checklist.data["checklist"] == []
+    with pytest.raises(ValueError, match="incompatible signoff checklist"):
+        Checklist(path)
 
+    path.unlink()
+    checklist = Checklist(path)
     checklist.replace(
         [
             {

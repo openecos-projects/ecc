@@ -1,11 +1,6 @@
-"""CLI compatibility facade for the canonical data parameter catalog."""
+"""CLI-specific PDK path validation for ``[pdk.overrides]`` parameters."""
 
 from dataclasses import replace
-
-from chipcompiler.data.parameter_schema import *  # noqa: F401,F403
-from chipcompiler.data.parameter_schema import validate_schema_type
-
-_validate_schema_type = validate_schema_type
 
 
 def validate_pdk_target(schema, value, cfg) -> str | None:

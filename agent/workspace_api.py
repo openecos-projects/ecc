@@ -6,10 +6,11 @@ from hashlib import sha256
 from pathlib import Path
 
 import chipcompiler
+from chipcompiler.data.types import LEC_STEP_TOOLS, StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
-from .candidate_worker import run_candidate_steps_isolated
+from .candidate_verification import verify_candidate_step_configs
 from .data import (
     FoundationExtractor,
     bind_candidate_input,
@@ -25,6 +26,7 @@ from .data.candidate_materialization import (
     validate_candidate_materialization_receipt,
 )
 from .data.candidate_registry import FLOORPLAN_TARGET_FLOW_STEP
+from .data.candidate_step_values import seed_steps, store_candidate_seed
 from .data.parameter_application_receipt import build_parameter_application_receipt
 from .engine import AgentEngineFlow
 from .floorplan_mode import (
@@ -44,9 +46,6 @@ from .requests import (
 from .runtime_env import preflight_sizer_runtime
 from .runtime_support import (
     AgentApplicationError as RuntimeApiError,
-)
-from .runtime_support import (
-    init_db_engine_for_workspace_step as _init_db_engine_for_workspace_step,
 )
 from .runtime_support import (
     state_value as _state_value,
@@ -177,14 +176,20 @@ class FlowAgentRuntimeApi:
             if not preflight_done:
                 _preflight_candidate_steps(steps)
             prepare_floorplan_mode(candidate_workspace, request)
-            _materialize_candidate_rerun(candidate_workspace, flow, request)
+            _materialize_candidate_rerun(candidate_workspace, flow, request, steps)
             _prepare_candidate_rerun(candidate_workspace, flow, steps)
             _notify_candidate_rerun_prepared(observer, steps, request)
             if request.patch:
                 _reapply_candidate_input(candidate_workspace, flow, request.target_step)
             else:
                 reapply_candidate_input_binding(candidate_workspace, flow, request.target_step)
-            run_candidate_steps_isolated(flow, steps, observer=observer)
+            _run_candidate_steps(flow, steps, observer)
+            verify_candidate_step_configs(
+                candidate_workspace,
+                request,
+                executed_steps=steps,
+                seed_step_names=seed_steps(steps),
+            )
             if candidate_root_ref is None or parent is None:
                 raise RuntimeApiError("command_failed", "candidate rerun identity is unavailable")
             return _candidate_rerun_result(
@@ -322,7 +327,7 @@ def _candidate_step_range(
         _step_value(step, "name") == target_step for step in steps
     ):
         # Flows running the floorplan phase as sub-steps have no literal
-        # "Floorplan" step; start the range at its first sub-step instead.
+        # "floorplan" step; start the range at its first sub-step instead.
         range_target = FLOORPLAN_TARGET_FLOW_STEP[target_step]
     target_index = next(
         (index for index, step in enumerate(steps) if _step_value(step, "name") == range_target),
@@ -372,8 +377,10 @@ def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
         validate_candidate_id(request.candidate_id)
     except ValueError as exc:
         raise RuntimeApiError("invalid_request", "candidate rerun candidate_id is invalid") from exc
-    if request.end_step != "Harden":
-        raise RuntimeApiError("invalid_request", "candidate rerun end step must be Harden")
+    if request.end_step != StepEnum.HARDEN.value:
+        raise RuntimeApiError(
+            "invalid_request", f"candidate rerun end step must be {StepEnum.HARDEN.value}"
+        )
     if request.execution_scope != "full_flow":
         raise RuntimeApiError(
             "invalid_request", "candidate rerun execution scope must be full_flow"
@@ -470,14 +477,12 @@ def _workspace_state_sha256(root: Path) -> str:
     relative_files = (
         FLOORPLAN_MODE_REF,
         "home/flow.json",
-        "home/parameters.json",
+        "home/params.toml",
         "config/floorplan_ecc.json",
         "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
         "config/dreamplace.json",
     )
-    if (root / FLOORPLAN_MODE_REF).is_file():
-        relative_files += ("home/params.toml",)
     hashes = {
         relative: _required_file_sha256(root / relative, relative)
         for relative in relative_files
@@ -553,14 +558,14 @@ def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | No
         "candidate_flow_sha256": flow_sha256,
         "candidate_state_sha256": state_sha256,
         "terminal_state": "succeeded",
-        "end_step": "Harden",
+        "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
     }
     if not isinstance(manifest, dict) or any(
         manifest.get(key) != value for key, value in expected.items()
     ):
         raise RuntimeApiError(
-            "command_failed", "candidate parent is not a verified successful Harden candidate"
+            "command_failed", "candidate parent is not a verified successful harden candidate"
         )
     return {
         **binding,
@@ -659,7 +664,7 @@ def _candidate_workspace_receipt(
             ("harden_lef", "lef"),
             ("harden_lib", "lib"),
         ):
-            relative = f"Harden_ecc/output/{design_name}_Harden.{suffix}"
+            relative = f"harden_ecc/output/{design_name}_harden.{suffix}"
             artifact = candidate_root / relative
             artifacts[key] = {
                 "ref": relative,
@@ -932,7 +937,9 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
     return context
 
 
-def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest) -> None:
+def _materialize_candidate_rerun(
+    workspace, flow, request: CandidateRerunRequest, steps: list
+) -> None:
     _remove_stale_parameter_receipts(Path(workspace.directory))
     source_step = _candidate_source_step(flow, request.target_step)
     bind_candidate_input(
@@ -942,15 +949,13 @@ def _materialize_candidate_rerun(workspace, flow, request: CandidateRerunRequest
         source_step,
         request.candidate_id,
     )
-    dreamplace_path = Path(workspace.config["dreamplace"])
+    # The seed is a value of each rerun step that consumes it (placement); a
+    # target after those steps (cts, routing, ...) reruns no seeded step, so
+    # their stored values stay what the parent's steps ran with.
     try:
-        dreamplace_config = json.loads(dreamplace_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid") from exc
-    if not isinstance(dreamplace_config, dict):
-        raise RuntimeApiError("command_failed", "candidate DREAMPlace config is invalid")
-    dreamplace_config["random_seed"] = request.seed
-    write_json_atomic(dreamplace_path, dreamplace_config)
+        store_candidate_seed(workspace, seed_steps(steps), request.seed)
+    except ValueError as exc:
+        raise RuntimeApiError("command_failed", f"candidate seed is invalid: {exc}") from exc
     if request.patch:
         materialize_candidate_config(
             workspace,
@@ -992,15 +997,16 @@ def _validate_runtime_report_binding(
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
-    # The RPC-level "Floorplan" target binds the post-synthesis netlist: the
-    # floorplan sub-steps consume the Synthesis output as their phase input.
-    if target_step == "Floorplan":
-        return "Synthesis"
+    # The RPC-level "floorplan" target binds the post-synthesis netlist: the
+    # floorplan sub-steps consume the synthesis output as their phase input.
+    if target_step == StepEnum.FLOORPLAN.value:
+        return StepEnum.SYNTHESIS.value
     steps = flow.workspace.flow.data.get("steps", [])
     for index, step in enumerate(steps):
         if step.get("name") == target_step and index:
             for source_step in reversed(steps[:index]):
-                if source_step.get("tool") == "yosys_lec":
+                # An LEC check reads a netlist and changes nothing.
+                if source_step.get("tool") in LEC_STEP_TOOLS:
                     continue
                 source = source_step.get("name")
                 if isinstance(source, str):
@@ -1065,8 +1071,15 @@ def _clear_candidate_artifact_dir(workspace_root: Path, directory: Path, step_na
     directory.mkdir(parents=True, exist_ok=True)
 
 
+def _run_candidate_steps(flow, steps, observer) -> None:
+    for step in steps:
+        callback = getattr(observer, "raise_if_cancelled", None)
+        if callable(callback):
+            callback()
+        _run_candidate_step(flow, step, observer=observer)
+
+
 def _run_candidate_step(flow, step, *, observer) -> None:
-    _init_db_engine_for_workspace_step(flow, step)
     state = flow.run_step(step, rerun=True, observer=observer)
     if _state_value(state) != "Success":
         raise RuntimeApiError(

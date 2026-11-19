@@ -8,6 +8,7 @@ from chipcompiler.engine.flow import EngineFlow
 from chipcompiler.engine.flow_waiver import mark_step_skipped, waive_checklist
 from chipcompiler.engine.rerun import invalidate_from
 from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
+from test.flow_fixture import step_fields
 
 
 class _Flow:
@@ -31,7 +32,7 @@ class _Workspace:
 
 def test_mark_step_skipped_records_reason_and_clears_checklist_gate():
     step = {
-        "name": "postRouteLec",
+        "name": "post_route_lec",
         "tool": "kepler_formal",
         "category": "CHECKER",
         "state": "Incomplete",
@@ -43,7 +44,7 @@ def test_mark_step_skipped_records_reason_and_clears_checklist_gate():
     }
     workspace = _Workspace([step])
 
-    mark_step_skipped(workspace, "postRouteLec", "formal difference in input netlist")
+    mark_step_skipped(workspace, "post_route_lec", "formal difference in input netlist")
 
     assert step["state"] == "Skipped"
     assert step["skip_reason"] == "formal difference in input netlist"
@@ -62,7 +63,7 @@ def test_mark_step_skipped_rejects_non_skippable_step():
 @pytest.mark.parametrize("state", ["Success", "Invalid"])
 def test_mark_step_skipped_rejects_terminal_states(state):
     step = {
-        "name": "postRouteLec",
+        "name": "post_route_lec",
         "tool": "kepler_formal",
         "category": "CHECKER",
         "state": state,
@@ -71,7 +72,7 @@ def test_mark_step_skipped_rejects_terminal_states(state):
     workspace = _Workspace([step])
 
     with pytest.raises(ValueError, match="Illegal state transition"):
-        mark_step_skipped(workspace, "postRouteLec", "not applicable")
+        mark_step_skipped(workspace, "post_route_lec", "not applicable")
 
     assert step == previous
     assert workspace.flow.saves == 0
@@ -79,7 +80,7 @@ def test_mark_step_skipped_rejects_terminal_states(state):
 
 def test_mark_step_skipped_rolls_back_when_persistence_fails():
     step = {
-        "name": "postRouteLec",
+        "name": "post_route_lec",
         "tool": "kepler_formal",
         "category": "CHECKER",
         "state": "Incomplete",
@@ -93,7 +94,7 @@ def test_mark_step_skipped_rolls_back_when_persistence_fails():
     workspace = _Workspace([step], save_result=False)
 
     with pytest.raises(RuntimeError, match="failed to persist skipped state"):
-        mark_step_skipped(workspace, "postRouteLec", "formal difference in input netlist")
+        mark_step_skipped(workspace, "post_route_lec", "formal difference in input netlist")
 
     assert step == previous
 
@@ -116,10 +117,10 @@ def test_waive_checklist_records_reason_without_touching_blocked_status():
 
 
 def test_waive_checklist_rejects_pnr_step():
-    workspace = _Workspace([{"name": "Harden", "tool": "ecc", "category": "PNR"}])
+    workspace = _Workspace([{"name": "harden", "tool": "ecc", "category": "PNR"}])
 
     with pytest.raises(ValueError, match="only checker steps"):
-        waive_checklist(workspace, "Harden", "not applicable")
+        waive_checklist(workspace, "harden", "not applicable")
 
 
 def test_waive_checklist_rolls_back_when_persistence_fails():
@@ -146,12 +147,12 @@ def test_skipped_timing_optimization_is_transparent_to_route_input():
     workspace = _Workspace(
         [
             {"name": "legalization", "tool": "dreamplace", "category": "PNR", "state": "Success"},
-            {"name": "Timing optimization", "tool": "sizer", "category": "PNR", "state": "Unstart"},
-            {"name": "route", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+            {"name": "timing_optimization", "tool": "sizer", "category": "PNR", "state": "Unstart"},
+            {"name": "routing", "tool": "ecc", "category": "PNR", "state": "Unstart"},
         ]
     )
 
-    mark_step_skipped(workspace, "Timing optimization", "omit optional optimization")
+    mark_step_skipped(workspace, "timing_optimization", "omit optional optimization")
 
     assert FlowInputResolver(workspace.flow.steps()).input_step_name(2) == "legalization"
 
@@ -167,6 +168,7 @@ def _waived_workspace(tmp_path):
             {
                 "name": "sta",
                 "tool": "ecc",
+                **step_fields("sta", "ecc"),
                 "category": "CHECKER",
                 "state": "Success",
                 "checklist_status": {"status": "blocked", "blocked": True},

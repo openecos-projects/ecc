@@ -3,13 +3,13 @@
 """Manifest write, mutation, and registration operations for the CLI.
 
 All ``project.json`` writes go through one read-modify-write helper so
-status write-back and migration entry-append share the same atomicity
+status write-back and workspace entry-append share the same atomicity
 story. Loading and normalization live in
 chipcompiler.project.manifest; this module imports from it, never
 the reverse.
 
 Like manifest.py, this module sits on the CLI startup path (imported by
-run dispatch and migration flows): keep module-level imports cheap — no
+run dispatch): keep module-level imports cheap — no
 chipcompiler.data imports here.
 """
 
@@ -25,13 +25,12 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.project.manifest import (
-    _CANONICAL_TO_MANIFEST_STEP,
     MANIFEST_FILENAME,
     PRESET_MANIFEST_RANGE,
     ManifestError,
-    _record,
     _slugify,
     base_design_from_config,
+    is_manifest_flow_step,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,15 +62,13 @@ def manifest_workspace_entry(
     status: str,
     now: str,
     skip_steps: list[str] | None = None,
-    parameter_patch: dict | None = None,
 ) -> dict:
     """One complete schema-v1 workspaces[] entry, every field materialized.
 
-    The single builder for generated manifests and migration previews, so
-    the previewed entry and the applied entry are the same object shape.
+    The single builder for generated manifests and registered workspaces,
+    so every writer emits the same object shape.
     ``skip_steps`` is materialized only when the workspace carries a
-    declared policy (an explicit empty list stays []). ``parameter_patch``
-    is always materialized as an object for imported workspace metadata.
+    declared policy (an explicit empty list stays []).
     """
     entry = {
         "workspace_id": workspace_id,
@@ -84,7 +81,6 @@ def manifest_workspace_entry(
         "status": status,
         "created_at": now,
         "updated_at": now,
-        "parameter_patch": dict(parameter_patch or {}),
         "metrics_summary": {},
         "step_metrics": {},
     }
@@ -155,7 +151,6 @@ def build_project_document(
         "updated_at": timestamp,
         "base_design": {
             **{key: value for key, value in base_design.items() if key != "parameters" and value},
-            "parameters": _record(base_design.get("parameters")),
             "rtl_list": [
                 item for item in base_design.get("rtl_list") or [] if isinstance(item, str)
             ],
@@ -235,7 +230,7 @@ def update_manifest(project_dir: str | Path, mutator) -> bool:
     except OSError as exc:
         # An untakeable lock (e.g. a directory at the lock path) degrades
         # like any write failure: a warning, never an uncaught exception —
-        # the migration registration path relies on False to roll back.
+        # registration callers rely on False to roll back.
         logger.warning("manifest update failed: %s: %s", path, exc)
         return False
 
@@ -335,26 +330,42 @@ def remove_workspace_registration(project_dir: str, workspace_id: str) -> bool:
 
 def manifest_range_for_steps(start: str, end: str) -> tuple[str, str]:
     """The GUI manifest range for a pair of flow step spellings."""
-    from chipcompiler.rtl2gds import normalize_flow_step
-
-    canonical_start = normalize_flow_step(start)
-    canonical_end = normalize_flow_step(end)
-    try:
-        return (
-            _CANONICAL_TO_MANIFEST_STEP[canonical_start],
-            _CANONICAL_TO_MANIFEST_STEP[canonical_end],
-        )
-    except KeyError as exc:
-        raise ManifestError(f"unknown workspace flow step: {exc.args[0]}") from None
+    steps = (str(start), str(end))
+    for step in steps:
+        if not is_manifest_flow_step(step):
+            raise ManifestError(f"unknown workspace flow step: {step!r}")
+    return steps
 
 
 def manifest_range_for_flow(cfg, flow_config: dict | None) -> tuple[str, str]:
-    """Return the GUI manifest range for a workspace's effective target."""
+    """Return the GUI manifest range for a workspace's effective target.
+
+    A preset target starts at the first step its declared skip policy keeps,
+    so a skipped first step (entering from a netlist) never bounds the range;
+    the preset's final step cannot be skipped and always ends it.
+    """
     if isinstance(flow_config, dict) and flow_config.get("start_step"):
         return manifest_range_for_steps(
             flow_config["start_step"], flow_config.get("end_step") or flow_config["start_step"]
         )
-    return PRESET_MANIFEST_RANGE.get(cfg.flow_preset, ("Synth", "Harden"))
+    preset_range = PRESET_MANIFEST_RANGE.get(cfg.flow_preset, PRESET_MANIFEST_RANGE["rtl2gds"])
+    if not (
+        cfg.flow_preset in PRESET_MANIFEST_RANGE
+        and isinstance(flow_config, dict)
+        and "skip_steps" in flow_config
+    ):
+        return preset_range
+    from chipcompiler.data.flow_plan import preset_chain
+    from chipcompiler.rtl2gds import resolve_skip_steps
+
+    try:
+        skipped = set(resolve_skip_steps(flow_config))
+    except ValueError as exc:
+        raise ManifestError(str(exc)) from None
+    first = next(
+        (name for name, _tool in preset_chain(cfg.flow_preset) if name not in skipped), None
+    )
+    return (first or preset_range[0], preset_range[1])
 
 
 def append_workspace_entry(
@@ -368,7 +379,6 @@ def append_workspace_entry(
     status: str,
     now: str | None = None,
     skip_steps: list[str] | None = None,
-    parameter_patch: dict | None = None,
 ) -> str:
     """Atomically append one workspace entry to an existing manifest.
 
@@ -399,12 +409,9 @@ def append_workspace_entry(
                 from chipcompiler.project.manifest_refresh import (
                     apply_derived_fields,
                     derive_workspace_fields,
-                    manifest_base_parameters,
                 )
 
-                derived = derive_workspace_fields(
-                    workspace_path, manifest_base_parameters(document)
-                )
+                derived = derive_workspace_fields(workspace_path)
                 if apply_derived_fields(entry, derived):
                     entry["updated_at"] = timestamp
                     document["updated_at"] = timestamp
@@ -423,7 +430,6 @@ def append_workspace_entry(
                 status=status,
                 now=timestamp,
                 skip_steps=skip_steps,
-                parameter_patch=parameter_patch,
             )
         )
         document["updated_at"] = timestamp
@@ -442,7 +448,6 @@ def pre_register_workspace(
     workspace_path: str,
     flow_config: dict | None,
     status: str = "not_started",
-    parameter_patch: dict | None = None,
 ) -> str:
     """Atomically register a fresh managed workspace before filesystem creation.
 
@@ -476,7 +481,6 @@ def pre_register_workspace(
             status=status,
             skip_steps=list(declared_skip) if declared_skip is not None else None,
         )
-        document["workspaces"][0]["parameter_patch"] = dict(parameter_patch or {})
         if write_manifest_if_absent(project_dir, document):
             return "registered"
         # A concurrent creator won the link race: fall through and apply the
@@ -493,5 +497,4 @@ def pre_register_workspace(
         status=status,
         now=now,
         skip_steps=list(declared_skip) if declared_skip is not None else None,
-        parameter_patch=parameter_patch,
     )

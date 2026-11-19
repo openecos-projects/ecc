@@ -55,7 +55,7 @@ def report_mocks(monkeypatch):
             ),
             ChecklistItemView(
                 id="a.gds",
-                step="Harden",
+                step="harden",
                 category="artifact",
                 title="Harden GDS",
                 state="warning",
