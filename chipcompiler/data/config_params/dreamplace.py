@@ -25,6 +25,7 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
         "automatically derive num_bins_x and num_bins_y from the number of physical nodes"
     ),
     "bndry_padding_x": "horizontal padding around the edges of the floorplan",
+    "cell_padding_x": "horizontal padding around macros for MFP macro overlap",
     "bndry_padding_y": "vertical padding around the edges of the floorplan",
     "buffering_continuous_steps": "number of steps in the standalone buffering optimizer",
     "buffering_fixed_buffer_master": "physical buffer master used for Segment buffering",

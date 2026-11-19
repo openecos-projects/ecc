@@ -92,7 +92,7 @@ graph LR
 | placement | — | 步骤 `config/dreamplace_ecc.json` + `sta_ecc.json` | 由 workspace 基线加该步骤自己的值解析而来；时序驱动布局把 `sta_ecc.json` 交给原生时序引擎 |
 | diff_sizing | — | 步骤 `config/dreamplace_ecc.json` + `sta_ecc.json` | 独立可微 sizing，使用自己的 DreamPlace 取值 |
 | cts | ✓ | `cts_ecc.json` | |
-| legalization | — | 步骤 `config/dreamplace_ecc.json` | 基线加合法化强制项；无可设置参数 |
+| legalization | — | 步骤 `config/dreamplace_ecc.json` | 基线加 `legalization.*` 取值，再加合法化强制项 |
 | timing optimization | ✓ | `sizer_ecc.json` + `sta_ecc.json`（`liberty`）+ `routing_ecc.json`（层范围）+ 步骤 `config/dreamplace_ecc.json` | Sizer 使用 ECC 配置和生成的脚本，随后用自己的步骤配置做内部 DreamPlace 合法化；见 §6 |
 | routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
@@ -219,7 +219,7 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 ### 1.6 按步骤的 DreamPlace 参数
 
-主目标为 DreamPlace 配置的参数（`place.*`、diff_opt 与 diff_sizing 参数）**每个流程步骤各有一个取值**：macro_placement、placement、diff_opt、diff_sizing、legalization 以及 timing_optimization 的内部合法化，各自由 workspace 基线 `config/dreamplace_ecc.json` 加该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`，步骤之间不会互相改写。参数只能设置在其 `applies` 声明的步骤上（见 `ecc param show KEY`）；legalization 没有可设置参数；不带步骤设置按步骤参数会返回 `parameter_step_required`。
+主目标为 DreamPlace 配置的参数（`place.*`、`legalization.*`、diff_opt 与 diff_sizing 参数）**每个流程步骤各有一个取值**：macro_placement、placement、diff_opt、diff_sizing、legalization 以及 timing_optimization 的内部合法化，各自由 workspace 基线 `config/dreamplace_ecc.json` 加该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`，步骤之间不会互相改写。参数只能设置在其 `applies` 声明的步骤上（见 `ecc param show KEY`）；legalization 只接受 `legalization.*` 参数；不带步骤设置按步骤参数会返回 `parameter_step_required`。
 
 步骤写在键里，形如 `<step>:<param>`：
 
@@ -1059,7 +1059,22 @@ ecc param set placement:place.target_density VALUE
 ecc param set placement:place.num_threads VALUE
 ```
 
-legalization 没有可设置的 DreamPlace 参数；它使用 workspace 基线加自己的强制项。
+legalization 使用自己的 `legalization.*` 参数：它们与对应的 `place.*` 参数写同一个 DreamPlace 字段，但只写入 legalization 的步骤配置；未设置时读取 workspace 基线值。强制项（`run_modes.MODE_FLAGS`）最后生效；`detailed_place_flag` 保持关闭以保护已修复的 hold 时序，不可设置。
+
+| 参数 | 类型 / 范围 | 默认值 | 写入（配置字段） |
+|---|---|---|---|
+| `legalization.cell_padding_x` | int [0, 10000]（dbu） | 200（sg13g2：0） | dreamplace `cell_padding_x` |
+| `legalization.bndry_padding_x` | int ≥ 0（dbu） | 0 | dreamplace `bndry_padding_x` |
+| `legalization.bndry_padding_y` | int ≥ 0（dbu） | 0 | dreamplace `bndry_padding_y` |
+| `legalization.num_threads` | int ≥ 1 | 8 | dreamplace `num_threads` |
+| `legalization.deterministic_flag` | {0, 1} | 1 | dreamplace `deterministic_flag` |
+
+```bash
+ecc param set legalization:legalization.cell_padding_x 0
+ecc run --set legalization:legalization.num_threads=4
+```
+
+这些取值不作用于 timing_optimization 的内部合法化。
 
 ### 15.5 timing optimization
 

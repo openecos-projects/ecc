@@ -221,3 +221,42 @@ class _Params:
 
     def fromJson(self, config: dict) -> None:
         self.__dict__.update(config)
+
+
+def test_legalization_values_reach_only_the_legalization_config(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    legalization_values = {
+        "legalization.cell_padding_x": 400,
+        "legalization.bndry_padding_x": 10,
+        "legalization.bndry_padding_y": 20,
+        "legalization.num_threads": 2,
+        "legalization.deterministic_flag": 0,
+    }
+    workspace.parameters.data["step_params"] = {"legalization": legalization_values}
+    baseline = json_read(workspace.config["dreamplace"])
+    monkeypatch.setattr(builder.ecc_builder, "build_step_config", lambda *_: None)
+    steps = [
+        _step(workspace, tmp_path, name)
+        for name in (StepEnum.PLACEMENT.value, StepEnum.LEGALIZATION.value)
+    ]
+
+    for step in steps:
+        builder.build_step_config(workspace, step)
+
+    fields = [param.removeprefix("legalization.") for param in legalization_values]
+    configs = {
+        step.name: {
+            field: json_read(builder.step_config_path(workspace, step))[field] for field in fields
+        }
+        for step in steps
+    }
+    assert configs == {
+        StepEnum.PLACEMENT.value: {field: baseline[field] for field in fields},
+        StepEnum.LEGALIZATION.value: {
+            param.removeprefix("legalization."): value
+            for param, value in legalization_values.items()
+        },
+    }
+    assert json_read(workspace.config["dreamplace"]) == baseline

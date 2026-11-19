@@ -93,7 +93,7 @@ Distilled from real `ecc config <step>` output. Each tool package declares the w
 | placement | — | step `config/dreamplace_ecc.json` + `sta_ecc.json` | resolved from the workspace baseline plus the step's own values; timing-driven placement hands `sta_ecc.json` to the native timer |
 | diff_sizing | — | step `config/dreamplace_ecc.json` + `sta_ecc.json` | standalone differentiable sizing with its own DreamPlace values |
 | cts | ✓ | `cts_ecc.json` | |
-| legalization | — | step `config/dreamplace_ecc.json` | baseline plus legalization forcing; no settable parameters |
+| legalization | — | step `config/dreamplace_ecc.json` | baseline plus `legalization.*` values plus legalization forcing |
 | timing optimization | ✓ | `sizer_ecc.json` + `sta_ecc.json` (`liberty`) + `routing_ecc.json` (layer bounds) + step `config/dreamplace_ecc.json` | Sizer uses its ECC config and generated scripts, then runs an inner DreamPlace legalization from its own step config; see §6 |
 | routing | ✓ | `routing_ecc.json` | |
 | filler | ✓ | `filler_ecc.json` | |
@@ -218,7 +218,7 @@ For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en
 
 ### 1.6 Per-step DreamPlace parameters
 
-Every parameter whose primary target is the DreamPlace config (`place.*`, the diff_opt and diff_sizing parameters) holds **one value per flow step**: macro_placement, placement, diff_opt, diff_sizing, legalization and timing_optimization's inner legalization each resolve their own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline `config/dreamplace_ecc.json` plus that step's values, and no step rewrites another's file. A parameter can be set only on the steps its `applies` declares (`ecc param show KEY`); legalization has no settable parameters, and a step-scoped parameter set without a step fails with `parameter_step_required`.
+Every parameter whose primary target is the DreamPlace config (`place.*`, `legalization.*`, the diff_opt and diff_sizing parameters) holds **one value per flow step**: macro_placement, placement, diff_opt, diff_sizing, legalization and timing_optimization's inner legalization each resolve their own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline `config/dreamplace_ecc.json` plus that step's values, and no step rewrites another's file. A parameter can be set only on the steps its `applies` declares (`ecc param show KEY`); legalization takes only the `legalization.*` parameters, and a step-scoped parameter set without a step fails with `parameter_step_required`.
 
 The step is part of the key, `<step>:<param>`:
 
@@ -1138,7 +1138,22 @@ ecc param set placement:place.target_density VALUE
 ecc param set placement:place.num_threads VALUE
 ```
 
-Legalization has no settable DreamPlace parameters; it uses the workspace baseline plus its own forced fields.
+Legalization takes its own `legalization.*` parameters, which set the same DreamPlace fields as the matching `place.*` parameters but only in the legalization step config; unset, it reads the workspace baseline value. Its forced fields (`run_modes.MODE_FLAGS`) are applied last; `detailed_place_flag` stays off to protect the repaired hold timing and is not settable.
+
+| Parameter | Type / range | Default | Written to (config field) |
+|---|---|---|---|
+| `legalization.cell_padding_x` | int [0, 10000] (dbu) | 200 (sg13g2: 0) | dreamplace `cell_padding_x` |
+| `legalization.bndry_padding_x` | int ≥ 0 (dbu) | 0 | dreamplace `bndry_padding_x` |
+| `legalization.bndry_padding_y` | int ≥ 0 (dbu) | 0 | dreamplace `bndry_padding_y` |
+| `legalization.num_threads` | int ≥ 1 | 8 | dreamplace `num_threads` |
+| `legalization.deterministic_flag` | {0, 1} | 1 | dreamplace `deterministic_flag` |
+
+```bash
+ecc param set legalization:legalization.cell_padding_x 0
+ecc run --set legalization:legalization.num_threads=4
+```
+
+These values do not reach timing_optimization's inner legalization.
 
 ### 15.5 timing optimization
 
