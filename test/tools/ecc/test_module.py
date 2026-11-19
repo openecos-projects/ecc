@@ -280,7 +280,7 @@ def test_geometry_snapshot_save_forwards_clock_graph_and_stage():
 
     assert (
         module.geometry_snapshot_save(
-            Path("/tmp/geometry"), clock_tree_stage="CTS", clock_tree_graph=graph
+            Path("/tmp/geometry"), clock_tree_stage="cts", clock_tree_graph=graph
         )
         is True
     )
@@ -291,7 +291,7 @@ def test_geometry_snapshot_save_forwards_clock_graph_and_stage():
             (),
             {
                 "output_dir": Path("/tmp/geometry"),
-                "clock_tree_stage": "CTS",
+                "clock_tree_stage": "cts",
                 "clock_tree_graph": graph,
             },
         ),

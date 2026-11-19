@@ -1405,7 +1405,13 @@ def test_save_data_writes_geometry_snapshot_for_physical_step(tmp_path, step_nam
     assert step.output.geometry_manifest.is_file()
 
 
-def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
+@pytest.mark.parametrize(
+    ("step_name", "native_stage"),
+    [(StepEnum.POST_FLOORPLAN.value, "post_floorplan"), (StepEnum.CTS.value, "cts")],
+)
+def test_save_data_forwards_clock_graph_only_with_capture_enabled(
+    tmp_path, step_name, native_stage
+):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
@@ -1414,7 +1420,7 @@ def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
             data={"geometry": {"clock_tree": True}},
         ),
     )
-    step = build_step(workspace, StepEnum.CTS.value, None, None)
+    step = build_step(workspace, step_name, None, None)
     module: Any = SnapshotSaveEccModule(write_snapshot=True)
     graph = {"timing_source": "cts_fast_sta", "clocks": []}
 
@@ -1428,7 +1434,7 @@ def test_save_data_forwards_clock_graph_only_with_capture_enabled(tmp_path):
         )
         is True
     )
-    assert module.clock_tree_stage == "CTS"
+    assert module.clock_tree_stage == native_stage
     assert module.clock_tree_graph is graph
 
 
