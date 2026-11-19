@@ -375,4 +375,3 @@ def test_emir_failed_rerun_removes_previous_spatial_result(emir_case):
     assert runner.run_step(workspace, step, module) is False
     assert not target.exists()
     assert not (step.data.steps[StepEnum.EMIR.value] / "emir_reporter/ir_drop.json").exists()
-

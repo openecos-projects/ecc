@@ -30,4 +30,3 @@ proc replay_logical {phase} {
     }
   }
 }
-
