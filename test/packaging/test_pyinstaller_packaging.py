@@ -87,6 +87,24 @@ def test_pyinstaller_payload_filter_excludes_oversized_paths():
     assert filter_collected_payloads(payloads) == [payloads[-1]]
 
 
+def test_pyinstaller_payload_filter_excludes_agent_instruction_files():
+    payloads = [
+        (
+            "/repo/chipcompiler/data/flow/AGENTS.md",
+            "chipcompiler/data/flow/AGENTS.md",
+            "DATA",
+        ),
+        ("/repo/chipcompiler/data/flow/AGENTS.md", "chipcompiler/data/flow"),
+        (
+            "/repo/chipcompiler/tools/ecc/configs/cts_ecc.json",
+            "chipcompiler/tools/ecc/configs/cts_ecc.json",
+            "DATA",
+        ),
+    ]
+
+    assert filter_collected_payloads(payloads) == [payloads[-1]]
+
+
 def test_pyinstaller_payload_filter_keeps_torch_runtime_binaries():
     payloads = [
         (
