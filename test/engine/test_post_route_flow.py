@@ -6,16 +6,15 @@ from chipcompiler.rtl2gds import build_flow_range
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
 from chipcompiler.tools.yosys.builder import build_step as build_yosys_step
-from chipcompiler.tools.yosys_lec.builder import build_step as build_yosys_lec_step
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 
-@pytest.mark.parametrize("lec_engine", ["kepler_formal", "yosys_lec"])
-@pytest.mark.parametrize("skip", [(), ("postRouteLec",)])
+@pytest.mark.parametrize("skip", [(), ("post_route_lec",)])
 @pytest.mark.parametrize("golden_source", ["default", "design", "step"])
 @pytest.mark.parametrize("with_synthesis", [False, True])
 def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
-    tmp_path, monkeypatch, lec_engine, skip, golden_source, with_synthesis
+    tmp_path, monkeypatch, skip, golden_source, with_synthesis
 ):
     import chipcompiler.tools as tools
 
@@ -29,23 +28,33 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         ),
     )
     workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
-            {"name": name.value, "tool": tool, "state": state.value}
-            for name, tool, state in build_flow_range(
-                "route", "Harden", skip=skip, lec_engine=lec_engine
-            )
-        ]
+            {
+                "name": name.value,
+                "tool": tool,
+                "state": state.value,
+                **step_fields(name.value, tool),
+            }
+            for name, tool, state in build_flow_range("routing", "harden", skip=skip)
+        ],
     }
     workspace.flow.path = tmp_path / "flow.json"
     if with_synthesis:
         workspace.flow.data["steps"].insert(
-            0, {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": "Unstart"}
+            0,
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": "Unstart",
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
         )
     if golden_source != "default":
         workspace.design.golden_verilog = tmp_path / "design_golden.v"
     if golden_source == "step":
         for entry in workspace.flow.data["steps"]:
-            if entry["name"] == "postRouteLec":
+            if entry["name"] == "post_route_lec":
                 entry["info"] = {"golden_verilog": str(tmp_path / "step_golden.v")}
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -54,7 +63,6 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         builders = {
             "ecc": build_ecc_step,
             "kepler_formal": build_kepler_step,
-            "yosys_lec": build_yosys_lec_step,
             "yosys": build_yosys_step,
         }
         result = builders[eda](
@@ -74,7 +82,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     steps = {step.name: step for step in flow.workspace_steps}
 
     filler = steps["filler"]
-    for current_name in ("lvs", "drc", "RCX", "sta", "powerAnalysis", "Harden"):
+    for current_name in ("lvs", "drc", "rcx", "sta", "power_analysis", "harden"):
         current = steps[current_name]
         assert (current.input.def_, current.input.verilog, current.input.db) == (
             filler.output.def_,
@@ -82,9 +90,9 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
             filler.output.db,
         )
     assert (
-        steps["antennaCheck"].input.def_,
-        steps["antennaCheck"].input.verilog,
-        steps["antennaCheck"].input.db,
+        steps["antenna_check"].input.def_,
+        steps["antenna_check"].input.verilog,
+        steps["antenna_check"].input.db,
     ) == (filler.output.def_, filler.output.verilog, filler.output.db)
     assert (steps["emir"].input.def_, steps["emir"].input.verilog, steps["emir"].input.db) == (
         filler.output.def_,
@@ -96,7 +104,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     from chipcompiler.engine.workspace_flow import iter_workspace_steps
 
     projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
-    for name in ("lvs", "drc", "RCX", "sta", "powerAnalysis", "emir", "Harden"):
+    for name in ("lvs", "drc", "rcx", "sta", "power_analysis", "emir", "harden"):
         projected_step = projected[name]
         assert projected_step is not None
         ledger_step = steps[name]
@@ -104,9 +112,9 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         assert projected_step.input.def_ == ledger_step.input.def_
     sta_step = steps["sta"]
     assert sta_step is not None
-    assert sta_step.output.spef == steps["RCX"].output.spef
+    assert sta_step.output.spef == steps["rcx"].output.spef
     if not skip:
-        lec = steps["postRouteLec"]
+        lec = steps["post_route_lec"]
         assert lec is not None
         default_golden = (
             steps[StepEnum.SYNTHESIS.value].output.verilog
@@ -124,27 +132,29 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
         )
 
 
-def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
+def test_loading_existing_workspace_preserves_persisted_post_route_order(tmp_path):
     names = [
-        "route",
+        "routing",
         "filler",
-        "RCX",
+        "rcx",
         "sta",
-        "powerAnalysis",
+        "power_analysis",
         "lvs",
-        "postRouteLec",
+        "post_route_lec",
         "drc",
-        "Harden",
+        "harden",
     ]
     ledger = {
+        "schema_version": 3,
         "steps": [
             {
                 "name": name,
-                "tool": "kepler_formal" if name == "postRouteLec" else "ecc",
+                "tool": "kepler_formal" if name == "post_route_lec" else "ecc",
                 "state": "Success",
+                **step_fields(name, "kepler_formal" if name == "post_route_lec" else "ecc"),
             }
             for name in names
-        ]
+        ],
     }
     workspace = Workspace(directory=tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
@@ -154,3 +164,63 @@ def test_loading_existing_workspace_preserves_legacy_post_route_order(tmp_path):
     flow = EngineFlow(workspace=workspace)
 
     assert [step["name"] for step in flow.workspace.flow.steps()] == names
+
+
+@pytest.mark.parametrize("golden_source", ["default", "design"])
+def test_an_inserted_lec_checks_its_steps_netlist_and_stays_out_of_the_chain(
+    tmp_path, monkeypatch, golden_source
+):
+    import chipcompiler.tools as tools
+
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd", origin_verilog=tmp_path / "origin.v"),
+    )
+    if golden_source == "design":
+        workspace.design.golden_verilog = tmp_path / "design_golden.v"
+    workspace.flow.data = {
+        "schema_version": 3,
+        "steps": [
+            {
+                "name": str(getattr(name, "value", name)),
+                "tool": tool,
+                "state": state.value,
+                **step_fields(str(getattr(name, "value", name)), tool),
+            }
+            for name, tool, state in build_flow_range(
+                "synthesis", "legalization", insert=("lec@cts",)
+            )
+        ],
+    }
+    flow_path = tmp_path / "flow.json"
+    workspace.flow.path = flow_path
+    json_write(flow_path, workspace.flow.data)
+
+    def create_step(workspace, step, eda, input_def, input_verilog, input_db=None, **kwargs):
+        # Non-LEC steps only need their output paths: the ECC builder makes them.
+        builder = {"kepler_formal": build_kepler_step, "yosys": build_yosys_step}.get(
+            eda, build_ecc_step
+        )
+        return builder(
+            workspace=workspace,
+            step_name=step,
+            input_def=input_def,
+            input_verilog=input_verilog,
+            input_db=input_db,
+        )
+
+    monkeypatch.setattr(tools, "create_step", create_step)
+    flow = EngineFlow(workspace=workspace)
+    flow.create_step_workspaces()
+    steps = {step.name: step for step in flow.workspace_steps}
+
+    cts, lec = steps["cts"], steps["lec@cts"]
+    golden = {
+        "default": steps[StepEnum.SYNTHESIS.value].output.verilog,
+        "design": workspace.design.golden_verilog,
+    }[golden_source]
+    assert (lec.input.gate_verilog, lec.input.golden_verilog) == (cts.output.verilog, golden)
+    assert (steps["legalization"].input.def_, steps["legalization"].input.verilog) == (
+        cts.output.def_,
+        cts.output.verilog,
+    )

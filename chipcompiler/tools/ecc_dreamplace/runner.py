@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from chipcompiler.data import EccStep, SkippableStepEnum, StateEnum, StepEnum, StepInput, Workspace
+from chipcompiler.data.handshake import load_request
 from chipcompiler.data.workspace.macro_location import (
     macro_placements,
     manual_macro_location_ready,
@@ -13,6 +14,7 @@ from chipcompiler.tools.ecc import EccSubFlow, EccSubFlowEnum, ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.utility import json_read
 
+from .builder import effective_config_path, write_step_config
 from .checklist import DreamplaceChecklist
 from .module import DreamplaceModule, DreamplaceRunMode
 from .utility import is_eda_exist
@@ -25,20 +27,16 @@ def run_analysis(workspace: Workspace, step: EccStep, subflow: EccSubFlow):
     checklist.check()
 
 
-def _placement_backend(workspace: Workspace) -> str:
-    config_path = workspace.config.get("dreamplace")
-    if not config_path:
+def _placement_backend(workspace: Workspace, step: EccStep) -> str:
+    config_path = effective_config_path(workspace, step)
+    if config_path is None:
         return "ieda"
     return str(json_read(config_path).get("place_io_engine", "ieda") or "ieda").lower()
 
 
-def _is_terminal_placement(workspace: Workspace, step: EccStep) -> bool:
-    """Return whether placement is the selected flow's terminal step."""
-    steps = workspace.flow.steps()
-    if not steps:
-        return False
-    selected = [item for item in steps if item.get("name") == step.name]
-    return bool(selected) and steps[-1] is selected[-1]
+def _is_final_placement(step: EccStep) -> bool:
+    """Whether placement is the final step of the flow, as its req.json says."""
+    return step.directory is not None and load_request(Path(step.directory)).final_step
 
 
 def run_step(
@@ -63,8 +61,6 @@ def run_step(
             state = run_diff_opt(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.DIFF_SIZING.value:
             state = run_diff_sizing(workspace=workspace, step=step, ecc_module=ecc_module)
-        case StepEnum.DIFF_BUFFERING.value:
-            state = run_diff_buffering(workspace=workspace, step=step, ecc_module=ecc_module)
         case StepEnum.LEGALIZATION.value:
             state = run_legalization(workspace=workspace, step=step, ecc_module=ecc_module)
 
@@ -91,7 +87,7 @@ def run_macro_placement(
             workspace.logger.error(
                 "Manual macro placement is required, but macro.placements and %s are not "
                 "configured. Complete macro placement in Chip Viewer or run `ecc macro`, "
-                "then rerun macroPlacement.",
+                "then rerun macro_placement.",
                 workspace.config.get("macro_location", "config/macro_location.tcl"),
             )
             sub_flow.update_step(
@@ -172,13 +168,6 @@ def run_diff_opt(
     return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_OPT)
 
 
-def run_diff_buffering(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """Run standalone candidate buffering between placement and diff sizing."""
-    return _run_placement_mode(workspace, step, ecc_module, DreamplaceRunMode.DIFF_BUFFERING)
-
-
 def _run_placement_mode(
     workspace: Workspace,
     step: EccStep,
@@ -193,13 +182,11 @@ def _run_placement_mode(
         DreamplaceRunMode.PLACEMENT: EccSubFlowEnum.run_placement.value,
         DreamplaceRunMode.DIFF_OPT: EccSubFlowEnum.run_diff_opt.value,
         DreamplaceRunMode.DIFF_SIZING: EccSubFlowEnum.run_diff_sizing.value,
-        DreamplaceRunMode.DIFF_BUFFERING: EccSubFlowEnum.run_diff_buffering.value,
     }[mode]
-    backend = _placement_backend(workspace)
+    backend = _placement_backend(workspace, step)
     if mode in (
         DreamplaceRunMode.DIFF_OPT,
         DreamplaceRunMode.DIFF_SIZING,
-        DreamplaceRunMode.DIFF_BUFFERING,
     ):
         backend = "ecc"
     openroad_backend = mode is DreamplaceRunMode.PLACEMENT and backend == "openroad"
@@ -225,8 +212,6 @@ def _run_placement_mode(
         reslut = dreamplace_module.run_diff_opt()
     elif mode is DreamplaceRunMode.DIFF_SIZING:
         reslut = dreamplace_module.run_diff_sizing()
-    elif mode is DreamplaceRunMode.DIFF_BUFFERING:
-        reslut = dreamplace_module.run_diff_buffering()
     else:
         reslut = dreamplace_module.run_placement()
     if not reslut:
@@ -237,7 +222,7 @@ def _run_placement_mode(
         return False
 
     if mode is DreamplaceRunMode.PLACEMENT and (
-        openroad_backend or (backend == "ecc" and _is_terminal_placement(workspace, step))
+        openroad_backend or (backend == "ecc" and _is_final_placement(step))
     ):
         # DreamplaceModule already saved DEF and Verilog. A terminal placement
         # must finish before native feature evaluation starts routing analysis.
@@ -364,13 +349,14 @@ def legalize_layout(
         from chipcompiler.data import build_workspace_config_paths
 
         workspace.config["dreamplace"] = build_workspace_config_paths(workspace)["dreamplace"]
-    dreamplace_config = workspace.config.get("dreamplace")
-    if not dreamplace_config or not Path(dreamplace_config).is_file():
+    if not Path(workspace.config["dreamplace"]).is_file():
         logger.error(
             "DreamPlace config is missing for inner legalization of %s",
             owner_step.name,
         )
         return None
+    # The owner resolves its own DreamPlace config into its step directory.
+    write_step_config(workspace, owner_step)
 
     load_step = replace(
         owner_step,

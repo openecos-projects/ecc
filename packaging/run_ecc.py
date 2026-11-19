@@ -10,9 +10,16 @@ def _configure_pyinstaller_runtime() -> None:
 
 
 def main() -> int | None:
-    if "--ecc-candidate-worker" in sys.argv[1:]:
-        from agent.candidate_worker import main as entrypoint
-
+    arguments = sys.argv[1:]
+    if arguments[:1] == ["--ecc-worker"]:
+        if len(arguments) != 2:
+            raise SystemExit("usage: ecc --ecc-worker <module>")
+        if arguments[1] == "chipcompiler.engine.step_subprocess":
+            from chipcompiler.engine.step_subprocess import main as entrypoint
+        elif arguments[1] == "agent.step_worker":
+            from agent.step_worker import main as entrypoint
+        else:
+            raise SystemExit(f"unknown worker: {arguments[1]}")
         return entrypoint()
     from chipcompiler.cli.main import main as entrypoint
 

@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from chipcompiler.data import (
     PDK,
     KeplerFormalStep,
@@ -19,12 +21,8 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.tools.kepler_formal.netlist_prep import (
-    liberty_supply_pins,
-    physical_cell_names,
-    prepare_netlist,
-)
 from chipcompiler.utility import json_write
+from test.flow_fixture import step_fields
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GCD_RTL = REPO_ROOT / "test" / "fixtures" / "gcd" / "gcd.v"
@@ -65,7 +63,7 @@ def _workspace(tmp_path: Path) -> Workspace:
 def _write_netlist_pair(gate: Path, *, compressed: bool = False) -> tuple[Path, Path]:
     gate.parent.mkdir(parents=True, exist_ok=True)
     gcd_text = GCD_RTL.read_text()
-    golden = gate.with_name("gcd_Synthesis_golden.v")
+    golden = gate.with_name("gcd_synthesis_golden.v")
     if compressed:
         gzip_gate = gate.with_name(f"{gate.stem}.v.gz")
         gzip_gate.write_bytes(gzip.compress(gcd_text.encode()))
@@ -80,11 +78,11 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -92,7 +90,7 @@ def test_kepler_formal_build_step_derives_golden_and_creates_workspace(tmp_path)
 
     assert step.tool == "kepler_formal"
     assert step.input.gate_verilog == gate
-    assert step.input.golden_verilog == gate.with_name("gcd_Synthesis_golden.v")
+    assert step.input.golden_verilog == gate.with_name("gcd_synthesis_golden.v")
     assert step.data.config.name == "lec_config.yaml"
     assert step.output.json.name == "gcd_lec_result.json"
     assert step.directory.name == "lec_kepler_formal"
@@ -104,12 +102,12 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -119,22 +117,144 @@ def test_kepler_formal_build_step_config_writes_yaml(tmp_path):
     config = step.data.config.read_text()
     assert "verification: lec" in config
     assert "format: verilog" in config
-    assert str(gate.with_name("gcd_Synthesis_golden.v")) in config
+    assert str(gate.with_name("gcd_synthesis_golden.v")) in config
     assert str(gate) in config
     assert str(workspace.pdk.libs[0]) in config
     assert str(step.report.miter_log) in config
+
+
+@pytest.mark.parametrize(
+    ("name", "filelist", "defines"),
+    [
+        # Synthesis reads a .v file or a plain-Verilog filelist with the native
+        # read_verilog, which defines YOSYS too, anything else with read_slang.
+        ("", None, "+define+SYNTHESIS\n+define+YOSYS\n"),
+        ("design.f", f"{GCD_RTL}\n", "+define+SYNTHESIS\n+define+YOSYS\n"),
+        ("design.f", f"+incdir+.\n{GCD_RTL}\n", "+define+SYNTHESIS\n"),
+        # The filelist generated for several RTL entries has no suffix.
+        ("filelist", f"+incdir+.\n{GCD_RTL}\n", "+define+SYNTHESIS\n"),
+    ],
+    ids=["rtl file", "plain filelist", "slang filelist", "suffixless filelist"],
+)
+def test_the_synthesis_lec_config_checks_the_rtl_against_the_netlist_with_sec(
+    tmp_path, name, filelist, defines
+):
+    import yaml
+
+    from chipcompiler.tools.kepler_formal import builder
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
+    _write_netlist_pair(gate)
+    rtl = GCD_RTL
+    if filelist is not None:
+        rtl = tmp_path / name
+        rtl.write_text(filelist)
+        workspace.design.input_filelist = rtl
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=rtl,
+    )
+    builder.build_step_space(step)
+
+    builder.write_step_config(workspace, step)
+
+    rtl_filelist = step.data.dir / "rtl.f"
+    assert yaml.safe_load(step.data.config.read_text()) == {
+        "format": "sv2v",
+        "verification": "sec",
+        "input_paths": [[], [str(gate)]],
+        "sv_design1_flist": str(rtl_filelist),
+        "sv_design1_top": "gcd",
+        "verilog_design2_top": "gcd",
+        "liberty_files": [str(workspace.pdk.libs[0])],
+        "log_file": str(step.report.miter_log),
+    }
+    # A filelist nests with -F so its entries resolve against its own directory.
+    entry = f'"{rtl}"' if filelist is None else f'-F "{rtl}"'
+    assert rtl_filelist.read_text() == f"{defines}{entry}\n"
+
+
+@pytest.mark.parametrize(
+    ("stdout", "returncode", "proven", "status"),
+    [
+        (
+            "No binary-defined difference was found. SEC proved equivalence under the "
+            "dual-rail steady-state abstraction at k = 9.\n",
+            0,
+            True,
+            "completed with proven equivalence.",
+        ),
+        (
+            "Difference was found. SEC found a counterexample at k = 2.\n",
+            3,
+            False,
+            "did not prove equivalence: kepler-formal found a difference; "
+            "see the miter log for details",
+        ),
+        # Conflicting verdicts fail: a difference outranks a proof marker.
+        (
+            "No difference was found.\nDifference was found. SEC found a counterexample.\n",
+            0,
+            False,
+            "did not prove equivalence: kepler-formal found a difference; "
+            "see the miter log for details",
+        ),
+    ],
+)
+def test_the_synthesis_lec_reads_the_sec_verdict(
+    tmp_path, monkeypatch, stdout, returncode, proven, status
+):
+    from chipcompiler.tools.kepler_formal import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
+    _write_netlist_pair(gate)
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=GCD_RTL,
+    )
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    def fake_run(cmd, cwd, env, stdout, stderr, _text=stdout):
+        stdout.write(_text)
+        return SimpleNamespace(returncode=returncode)
+
+    monkeypatch.setattr(
+        runner,
+        "KeplerFormalSubFlow",
+        lambda workspace, workspace_step: SimpleNamespace(update_step=lambda **_kw: None),
+    )
+    monkeypatch.setattr(
+        runner, "get_kepler_formal_runtime", lambda: (["kepler-formal"], {"PATH": "/tmp"})
+    )
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    assert runner.run_step(workspace=workspace, step=step) is proven
+    # The RTL is read as is: no prepared compare copy of the golden.
+    assert (
+        step.report.status.read_text(),
+        Path(step.data.dir, "golden_compare.v").exists(),
+    ) == (f"kepler-formal SEC of the RTL and the netlist {status}\n", False)
 
 
 def test_kepler_formal_runner_marks_success_from_proven_marker(tmp_path, monkeypatch):
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     golden, gate_gz = _write_netlist_pair(gate, compressed=True)
 
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate_gz,
         input_db=golden,
@@ -191,11 +311,11 @@ def test_kepler_formal_runner_writes_incomplete_on_difference(tmp_path, monkeypa
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -232,11 +352,11 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )
@@ -268,170 +388,50 @@ def test_kepler_formal_runner_writes_incomplete_on_error_or_missing_tool(tmp_pat
     assert "kepler-formal is not available" in Path(step.log.file).read_text()
 
 
-def test_prepare_netlist_strips_physical_cells_and_decompresses(tmp_path):
-    netlist = tmp_path / "lvs.v"
-    netlist.write_text(
-        "module gcd (clk);\n"
-        "  input clk;\n"
-        "  FILLTAPH7R BNDRY_CAP_1 (  );\n"
-        "  FILLER4H7R FILLER4H7R_0 (  );\n"
-        "  FILLER4H7R FILLER4H7R_1(.VDD(VDD));\n"
-        "  FILLCAP16H7L DCAP_1 (  );\n"
-        "  P65_1233_FILLER50 IOFIL_E_0 (  );\n"
-        "  P65_1233_CORNER corner_ll (  );\n"
-        "endmodule\n"
+def test_the_synthesis_lec_fails_when_the_files_its_rtl_reads_cannot_be_identified(
+    tmp_path, monkeypatch
+):
+    from chipcompiler.tools.kepler_formal import builder, runner
+
+    workspace = _workspace(tmp_path)
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
+    _write_netlist_pair(gate)
+    rtl = tmp_path / "design.f"
+    # -f resolves against the reading tool's working directory.
+    rtl.write_text(f"-f {tmp_path / 'other.f'}\n")
+    workspace.design.input_filelist = rtl
+    step: Any = builder.build_step(
+        workspace=workspace,
+        step_name="lec@synthesis",
+        input_def=None,
+        input_verilog=gate,
+        input_db=rtl,
     )
-    physical = physical_cell_names(
-        SimpleNamespace(fillers=["FILLER4H7R"], tap_cell="FILLTAPH7R", end_cap=None)
+    builder.build_step_space(step)
+    builder.build_step_config(workspace=workspace, step=step)
+
+    def unexpected_run(*_args, **_kwargs):
+        raise AssertionError("kepler-formal must not run")
+
+    monkeypatch.setattr(
+        runner,
+        "KeplerFormalSubFlow",
+        lambda workspace, workspace_step: SimpleNamespace(update_step=lambda **_kw: None),
     )
-    target = tmp_path / "gate_compare.v"
-
-    prepared = prepare_netlist(netlist, target, physical)
-
-    assert prepared == target
-    text = target.read_text()
-    assert "FILL" not in text
-    assert "module gcd" in text
-
-    # A netlist without physical cells is passed through untouched.
-    clean = tmp_path / "syn.v"
-    clean.write_text("module gcd (clk);\n  input clk;\nendmodule\n")
-    assert prepare_netlist(clean, tmp_path / "unused.v", physical) == clean
-
-    # gzip inputs are decompressed into the compare copy.
-    gz = tmp_path / "syn.v.gz"
-    gz.write_bytes(gzip.compress(b"module gcd (clk);\n  input clk;\nendmodule\n"))
-    prepared_gz = prepare_netlist(gz, tmp_path / "golden_compare.v", physical)
-    assert prepared_gz == tmp_path / "golden_compare.v"
-    assert "module gcd" in prepared_gz.read_text()
-
-
-def test_prepare_netlist_strips_empty_port_connections(tmp_path):
-    netlist = tmp_path / "golden.v"
-    netlist.write_text(
-        "module top;\n"
-        "  PAD_VDD pad0 (.VSS(),\n"
-        "    .VDD1(vdd));\n"
-        "  PAD_VSS pad1 (.VSS1(vss),\n"
-        "    .VDDIO());\n"
-        "  PAD_VDD pad2 (.VSSIO(), .VDD(vdd));\n"
-        "endmodule\n"
+    monkeypatch.setattr(
+        runner, "get_kepler_formal_runtime", lambda: (["kepler-formal"], {"PATH": "/tmp"})
     )
-    target = tmp_path / "golden_compare.v"
+    monkeypatch.setattr(runner.subprocess, "run", unexpected_run)
 
-    prepared = prepare_netlist(netlist, target, set())
-
-    assert prepared == target
-    text = prepared.read_text()
-    assert ".VSS()" not in text
-    assert ".VDDIO()" not in text
-    assert ".VSSIO()" not in text
-    assert "PAD_VDD pad0 (.VDD1(vdd));" in text
-    assert "PAD_VSS pad1 (.VSS1(vss));" in text
-    assert "PAD_VDD pad2 (.VDD(vdd));" in text
-
-
-def test_prepare_netlist_strips_standard_cell_supply_connections(tmp_path):
-    liberty = tmp_path / "stdcell.lib"
-    liberty.write_text(
-        "library(test) {\n"
-        "  cell (BUFX20H7L) {\n"
-        "    pg_pin (VDD) { pg_type : primary_power; }\n"
-        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
-        "  }\n"
-        "}\n"
+    assert runner.run_step(workspace=workspace, step=step) is False
+    assert (
+        json.loads(step.output.json.read_text())["status"],
+        step.report.status.read_text(),
+    ) == (
+        "incomplete",
+        "kepler-formal SEC of the RTL and the netlist did not prove equivalence: cannot "
+        f"identify the files the RTL reads: {rtl}:1: unsupported filelist option '-f'\n",
     )
-    netlist = tmp_path / "gate.v"
-    netlist.write_text(
-        "module top;\n"
-        "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
-        "  P65_1233_VDD1 pad0 (.VDD1(PLL_AVDD));\n"
-        "  P65_1233_VDD3 pad1 (.VDD(PLL_DVDD));\n"
-        "endmodule\n"
-    )
-    target = tmp_path / "gate_compare.v"
-
-    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
-
-    assert prepared == target
-    text = prepared.read_text()
-    assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
-    assert ".VDD1(PLL_AVDD)" in text
-    assert ".VDD(PLL_DVDD)" in text
-
-
-def test_prepare_netlist_strips_supply_connections_without_instance_whitespace(tmp_path):
-    liberty = tmp_path / "stdcell.lib"
-    liberty.write_text(
-        "library(test) {\n"
-        "  cell (BUFX20H7L) {\n"
-        "    pg_pin (VDD) { pg_type : primary_power; }\n"
-        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
-        "  }\n"
-        "}\n"
-    )
-    netlist = tmp_path / "gate.v"
-    netlist.write_text(
-        "module top;\n"
-        "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
-        "  BUFX20H7L u1(.A(a),.VDD(VDD),.VSS(VSS),.Y(y));\n"
-        "  BUFX20H7L \\u2 (.A(a), .VDD(VDD), .Y(y));\n"
-        "endmodule\n"
-    )
-    target = tmp_path / "gate_compare.v"
-
-    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
-
-    assert prepared == target
-    text = prepared.read_text()
-    assert "BUFX20H7L u0 (.A(a), .Y(y));" in text
-    assert "BUFX20H7L u1(.A(a),.Y(y));" in text
-    assert "BUFX20H7L \\u2 (.A(a), .Y(y));" in text
-    assert ".VDD(VDD)" not in text
-    assert ".VSS(VSS)" not in text
-
-
-def test_prepare_netlist_strips_final_supply_connection_from_spare_cell(tmp_path):
-    liberty = tmp_path / "stdcell.lib"
-    liberty.write_text(
-        "library(test) {\n"
-        "  cell (BUF) {\n"
-        "    pg_pin (VDD) { pg_type : primary_power; }\n"
-        "    pg_pin (VSS) { pg_type : primary_ground; }\n"
-        "  }\n"
-        "}\n"
-    )
-    netlist = tmp_path / "gate.v"
-    netlist.write_text(
-        "module top;\n"
-        "  BUF spare (.A(), .Y(), .VDD(VDD), .VSS(VSS));\n"
-        "  BUF compact(.A(),.Y(),.VDD(VDD),.VSS(VSS));\n"
-        "endmodule\n"
-    )
-    target = tmp_path / "gate_compare.v"
-
-    prepared = prepare_netlist(netlist, target, set(), liberty_supply_pins([liberty]))
-
-    assert prepared == target
-    text = prepared.read_text()
-    assert "BUF spare ();" in text
-    assert "BUF compact();" in text
-    assert ".VDD(VDD)" not in text
-    assert ".VSS(VSS)" not in text
-
-
-def test_prepare_netlist_preserves_functional_supply_named_ports(tmp_path):
-    netlist = tmp_path / "golden.v"
-    netlist.write_text(
-        "module leaf(input VDD, output Y); assign Y = VDD; endmodule\n"
-        "module top(input VDD, output Y); leaf u0 (.VDD(VDD), .Y(Y)); endmodule\n"
-    )
-    target = tmp_path / "golden_compare.v"
-
-    prepared = prepare_netlist(netlist, target, set(), {"BUFX20H7L": {"VDD", "VSS"}})
-
-    assert prepared == netlist
-    assert ".VDD(VDD)" in netlist.read_text()
 
 
 def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
@@ -458,7 +458,7 @@ def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
     golden.write_text(netlist_text)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
         input_db=golden,
@@ -471,21 +471,38 @@ def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
     assert "BUFX20H7L u0 (.A(a), .Y(y));" in prepared_gate.read_text()
 
 
-def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch):
+@pytest.mark.parametrize("filelist", [False, True], ids=["rtl file", "filelist"])
+def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monkeypatch, filelist):
     import chipcompiler.tools as tools
 
     workspace = _workspace(tmp_path)
+    if filelist:
+        filelist_path = tmp_path / "design.f"
+        filelist_path.write_text(f"{GCD_RTL}\n")
+        workspace.design.input_filelist = filelist_path
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
             {
-                "name": SkippableStepEnum.LEC.value,
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
+            {
+                "name": "lec@synthesis",
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
+                **step_fields("lec@synthesis", "kepler_formal"),
             },
-            {"name": StepEnum.FLOORPLAN.value, "tool": "ecc", "state": StateEnum.Unstart.value},
-        ]
+            {
+                "name": StepEnum.FLOORPLAN.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.FLOORPLAN.value, "ecc"),
+            },
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -505,11 +522,11 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
                 tool=eda,
                 input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
                 output=YosysOutput(
-                    verilog=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v.gz",
+                    verilog=tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v.gz",
                     golden_verilog=(
-                        tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_golden.v"
+                        tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis_golden.v"
                     ),
-                    db=tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis_db",
+                    db=tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis_db",
                 ),
             )
         if eda == "kepler_formal":
@@ -526,9 +543,9 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
             tool=eda,
             input=SimpleNamespace(def_=input_def, verilog=input_verilog, db=input_db),
             output=SimpleNamespace(
-                def_=tmp_path / "Floorplan_ecc" / "output" / "gcd.def",
-                verilog=tmp_path / "Floorplan_ecc" / "output" / "gcd.v",
-                db=tmp_path / "Floorplan_ecc" / "output" / "gcd_db",
+                def_=tmp_path / "floorplan_ecc" / "output" / "gcd.def",
+                verilog=tmp_path / "floorplan_ecc" / "output" / "gcd.v",
+                db=tmp_path / "floorplan_ecc" / "output" / "gcd_db",
             ),
         )
 
@@ -538,8 +555,11 @@ def test_engine_flow_wires_kepler_lec_and_skips_pre_step_advance(tmp_path, monke
     engine_flow.create_step_workspaces()
 
     synth_step, lec_step, floorplan_step = engine_flow.workspace_steps
-    assert lec_step.input.gate_verilog == synth_step.output.verilog
-    assert lec_step.input.golden_verilog == synth_step.output.golden_verilog
+    # The synthesized netlist against the RTL Synthesis read: its filelist, else its file.
+    assert (lec_step.input.gate_verilog, lec_step.input.golden_verilog) == (
+        synth_step.output.verilog,
+        workspace.design.input_filelist if filelist else GCD_RTL,
+    )
     # The LEC step must not advance the physical input chain.
     assert floorplan_step.input.verilog == synth_step.output.verilog
 
@@ -550,15 +570,27 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     workspace = _workspace(tmp_path)
     workspace.flow.path = tmp_path / "flow.json"
     workspace.flow.data = {
+        "schema_version": 3,
         "steps": [
-            {"name": StepEnum.SYNTHESIS.value, "tool": "yosys", "state": StateEnum.Unstart.value},
-            {"name": StepEnum.LVS.value, "tool": "ecc", "state": StateEnum.Unstart.value},
+            {
+                "name": StepEnum.SYNTHESIS.value,
+                "tool": "yosys",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.SYNTHESIS.value, "yosys"),
+            },
+            {
+                "name": StepEnum.LVS.value,
+                "tool": "ecc",
+                "state": StateEnum.Unstart.value,
+                **step_fields(StepEnum.LVS.value, "ecc"),
+            },
             {
                 "name": SkippableStepEnum.POST_ROUTE_LEC.value,
                 "tool": "kepler_formal",
                 "state": StateEnum.Unstart.value,
+                **step_fields(SkippableStepEnum.POST_ROUTE_LEC.value, "kepler_formal"),
             },
-        ]
+        ],
     }
     assert workspace.flow.path is not None
     json_write(workspace.flow.path, workspace.flow.data)
@@ -611,46 +643,17 @@ def test_engine_flow_wires_kepler_post_route_lec_against_synthesis_gate(tmp_path
     assert lec_step.input.golden_verilog == synth_step.output.verilog
 
 
-def test_step_directory_helpers_resolve_both_lec_engines():
-    from chipcompiler.data.step import (
-        LEGACY_STEP_DIRECTORIES,
-        STEP_DIRECTORIES,
-        all_step_directories,
-        step_directory_for_tool,
-    )
-
-    assert step_directory_for_tool("lec", "kepler_formal") == "lec_kepler_formal"
-    assert step_directory_for_tool("lec", "yosys_lec") == "lec_yosys_lec"
-    assert step_directory_for_tool("postRouteLec", None) == STEP_DIRECTORIES["postRouteLec"]
-    assert LEGACY_STEP_DIRECTORIES["lec"] in all_step_directories()
-    assert STEP_DIRECTORIES["lec"] in all_step_directories()
-
-
-def test_reconcile_treats_lec_engines_as_interchangeable():
-    from chipcompiler.engine.reconcile import _normalized_entries, compare_flows
-
-    persisted = [("Synthesis", "yosys"), ("lec", "yosys_lec"), ("Floorplan", "ecc")]
-    target = [("Synthesis", "yosys"), ("lec", "kepler_formal"), ("Floorplan", "ecc")]
-
-    assert compare_flows(_normalized_entries(persisted), _normalized_entries(target)) == "equal"
-
-    prefix = [("Synthesis", "yosys")]
-    assert (
-        compare_flows(_normalized_entries(prefix), _normalized_entries(target)) == "proper_prefix"
-    )
-
-
 def test_kepler_formal_config_yaml_contains_only_plain_values(tmp_path):
     import yaml
 
     from chipcompiler.tools.kepler_formal import builder
 
     workspace = _workspace(tmp_path)
-    gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
+    gate = tmp_path / "synthesis_yosys" / "output" / "gcd_synthesis.v"
     _write_netlist_pair(gate)
     step: Any = builder.build_step(
         workspace=workspace,
-        step_name=SkippableStepEnum.LEC.value,
+        step_name=StepEnum.LEC.value,
         input_def=None,
         input_verilog=gate,
     )

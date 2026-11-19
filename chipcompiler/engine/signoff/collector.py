@@ -19,11 +19,10 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StateEnum,
     StepEnum,
-    ToolName,
     Workspace,
     workspace_checklist_path,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES, flow_step_directory, step_directory_for_tool
+from chipcompiler.data.step import StepDirectories, flow_step_directory
 from chipcompiler.data.workspace.flow_policy import FlowInputStepError, is_skipped_record
 from chipcompiler.engine.signoff.analysis import CollectorAnalysisMixin
 from chipcompiler.engine.signoff.discovery import CollectorDiscoveryMixin
@@ -32,7 +31,7 @@ from chipcompiler.engine.signoff.models import (
     SignoffPackageOptions,
     SignoffPackageResult,
 )
-from chipcompiler.tools.ecc.power_artifacts import workspace_power_report_source_path
+from chipcompiler.tools.ecc.power_artifacts import power_report_source_path
 from chipcompiler.tools.ecc.sta_qor import (
     STA_QOR_SUMMARY_FILENAME,
     STA_REPORT_FILENAMES,
@@ -133,18 +132,18 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         has_synthesis = self.workspace.flow.has_step(StepEnum.SYNTHESIS)
         synthesis_verilog = self._synthesis_output_verilog() if has_synthesis else None
-        # Golden precedence mirrors the execution wiring: synthesis output,
-        # then the declared golden netlist, then the origin RTL.
+        # Golden precedence mirrors the execution wiring (engine/flow.py): the
+        # declared golden netlist, then the synthesis output, then the origin.
         lec_golden = (
-            synthesis_verilog
-            or getattr(self.workspace.design, "golden_verilog", None)
+            getattr(self.workspace.design, "golden_verilog", None)
+            or synthesis_verilog
             or getattr(self.workspace.design, "origin_verilog", None)
         )
         filler_verilog = (
-            workspace_dir / STEP_DIRECTORIES[StepEnum.FILLER.value] / "output"
+            self._directories().path(StepEnum.FILLER.value) / "output"
         ) / f"{design}_filler.v.gz"
         # The gate netlist follows the flow policy's input chain. A workspace
-        # whose ledger has no postRouteLec (skipped at creation) never requires
+        # whose ledger has no post_route_lec (skipped at creation) never requires
         # it, so the gate is only resolved when the step is in the ledger.
         flow_steps = self.workspace.flow.steps()
         post_route_lec = next(
@@ -158,7 +157,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         post_route_lec_skipped = post_route_lec is not None and is_skipped_record(post_route_lec)
         lec_gate = None
         if post_route_lec is not None and not post_route_lec_skipped:
-            # The gate netlist is the postRouteLec step's resolved input, so
+            # The gate netlist is the post_route_lec step's resolved input, so
             # its name comes from the builder contract, not from a
             # design-prefixed guess.
             try:
@@ -169,14 +168,14 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 issues.append(
                     SignoffPackageIssue(
                         kind="resource",
-                        label="final/reports/postRouteLec/result.json",
+                        label="final/reports/post_route_lec/result.json",
                         location=SkippableStepEnum.POST_ROUTE_LEC.value,
-                        reason=f"Could not resolve the postRouteLec gate netlist: {error}",
+                        reason=f"Could not resolve the post_route_lec gate netlist: {error}",
                         required=True,
-                        destination="final/reports/postRouteLec/result.json",
+                        destination="final/reports/post_route_lec/result.json",
                     )
                 )
-        # A ledger without postRouteLec, or one that deliberately skipped it,
+        # A ledger without post_route_lec, or one that deliberately skipped it,
         # never requires the proof regardless of inherited artifacts on disk.
         require_lec = (
             post_route_lec is not None
@@ -288,28 +287,28 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                     )
                 )
 
-        harden_output = workspace_dir / STEP_DIRECTORIES[StepEnum.HARDEN.value] / "output"
+        harden_output = self._directories().path(StepEnum.HARDEN.value) / "output"
         add_file(
             role="harden.gds",
-            source=harden_output / f"{design}_Harden.gds",
+            source=harden_output / f"{design}_harden.gds",
             destination=f"harden/{design}.gds",
             required=True,
         )
         add_file(
             role="harden.lef",
-            source=harden_output / f"{design}_Harden.lef",
+            source=harden_output / f"{design}_harden.lef",
             destination=f"harden/{design}.lef",
             required=True,
         )
         add_file(
             role="harden.lib",
-            source=harden_output / f"{design}_Harden.lib",
+            source=harden_output / f"{design}_harden.lib",
             destination=f"harden/{design}.lib",
             required=True,
         )
         add_file(
             role="harden.image",
-            source=harden_output / f"{design}_Harden.png",
+            source=harden_output / f"{design}_harden.png",
             destination=f"harden/{design}.png",
         )
 
@@ -396,10 +395,6 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         from chipcompiler.data.workspace_config import workspace_config_path
 
         parameters_config = workspace_config_path(workspace_dir)
-        if not parameters_config.exists():
-            # A read-only legacy workspace (TOML migration deferred) runs on
-            # its parameters.json — package the file it actually runs on.
-            parameters_config = workspace_dir / "home" / "parameters.json"
         add_file(
             "initial.parameters",
             parameters_config,
@@ -424,67 +419,25 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
         lec_result = (
             lec_dir / "output" / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json"
         )
-        lec_tool = next(
-            (
-                str(step.get("tool", ""))
-                for step in lec_flow_steps or []
-                if isinstance(step, dict)
-                and step.get("name") == SkippableStepEnum.POST_ROUTE_LEC.value
-            ),
-            "",
-        )
         if require_lec:
             add_file(
                 role="lec.result",
                 source=lec_result,
-                destination="final/reports/postRouteLec/result.json",
+                destination="final/reports/post_route_lec/result.json",
                 required=True,
             )
-            if lec_tool == ToolName.LEC_DUAL:
-                # The aggregate drives the gate; per-engine evidence is
-                # additive — a degraded run's missing sibling is recorded
-                # missing-optional, never fatal.
-                from chipcompiler.data import LECEngineEnum
-
-                for engine in LECEngineEnum.DUAL.spawn_engines:
-                    engine_dir = workspace_dir / step_directory_for_tool(
-                        SkippableStepEnum.POST_ROUTE_LEC.value, engine.value
-                    )
-                    add_file(
-                        role=f"lec.{engine.value}.result",
-                        source=engine_dir
-                        / "output"
-                        / f"{design}_{SkippableStepEnum.POST_ROUTE_LEC.value}_result.json",
-                        destination=f"final/reports/postRouteLec/engines/{engine.value}/result.json",
-                    )
-                    add_file(
-                        role=f"lec.{engine.value}.status_report",
-                        source=engine_dir / "report" / "run_lec_status.rpt",
-                        destination=f"final/reports/postRouteLec/engines/{engine.value}/report/run_lec_status.rpt",
-                    )
-            else:
-                add_file(
-                    role="lec.equiv_status",
-                    source=lec_dir / "report" / "equiv_status.rpt",
-                    destination="final/reports/postRouteLec/report/equiv_status.rpt",
-                    required=True,
-                )
-                add_file(
-                    role="lec.status_report",
-                    source=lec_dir / "report" / "run_lec_status.rpt",
-                    destination="final/reports/postRouteLec/report/run_lec_status.rpt",
-                    required=True,
-                )
-                add_file(
-                    role="lec.failed_rtlil",
-                    source=lec_dir / "report" / "equiv_failed.il",
-                    destination="final/reports/postRouteLec/report/equiv_failed.il",
-                )
-                add_file(
-                    role="lec.failed_verilog",
-                    source=lec_dir / "report" / "equiv_failed.v",
-                    destination="final/reports/postRouteLec/report/equiv_failed.v",
-                )
+            add_file(
+                role="lec.equiv_status",
+                source=lec_dir / "report" / "equiv_status.rpt",
+                destination="final/reports/post_route_lec/report/equiv_status.rpt",
+                required=True,
+            )
+            add_file(
+                role="lec.status_report",
+                source=lec_dir / "report" / "run_lec_status.rpt",
+                destination="final/reports/post_route_lec/report/run_lec_status.rpt",
+                required=True,
+            )
             from chipcompiler.tools.lec_result import lec_result_status
 
             lec_status = lec_result_status(
@@ -493,7 +446,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 gate_verilog=lec_gate,
             )
             if lec_result.is_file() and lec_status != "proven":
-                missing_required.append("final/reports/postRouteLec/result.json")
+                missing_required.append("final/reports/post_route_lec/result.json")
                 issues.append(
                     SignoffPackageIssue(
                         kind="resource",
@@ -501,7 +454,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                         location=self._review_source_path(
                             workspace_dir,
                             lec_result,
-                            "final/reports/postRouteLec/result.json",
+                            "final/reports/post_route_lec/result.json",
                         ),
                         reason=(
                             "LEC proof is stale; golden or gate netlist changed"
@@ -509,7 +462,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                             else "LEC did not prove equivalence"
                         ),
                         required=True,
-                        destination="final/reports/postRouteLec/result.json",
+                        destination="final/reports/post_route_lec/result.json",
                     )
                 )
 
@@ -519,7 +472,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             destination=f"final/design/{design}.v.gz",
             required=True,
         )
-        filler_output = workspace_dir / STEP_DIRECTORIES[StepEnum.FILLER.value] / "output"
+        filler_output = self._directories().path(StepEnum.FILLER.value) / "output"
         add_file(
             role="final.design.def",
             source=filler_output / f"{design}_filler.def.gz",
@@ -546,13 +499,13 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 f"{top_module}_{item['rcx_corner']}_{self._temperature_token(item['temperature'])}C.spef"
             )
             report_dir = sta_artifact_directory(
-                workspace_dir / STEP_DIRECTORIES[StepEnum.STA.value] / "report",
+                self._directories().path(StepEnum.STA.value) / "report",
                 item["lib_corner"],
                 item["temperature"],
                 item["rcx_corner"],
             )
             feature_dir = sta_artifact_directory(
-                workspace_dir / STEP_DIRECTORIES[StepEnum.STA.value] / "feature",
+                self._directories().path(StepEnum.STA.value) / "feature",
                 item["lib_corner"],
                 item["temperature"],
                 item["rcx_corner"],
@@ -590,11 +543,13 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
 
         add_file(
             role="final.power_report",
-            source=workspace_power_report_source_path(workspace_dir),
+            source=power_report_source_path(
+                self._directories().path(StepEnum.POWER_ANALYSIS.value)
+            ),
             destination="final/timing/power/power.rpt",
         )
 
-        rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
+        rcx_output_dir = self._directories().path(StepEnum.RCX.value) / "output"
         spef_paths = sorted(rcx_output_dir.glob("*.spef")) if rcx_output_dir.is_dir() else []
         if expected_spefs:
             for spef_name in sorted(expected_spefs):
@@ -625,7 +580,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 SignoffPackageIssue(
                     kind="resource",
                     label="RCX SPEF files",
-                    location=f"{STEP_DIRECTORIES[StepEnum.RCX.value]}/output",
+                    location=f"{self._directories().name(StepEnum.RCX.value)}/output",
                     reason="No SPEF files were found",
                     required=True,
                     destination="RCX SPEF files",
@@ -694,7 +649,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             warnings.append("home checklist requires attention; see final/reports/checklist.json")
 
         qor_metrics = self._read_json(
-            workspace_dir / STEP_DIRECTORIES[StepEnum.DRC.value] / "analysis" / "qor_metrics.json"
+            self._directories().path(StepEnum.DRC.value) / "analysis" / "qor_metrics.json"
         )
         ok = len(blocked_items) == 0
         flow_success = all(state == StateEnum.Success.value for state in required_steps.values())
@@ -737,28 +692,12 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             lec_payload = self._read_json(lec_result)
             lec_summary = {
                 "status": lec_payload.get("status", ""),
-                "result": "final/reports/postRouteLec/result.json",
+                "result": "final/reports/post_route_lec/result.json",
                 "golden_verilog": lec_payload.get("golden_verilog", ""),
                 "gate_verilog": lec_payload.get("gate_verilog", ""),
             }
-            if lec_tool == ToolName.LEC_DUAL:
-                # Dual packages evidence per engine; the summary must point
-                # at the paths that actually exist in the package.
-                from chipcompiler.data import LECEngineEnum
-
-                engines_root = "final/reports/postRouteLec/engines"
-                lec_summary["engines"] = {
-                    engine.value: {
-                        "result": f"{engines_root}/{engine.value}/result.json",
-                        "status_report": f"{engines_root}/{engine.value}/report/run_lec_status.rpt",
-                    }
-                    for engine in LECEngineEnum.DUAL.spawn_engines
-                }
-            else:
-                lec_summary["equiv_status"] = "final/reports/postRouteLec/report/equiv_status.rpt"
-                lec_summary["status_report"] = (
-                    "final/reports/postRouteLec/report/run_lec_status.rpt"
-                )
+            lec_summary["equiv_status"] = "final/reports/post_route_lec/report/equiv_status.rpt"
+            lec_summary["status_report"] = "final/reports/post_route_lec/report/run_lec_status.rpt"
             summary["lec"] = lec_summary
         if has_synthesis:
             summary["synthesis"] = {"verilog": f"synthesis/{design}.v.gz"}
@@ -801,7 +740,7 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
                 + input_verilog_description
                 + "- Harden outputs are under `harden/`.\n"
                 + "- Final physical resources are under `final/`.\n"
-                + "- Post-route LEC evidence is under `final/reports/postRouteLec/`.\n"
+                + "- Post-route LEC evidence is under `final/reports/post_route_lec/`.\n"
             )
 
             if options.archive and (ok or options.allow_incomplete):
@@ -982,9 +921,15 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             )
 
     def _step_dirs(self) -> dict[str, str]:
-        from chipcompiler.data.step import STEP_DIRECTORIES
+        """The directory of every step a signoff package reads, as recorded."""
+        directories = self._directories()
+        return {step: directories.name(step) for step in directories.reader_step_names()}
 
-        return STEP_DIRECTORIES
+    def _directories(self) -> StepDirectories:
+        flow = self.workspace.flow
+        if flow.path is None:
+            flow.path = Path(self.workspace.directory) / "home" / "flow.json"
+        return StepDirectories.of(self.workspace)
 
 
 # Public entry point for the text design summary; the implementation lives in

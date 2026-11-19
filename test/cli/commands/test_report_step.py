@@ -2,6 +2,7 @@ import json
 import os
 
 from chipcompiler.cli import main as cli_main
+from test.flow_fixture import step_fields
 
 FLOORPLAN_STEP_JSON = {
     "run": {"state": "Success", "runtime_seconds": 1.757, "peak_memory_mb": 143.227},
@@ -17,7 +18,7 @@ FLOORPLAN_QOR_METRICS = {
     "schema_version": 3,
     "analysis_revision": "quality-gates-v4",
     "tool": "ecc",
-    "step": "Floorplan",
+    "step": "floorplan",
     "design": "gcd",
     "status": "success",
     "metrics": [
@@ -58,7 +59,7 @@ FLOORPLAN_QOR_SUMMARY = {
     "schema_version": 4,
     "analysis_revision": "quality-gates-v4",
     "tool": "ecc",
-    "step": "Floorplan",
+    "step": "floorplan",
     "design": "gcd",
     "analysis_status": "valid",
     "quality_status": "pass",
@@ -79,7 +80,7 @@ FLOORPLAN_CHECKLIST = {
     "checklist": [
         {
             "id": "artifact.floorplan.def",
-            "step": "Floorplan",
+            "step": "floorplan",
             "category": "artifact",
             "owner": "checklist",
             "policy": "block",
@@ -87,8 +88,8 @@ FLOORPLAN_CHECKLIST = {
             "blocked": False,
             "title": "Floorplan DEF",
             "summary": "Current output is present and non-empty.",
-            "source": {"kind": "output", "path": "Floorplan_ecc/output/gcd_Floorplan.def.gz"},
-            "evidence": [{"kind": "output", "path": "Floorplan_ecc/output/gcd_Floorplan.def.gz"}],
+            "source": {"kind": "output", "path": "floorplan_ecc/output/gcd_Floorplan.def.gz"},
+            "evidence": [{"kind": "output", "path": "floorplan_ecc/output/gcd_Floorplan.def.gz"}],
         }
     ],
 }
@@ -147,18 +148,20 @@ DRC_CHECKLIST = {
 
 FLOW_STEPS = [
     {
-        "name": "Floorplan",
+        "name": "floorplan",
         "tool": "ecc",
         "state": "Success",
         "runtime": "0:0:1",
         "peak memory (mb)": 143.227,
+        **step_fields("floorplan", "ecc"),
     },
     {
-        "name": "Timing optimization",
+        "name": "timing_optimization",
         "tool": "sizer",
         "state": "Success",
         "runtime": "0:0:9",
         "peak memory (mb)": 2.305,
+        **step_fields("timing_optimization", "sizer"),
     },
 ]
 
@@ -172,9 +175,9 @@ def _write(path, payload):
 def create_step_workspace(tmp_path, *, with_drc=True, with_home_checklist=False):
     """Minimal completed-workspace fixture shaped like a real run output."""
     ws = str(tmp_path / "ws")
-    _write(os.path.join(ws, "home", "flow.json"), {"steps": FLOW_STEPS})
+    _write(os.path.join(ws, "home", "flow.json"), {"schema_version": 3, "steps": FLOW_STEPS})
 
-    floorplan_dir = os.path.join(ws, "Floorplan_ecc")
+    floorplan_dir = os.path.join(ws, "floorplan_ecc")
     _write(os.path.join(floorplan_dir, "feature", "Floorplan.step.json"), FLOORPLAN_STEP_JSON)
     _write(os.path.join(floorplan_dir, "feature", "Floorplan.db.json"), FLOORPLAN_DB_JSON)
     _write(os.path.join(floorplan_dir, "analysis", "qor_metrics.json"), FLOORPLAN_QOR_METRICS)
@@ -183,7 +186,7 @@ def create_step_workspace(tmp_path, *, with_drc=True, with_home_checklist=False)
 
     sizer_dir = os.path.join(ws, "timing_optimization_sizer")
     _write(
-        os.path.join(sizer_dir, "feature", "Timing optimization.step.json"),
+        os.path.join(sizer_dir, "feature", "timing_optimization.step.json"),
         {"run": {"state": "Success", "runtime_seconds": 9.151, "peak_memory_mb": 2.305}},
     )
 
@@ -261,10 +264,16 @@ class TestStepOverview:
         _write(
             os.path.join(ws, "home", "flow.json"),
             {
+                "schema_version": 3,
                 "steps": [
-                    {"name": step.value, "tool": tool, "state": state.value}
+                    {
+                        "name": step.value,
+                        "tool": tool,
+                        "state": state.value,
+                        **step_fields(step.value, tool),
+                    }
                     for step, tool, state in build_rtl2gds_flow(skip=DEFAULT_SKIP_STEPS)
-                ]
+                ],
             },
         )
 
@@ -286,11 +295,11 @@ class TestStepOverview:
             "filler",
             "lvs",
             "drc",
-            "antennacheck",
-            "postroutelec",
+            "antenna_check",
+            "post_route_lec",
             "rcx",
             "sta",
-            "poweranalysis",
+            "power_analysis",
             "emir",
             "harden",
         ]
@@ -394,7 +403,7 @@ class TestStepDetail:
         head, *section = records
         assert head["view"] == "detail"
         assert head["step"] == "floorplan"
-        assert head["step_name"] == "Floorplan"
+        assert head["step_name"] == "floorplan"
         assert head["sections"] == "[feature]"
         assert section == [
             {
@@ -403,7 +412,7 @@ class TestStepDetail:
                 "kind": "run",
                 "key": "run.peak_memory_mb",
                 "value": "143.227",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -411,7 +420,7 @@ class TestStepDetail:
                 "kind": "run",
                 "key": "run.runtime_seconds",
                 "value": "1.757",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -419,7 +428,7 @@ class TestStepDetail:
                 "kind": "run",
                 "key": "run.state",
                 "value": "Success",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -427,7 +436,7 @@ class TestStepDetail:
                 "kind": "constraint",
                 "key": "constraints.sdc.availability",
                 "value": "available",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -435,7 +444,7 @@ class TestStepDetail:
                 "kind": "constraint",
                 "key": "constraints.sdc.sha256",
                 "value": "abc123",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -443,7 +452,7 @@ class TestStepDetail:
                 "kind": "constraint",
                 "key": "constraints.sdc.size_bytes",
                 "value": "253",
-                "source": "Floorplan_ecc/feature/Floorplan.step.json",
+                "source": "floorplan_ecc/feature/Floorplan.step.json",
             },
             {
                 "step": "floorplan",
@@ -451,7 +460,7 @@ class TestStepDetail:
                 "kind": "stat",
                 "key": "Design Information.design_name",
                 "value": "gcd",
-                "source": "Floorplan_ecc/feature/Floorplan.db.json",
+                "source": "floorplan_ecc/feature/Floorplan.db.json",
             },
             {
                 "step": "floorplan",
@@ -459,7 +468,7 @@ class TestStepDetail:
                 "kind": "stat",
                 "key": "Design Information.eda_tool",
                 "value": "ecc",
-                "source": "Floorplan_ecc/feature/Floorplan.db.json",
+                "source": "floorplan_ecc/feature/Floorplan.db.json",
             },
             {
                 "step": "floorplan",
@@ -467,7 +476,7 @@ class TestStepDetail:
                 "kind": "stat",
                 "key": "Design Statis.num_instances",
                 "value": "454",
-                "source": "Floorplan_ecc/feature/Floorplan.db.json",
+                "source": "floorplan_ecc/feature/Floorplan.db.json",
             },
             {
                 "step": "floorplan",
@@ -475,7 +484,7 @@ class TestStepDetail:
                 "kind": "stat",
                 "key": "Design Statis.num_nets",
                 "value": "368",
-                "source": "Floorplan_ecc/feature/Floorplan.db.json",
+                "source": "floorplan_ecc/feature/Floorplan.db.json",
             },
         ]
 
@@ -559,12 +568,12 @@ class TestStepDetail:
             "policy": "block",
             "blocked": "False",
             "summary": "Current output is present and non-empty.",
-            "evidence": "[Floorplan_ecc/output/gcd_Floorplan.def.gz]",
+            "evidence": "[floorplan_ecc/output/gcd_Floorplan.def.gz]",
         }
 
     def test_detail_checklist_falls_back_to_home(self, tmp_path, capsys, plain_records):
         ws = create_step_workspace(tmp_path, with_home_checklist=True)
-        os.remove(os.path.join(ws, "Floorplan_ecc", "checklist.json"))
+        os.remove(os.path.join(ws, "floorplan_ecc", "checklist.json"))
 
         rc, records = run_step(
             step_args(tmp_path, "floorplan", "--section", "checklist", "--plain"),
@@ -596,16 +605,6 @@ class TestStepDetail:
             "run.runtime_seconds",
             "run.state",
         ]
-
-    def test_detail_accepts_flow_token_with_spaces(self, tmp_path, capsys, plain_records):
-        create_step_workspace(tmp_path, with_drc=False)
-
-        rc, records = run_step(
-            step_args(tmp_path, "timing optimization", "--plain"), capsys, plain_records
-        )
-
-        assert rc == 0
-        assert records[0]["step"] == "timing_optimization"
 
     def test_detail_text(self, tmp_path, capsys, plain_records):
         create_step_workspace(tmp_path)

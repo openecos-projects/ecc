@@ -57,7 +57,7 @@ def _synthesize(directory, source, pdk, yosys_runtime):
     )
     step = builder.build_step(
         workspace,
-        "Synthesis",
+        "synthesis",
         input_def=None,
         input_verilog=source,
         output_verilog=directory / "top.v",

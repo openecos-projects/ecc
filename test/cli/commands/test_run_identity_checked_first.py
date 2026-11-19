@@ -31,7 +31,7 @@ def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
     monkeypatch.setattr("chipcompiler.engine.EngineFlow", LedgerOnlyFlow)
     monkeypatch.setattr(
         "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+        lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -84,7 +84,7 @@ def test_rejected_run_identity_creates_nothing(fresh_project, capsys, options, c
 
 
 def test_fresh_run_still_accepts_set_after_a_rejected_run_id(fresh_project, capsys):
-    target = ["--workspace", "w1", "--set", "place.target_density=0.55"]
+    target = ["--workspace", "w1", "--set", "placement:place.target_density=0.55"]
     project = ["--project", str(fresh_project), "--plain"]
 
     assert cli_main.run(["run", *target, "--run-id", "not-a-uuid", *project]) == 1

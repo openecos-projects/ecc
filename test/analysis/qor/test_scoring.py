@@ -53,7 +53,8 @@ class TestScalarSummary:
 
     def test_not_verified_is_not_rated(self):
         states = {
-            step: "Success" for step in ("Synthesis", "postFloorplan", "place", "CTS", "route")
+            step: "Success"
+            for step in ("synthesis", "post_floorplan", "placement", "cts", "routing")
         }
         states["drc"] = "Unstart"
         summary, _ = _summary(make_inputs(gcd_metrics(), states))

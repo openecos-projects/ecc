@@ -1,7 +1,9 @@
 import json
 import os
+from pathlib import Path
 
 from chipcompiler.cli import main as cli_main
+from test.data.handshake.helpers import answer
 
 
 class TestStatus:
@@ -41,11 +43,11 @@ class TestStatus:
             "filler",
             "lvs",
             "drc",
-            "antennacheck",
-            "postroutelec",
+            "antenna_check",
+            "post_route_lec",
             "rcx",
             "sta",
-            "poweranalysis",
+            "power_analysis",
             "emir",
             "harden",
         ]
@@ -91,12 +93,12 @@ class TestStatus:
             run_dir,
             [
                 {
-                    "name": "Synthesis",
+                    "name": "synthesis",
                     "tool": "yosys",
                     "state": "Success",
                     "checklist_status": {"status": "blocked", "blocked": True},
                 },
-                {"name": "Floorplan", "tool": "ecc", "state": "Success"},
+                {"name": "floorplan", "tool": "ecc", "state": "Success"},
             ],
         )
 
@@ -122,8 +124,13 @@ class TestStatus:
         create_flow_json(
             run_dir,
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
-                {"name": "place", "tool": "dreamplace", "state": "Success", "runtime": "0:01:12"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success", "runtime": "0:00:18"},
+                {
+                    "name": "placement",
+                    "tool": "dreamplace",
+                    "state": "Success",
+                    "runtime": "0:01:12",
+                },
             ],
         )
 
@@ -192,9 +199,9 @@ class TestRunStatusStates:
         create_flow_json(
             os.path.join(project_dir, "default"),
             [
-                {"name": "antennaCheck", "tool": "ecc", "state": "Incomplete"},
+                {"name": "antenna_check", "tool": "ecc", "state": "Incomplete"},
                 {"name": "emir", "tool": "ecc", "state": "Incomplete"},
-                {"name": "Harden", "tool": "ecc", "state": "Success"},
+                {"name": "harden", "tool": "ecc", "state": "Success"},
             ],
         )
 
@@ -211,7 +218,7 @@ class TestRunStatusStates:
         from chipcompiler.cli.inspection.discovery import get_run_status
 
         def flow(*states):
-            return {"steps": [{"state": state} for state in states]}
+            return {"schema_version": 3, "steps": [{"state": state} for state in states]}
 
         assert get_run_status(flow("Success", "Unstart")) == "partial"
         assert get_run_status(flow("Success")) == "success"
@@ -226,8 +233,8 @@ class TestRunStatusStates:
         create_flow_json(
             os.path.join(project_dir, "default"),
             [
-                {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                {"name": "Floorplan", "tool": "ecc", "state": "Unstart"},
+                {"name": "synthesis", "tool": "yosys", "state": "Success"},
+                {"name": "floorplan", "tool": "ecc", "state": "Unstart"},
             ],
         )
 
@@ -236,3 +243,37 @@ class TestRunStatusStates:
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert records[0]["status"] == "partial"
+
+
+def test_status_reports_steps_built_on_a_rerun_upstream_step(
+    capsys, create_cli_project, create_flow_json
+):
+    project_dir = create_cli_project()
+    run_dir = os.path.join(project_dir, "default")
+    create_flow_json(
+        run_dir,
+        [
+            {"name": name, "tool": "ecc", "state": "Success", "directory": directory}
+            for name, directory in (
+                ("cts", "01_cts_ecc"),
+                ("routing", "02_routing_ecc"),
+                ("filler", "03_filler_ecc"),
+            )
+        ],
+    )
+    root = Path(run_dir)
+    answer(root, "01_cts_ecc", "cts-1")
+    answer(root, "02_routing_ecc", "route-1", ("01_cts_ecc", "cts-1"))
+    answer(root, "03_filler_ecc", "filler-1", ("02_routing_ecc", "route-1"))
+    answer(root, "01_cts_ecc", "cts-2")  # CTS reran on its own
+
+    assert cli_main.run(["status", "--json", "--project", project_dir]) == 0
+    records = json.loads(capsys.readouterr().out)
+
+    assert records[0]["rerun_cmd"].startswith("ecc run --from routing")
+    assert [
+        (record["step"], record.get("stale_from")) for record in records if "step" in record
+    ] == [("cts", None), ("routing", ["01_cts_ecc"]), ("filler", ["02_routing_ecc"])]
+
+    assert cli_main.run(["status", "--project", project_dir]) == 0
+    assert "stale from: 01_cts_ecc" in capsys.readouterr().out

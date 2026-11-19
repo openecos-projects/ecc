@@ -6,8 +6,10 @@ import re
 import tempfile
 from pathlib import Path
 
+from chipcompiler.data.types import StepEnum
 from chipcompiler.utility.path import path_is_within
 
+from .candidate_verification import verify_candidate_step_configs
 from .data.candidate_artifacts import validate_candidate_id
 from .data.candidate_input_binding import reapply_candidate_input_binding
 from .data.candidate_materialization import (
@@ -15,6 +17,7 @@ from .data.candidate_materialization import (
     reapply_materialized_candidate_config,
     validate_candidate_materialization_receipt,
 )
+from .data.candidate_step_values import seed_steps, verify_candidate_seed_store
 from .floorplan_mode import FLOORPLAN_MODE_REF, validate_floorplan_mode_resume
 from .operations import RuntimeOperationConflict, RuntimeOperationFailed
 from .requests import CandidateRerunRequest, CandidateResumeRequest
@@ -35,9 +38,9 @@ from .workspace_api import (
     _prepare_candidate_rerun,
     _reapply_candidate_input,
     _required_file_sha256,
+    _run_candidate_steps,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
-    run_candidate_steps_isolated,
 )
 
 
@@ -54,7 +57,7 @@ def candidate_resume(api, request: CandidateResumeRequest) -> dict:
             kind="candidate_resume",
             origin="agent",
             rerun=True,
-            step="Harden",
+            step=StepEnum.HARDEN.value,
             idempotency_key=request.idempotency_key,
             runner=lambda observer: _candidate_resume(api, session, request, observer),
         )
@@ -81,14 +84,26 @@ def _candidate_resume(api, session, request: CandidateResumeRequest, observer) -
         create_step_workspaces = getattr(flow, "create_step_workspaces", None)
         if callable(create_step_workspaces):
             create_step_workspaces(initialize_config=False)
-        steps = _candidate_resume_steps(flow, manifest["target_step"])
+        candidate_steps = _candidate_rerun_steps(
+            flow, manifest["target_step"], StepEnum.HARDEN.value, "full_flow"
+        )
+        steps = _candidate_resume_steps(flow, candidate_steps)
         resume_step = steps[0].name
-        patch = _validate_candidate_resume_binding(candidate_workspace, flow, manifest, request)
+        seed_step_names = seed_steps(candidate_steps)
+        patch = _validate_candidate_resume_binding(
+            candidate_workspace, flow, manifest, request, seed_step_names
+        )
         rerun_request = _candidate_resume_rerun_request(manifest, request, patch)
         evidence_ready = True
         _prepare_candidate_rerun(candidate_workspace, flow, steps)
         _notify_candidate_resume_prepared(observer, steps, manifest["target_step"])
-        run_candidate_steps_isolated(flow, steps, observer=observer)
+        _run_candidate_steps(flow, steps, observer)
+        verify_candidate_step_configs(
+            candidate_workspace,
+            rerun_request,
+            executed_steps=steps,
+            seed_step_names=seed_step_names,
+        )
         result = _candidate_rerun_result(
             candidate_workspace,
             rerun_request,
@@ -181,8 +196,7 @@ def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
         raise RuntimeApiError("invalid_request", "candidate resume seed is invalid")
 
 
-def _candidate_resume_steps(flow, target_step: str) -> list:
-    steps = _candidate_rerun_steps(flow, target_step, "Harden", "full_flow")
+def _candidate_resume_steps(flow, steps: list) -> list:
     for index, step in enumerate(steps):
         record = flow.get_step(step.name, step.tool)
         if record is None:
@@ -227,7 +241,7 @@ def _validate_candidate_resume_manifest(
         "candidate_id": Path(candidate_root_ref).name,
         "candidate_root_ref": candidate_root_ref,
         "terminal_state": "failed",
-        "end_step": "Harden",
+        "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
         "candidate_flow_sha256": _required_file_sha256(
             candidate_root / "home" / "flow.json", "resume flow"
@@ -294,7 +308,7 @@ def _candidate_resume_rerun_request(
     return CandidateRerunRequest(
         workspace_id=request.workspace_id,
         target_step=manifest["target_step"],
-        end_step="Harden",
+        end_step=StepEnum.HARDEN.value,
         candidate_id=request.candidate_id,
         patch=patch,
         execution_scope="full_flow",
@@ -307,11 +321,13 @@ def _candidate_resume_rerun_request(
 
 
 def _validate_candidate_resume_binding(
-    workspace, flow, manifest: dict, request: CandidateResumeRequest
+    workspace, flow, manifest: dict, request: CandidateResumeRequest, seed_step_names: list[str]
 ) -> list[dict]:
     backups = _candidate_resume_config_backups(workspace)
     try:
-        return _validated_candidate_resume_patch(workspace, flow, manifest, request)
+        return _validated_candidate_resume_patch(
+            workspace, flow, manifest, request, seed_step_names
+        )
     except Exception:
         try:
             _restore_candidate_resume_configs(workspace, backups)
@@ -323,7 +339,7 @@ def _validate_candidate_resume_binding(
 
 
 def _validated_candidate_resume_patch(
-    workspace, flow, manifest: dict, request: CandidateResumeRequest
+    workspace, flow, manifest: dict, request: CandidateResumeRequest, seed_step_names: list[str]
 ) -> list[dict]:
     target_step = manifest["target_step"]
     materialization: dict | None = None
@@ -333,7 +349,10 @@ def _validated_candidate_resume_patch(
             raise ValueError("candidate resume floorplan mode stage is invalid")
         mode_only = mode is not None and mode["patch"] == []
         if mode_only:
-            if target_step != "Floorplan" or "candidate_materialization" in manifest["artifacts"]:
+            if (
+                target_step != StepEnum.FLOORPLAN.value
+                or "candidate_materialization" in manifest["artifacts"]
+            ):
                 raise ValueError("mode-only baseline binding is invalid")
             binding = reapply_candidate_input_binding(workspace, flow, target_step)
             if binding is None or binding["candidate_id"] != request.candidate_id:
@@ -348,13 +367,12 @@ def _validated_candidate_resume_patch(
         raise RuntimeApiError(
             "command_failed", f"candidate resume receipt binding is invalid: {exc}"
         ) from exc
-    dreamplace_path = Path(workspace.config["dreamplace"])
+    # The seed lives in the step store (params.toml), restored above with the
+    # materialized parameters; the shared DreamPlace baseline never holds it.
     try:
-        dreamplace = json.loads(dreamplace_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        verify_candidate_seed_store(workspace, seed_step_names, request.seed)
+    except ValueError as exc:
         raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid") from exc
-    if not isinstance(dreamplace, dict) or dreamplace.get("random_seed") != request.seed:
-        raise RuntimeApiError("command_failed", "candidate resume seed binding is invalid")
     if mode_only:
         return []
     if materialization is None:
@@ -409,16 +427,16 @@ def _candidate_resume_requested_patch(
 
 
 def _candidate_resume_config_backups(workspace) -> dict[Path, bytes]:
+    """Every config a resume may reapply: the parameter store (step values) and baselines."""
+    from chipcompiler.data.workspace_config import workspace_config_path
+
     root = Path(workspace.directory)
     relatives = (
-        "home/params.toml",
-        "home/parameters.json",
         "config/floorplan_ecc.json",
         "config/cts_ecc.json",
         "config/dreamplace_ecc.json",
-        "config/dreamplace.json",
     )
-    paths = [root / relative for relative in relatives]
+    paths = [workspace_config_path(root), *(root / relative for relative in relatives)]
     if any(path.is_symlink() for path in paths):
         raise RuntimeApiError("command_failed", "candidate resume config path is unsafe")
     return {path: path.read_bytes() for path in paths if path.is_file()}

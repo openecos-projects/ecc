@@ -14,12 +14,12 @@ Important boundaries:
 - `operations.py` is private candidate execution coordination. It is not the
   GUI flow lifecycle; ordinary GUI flows use the ECC CLI process registry and
   Workspace `flow.json`.
-- `runtime_support.py` contains the small Engine adapters shared by candidate
-  workers. It has no transport concerns.
+- `runtime_support.py` contains small shared value helpers used by candidate
+  execution. It has no transport concerns.
 - `workspace_api.py` is a library facade retained for optimization callers;
   it is not mounted in a method registry or server.
-- Candidate native steps run in separate worker processes because DREAMPlace,
-  sizer, and log redirection have process-global state.
+- Candidate native steps use the same one-shot step worker as main flows because
+  DREAMPlace, sizer, and log redirection have process-global state.
 - All workspace paths, materialized configuration, receipts, and hashes remain
   validated before execution.
 

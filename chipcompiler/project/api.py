@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chipcompiler.project.manifest import (
     MANIFEST_FILENAME,
+    PRESET_MANIFEST_RANGE,
     ManifestError,
     load_manifest,
     validate_manifest_range,
@@ -14,7 +15,6 @@ from chipcompiler.project.manifest_refresh import (
     apply_derived_fields,
     derive_workspace_fields,
     flow_range_from_ledger,
-    manifest_base_parameters,
 )
 from chipcompiler.project.manifest_write import (
     build_project_document,
@@ -68,7 +68,7 @@ def create_project_manifest(
     document = build_project_document(
         str(project),
         design_name=design_name,
-        base_design={"rtl_list": [], "parameters": {"design": design_name}},
+        base_design={"rtl_list": []},
         name=name,
         now=now,
         mpc=mpc,
@@ -193,9 +193,6 @@ def create_project_workspace(
             if workspace is None:
                 raise ManifestError("Workspace creation returned no Workspace")
             identity = workspace_id or target.name
-            # Register the directory-derived patch so a fresh entry equals
-            # what doctor/re-registration would derive from the workspace.
-            derived = derive_workspace_fields(target, manifest_base_parameters(manifest))
             mutation = {
                 "type": "register_workspace",
                 "workspace_id": identity,
@@ -204,7 +201,6 @@ def create_project_workspace(
                 "source_workspace_id": source_workspace_id,
                 "created_at": now,
                 "updated_at": now,
-                "parameter_patch": derived.get("parameter_patch", {}),
             }
             if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise ManifestError("Project Manifest update failed")
@@ -224,7 +220,6 @@ def _workspace_document(workspace) -> dict:
             "start_step": workspace.start_step,
             "end_step": workspace.end_step,
             "status": workspace.status,
-            "parameter_patch": deepcopy(workspace.parameter_patch),
         }
     )
     return document
@@ -254,7 +249,7 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
                 if value is not None:
                     existing[key] = deepcopy(value)
                     changed = True
-            derived = derive_workspace_fields(workspace_path, manifest_base_parameters(document))
+            derived = derive_workspace_fields(workspace_path)
             changed = apply_derived_fields(existing, derived) or changed
             if changed:
                 timestamp = str(
@@ -283,7 +278,6 @@ def _register_workspace(document: dict, mutation: dict, project: Path) -> None:
     for key in (
         "source_workspace_id",
         "branch_from",
-        "parameter_patch",
         "metrics_summary",
         "step_metrics",
     ):
@@ -301,8 +295,8 @@ def _workspace_range(workspace: Path, mutation: dict) -> tuple[str, str]:
     try:
         ledger = json.loads((workspace / "home" / "flow.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return "Synth", "Harden"
-    return flow_range_from_ledger(ledger) or ("Synth", "Harden")
+        return PRESET_MANIFEST_RANGE["rtl2gds"]
+    return flow_range_from_ledger(ledger) or PRESET_MANIFEST_RANGE["rtl2gds"]
 
 
 def _select_workspace(document: dict, mutation: dict) -> None:

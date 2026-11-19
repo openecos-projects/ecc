@@ -175,7 +175,6 @@ def _register_directory(manifest: ProjectManifest, finding: ConsistencyFinding) 
             workspace_id=finding.workspace_id,
             workspace_path=finding.workspace_path,
             expected_pdk=str(base_design.get("pdk") or ""),
-            base_parameters=base_design.get("parameters") or {},
         )
     except WorkspaceRegistrationError as exc:
         return FixAction(finding, "failed", str(exc))

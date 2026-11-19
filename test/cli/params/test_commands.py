@@ -5,7 +5,9 @@ from typing import Any
 import pytest
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.data.parameter_schema import lookup_schema
+from chipcompiler.data.step_parameters import is_step_scoped, step_key
+from chipcompiler.params import lookup_schema
+from chipcompiler.rtl2gds import get_flow_builders
 
 
 class TestParamList:
@@ -34,7 +36,9 @@ class TestParamList:
 class TestParamShow:
     def test_param_show_known_key(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
@@ -42,11 +46,11 @@ class TestParamShow:
     def test_param_show_records(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "placement:place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
-        assert record["param"] == "place.target_density"
+        assert record["param"] == "placement:place.target_density"
         schema = lookup_schema("place.target_density")
         assert schema is not None
         assert record["default"] == str(schema.default)
@@ -63,23 +67,22 @@ class TestParamSet:
     def test_param_set_writes_toml(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "set", "place.target_density", "0.65", "--project", project_dir]
+            ["param", "set", "placement:place.target_density", "0.65", "--project", project_dir]
         )
         assert rc == 0
 
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        assert "target_density" in content
-        assert "0.65" in content
+        assert "[params.step.placement.place]\ntarget_density = 0.65" in content
 
     def test_param_set_then_show(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
@@ -91,14 +94,22 @@ class TestParamSet:
     ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "set", "place.target_density", "0.65", "--project", project_dir, "--plain"]
+            [
+                "param",
+                "set",
+                "placement:place.target_density",
+                "0.65",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
         )
 
         assert rc == 0
         (record,) = plain_records(capsys.readouterr().out)
         assert record["applies_to"] == "next fresh/overwrite run"
         assert (
-            "ecc param set place.target_density <value> --workspace NAME"
+            "ecc param set placement:place.target_density <value> --workspace NAME"
             in record["workspace_hint"]
         )
 
@@ -116,7 +127,7 @@ class TestParamSet:
                 "top_module": "gcd",
                 "clock": "clk",
                 "rtl_list": ["rtl/gcd.v"],
-                "parameters": {"design": "gcd", "frequency_max": 100},
+                "frequency_mhz": 100,
             },
             "workspaces": [
                 {
@@ -130,7 +141,15 @@ class TestParamSet:
             json.dump(manifest, f)
 
         rc = cli_main.run(
-            ["param", "set", "place.target_density", "0.65", "--project", project_dir, "--plain"]
+            [
+                "param",
+                "set",
+                "placement:place.target_density",
+                "0.65",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
         )
 
         assert rc == 0
@@ -144,7 +163,9 @@ class TestParamSet:
 
     def test_param_set_rejects_invalid_value(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "set", "place.target_density", "1.5", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "set", "placement:place.target_density", "1.5", "--project", project_dir]
+        )
         assert rc == 1
 
     def test_param_set_accepts_negative_value(
@@ -152,7 +173,15 @@ class TestParamSet:
     ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "set", "--project", project_dir, "--plain", "place.max_net_weight", "-1"]
+            [
+                "param",
+                "set",
+                "--project",
+                project_dir,
+                "--plain",
+                "placement:place.max_net_weight",
+                "-1",
+            ]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
@@ -224,15 +253,15 @@ class TestParamUnset:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
-        rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(["param", "unset", "floorplan.core_util", "--project", project_dir])
         assert rc == 0
         capsys.readouterr()  # flush unset output
 
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "floorplan.core_util", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
@@ -240,7 +269,9 @@ class TestParamUnset:
 
     def test_param_unset_noop_when_absent(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "unset", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "unset", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "no override" in out
@@ -249,14 +280,14 @@ class TestParamUnset:
 class TestParamDiff:
     def test_param_diff_shows_overrides(self, tmp_path, capsys, create_cli_project, plain_records):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert len(records) == 1
-        assert records[0]["param"] == "place.target_density"
+        assert records[0]["param"] == "floorplan.core_util"
 
     def test_param_diff_clean_when_no_overrides(
         self, tmp_path, capsys, create_cli_project, plain_records
@@ -297,7 +328,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -314,13 +345,13 @@ class TestRunSet:
                 "--project",
                 project_dir,
                 "--set",
-                "place.target_density=0.65",
+                "placement:place.target_density=0.65",
             ]
         )
         assert rc == 0
 
         params = capture["kwargs"]["parameters"]
-        assert params.get("dreamplace", {}).get("target_density") == 0.65
+        assert params["step_params"] == {"placement": {"place.target_density": 0.65}}
 
     def test_run_set_direct_config_and_pdk_overrides(
         self, tmp_path, monkeypatch, capsys, create_cli_project
@@ -351,7 +382,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -379,7 +410,7 @@ class TestRunSet:
 
         params = capture["kwargs"]["parameters"]
         assert params["config_overrides"] == {
-            "CTS": {"skew_bound": "0.05"},
+            "cts": {"skew_bound": "0.05"},
             "emir": {"technology_file_path": str(tmp_path / "process.tech")},
         }
         assert capture["kwargs"]["pdk_overrides"]["tech"].endswith("prtech/custom.lef")
@@ -405,7 +436,7 @@ class TestRunSet:
                 "--project",
                 project_dir,
                 "--set",
-                "place.target_density=1.5",
+                "placement:place.target_density=1.5",
             ]
         )
         assert rc == 1
@@ -440,7 +471,7 @@ class TestRunSet:
         )
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-            lambda *, skip=(), lec_engine=None: [("Synthesis", "yosys", "Unstart")],
+            lambda *, skip=(), lec_engine=None: [("synthesis", "yosys", "Unstart")],
         )
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -457,7 +488,7 @@ class TestRunSet:
                 "--project",
                 project_dir,
                 "--set",
-                "place.target_density=0.65",
+                "placement:place.target_density=0.65",
             ]
         )
 
@@ -504,13 +535,23 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         param_records = [r for r in records if r.get("kind") == "param"]
-        assert [record["key"] for record in param_records] == semantic_parameter_ids
+        # A step-scoped parameter is shown per declared step of the rtl2gds flow.
+        flow_steps = {str(step) for step, _tool, _state in get_flow_builders()["rtl2gds"]()}
+        expected = []
+        for param in semantic_parameter_ids:
+            schema = lookup_schema(param)
+            assert schema is not None
+            if is_step_scoped(schema):
+                expected.extend(step_key(s, param) for s in schema.steps if s in flow_steps)
+            else:
+                expected.append(param)
+        assert [record["key"] for record in param_records] == expected
         first_param = param_records[0]
         assert "source" in first_param
         assert "maps_to" in first_param
@@ -523,23 +564,23 @@ class TestConfigResolved:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()  # flush set output
 
         run_dir = os.path.join(project_dir, "runs", "default")
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
         param_records = [
             r for r in plain_records(capsys.readouterr().out) if r.get("kind") == "param"
         ]
-        density = next(r for r in param_records if r["key"] == "place.target_density")
-        assert density["value"] == "0.65"
-        assert density["source"] == "ecc.toml"
+        core_util = next(r for r in param_records if r["key"] == "floorplan.core_util")
+        assert core_util["value"] == "0.65"
+        assert core_util["source"] == "ecc.toml"
 
     def test_config_resolved_seeds_design_frequency(
         self, tmp_path, monkeypatch, capsys, create_cli_project, plain_records
@@ -553,7 +594,7 @@ class TestConfigResolved:
         home = os.path.join(run_dir, "home")
         os.makedirs(home, exist_ok=True)
         with open(os.path.join(home, "flow.json"), "w") as f:
-            json.dump({"steps": []}, f)
+            json.dump({"schema_version": 3, "steps": []}, f)
 
         rc = cli_main.run(["config", "--project", project_dir, "--plain"])
         assert rc == 0
@@ -570,7 +611,7 @@ class TestPrettyOutput:
         rc = cli_main.run(["param", "list", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "place" in out
+        assert "placement" in out
         assert "place.target_density" in out
 
     def test_param_list_plain_is_one_line_per_record(
@@ -586,7 +627,9 @@ class TestPrettyOutput:
 
     def test_param_show_default_is_pretty(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "place.target_density" in out
@@ -596,7 +639,7 @@ class TestPrettyOutput:
     def test_param_set_default_is_pretty(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "set", "place.target_density", "0.65", "--project", project_dir]
+            ["param", "set", "placement:place.target_density", "0.65", "--project", project_dir]
         )
         assert rc == 0
         out = capsys.readouterr().out
@@ -604,12 +647,12 @@ class TestPrettyOutput:
 
     def test_param_diff_default_is_pretty(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()
         rc = cli_main.run(["param", "diff", "--project", project_dir])
         assert rc == 0
         out = capsys.readouterr().out
-        assert "place.target_density" in out
+        assert "floorplan.core_util" in out
 
 
 class TestResolvedListValues:
@@ -617,18 +660,18 @@ class TestResolvedListValues:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(["param", "list", "--project", project_dir, "--plain"])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        density = next(r for r in records if r["param"] == "place.target_density")
-        assert density["value"] == "0.65"
-        assert density["source"] == "ecc.toml"
-        assert "default" in density
-        assert "maps_to" in density
-        assert "inspect" in density
+        core_util = next(r for r in records if r["param"] == "floorplan.core_util")
+        assert core_util["value"] == "0.65"
+        assert core_util["source"] == "ecc.toml"
+        assert "default" in core_util
+        assert "maps_to" in core_util
+        assert "inspect" in core_util
 
     def test_param_list_default_source_when_no_overrides(
         self, tmp_path, capsys, create_cli_project, plain_records
@@ -648,14 +691,14 @@ class TestDiffFiltering:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        cli_main.run(["param", "set", "place.target_density", "0.65", "--project", project_dir])
+        cli_main.run(["param", "set", "floorplan.core_util", "0.65", "--project", project_dir])
         capsys.readouterr()
 
         rc = cli_main.run(["param", "diff", "--project", project_dir, "--plain"])
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
         assert len(records) == 1
-        assert records[0]["param"] == "place.target_density"
+        assert records[0]["param"] == "floorplan.core_util"
         assert records[0]["value"] == "0.65"
         assert records[0]["default"] != records[0]["value"]
 
@@ -663,11 +706,11 @@ class TestDiffFiltering:
         self, tmp_path, capsys, create_cli_project, plain_records
     ):
         project_dir = create_cli_project()
-        schema = lookup_schema("place.target_density")
+        schema = lookup_schema("floorplan.core_util")
         assert schema is not None
         schema_default = schema.default
         cli_main.run(
-            ["param", "set", "place.target_density", str(schema_default), "--project", project_dir]
+            ["param", "set", "floorplan.core_util", str(schema_default), "--project", project_dir]
         )
         capsys.readouterr()
 
@@ -685,23 +728,25 @@ class TestParamShowDisclosureCommands:
     ):
         project_dir = create_cli_project()
         rc = cli_main.run(
-            ["param", "show", "place.target_density", "--project", project_dir, "--plain"]
+            ["param", "show", "placement:place.target_density", "--project", project_dir, "--plain"]
         )
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
         assert "inspect" in record
         assert "set" in record
         assert "run" in record
-        assert "ecc param show place.target_density" in record["inspect"]
+        assert "ecc param show placement:place.target_density" in record["inspect"]
 
     def test_show_text_has_disclosure_commands(self, tmp_path, capsys, create_cli_project):
         project_dir = create_cli_project()
-        rc = cli_main.run(["param", "show", "place.target_density", "--project", project_dir])
+        rc = cli_main.run(
+            ["param", "show", "placement:place.target_density", "--project", project_dir]
+        )
         assert rc == 0
         out = capsys.readouterr().out
-        assert "ecc param show place.target_density" in out
-        assert "ecc param set place.target_density" in out
-        assert "ecc run --set place.target_density" in out
+        assert "ecc param show placement:place.target_density" in out
+        assert "ecc param set placement:place.target_density" in out
+        assert "ecc run --set placement:place.target_density" in out
 
 
 class TestListDefaultDiffFiltering:
@@ -728,7 +773,7 @@ class TestListDefaultDiffFiltering:
         assert len(records) >= 1
         margin = next((r for r in records if r.get("param") == "floorplan.core_margin"), None)
         assert margin is not None
-        assert margin["value"] == "[4, 4]"
+        assert margin["value"] == "[4.0, 4.0]"
 
 
 class TestDesignFrequencySeeded:
@@ -792,13 +837,28 @@ class TestUnreadableProjectConfig:
         os.remove(os.path.join(project_dir, "ecc.toml"))
 
         rc = cli_main.run(
-            ["param", "set", "place.target_density", "0.5", "--project", project_dir, "--plain"]
+            [
+                "param",
+                "set",
+                "placement:place.target_density",
+                "0.5",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
         )
         assert rc == 1
         assert plain_records(capsys.readouterr().out)[0]["error"] == "missing_config"
 
         rc = cli_main.run(
-            ["param", "unset", "place.target_density", "--project", project_dir, "--plain"]
+            [
+                "param",
+                "unset",
+                "placement:place.target_density",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
         )
         assert rc == 0
         assert plain_records(capsys.readouterr().out)[0]["status"] == "no_override"
@@ -807,9 +867,9 @@ class TestUnreadableProjectConfig:
     @pytest.mark.parametrize(
         ("command", "error"),
         [
-            (["set", "place.target_density", "0.5"], "config_error"),
-            (["unset", "place.target_density"], "config_error"),
-            (["show", "place.target_density"], "invalid_param_config"),
+            (["set", "placement:place.target_density", "0.5"], "config_error"),
+            (["unset", "placement:place.target_density"], "config_error"),
+            (["show", "placement:place.target_density"], "invalid_param_config"),
         ],
     )
     def test_unreadable_config_is_reported(

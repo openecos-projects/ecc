@@ -40,8 +40,8 @@ def test_repeated_workspace_create_does_not_resume_flow(
         json.dumps(
             {
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-                    {"name": "Floorplan", "tool": "ecc", "state": "Pending"},
+                    {"name": "synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "floorplan", "tool": "ecc", "state": "Pending"},
                 ]
             }
         )
@@ -83,7 +83,7 @@ def _existing_workspace(capsys, create_cli_project, manifest_stubs, flow_mocks):
         json.dumps(
             {
                 "steps": [
-                    {"name": "Synthesis", "tool": "yosys", "state": "Success"},
+                    {"name": "synthesis", "tool": "yosys", "state": "Success"},
                     {"name": "Floorplan", "tool": "ecc", "state": "Pending"},
                 ]
             }
@@ -103,7 +103,7 @@ def test_workspace_create_with_a_range_does_not_run_an_existing_workspace(
     before = flow_json.read_text()
 
     rc = cli_main.run(
-        ["workspace", "create", "test-ws", "--from", "Synthesis", "--to", "Synthesis"]
+        ["workspace", "create", "test-ws", "--from", "synthesis", "--to", "synthesis"]
         + ["--project", project_dir, "--plain"]
     )
 
@@ -147,7 +147,7 @@ def test_workspace_create_rejects_set_on_an_existing_workspace(
     before = flow_json.read_text()
 
     rc = cli_main.run(
-        ["workspace", "create", "test-ws", "--set", "place.target_density=0.5"]
+        ["workspace", "create", "test-ws", "--set", "placement:place.target_density=0.5"]
         + ["--project", project_dir, "--plain"]
     )
 
@@ -173,7 +173,9 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
         capsys, create_cli_project, manifest_stubs, flow_mocks
     )
     command_id = "0b0f6f0e-7a55-4a4e-9a57-0d6a3f1f6c11"
-    request = SimpleNamespace(from_step=None, to_step=None, param_set=("place.target_density=0.5",))
+    request = SimpleNamespace(
+        from_step=None, to_step=None, param_set=("placement:place.target_density=0.5",)
+    )
     write_workspace_command(
         flow_json.parent.parent,
         command_id,
@@ -185,7 +187,7 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
 
     def create(value, identity):
         rc = cli_main.run(
-            ["workspace", "create", "test-ws", "--set", f"place.target_density={value}"]
+            ["workspace", "create", "test-ws", "--set", f"placement:place.target_density={value}"]
             + ["--command-id", identity, "--project", project_dir, "--plain"]
         )
         return rc, plain_records(capsys.readouterr().out)[-1]

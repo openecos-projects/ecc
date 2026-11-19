@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import tomllib
+from copy import deepcopy
 
 import pytest
 
@@ -8,11 +9,10 @@ from chipcompiler.data.parameter import (
     ICS55_PARAMETERS_TEMPLATE,
     SG13G2_PARAMETERS_TEMPLATE,
 )
-from chipcompiler.data.parameter_keys import normalize_keys
 from chipcompiler.data.workspace_config import (
+    WORKSPACE_CONFIG_SCHEMA_VERSION,
     WorkspaceConfigError,
     WorkspaceFlowTargetError,
-    canonical_flow_chain,
     flow_range_for_preset,
     flow_range_of,
     flow_section_from_flow_config,
@@ -23,12 +23,11 @@ from chipcompiler.data.workspace_config import (
     validate_flow_config,
     workspace_config_path,
 )
+from test.flow_fixture import step_fields
 
 
 def _flat_template(template: dict) -> dict:
-    flat = normalize_keys(template)
-    assert isinstance(flat, dict)
-    return flat
+    return deepcopy(template)
 
 
 def test_save_load_round_trip_ics55(tmp_path):
@@ -64,7 +63,7 @@ def test_save_load_round_trip_preserves_reserved_payloads(tmp_path):
     payload = {
         "design": "gcd",
         "config_overrides": {
-            "route": {"RT": {"-thread_number": "16"}},
+            "routing": {"RT": {"-thread_number": "16"}},
             "dreamplace": {
                 "RePlAce_LOWER_PCOF": 1.2,
                 "global_place_stages": [{"Llambda_density_weight_iteration": 2}],
@@ -98,7 +97,7 @@ def test_design_section_mirrors_identity_keys(tmp_path):
     assert "clock" not in document["params"]
 
 
-def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
+def test_save_moves_identity_to_sections_and_keeps_dreamplace_subtable(tmp_path):
     payload = {
         "design": "gcd",
         "top_module": "gcd",
@@ -106,23 +105,13 @@ def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
         "frequency_max": 50.0,
         "pdk": "ics55",
         "pdk_root": "/abs/pdk",
-        "target_density": 0.2,
-        "target_overflow": 0.1,
-        "cell_padding_x": 300,
-        "routability_opt_flag": 1,
-        "dreamplace": {
-            "target_density": 0.2,
-            "stop_overflow": 0.1,
-            "cell_padding_x": 300,
-            "routability_opt_flag": 1,
-            "num_threads": 8,
-        },
+        "dreamplace": {"target_density": 0.2, "num_threads": 8},
     }
 
     assert save_workspace_config(tmp_path, payload)
 
     document = tomllib.loads(workspace_config_path(tmp_path).read_text())
-    assert document["schema_version"] == 2
+    assert document["schema_version"] == WORKSPACE_CONFIG_SCHEMA_VERSION
     assert document["design"] == {
         "name": "gcd",
         "top": "gcd",
@@ -130,18 +119,11 @@ def test_save_deduplicates_identity_and_dreamplace_mirrors(tmp_path):
         "frequency_mhz": 50.0,
     }
     assert document["pdk"] == {"name": "ics55", "root": "/abs/pdk"}
-    assert set(document["params"]) == {
-        "target_density",
-        "target_overflow",
-        "cell_padding_x",
-        "routability_opt_flag",
-        "dreamplace",
-    }
-    assert document["params"]["dreamplace"] == {"num_threads": 8}
+    assert document["params"] == {"dreamplace": {"target_density": 0.2, "num_threads": 8}}
 
     loaded = load_workspace_config(tmp_path)
     loaded.pop("_flow", None)
-    assert loaded == payload | {"dreamplace": {"num_threads": 8}}
+    assert loaded == payload
 
 
 def test_save_load_preserves_internal_input_mode(tmp_path):
@@ -176,29 +158,29 @@ def test_absolute_pdk_config_outside_workspace_stays_absolute(tmp_path):
 
 def test_flow_validation_preset_with_start_end_rejected():
     with pytest.raises(WorkspaceFlowTargetError):
-        validate_flow_config({"preset": "rtl2gds", "start": "Synthesis", "end": "Harden"})
+        validate_flow_config({"preset": "rtl2gds", "start": "synthesis", "end": "harden"})
 
 
 def test_flow_validation_single_start_rejected():
     with pytest.raises(WorkspaceFlowTargetError):
-        validate_flow_config({"start": "Synthesis"})
+        validate_flow_config({"start": "synthesis"})
     with pytest.raises(WorkspaceFlowTargetError):
-        validate_flow_config({"end": "Harden"})
+        validate_flow_config({"end": "harden"})
 
 
 def test_flow_validation_unknown_step_rejected():
     with pytest.raises(WorkspaceFlowTargetError):
-        validate_flow_config({"start": "Synthesis", "end": "not_a_step"})
+        validate_flow_config({"start": "synthesis", "end": "not_a_step"})
 
 
 def test_flow_validation_start_after_end_rejected():
     with pytest.raises(WorkspaceFlowTargetError):
-        validate_flow_config({"start": "Harden", "end": "Synthesis"})
+        validate_flow_config({"start": "harden", "end": "synthesis"})
 
 
 def test_flow_validation_accepts_canonical_names():
-    assert validate_flow_config({"start": "Synthesis", "end": "filler"}) == {
-        "start": "Synthesis",
+    assert validate_flow_config({"start": "synthesis", "end": "filler"}) == {
+        "start": "synthesis",
         "end": "filler",
     }
 
@@ -213,7 +195,7 @@ def test_flow_validation_rejects_display_name_aliases():
 def test_save_rejects_invalid_flow_target(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     with pytest.raises(WorkspaceFlowTargetError):
-        save_workspace_config(tmp_path, payload, {"start": "Harden", "end": "Synthesis"})
+        save_workspace_config(tmp_path, payload, {"start": "harden", "end": "synthesis"})
     assert not workspace_config_path(tmp_path).exists()
 
 
@@ -242,7 +224,7 @@ def test_load_flow_violation_raises(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     save_workspace_config(tmp_path, payload, {"preset": "rtl2gds"})
     text = workspace_config_path(tmp_path).read_text()
-    bad_flow = 'preset = "rtl2gds"\nstart = "Synthesis"\nend = "Harden"'
+    bad_flow = 'preset = "rtl2gds"\nstart = "synthesis"\nend = "harden"'
     workspace_config_path(tmp_path).write_text(text.replace('preset = "rtl2gds"', bad_flow))
     with pytest.raises(WorkspaceFlowTargetError):
         load_workspace_config(tmp_path)
@@ -254,15 +236,26 @@ def test_missing_flow_section_derives_from_flow_ledger(tmp_path):
     payload = _flat_template(ICS55_PARAMETERS_TEMPLATE)
     save_workspace_config(tmp_path, payload)
     steps = {
+        "schema_version": 3,
         "steps": [
-            {"name": "Synthesis", "tool": "yosys", "state": "Success"},
-            {"name": "filler", "tool": "ecc", "state": "Success"},
-        ]
+            {
+                "name": "synthesis",
+                "tool": "yosys",
+                "state": "Success",
+                **step_fields("synthesis", "yosys"),
+            },
+            {
+                "name": "filler",
+                "tool": "ecc",
+                "state": "Success",
+                **step_fields("filler", "ecc"),
+            },
+        ],
     }
     (tmp_path / "home" / "flow.json").write_text(json.dumps(steps))
 
     loaded = load_workspace_config(tmp_path)
-    assert loaded["_flow"] == {"start": "Synthesis", "end": "filler"}
+    assert loaded["_flow"] == {"start": "synthesis", "end": "filler"}
 
 
 def test_missing_flow_and_missing_ledger_falls_back_to_empty(tmp_path):
@@ -288,37 +281,34 @@ def test_chip_identity_rejects_legacy_long_keys():
     assert not parameters_have_chip_identity(legacy)
 
 
-def test_canonical_chain_and_preset_ranges():
-    chain = canonical_flow_chain()
-    assert chain[0] == "Synthesis"
-    assert chain[-1] == "Harden"
-    assert "RCX" in chain and "sta" in chain
-
-    assert flow_range_for_preset("rtl2gds") == ("Synthesis", "Harden")
-    assert flow_range_for_preset("synthesis_lec") == ("Synthesis", "lec")
+def test_preset_ranges():
+    assert flow_range_for_preset("rtl2gds") == ("synthesis", "harden")
+    assert flow_range_for_preset("synthesis_lec") == ("synthesis", "lec@synthesis")
 
 
 def test_flow_range_of_section_forms():
     assert flow_range_of({}) is None
-    assert flow_range_of({"preset": "rtl2gds"}) == ("Synthesis", "Harden")
-    assert flow_range_of({"start": "place", "end": "route"}) == ("place", "route")
+    assert flow_range_of({"preset": "rtl2gds"}) == ("synthesis", "harden")
+    assert flow_range_of({"start": "placement", "end": "routing"}) == ("placement", "routing")
 
 
 def test_flow_steps_in_range():
-    assert flow_steps_in_range("RCX", "sta") == ["RCX", "sta"]
+    assert flow_steps_in_range("rcx", "sta") == ["rcx", "sta"]
     with pytest.raises(WorkspaceFlowTargetError):
         flow_steps_in_range("nope", "sta")
 
 
 def test_flow_section_from_flow_config_range():
-    section = flow_section_from_flow_config({"start_step": "Place", "end_step": "Route"})
-    assert section == {"start": "place", "end": "route"}
+    section = flow_section_from_flow_config({"start_step": "placement", "end_step": "routing"})
+    assert section == {"start": "placement", "end": "routing"}
 
 
 def test_flow_section_from_flow_config_non_contiguous_degrades(caplog):
     with caplog.at_level("WARNING"):
-        section = flow_section_from_flow_config({"steps": ["Synth", "Place", "CTS"]})
-    assert section == {"start": "Synthesis", "end": "CTS"}
+        section = flow_section_from_flow_config(
+            {"schema_version": 3, "steps": ["synthesis", "placement", "cts"]}
+        )
+    assert section == {"start": "synthesis", "end": "cts"}
     assert any("non-contiguous" in record.message for record in caplog.records)
 
 
@@ -332,16 +322,6 @@ def test_flow_validation_rejects_unknown_preset():
         validate_flow_config({"preset": "does_not_exist"})
 
 
-def test_flow_section_skip_steps_normalize():
-    assert validate_flow_config({"skip_steps": ["LEC", "postlec"]}) == {
-        "skip_steps": ["lec", "postRouteLec"]
-    }
-    # Idempotent on already-normalized input.
-    assert validate_flow_config({"skip_steps": ["lec", "postRouteLec"]}) == {
-        "skip_steps": ["lec", "postRouteLec"]
-    }
-
-
 def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
     from chipcompiler.data.workspace_config import load_workspace_config
 
@@ -351,34 +331,33 @@ def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
         assert save_workspace_config(tmp_path, payload, section)
         return load_workspace_config(tmp_path)["_flow"]
 
-    assert _round_trip({"start": "Synthesis", "end": "Harden"}) == {
-        "start": "Synthesis",
-        "end": "Harden",
+    assert _round_trip({"start": "synthesis", "end": "harden"}) == {
+        "start": "synthesis",
+        "end": "harden",
     }
-    assert _round_trip({"start": "Synthesis", "end": "Harden", "skip_steps": []}) == {
-        "start": "Synthesis",
-        "end": "Harden",
+    assert _round_trip({"start": "synthesis", "end": "harden", "skip_steps": []}) == {
+        "start": "synthesis",
+        "end": "harden",
         "skip_steps": [],
     }
-    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["LEC"]}) == {
+    assert _round_trip({"preset": "rtl2gds", "skip_steps": ["diff_opt"]}) == {
         "preset": "rtl2gds",
-        "skip_steps": ["lec"],
+        "skip_steps": ["diff_opt"],
     }
 
 
 def test_flow_section_policy_only_skip_steps_is_valid():
-    assert validate_flow_config({"skip_steps": ["lec"]}) == {"skip_steps": ["lec"]}
-    assert flow_range_of({"skip_steps": ["lec"]}) is None
+    assert validate_flow_config({"skip_steps": ["diff_opt"]}) == {"skip_steps": ["diff_opt"]}
+    assert flow_range_of({"skip_steps": ["diff_opt"]}) is None
 
 
-def test_flow_section_lec_engine_normalizes_the_dual_alias():
-    assert validate_flow_config({"lec_engine": "dual"}) == {"lec_engine": "lec_dual"}
-    assert validate_flow_config({"preset": "rtl2gds", "lec_engine": "yosys_lec"}) == {
+def test_flow_section_keeps_the_lec_engine():
+    assert validate_flow_config({"preset": "rtl2gds", "lec_engine": "kepler_formal"}) == {
         "preset": "rtl2gds",
-        "lec_engine": "yosys_lec",
+        "lec_engine": "kepler_formal",
     }
     # Policy-only section: no flow target, just the engine.
-    assert flow_range_of({"lec_engine": "lec_dual"}) is None
+    assert flow_range_of({"lec_engine": "kepler_formal"}) is None
 
 
 def test_flow_section_rejects_invalid_lec_engine():
@@ -391,20 +370,38 @@ def test_flow_section_rejects_invalid_lec_engine():
 def test_flow_section_rejects_invalid_skip_steps():
     with pytest.raises(WorkspaceFlowTargetError, match="skip_steps"):
         validate_flow_config({"skip_steps": "lec"})
-    with pytest.raises(WorkspaceFlowTargetError, match="cannot be skipped"):
-        validate_flow_config({"skip_steps": ["route"]})
+    with pytest.raises(WorkspaceFlowTargetError, match="unknown flow steps: bogus"):
+        validate_flow_config({"skip_steps": ["bogus"]})
+
+
+def test_preset_section_may_skip_its_first_step_but_not_its_final_step():
+    assert validate_flow_config({"preset": "rtl2gds", "skip_steps": ["synthesis"]}) == {
+        "preset": "rtl2gds",
+        "skip_steps": ["synthesis"],
+    }
+    with pytest.raises(WorkspaceFlowTargetError, match="'synthesis' ends the 'syn_sta' preset"):
+        validate_flow_config({"preset": "syn_sta", "skip_steps": ["synthesis"]})
+    # An inserted check does not end a preset: skipping Synthesis drops lec@synthesis too.
+    with pytest.raises(
+        WorkspaceFlowTargetError, match="'synthesis' ends the 'synthesis_lec' preset"
+    ):
+        validate_flow_config({"preset": "synthesis_lec", "skip_steps": ["synthesis"]})
 
 
 def test_flow_section_from_flow_config_carries_declared_skip():
     section = flow_section_from_flow_config(
-        {"start_step": "Place", "end_step": "Route", "skip_steps": ["TimingOpt"]}
+        {"start_step": "placement", "end_step": "routing", "skip_steps": ["timing_optimization"]}
     )
-    assert section == {"start": "place", "end": "route", "skip_steps": ["Timing optimization"]}
+    assert section == {
+        "start": "placement",
+        "end": "routing",
+        "skip_steps": ["timing_optimization"],
+    }
 
     # An undeclared policy stays absent; the code default keeps applying.
-    assert flow_section_from_flow_config({"start_step": "Place", "end_step": "Route"}) == {
-        "start": "place",
-        "end": "route",
+    assert flow_section_from_flow_config({"start_step": "placement", "end_step": "routing"}) == {
+        "start": "placement",
+        "end": "routing",
     }
 
 
@@ -424,37 +421,17 @@ def test_save_replace_and_cleanup_failure_returns_false(
     assert not workspace_config_path(tmp_path).exists()
 
 
-def test_load_normalizes_legacy_long_keys(tmp_path):
-    """AC-1: a hand-written params.toml with legacy long keys loads canonical."""
-    from chipcompiler.data.workspace_config import load_workspace_config
-
-    home = tmp_path / "home"
-    home.mkdir()
-    (home / "params.toml").write_text(
-        '[design]\nname = "gcd"\ntop = "gcd"\nclock_port = "clk"\n'
-        '\n[pdk]\nname = "ics55"\nroot = "/pdk"\n'
-        '\n[params]\n"Max fanout" = 48\n"Target density" = 0.7\n'
-    )
-
-    payload = load_workspace_config(tmp_path)
-
-    assert payload["max_fanout"] == 48
-    assert payload["target_density"] == 0.7
-    assert "Max fanout" not in payload
-    assert "Target density" not in payload
-
-
 def test_load_rejects_non_table_sections(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("params = [1]\n")
+    workspace_config_path(tmp_path).write_text("schema_version = 4\nparams = [1]\n")
     with pytest.raises(WorkspaceConfigError):
         load_workspace_config(tmp_path)
 
 
 def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
     workspace_config_path(tmp_path).parent.mkdir(parents=True)
-    workspace_config_path(tmp_path).write_text("[params]\n")
-    (tmp_path / "home" / "flow.json").write_text('{"steps": 1}')
+    workspace_config_path(tmp_path).write_text("schema_version = 4\n[params]\n")
+    (tmp_path / "home" / "flow.json").write_text('{"schema_version": 3, "steps": 1}')
 
     loaded = load_workspace_config(tmp_path)
 
@@ -492,37 +469,6 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
     assert not (external_home / "params.toml").exists()
 
 
-def test_migration_refuses_symlinked_home_parent(tmp_path):
-    from chipcompiler.data.workspace_config import migrate_legacy_parameters
-
-    workspace_dir = tmp_path / "ws"
-    external_home = tmp_path / "external-home"
-    external_home.mkdir()
-    (external_home / "parameters.json").write_text('{"Design": "gcd"}')
-    workspace_dir.mkdir()
-    (workspace_dir / "home").symlink_to(external_home, target_is_directory=True)
-
-    migrate_legacy_parameters(workspace_dir)
-
-    assert (external_home / "parameters.json").exists()
-    assert not (external_home / "params.toml").exists()
-
-
-def test_migration_refuses_symlinked_legacy_parameters_file(tmp_path):
-    from chipcompiler.data.workspace_config import migrate_legacy_parameters
-
-    workspace_dir = tmp_path / "ws"
-    (workspace_dir / "home").mkdir(parents=True)
-    external = tmp_path / "external.json"
-    external.write_text('{"Design": "gcd"}')
-    (workspace_dir / "home" / "parameters.json").symlink_to(external)
-
-    migrate_legacy_parameters(workspace_dir)
-
-    assert not (workspace_dir / "home" / "params.toml").exists()
-    assert (workspace_dir / "home" / "parameters.json").is_symlink()
-
-
 def test_save_drops_null_values_instead_of_failing(tmp_path):
     from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
 
@@ -554,27 +500,28 @@ def test_save_drops_null_list_elements_with_a_warning(tmp_path):
 
 def test_flow_section_rejects_skipped_step_as_range_boundary():
     with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
-        validate_flow_config({"start": "Synthesis", "end": "lec", "skip_steps": ["lec"]})
+        validate_flow_config({"start": "synthesis", "end": "diff_opt", "skip_steps": ["diff_opt"]})
     # Same rule when the boundary step is the start.
     with pytest.raises(WorkspaceFlowTargetError, match="cannot bound the flow range"):
-        validate_flow_config({"start": "lec", "end": "Harden", "skip_steps": ["LEC"]})
+        validate_flow_config({"start": "diff_opt", "end": "harden", "skip_steps": ["diff_opt"]})
     # A skipped step INSIDE the range is fine.
     assert validate_flow_config(
-        {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
-    ) == {"start": "Synthesis", "end": "preFloorplan", "skip_steps": ["lec"]}
+        {"start": "synthesis", "end": "cts", "skip_steps": ["diff_opt"]}
+    ) == {
+        "start": "synthesis",
+        "end": "cts",
+        "skip_steps": ["diff_opt"],
+    }
 
 
-def test_save_persists_normalized_skip_steps(tmp_path):
-    """save_workspace_config renders the validated [flow] section, so the
-    persisted policy is canonical regardless of the declared spelling."""
-    from chipcompiler.data.workspace_config import load_workspace_config
+def test_parameter_sources_round_trip_with_dotted_parameter_ids(tmp_path):
+    payload = {
+        "design": "gcd",
+        "_param_sources": {"cts.max_fanout": "cli", "design.frequency_mhz": "ecc.toml"},
+    }
+    assert save_workspace_config(tmp_path, payload)
 
-    payload = {"design": "gcd", "top_module": "gcd", "clock": "clk"}
-    assert save_workspace_config(
-        tmp_path, payload, {"start": "Synthesis", "end": "Harden", "skip_steps": ["TimingOpt"]}
-    )
+    loaded = load_workspace_config(tmp_path)
+    loaded.pop("_flow", None)
 
-    raw = (tmp_path / "home" / "params.toml").read_text()
-    assert "Timing optimization" in raw
-    assert "TimingOpt" not in raw
-    assert load_workspace_config(tmp_path)["_flow"]["skip_steps"] == ["Timing optimization"]
+    assert loaded == payload

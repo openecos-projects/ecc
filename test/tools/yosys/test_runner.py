@@ -248,7 +248,7 @@ def test_run_step_records_missing_step_directory_as_incomplete(tmp_path, monkeyp
     rtl = tmp_path / "top.v"
     rtl.write_text("module top; endmodule\n", encoding="utf-8")
     step = YosysStep(
-        name="Synthesis",
+        name="synthesis",
         tool="yosys",
         directory=None,
         input=StepInput(verilog=rtl),

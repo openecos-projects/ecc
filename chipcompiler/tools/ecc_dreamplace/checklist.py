@@ -57,7 +57,7 @@ class DreamplaceChecklist:
                 step=step.value,
                 type=type,
                 item=item,
-                state=CheckState.Unstart.value,
+                state=CheckState.UNAVAILABLE,
             )
 
     def build_checklist(self) -> list:
@@ -148,9 +148,9 @@ class DreamplaceChecklist:
             else:
                 type, item, success, info, warning = check
 
-            state = CheckState.Passed
+            state = CheckState.PASS
             if not success:
-                state = CheckState.Warning if warning else CheckState.Failed
+                state = CheckState.WARNING if warning else CheckState.FAILED
             self.set_item_state(
                 step=step,
                 type=type,

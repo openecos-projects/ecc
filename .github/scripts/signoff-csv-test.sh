@@ -76,7 +76,7 @@ fresh_workspace "${ws}"
 check_export "happy path passes" "${ws}" pass
 
 summary_file="${tmp}/summary.md"
-sed -i 's/^Harden,die_area,40000.0,/Harden,die_area,,/' "${ws}/out/area.csv"
+sed -i 's/^harden,die_area,40000.0,/harden,die_area,,/' "${ws}/out/area.csv"
 mkdir -p "${ws}/signoff-artifacts/e2e-signoff-csv-invalid"
 ln -s "${ws}/out" "${ws}/signoff-artifacts/e2e-signoff-csv-gcd"
 printf '%s\n' '{"schema_version":2,"kind":"signoff_csv_manifest","gate":"PASS","checks":{}}' \
@@ -101,13 +101,13 @@ printf -v expected_summary '%s\n' \
   '' \
   '| Step | Metric | Value |' \
   '| --- | --- | --- |' \
-  '| `Synthesis` | `synthesis_cell_area` | `4200.0` um^2 |' \
-  '| `postFloorplan` | `die_area` | `40000.0` um^2 |' \
-  '| `postFloorplan` | `core_area` | `32000.0` um^2 |' \
-  '| `postFloorplan` | `core_utilization` | `0.62` ratio |' \
-  '| `Harden` | `die_area` | N/A |' \
-  '| `Harden` | `core_area` | `32000.0` um^2 |' \
-  '| `Harden` | `core_utilization` | `0.62` ratio |' \
+  '| `synthesis` | `synthesis_cell_area` | `4200.0` um^2 |' \
+  '| `post_floorplan` | `die_area` | `40000.0` um^2 |' \
+  '| `post_floorplan` | `core_area` | `32000.0` um^2 |' \
+  '| `post_floorplan` | `core_utilization` | `0.62` ratio |' \
+  '| `harden` | `die_area` | N/A |' \
+  '| `harden` | `core_area` | `32000.0` um^2 |' \
+  '| `harden` | `core_utilization` | `0.62` ratio |' \
   '' \
   '#### STA' \
   '' \
@@ -139,89 +139,90 @@ pass "job summary aggregates reports and handles missing or invalid artifacts"
 # 2. LEC: no selected-engine result -> mandatory gate fails.
 ws="${tmp}/lec-missing"
 fresh_workspace "${ws}"
-rm -rf "${ws}/postRouteLec_kepler_formal"
+rm -rf "${ws}/post_route_lec_kepler_formal"
 check_export "LEC missing result fails" "${ws}" fail
 
 # 3. LEC: recorded hash no longer matches the netlist -> stale fails.
 ws="${tmp}/lec-stale"
 fresh_workspace "${ws}"
-mutate_json "${ws}/postRouteLec_kepler_formal/output/gcd_postRouteLec_result.json" \
+mutate_json "${ws}/post_route_lec_kepler_formal/output/gcd_post_route_lec_result.json" \
   '.golden_sha256 = ("0" * 64)'
 check_export "LEC stale netlist fails" "${ws}" fail
 
-# 4. LEC: cross-engine residue must not satisfy the selected engine.
+# 4. LEC: a kepler-formal result must not satisfy a ledger naming another
+#    engine (one built with the removed yosys_lec engine).
 ws="${tmp}/lec-residue"
 fresh_workspace "${ws}"
 mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "yosys_lec"'
+  '(.steps[] | select(.name == "post_route_lec")) |= . + {tool: "yosys_lec", directory: "post_route_lec_yosys_lec"}'
 check_export "LEC cross-engine residue fails" "${ws}" fail
 
-# 5. LEC: supported yosys_lec engine passes when its own result exists.
-ws="${tmp}/lec-yosys"
-fresh_workspace "${ws}"
-mv "${ws}/postRouteLec_kepler_formal" "${ws}/postRouteLec_yosys_lec"
-mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "yosys_lec"'
-check_export "LEC yosys_lec passes" "${ws}" pass
-
-# 6. LEC: supported lec_dual engine is not hidden by directory filtering.
-ws="${tmp}/lec-dual"
-fresh_workspace "${ws}"
-mv "${ws}/postRouteLec_kepler_formal" "${ws}/postRouteLec_dual"
-mutate_json "${ws}/home/flow.json" \
-  '(.steps[] | select(.name == "postRouteLec") | .tool) = "lec_dual"'
-check_export "LEC lec_dual passes" "${ws}" pass
-
-# 7. DRC: clean gate reported as fail -> mandatory gate fails.
+# 5. DRC: clean gate reported as fail -> mandatory gate fails.
 ws="${tmp}/drc-fail"
 fresh_workspace "${ws}"
 mutate_json "${ws}/drc_ecc/analysis/qor_summary.json" \
   '(.gates[] | select(.id == "qor.drc.clean") | .state) = "fail"'
 check_export "DRC gate fail fails" "${ws}" fail
 
-# 8. DRC: metric missing while gate claims pass -> inconsistent evidence fails.
+# 6. DRC: metric missing while gate claims pass -> inconsistent evidence fails.
 ws="${tmp}/drc-missing-metric"
 fresh_workspace "${ws}"
 mutate_json "${ws}/drc_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id != "drc_count")]'
 check_export "DRC missing metric fails" "${ws}" fail
 
-# 9. STA: a missing mandatory metric -> present=false fails.
+# 7. STA: a missing mandatory metric -> present=false fails.
 ws="${tmp}/sta-missing"
 fresh_workspace "${ws}"
 mutate_json "${ws}/sta_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id != "sta_setup_wns")]'
 check_export "STA missing metric fails" "${ws}" fail
 
-# 10. Harden: missing final artifact -> present=false fails.
+# 8. Harden: missing final artifact -> present=false fails.
 ws="${tmp}/harden-missing-artifact"
 fresh_workspace "${ws}"
-rm -f "${ws}/Harden_ecc/output/gcd_Harden.gds"
-check_export "Harden missing artifact fails" "${ws}" fail
+rm -f "${ws}/harden_ecc/output/gcd_harden.gds"
+check_export "harden missing artifact fails" "${ws}" fail
 
-# 11. Fallback shape: no flow.json.design; design comes from params.toml.
-ws="${tmp}/no-flow-json"
-fresh_workspace "${ws}"
-rm -f "${ws}/home/flow.json"
-check_export "no flow.json still passes from params design" "${ws}" pass
-
-# 12. postRouteLec omitted from the ledger is not a mandatory LEC gate.
+# 9. post_route_lec omitted from the ledger is not a mandatory LEC gate.
 ws="${tmp}/lec-skipped"
 fresh_workspace "${ws}"
-mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "postRouteLec")]'
-check_export "postRouteLec omitted from ledger is skipped and passes" "${ws}" pass
+mutate_json "${ws}/home/flow.json"   '.steps = [.steps[] | select(.name != "post_route_lec")]'
+check_export "post_route_lec omitted from ledger is skipped and passes" "${ws}" pass
 
-# 13. postRouteLec present but non-success must fail, never read stale residue.
+# 10. post_route_lec present but non-success must fail, never read stale residue.
 ws="${tmp}/lec-non-success"
 fresh_workspace "${ws}"
-mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "postRouteLec") | .state) = "Incomplete"'
-check_export "postRouteLec non-success fails despite stale result" "${ws}" fail
+mutate_json "${ws}/home/flow.json"   '(.steps[] | select(.name == "post_route_lec") | .state) = "Incomplete"'
+check_export "post_route_lec non-success fails despite stale result" "${ws}" fail
 
-# 14. Harden area metrics are optional; final artifacts still satisfy the gate.
+# 11. Harden area metrics are optional; final artifacts still satisfy the gate.
 ws="${tmp}/harden-optional-area"
 fresh_workspace "${ws}"
-mutate_json "${ws}/Harden_ecc/analysis/qor_metrics.json" \
+mutate_json "${ws}/harden_ecc/analysis/qor_metrics.json" \
   '.metrics = [.metrics[] | select(.id == "harden_artifact_missing_count")]'
-check_export "Harden optional area metrics do not fail the gate" "${ws}" pass
+check_export "harden optional area metrics do not fail the gate" "${ws}" pass
+
+# 12. Indexed step directories must populate CSV data used by the job summary.
+ws="${tmp}/indexed"
+fresh_workspace "${ws}"
+mv "${ws}/synthesis_yosys" "${ws}/01_synthesis_yosys"
+mv "${ws}/post_floorplan_ecc" "${ws}/04_post_floorplan_ecc"
+mv "${ws}/drc_ecc" "${ws}/14_drc_ecc"
+mv "${ws}/sta_ecc" "${ws}/18_sta_ecc"
+mv "${ws}/post_route_lec_kepler_formal" "${ws}/16_post_route_lec_kepler_formal"
+mv "${ws}/harden_ecc" "${ws}/21_harden_ecc"
+mutate_json "${ws}/home/flow.json" \
+  '.steps = [.steps[] | . + {directory: ({
+    "synthesis": "01_synthesis_yosys",
+    "post_floorplan": "04_post_floorplan_ecc",
+    "drc": "14_drc_ecc",
+    "sta": "18_sta_ecc",
+    "post_route_lec": "16_post_route_lec_kepler_formal",
+    "harden": "21_harden_ecc"
+  }[.name] // (.name + "_" + .tool))}]'
+check_export "indexed step directories pass" "${ws}" pass
+grep -q '^synthesis,synthesis_cell_area,4200.0,um^2,01_synthesis_yosys/analysis/qor_metrics.json,true$' \
+  "${ws}/out/area.csv" || fail "indexed synthesis area is missing from the summary CSV"
 
 echo "all signoff CSV negative-path checks passed"

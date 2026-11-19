@@ -15,8 +15,8 @@
 #   <name>/          copied project; flow output in <name>/default/
 #   <name>.log       full ecc run log
 #
-# Exit status is 0 only if every selected design produced
-# <name>/default/home/flow.json; failures of one design do not stop the rest.
+# Exit status is 0 only if every selected design completed its flow and
+# exported <name>/signoff.tar.gz; failures of one design do not stop the rest.
 
 set -euo pipefail
 
@@ -88,10 +88,17 @@ run_one() {
   else
     cp -a "$src" "$dst"
   fi
+  local archive="$dst/signoff.tar.gz"
+
   if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" PYTHONUNBUFFERED=1 \
-    "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log" \
-    && [[ -f "$dst/default/home/flow.json" ]]; then
-    echo "PASS $name"
+    "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log"; then
+    if "$ECC" signoff export --project "$dst" --workspace default \
+      --output "$archive" --plain >>"$log" 2>&1 && [[ -s "$archive" ]]; then
+      echo "PASS $name"
+    else
+      echo "FAIL $name (signoff export, log: $log)"
+      return 1
+    fi
   else
     echo "FAIL $name (log: $log)"
     return 1

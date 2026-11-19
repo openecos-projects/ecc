@@ -1,3 +1,4 @@
+from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
 EXCLUDED_PAYLOAD_PREFIXES = (
@@ -42,6 +43,34 @@ def collect_package_extension_binaries(search_locations, pattern, destination):
                 binaries.append(entry)
                 collected_names.add(extension.name)
     return binaries
+
+
+def normalize_python_extension(path, build_root):
+    path = Path(path)
+    full_tag = next(
+        (suffix for suffix in EXTENSION_SUFFIXES if suffix.startswith(".cpython-")), None
+    )
+    if full_tag is None:
+        return path
+    for suffix in EXTENSION_SUFFIXES:
+        if not path.name.endswith(suffix):
+            continue
+        if suffix == full_tag:
+            return path
+        stem = (
+            path.name.split(".cpython-", 1)[0]
+            if ".cpython-" in path.name
+            else path.name.removesuffix(suffix)
+        )
+        target = Path(build_root) / f"{stem}{full_tag}"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists() or target.is_symlink():
+            if target.resolve() == path.resolve():
+                return target
+            target.unlink()
+        target.symlink_to(path.resolve())
+        return target
+    return path
 
 
 def payload_path_matches(path, prefix):

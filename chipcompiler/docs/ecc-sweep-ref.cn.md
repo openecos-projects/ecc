@@ -26,7 +26,7 @@
 
 ```bash
 ecc sweep create --project /path/to/project --name density \
-  --param place.target_density=0.60,0.65 \
+  --param placement:place.target_density=0.60,0.65 \
   --param cts.max_fanout=16,32
 ecc sweep run   --project /path/to/project --name density
 ecc sweep compare --project /path/to/project --name density
@@ -68,7 +68,9 @@ ecc sweep create --name NAME --param KEY=V1[,V2,...] [--param KEY=... ...] [--pr
 
 冻结计划。`--param` 可重复，每条形如 `KEY=VALUE[,VALUE...]` 且至少一个取值。
 KEY 即已审核的 `ecc param` 键，取值在执行时原样传给 `ecc run --set`，因此适用同一
-套校验（非法取值会失败在该候选的 run，而不是 create）。已存在的名字、畸形的
+套校验（非法取值会失败在该候选的 run，而不是 create）。按步骤的键（如 DreamPlace 的
+`place.*` 参数）必须带上步骤，例如 `placement:place.target_density`；不带步骤的键会让
+该候选的 run 以 `parameter_step_required` 失败。已存在的名字、畸形的
 `--param`、空参数集都退出 `2`。
 
 输出的计划 JSON 与之后 `sweep show` 打印的内容一致。
@@ -201,7 +203,7 @@ Pareto 模式接受 1–3 个互不相同的目标。每个 `ID` 必须属于 EC
 | `plan_fingerprint` | str | 对除 `created_at` 外全部字段的规范 JSON 计算 SHA-256 |
 
 候选 id 为 `candidate_0001`…，按网格顺序编号：参数 key 排序后，最后一个 key 的
-取值变化最快（上例中 `cts.max_fanout=16 + place.target_density=0.60` 即
+取值变化最快（上例中 `cts.max_fanout=16 + placement:place.target_density=0.60` 即
 `candidate_0001`）。
 
 `plan_fingerprint` 可在排除创建时间后比较两个计划是否一致：参数相同且候选顺序

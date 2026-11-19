@@ -12,19 +12,16 @@ import tempfile
 from pathlib import Path
 
 CONFIG_OVERRIDES_KEY = "config_overrides"
-_LEGACY_CONFIG_OVERRIDES_KEY = "Config Overrides"
 
 
 def apply_config_overrides(config_paths: dict[str, Path], parameters: dict) -> None:
     overrides = parameters.get(CONFIG_OVERRIDES_KEY)
-    if overrides is None:
-        overrides = parameters.get(_LEGACY_CONFIG_OVERRIDES_KEY)
     if not isinstance(overrides, dict):
         return
 
     staged: list[tuple[Path, dict, bytes | None]] = []
     for config_key, patch in overrides.items():
-        config_path = _config_path_for_key(config_paths, config_key)
+        config_path = config_path_for_key(config_paths, config_key)
         if config_path is None:
             raise ValueError(f"unknown config override target: {config_key}")
         if not isinstance(patch, dict):
@@ -95,7 +92,7 @@ def _write_json_strict(path: Path, config: dict) -> None:
         raise
 
 
-def _config_path_for_key(config_paths: dict[str, Path], config_key: object) -> Path | None:
+def config_path_for_key(config_paths: dict[str, Path], config_key: object) -> Path | None:
     if not isinstance(config_key, str) or config_key.casefold() == "dir":
         return None
     exact = config_paths.get(config_key)

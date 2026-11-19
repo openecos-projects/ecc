@@ -324,13 +324,20 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
         / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
     )
     owner = StepEnum.MACRO_PLACEMENT.value
+    step_config = tmp_path / "macro_placement" / "config" / "dreamplace_ecc.json"
+    step_config.parent.mkdir(parents=True)
+    step_config.write_text(config_path.read_text())
     module = DreamplaceModule(
         workspace=Workspace(
             directory=tmp_path,
             design=OriginDesign(name="macro_status_test"),
             config={"dreamplace": config_path},
         ),
-        step=EccStep(name=owner, data=EccData(dir=tmp_path, steps={owner: tmp_path})),
+        step=EccStep(
+            name=owner,
+            data=EccData(dir=tmp_path, steps={owner: tmp_path}),
+            directory=tmp_path / "macro_placement",
+        ),
         ecc_module=ecc_module,
         input_def=None,
         input_verilog=None,

@@ -5,15 +5,18 @@ from pathlib import Path
 import pytest
 import tomli_w
 
-from chipcompiler.cli.project.params import (
-    build_backend_overrides,
-    build_config_overrides,
+from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.step_parameters import (
+    step_key,
+    step_parameter_view,
+)
+from chipcompiler.data.workspace.config_overrides import apply_config_overrides
+from chipcompiler.params import (
+    build_step_params,
     parse_cli_overrides,
     parse_toml_params,
     resolve_parameters,
 )
-from chipcompiler.data import EccData, EccStep, OriginDesign, StepEnum, Workspace
-from chipcompiler.data.workspace.config_overrides import apply_config_overrides
 from chipcompiler.tools.ecc_dreamplace.module import DreamplaceModule, DreamplaceRunMode
 from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_direct_config_overrides
 
@@ -95,21 +98,20 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
     ],
 )
 def test_window_override_reaches_dreamplace_config(public, dreamplace_default_config):
+    step_keyed = {step_key("placement", key): value for key, value in public.items()}
     cli, errors = parse_cli_overrides(
         [
             key + "=" + (value if isinstance(value, str) else json.dumps(value))
-            for key, value in public.items()
+            for key, value in step_keyed.items()
         ]
     )
-    assert (cli, errors) == (public, [])
+    assert (cli, errors) == (step_keyed, [])
     direct = {key.removeprefix("place."): value for key, value in public.items()}
-    toml, errors = parse_toml_params({"place": direct})
-    assert (toml, errors) == (public, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    overrides = build_config_overrides(resolved)
+    toml, errors = parse_toml_params({"step": {"placement": {"place": direct}}})
+    assert (toml, errors) == (step_keyed, [])
+    step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
     actual = apply_direct_config_overrides(
-        dreamplace_default_config, {"config_overrides": overrides}
+        dreamplace_default_config, step_parameter_view({"step_params": step_params}, "placement")
     )
     expected = dreamplace_default_config | direct
     if "timing_opt_coefficients" in direct:
@@ -127,53 +129,33 @@ def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_de
     for mode in ("inherit", "fixed"):
         cli, errors = parse_cli_overrides(
             [
-                "place.timing_opt_coefficients=" + json.dumps({"mode": mode}),
+                "placement:place.timing_opt_coefficients=" + json.dumps({"mode": mode}),
             ]
         )
         assert errors == []
-        resolved, errors = resolve_parameters(cli_overrides=cli)
-        assert errors == []
+        step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
         config = apply_direct_config_overrides(
             config,
-            {"config_overrides": build_config_overrides(resolved)},
+            step_parameter_view({"step_params": step_params}, "placement"),
         )
         effective = resolve_flow_config(config, explicit_keys=("timing_opt_coefficients",))
         assert effective["timing_opt_coefficients"] == preset | {"mode": mode}
-
-
-@pytest.mark.parametrize("enabled", [0, 1])
-def test_legacy_timing_opt_override_is_accepted(dreamplace_default_config, enabled):
-    public = {"place.inflation_s5b1_enabled": enabled}
-    cli, errors = parse_cli_overrides([f"place.inflation_s5b1_enabled={enabled}"])
-    assert (cli, errors) == (public, [])
-    resolved, errors = resolve_parameters(cli_overrides=cli)
-    assert errors == []
-    overrides = build_config_overrides(resolved)
-    actual = apply_direct_config_overrides(
-        dreamplace_default_config, {"config_overrides": overrides}
-    )
-    assert actual == dreamplace_default_config | {"timing_opt_enabled": enabled}
 
 
 def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_path):
     root = Path(__file__).resolve().parents[3]
     profile = json.loads((root / "test/regression/ics55/placement_s5b1.json").read_text())
     public = {key: value for key, value in profile.items() if value is not None}
-    text = tomli_w.dumps({"params": {"place": public}})
+    text = tomli_w.dumps({"params": {"step": {"placement": {"place": public}}}})
     parsed, errors = parse_toml_params(tomllib.loads(text)["params"])
     assert errors == []
-    resolved, errors = resolve_parameters(toml_overrides=parsed)
-    assert errors == []
-    parameters = build_backend_overrides(resolved)
-    parameters["config_overrides"] = build_config_overrides(resolved)
+    step_params = build_step_params(resolve_parameters(toml_overrides=parsed)[0])
+    parameters = step_parameter_view({"step_params": step_params}, "placement")
     path = tmp_path / "dreamplace.json"
     baseline = root / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
     path.write_text(baseline.read_text())
     apply_config_overrides({"dreamplace": path}, parameters)
     actual = json.loads(path.read_text())
-    # Legacy shared parameters are consumed by the template factory itself.
-    actual.update(parameters.get("dreamplace", {}))
-    path.write_text(json.dumps(actual))
     assert {key: actual[key] for key in public} == public
     workspace = Workspace(
         directory=tmp_path,
@@ -183,7 +165,11 @@ def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_pa
     step = EccStep(
         name=StepEnum.LEGALIZATION.value,
         data=EccData(steps={StepEnum.LEGALIZATION.value: tmp_path / "pl"}),
+        directory=tmp_path / "legalization",
     )
+    step_config = tmp_path / "legalization" / "config" / "dreamplace_ecc.json"
+    step_config.parent.mkdir(parents=True)
+    step_config.write_text(path.read_text())
     module = DreamplaceModule(workspace, step, None, None, None, None, None)
     params = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
     disabled = (

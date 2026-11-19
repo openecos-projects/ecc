@@ -217,7 +217,12 @@ def render_status(records, file=None, *, color=True):
             line = f"    {step_label} ({tool}) {status_label}"
             if runtime:
                 line += f" {runtime}"
+            if r.get("stale"):
+                line += f" {style('stale', YELLOW, enabled=color) if color else 'stale'}"
             target.write(f"{line}\n")
+            if r.get("stale_from"):
+                label = style("stale from:", DIM, enabled=color) if color else "stale from:"
+                target.write(f"      {label} {', '.join(r['stale_from'])}\n")
             _render_step_disclosure(target, r, color)
 
     target.write("\n")

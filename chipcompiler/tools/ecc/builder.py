@@ -20,6 +20,7 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     update_step_config,
 )
+from chipcompiler.data.step import new_step_directory
 
 
 def build_step(
@@ -31,8 +32,9 @@ def build_step(
     output_def: Path | None = None,
     output_verilog: Path | None = None,
     output_gds: Path | None = None,
-    tool: str = "ecc",
+    *,
     step_directory: Path | None = None,
+    tool: str = "ecc",
 ) -> EccStep:
     """
     Build the given step in the specified workspace.
@@ -41,7 +43,7 @@ def build_step(
     directory = (
         Path(step_directory)
         if step_directory
-        else Path(workspace.directory) / f"{step_name}_{tool}"
+        else Path(workspace.directory) / new_step_directory(step_name, tool)
     )
     design = workspace.design.name
     output_dir = directory / "output"
@@ -90,7 +92,6 @@ def build_step(
                 StepEnum.PREPLACE.value: data_dir / "preplace",
                 StepEnum.PLACEMENT.value: data_dir / "pl",
                 SkippableStepEnum.DIFF_OPT.value: data_dir / "diff_opt",
-                StepEnum.DIFF_BUFFERING.value: data_dir / "diff_buffering",
                 StepEnum.DIFF_SIZING.value: data_dir / "diff_sizing",
                 StepEnum.LEGALIZATION.value: data_dir / "pl",
                 StepEnum.FILLER.value: data_dir / "mj",

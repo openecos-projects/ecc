@@ -106,7 +106,7 @@ def test_clock_list_is_the_source_of_primary_flow_metadata(
     else:
         manifest_path = project / "project.json"
         document = json.loads(manifest_path.read_text())
-        document["base_design"]["parameters"]["frequency_max"] = "stale"
+        document["base_design"]["frequency_mhz"] = "stale"
         manifest_path.write_text(json.dumps(document))
     (project / "rtl/gcd.v").write_text("module gcd(input bus_clk, input aux); endmodule\n")
     config = project / "ecc.toml"

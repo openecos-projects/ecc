@@ -32,7 +32,7 @@ class TestEvidenceIndex:
 
     def test_invalid_selectors_reduce_integrity(self):
         inputs = make_inputs(gcd_metrics())
-        inputs.analyzed_steps = ["sta", "route"]
+        inputs.analyzed_steps = ["sta", "routing"]
         inputs.invalid_selector_count = 1
         evidence = _evidence(inputs)
         assert evidence.integrity == pytest.approx(1.0 - 1 / 2)

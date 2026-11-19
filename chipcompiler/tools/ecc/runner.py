@@ -13,7 +13,7 @@ from chipcompiler.data import (
     WorkspaceStep,
     workspace_config_key_path,
 )
-from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.handshake import ParasiticsSource, load_request, parasitics_source
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
@@ -60,7 +60,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.POST_FLOORPLAN.value,
         StepEnum.PLACEMENT.value,
         SkippableStepEnum.DIFF_OPT.value,
-        StepEnum.DIFF_BUFFERING.value,
         StepEnum.DIFF_SIZING.value,
         StepEnum.CTS.value,
         SkippableStepEnum.TIMING_OPT.value,
@@ -114,17 +113,31 @@ def copy_lvs_outputs(workspace: Workspace, step: EccStep):
         workspace.logger.info("Copied LVS %s to %s", source_path, target_path)
 
 
-def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
-    workspace_dir = workspace.directory
+def has_parasitics(workspace: Workspace, step: EccStep) -> bool:
+    """Whether *step* has parasitics to read; see :func:`parasitics_source`."""
+    return _parasitics_source(workspace, step) is not None
+
+
+def _parasitics_source(workspace: Workspace, step: EccStep) -> ParasiticsSource | None:
+    if step.directory is None:
+        raise ValueError(f"{step.name} step directory is not configured")
+    return parasitics_source(
+        load_request(Path(step.directory)),
+        declared_spef=getattr(getattr(workspace, "pdk", None), "spef", None),
+    )
+
+
+def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]:
     sta_config = _workspace_sta_config_path(workspace)
     if sta_config is None:
         return []
     sta_data = json_read(sta_config)
-    rcx_output_dir = workspace_dir / STEP_DIRECTORIES[StepEnum.RCX.value] / "output"
-    # STA-entry workspaces declare their parasitics (design.spef) instead of
-    # producing them with RCX: without an RCX step in the flow, every corner
-    # reads the declared SPEF.
-    has_rcx = workspace.flow.has_step(StepEnum.RCX)
+    source = _parasitics_source(workspace, step)
+    if source is None:
+        raise ValueError(
+            f"{step.name} has no parasitics: no successful upstream RCX run, no inherited RCX "
+            "outputs and no declared design.spef"
+        )
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
     liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
@@ -149,8 +162,8 @@ def collect_sta_signoff_items(workspace: Workspace) -> list[dict]:
                 )
                 spef_file = (
                     str(declared_spef)
-                    if not has_rcx and declared_spef
-                    else str(rcx_output_dir / spef_name)
+                    if source.rcx_output_dir is None
+                    else str(source.rcx_output_dir / spef_name)
                 )
                 items.append(
                     {
@@ -919,7 +932,7 @@ def run_harden(
     if ecc_module is not None:
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-        signoff_items = collect_sta_signoff_items(workspace)
+        signoff_items = collect_sta_signoff_items(workspace, step)
         if not signoff_items:
             workspace.logger.error("No signoff STA items found")
             return False
@@ -1036,7 +1049,7 @@ def run_power_analysis(
         return False
 
     sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-    signoff_items = collect_sta_signoff_items(workspace)
+    signoff_items = collect_sta_signoff_items(workspace, step)
     if not signoff_items:
         workspace.logger.error("No signoff STA items found for power analysis")
         sub_flow.update_step(
@@ -1192,7 +1205,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
     sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
-    signoff_items = collect_sta_signoff_items(workspace)
+    signoff_items = collect_sta_signoff_items(workspace, step)
     if not signoff_items:
         workspace.logger.error("No signoff STA items found")
         sub_flow.update_step(step_name=EccSubFlowEnum.run_sta.value, state=StateEnum.Imcomplete)

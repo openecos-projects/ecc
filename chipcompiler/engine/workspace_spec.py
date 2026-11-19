@@ -1,21 +1,21 @@
-from collections.abc import Collection
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS, StepBaseEnum
-from chipcompiler.data.param_keys import display_key_for, knob_id_for
-from chipcompiler.data.parameter_schema import list_schemas, lookup_schema, resolve_parameters
 from chipcompiler.engine.pdk_binding import pdk_binding_content_hash
-from chipcompiler.rtl2gds import get_flow_builders, normalize_flow_step
+from chipcompiler.params import (
+    display_key_for,
+    knob_id_for,
+    list_schemas,
+)
+from chipcompiler.rtl2gds import get_flow_builders
 from chipcompiler.utility.filelist import validate_filelist
 
 SCHEMA_VERSION = 1
 _INPUT_ROLES = frozenset({"rtl", "filelist", "netlist", "goldenNetlist", "def", "sdc", "spef"})
 _PDK_FILE_ROLES = frozenset({"tech", "lef", "liberty", "mapping"})
-_SPEC_FIELDS = frozenset(
-    {"schemaVersion", "design", "inputMode", "inputs", "pdk", "flow", "mpc", "parameters"}
-)
+_SPEC_FIELDS = frozenset({"schemaVersion", "design", "inputMode", "inputs", "pdk", "flow", "mpc"})
 
 
 def describe_workspace_spec() -> dict[str, Any]:
@@ -71,12 +71,7 @@ def describe_workspace_spec() -> dict[str, Any]:
     }
 
 
-def validate_workspace_spec(
-    spec: object,
-    bindings: object,
-    *,
-    preserved_parameters: Collection[str] = (),
-) -> dict[str, Any]:
+def validate_workspace_spec(spec: object, bindings: object) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     if not isinstance(spec, dict):
         return {"issues": [_issue("invalid_type", "", expected="object")]}
@@ -153,45 +148,7 @@ def validate_workspace_spec(
 
     flow = _mapping(spec.get("flow"), "/flow", issues)
     _unknown_fields(flow, {"flowId", "fromStepId", "throughStepId"}, "/flow", issues)
-    flow_steps = _validate_flow(flow, issues)
-
-    parameters = spec.get("parameters", {})
-    if not isinstance(parameters, dict):
-        issues.append(_issue("invalid_type", "/parameters", expected="object"))
-        parameters = {}
-    else:
-        parameters = {str(key): value for key, value in parameters.items()}
-    # DreamPlace round-trips its 0/1 flag parameters as JSON booleans into the
-    # committed Snapshot. A refresh revalidates that baseline, so normalize the
-    # persisted spelling back to the registry's int; freshly requested values
-    # keep strict typing.
-    for parameter_id in preserved_parameters:
-        if isinstance(parameters.get(parameter_id), bool):
-            schema = lookup_schema(parameter_id)
-            if schema is not None and schema.type == "int":
-                parameters[parameter_id] = int(parameters[parameter_id])
-    known_parameters = {schema.param for schema in list_schemas()}
-    for parameter_id in parameters:
-        if parameter_id not in known_parameters:
-            issues.append(_issue("unknown_parameter", f"/parameters/{_pointer(parameter_id)}"))
-    resolved_parameters, parameter_errors = resolve_parameters(
-        toml_overrides={key: value for key, value in parameters.items() if key in known_parameters}
-    )
-    for error in parameter_errors:
-        parameter_id = next((key for key in parameters if key in error), "")
-        issues.append(
-            _issue(
-                "invalid_parameter",
-                f"/parameters/{_pointer(parameter_id)}" if parameter_id else "/parameters",
-                reason=error,
-            )
-        )
-    _validate_parameter_applicability(
-        parameters,
-        flow_steps,
-        issues,
-        preserved_parameters=set(preserved_parameters),
-    )
+    _validate_flow(flow, issues)
 
     mpc = spec.get("mpc")
     if mpc is not None:
@@ -207,11 +164,6 @@ def validate_workspace_spec(
         return {"issues": issues}
 
     resolved = deepcopy(spec)
-    resolved["parameters"] = _effective_parameter_values(
-        resolved_parameters,
-        flow_steps,
-        preserved_parameters=set(preserved_parameters),
-    )
     resolved["pdk"] = {
         **deepcopy(pdk),
         "version": requested_version or bound_version or "unversioned",
@@ -351,63 +303,6 @@ def _validate_flow(flow: dict[str, Any], issues: list[dict[str, Any]]) -> set[st
         else:
             return set(steps[start_index : end_index + 1])
     return set()
-
-
-def _validate_parameter_applicability(
-    explicit: dict[str, Any],
-    flow_steps: set[str],
-    issues: list[dict[str, Any]],
-    *,
-    preserved_parameters: set[str] | None = None,
-) -> None:
-    preserved = preserved_parameters or set()
-    for schema in list_schemas():
-        if schema.param not in explicit:
-            continue
-        if schema.param in preserved:
-            continue
-        if schema.applies == "all":
-            continue
-        if flow_steps and not _parameter_applies_to_flow(schema.applies, flow_steps):
-            issues.append(
-                _issue(
-                    "inapplicable_parameter",
-                    f"/parameters/{_pointer(schema.param)}",
-                    appliesTo=schema.applies,
-                )
-            )
-
-
-def _effective_parameter_values(
-    resolved,
-    steps: set[str],
-    *,
-    preserved_parameters: set[str] | None = None,
-) -> dict[str, object]:
-    preserved = preserved_parameters or set()
-    return {
-        parameter.param: deepcopy(parameter.value)
-        for parameter in resolved
-        if parameter.schema.pdk_target is None
-        and (
-            parameter.param in preserved
-            or parameter.schema.applies == "all"
-            or _parameter_applies_to_flow(parameter.schema.applies, steps)
-        )
-    }
-
-
-def _parameter_applies_to_flow(applies: str, steps: set[str]) -> bool:
-    normalized = {normalize_flow_step(step).casefold() for step in steps}
-    aliases = {
-        "synthesis": {"synthesis"},
-        "floorplan": {"prefloorplan", "macroplacement", "postfloorplan"},
-        "placement": {"placement", "place", "macroplacement"},
-        "routing": {"routing", "route"},
-        "fixfanout": {"fixfanout"},
-    }
-    candidates = aliases.get(applies.casefold(), {normalize_flow_step(applies).casefold()})
-    return bool(normalized & candidates)
 
 
 def _refs(

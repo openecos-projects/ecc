@@ -88,7 +88,6 @@ def test_discovery_finds_flow_step_tools():
         "ecc_dreamplace",
         "ecc_sizer",
         "yosys",
-        "yosys_lec",
         "kepler_formal",
     } <= set(discovered), (
         f"discovery regressed; packages exempt only via {_EXEMPT_PACKAGES}: {discovered}"
@@ -105,6 +104,8 @@ def _conforming_fake_module() -> ModuleType:
         output_def=None,
         output_verilog=None,
         output_gds=None,
+        *,
+        step_directory=None,
     ):
         return None
 
@@ -120,6 +121,7 @@ def _conforming_fake_module() -> ModuleType:
         build_step_space=lambda step: None,
         build_step_config=lambda workspace, step: None,
         run_step=run_step,
+        STEP_CONFIG_READS={},
     )
     return module
 

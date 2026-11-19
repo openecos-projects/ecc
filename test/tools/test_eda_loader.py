@@ -24,6 +24,7 @@ def _install_tool_module(monkeypatch, module_name, *, exists=True, build_metrics
         build_step_space=lambda step: None,
         build_step_config=lambda workspace, step: None,
         run_step=lambda workspace, step, ecc_module=None: True,
+        STEP_CONFIG_READS={},
         build_step_metrics=build_metrics
         or (lambda workspace, step: StepMetrics(path="metrics.json", data={"tool": step.tool})),
     )
@@ -126,7 +127,7 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
 
     step = eda.create_step(
         workspace=workspace,
-        step="Timing optimization",
+        step="timing_optimization",
         eda="sizer",
         input_def=None,
         input_verilog=None,
@@ -211,14 +212,6 @@ def test_load_tool_propagates_a_dependency_runtime_error(monkeypatch):
                 lambda: None,
             ),
         ),
-        (
-            "lec_dual",
-            (
-                "chipcompiler.tools.lec_dual.utility",
-                "engine_availability",
-                lambda engine: (False, f"{engine} missing"),
-            ),
-        ),
     ],
 )
 def test_load_tool_propagates_a_real_missing_dependency(monkeypatch, tool, probe):
@@ -231,7 +224,7 @@ def test_load_tool_propagates_a_real_missing_dependency(monkeypatch, tool, probe
         eda.load_tool(tool)
 
 
-@pytest.mark.parametrize("tool", ["yosys", "kepler_formal", "lec_dual"])
+@pytest.mark.parametrize("tool", ["yosys", "kepler_formal"])
 def test_load_tool_propagates_the_production_dependency_error(monkeypatch, tool):
     import importlib
 

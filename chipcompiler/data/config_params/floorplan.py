@@ -6,7 +6,7 @@ SCHEMAS = (
         "floorplan",
         ("die_builder", "die_size", "width_micron"),
         100.1,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Die width in micrometers when die_builder.mode is die_size.",
     ),
     config_param(
@@ -14,7 +14,7 @@ SCHEMAS = (
         "floorplan",
         ("die_builder", "die_size", "height_micron"),
         246.6,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Die height in micrometers when die_builder.mode is die_size.",
     ),
     config_param(
@@ -22,7 +22,7 @@ SCHEMAS = (
         "floorplan",
         ("die_builder", "mode"),
         "die_util",
-        applies="floorplan",
+        applies="pre_floorplan",
         description=(
             "Floorplan sizing mode: derive area from utilization or use explicit die dimensions."
         ),
@@ -33,7 +33,7 @@ SCHEMAS = (
         "floorplan",
         ("die_builder", "site_name"),
         "core7",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="PDK site name for standard-cell placement rows.",
     ),
     config_param(
@@ -41,7 +41,7 @@ SCHEMAS = (
         "floorplan",
         ("ifp", "thread_number"),
         16,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Number of parallel threads used by the iFP floorplan engine.",
         range=(1, 256),
     ),
@@ -50,7 +50,7 @@ SCHEMAS = (
         "floorplan",
         ("io_placer", "io_layer_list"),
         ["MET3", "MET4"],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Metal layers allowed for IO pin placement.",
     ),
     config_param(
@@ -58,7 +58,7 @@ SCHEMAS = (
         "floorplan",
         ("macro_placer", "macro_placement_halo"),
         3.0,
-        applies="floorplan",
+        applies="pre_floorplan",
         description=(
             "Placement halo around macros in micrometers where standard cells cannot be placed."
         ),
@@ -68,7 +68,7 @@ SCHEMAS = (
         "floorplan",
         ("macro_placer", "macro_routing_halo"),
         3.0,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Routing halo around macros in micrometers where routing is prohibited.",
     ),
     config_param(
@@ -79,7 +79,7 @@ SCHEMAS = (
             {"net_name": "VDD", "instance_pin_name": "VDD", "is_power": True},
             {"net_name": "VSS", "instance_pin_name": "VSS", "is_power": False},
         ],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Global power and ground net-to-instance-pin connection declarations.",
         type="json",
     ),
@@ -88,7 +88,7 @@ SCHEMAS = (
         "floorplan",
         ("pdn_generator", "rail"),
         [{"routing_layer_name": "MET1", "width_micron": 0.16}],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Standard-cell row power-rail layers and widths in micrometers.",
         type="json",
     ),
@@ -110,7 +110,7 @@ SCHEMAS = (
                 "offset_micron": 0.5,
             },
         ],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Power-stripe layers, widths, pitches, and offsets in micrometers.",
         type="json",
     ),
@@ -122,7 +122,7 @@ SCHEMAS = (
             {"bottom_routing_layer_name": "MET1", "top_routing_layer_name": "MET4"},
             {"bottom_routing_layer_name": "MET4", "top_routing_layer_name": "MET5"},
         ],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Adjacent routing-layer pairs connected by power-distribution vias.",
         type="json",
     ),
@@ -131,7 +131,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "well_tap", "cell_name"),
         "FILLTAPH7R",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="PDK well-tap cell inserted into standard-cell rows.",
     ),
     config_param(
@@ -139,7 +139,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "well_tap", "distance_micron"),
         58.0,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Well-tap insertion pitch in micrometers.",
     ),
     config_param(
@@ -147,7 +147,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "side_endcap", "left_cell_name"),
         "FILLTAPH7R",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Endcap cell placed at the left edge of each standard-cell row.",
     ),
     config_param(
@@ -155,7 +155,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "side_endcap", "right_cell_name"),
         "FILLTAPH7R",
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Endcap cell placed at the right edge of each standard-cell row.",
     ),
     config_param(
@@ -163,7 +163,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "edge_endcap", "top_cell_name_list"),
         ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate endcap cells for the die top edge, selected by width.",
     ),
     config_param(
@@ -171,7 +171,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "edge_endcap", "bottom_cell_name_list"),
         ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate endcap cells for the die bottom edge, selected by width.",
     ),
     config_param(
@@ -179,7 +179,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "boundary_tap", "top_cell_name_list"),
         ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate tap cells for the die top boundary, selected by width.",
     ),
     config_param(
@@ -187,7 +187,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "boundary_tap", "bottom_cell_name_list"),
         ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Candidate tap cells for the die bottom boundary, selected by width.",
     ),
     config_param(
@@ -195,7 +195,7 @@ SCHEMAS = (
         "floorplan",
         ("phy_placer", "boundary_tap", "rule_micron"),
         30.0,
-        applies="floorplan",
+        applies="pre_floorplan",
         description="Rule distance for boundary-tap insertion in micrometers.",
     ),
 )

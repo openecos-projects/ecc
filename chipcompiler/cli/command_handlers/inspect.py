@@ -7,8 +7,7 @@ from chipcompiler.cli.core.inputs import (
 )
 from chipcompiler.cli.core.output import (
     disclosure_cmd,
-    normalize_state,
-    normalize_step_name,
+    flow_step_status,
 )
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -98,15 +97,24 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         }
     ]
 
-    for step in _safe_steps(flow_data):
-        step_token = normalize_step_name(step.get("name", ""))
+    steps = _safe_steps(flow_data)
+    stale = _stale_steps(run_dir, steps)
+    for step in steps:
+        step_token = step.get("name", "")
         record = {
             "step": step_token,
             "tool": step.get("tool", ""),
-            "status": normalize_state(step.get("state", "")),
+            "status": flow_step_status(step.get("state", "")),
             "runtime": step.get("runtime", "") or None,
             "log_cmd": disclosure_cmd(f"ecc log {step_token}", project, ctx.run_id),
         }
+        stale_step = stale.get(str(step.get("name", "")))
+        if stale_step is not None:
+            record.update(stale=True, stale_from=_stale_sources(stale_step))
+            if "rerun_cmd" not in records[0]:
+                records[0]["rerun_cmd"] = disclosure_cmd(
+                    f"ecc run --from {step_token}", project, ctx.run_id
+                )
         if isinstance(step.get("checklist_status"), dict):
             projection = step["checklist_status"]
             record.update(
@@ -117,6 +125,28 @@ def status(command_input: StatusInput, ctx: CommandContext) -> CommandResult:
         records.append(record)
 
     return CommandResult.ok(records)
+
+
+def _stale_steps(run_dir: str, steps: list[dict]) -> dict:
+    """Ledger steps built from upstream runs that changed since, by step name."""
+    from pathlib import Path
+
+    from chipcompiler.data.handshake import stale_steps
+    from chipcompiler.data.step import recorded_step_directory
+
+    try:
+        directories = [recorded_step_directory(step) for step in steps]
+    except ValueError:
+        # A ledger naming an unsafe directory is reported by the commands that
+        # use it; status still shows the step states.
+        return {}
+    return {stale.step: stale for stale in stale_steps(Path(run_dir), directories)}
+
+
+def _stale_sources(stale_step) -> list[str]:
+    """The upstream step directories whose runs changed, or that are stale themselves."""
+    changed = [changed.step_directory for changed in stale_step.changed_inputs]
+    return list(dict.fromkeys([*changed, *stale_step.stale_upstream]))
 
 
 def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
@@ -169,8 +199,7 @@ def log(command_input: LogInput, ctx: CommandContext) -> CommandResult:
                 ]
             )
         return CommandResult.ok(records)
-
-    step_token = normalize_step_name(requested_step_token)
+    step_token = str(requested_step_token)
     step_dirs = discover_step_dirs(run_dir)
     if step_token not in step_dirs:
         flow_steps = get_flow_step_names(run_dir)

@@ -32,7 +32,7 @@ def test_build_run_preflight_reports_missing_inputs(tmp_path):
     flow = SimpleNamespace(
         workspace_steps=[
             SimpleNamespace(
-                name="place",
+                name="placement",
                 tool="ecc",
                 input=StepInput(verilog=existing, def_=missing),
                 output=OutputPaths(),
@@ -40,11 +40,11 @@ def test_build_run_preflight_reports_missing_inputs(tmp_path):
         ]
     )
 
-    result = build_run_preflight(flow, ["place"], only="place", force=False)
+    result = build_run_preflight(flow, ["placement"], only="placement", force=False)
 
     assert result["ready"] is False
     assert result["selected_steps"][0]["tool"] == "ecc"
-    assert result["missing_inputs"] == [{"step": "place", "input": "def", "path": str(missing)}]
+    assert result["missing_inputs"] == [{"step": "placement", "input": "def", "path": str(missing)}]
 
 
 def test_output_paths_serializes_declared_paths(tmp_path):
@@ -198,3 +198,34 @@ def test_config_preflight_reports_missing_emir_technology_file(tmp_path):
             "remediation": "Set technology_file_path in config/emir_ecc.json.",
         }
     ]
+
+
+def test_config_preflight_accepts_dreamplace_steps_before_their_step_configs_exist(tmp_path):
+    from pathlib import Path
+
+    from chipcompiler.data import PDK, OriginDesign, Workspace
+    from chipcompiler.data.parameter import get_parameters
+    from chipcompiler.data.workspace import init_workspace_config
+
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        parameters=get_parameters("ics55"),
+    )
+    init_workspace_config(workspace)
+    steps = [
+        SimpleNamespace(name=name, tool=tool)
+        for name, tool in (
+            ("macro_placement", "dreamplace"),
+            ("placement", "dreamplace"),
+            ("diff_opt", "dreamplace"),
+            ("diff_sizing", "dreamplace"),
+            ("legalization", "dreamplace"),
+            ("timing_optimization", "sizer"),
+        )
+    ]
+
+    issues = real_config_issues(workspace, steps)
+
+    assert (issues, sorted(workspace.directory.glob("*/config/dreamplace_ecc.json"))) == ([], [])
