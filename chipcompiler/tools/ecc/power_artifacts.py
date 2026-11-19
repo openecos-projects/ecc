@@ -26,7 +26,7 @@ def power_summary_path(feature_dir: str | Path) -> Path:
 
 def power_step_path(feature_dir: str | Path) -> Path:
     """Return the merged machine-readable power step artifact."""
-    return Path(feature_dir) / "powerAnalysis.step.json"
+    return Path(feature_dir) / f"{StepEnum.POWER_ANALYSIS.value}.step.json"
 
 
 def native_power_report_path(power_step_directory: str | Path) -> Path:
