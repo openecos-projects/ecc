@@ -12,8 +12,8 @@ from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.workspace.flow_options import clock_tree_requested
 
 CLOCK_TREE_STAGE_BY_STEP = {
-    StepEnum.POST_FLOORPLAN.value: "postFloorplan",
-    StepEnum.CTS.value: "CTS",
+    StepEnum.POST_FLOORPLAN.value: "post_floorplan",
+    StepEnum.CTS.value: "cts",
     StepEnum.FILLER.value: "filler",
 }
 

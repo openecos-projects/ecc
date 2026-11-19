@@ -6,6 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.types import StepEnum
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import PathArg, path_list, path_text
 
@@ -596,7 +597,12 @@ class ECCToolsModule:
         """
         generate step feature
         """
-        self.ecc.feature_tool(json_path, step)
+        native_step = {
+            StepEnum.PLACEMENT.value: "placement",
+            StepEnum.CTS.value: "cts",
+            StepEnum.ROUTING.value: "routing",
+        }.get(step, step)
+        self.ecc.feature_tool(json_path, native_step)
 
     def feature_eval_map(self, path: PathArg, bin_cnt_x: int, bin_cnt_y: int):
         return self.ecc.feature_eval_map(
