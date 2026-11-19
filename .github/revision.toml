@@ -28,10 +28,10 @@ root_marker = "bin/kepler-formal"
 sha256 = "f8e0e728c23d5eff49a6eb89a9f5e0e8b17274dc07c09042dccd16cceb411bfa"
 
 [pdk]
-# Source access requires PDK_READ_TOKEN; public CI artifacts contain metadata only.
-repo = "openecos-projects/icsprout55-pdk-v2"
+# Public source commit and matching supplemental assets.
+repo = "openecos-projects/icsprout55-pdk"
 release = "v2-2026.10.28"
-git_commit = "96676609aed660ee622d757b56f2269e8d0a54b5"
+git_commit = "b021e8329b29a8407550563ed769f7f7a15a8683"
 
 [e2e-designs]
 repo = "openecos-projects/ecc-ci-designs"

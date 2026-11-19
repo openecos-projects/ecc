@@ -168,9 +168,7 @@ jobs:
           name: icsprout55-pdk
           path: ../pdk
 
-      - name: Fetch private PDK
-        env:
-          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
+      - name: Fetch public PDK
         run: |
           bash ../pdk/fetch-pdk.sh ../pdk/pdk-source.json ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
@@ -324,9 +322,7 @@ jobs:
           Path('pdk-source.json').write_text(json.dumps(source, indent=2) + '\n')
           PY
 
-      - name: Validate private PDK
-        env:
-          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
+      - name: Validate public PDK
         run: |
           bash .github/actions/setup-pdk/fetch-pdk.sh pdk-source.json "$RUNNER_TEMP/pdk"
 
@@ -549,10 +545,8 @@ jobs:
           name: ecc-sizer
           path: ${{ runner.temp }}/e2e-stage-input
 
-      - name: Fetch private PDK for shared storage
+      - name: Fetch public PDK for shared storage
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.PDK_READ_TOKEN || secrets.GH_TOKEN }}
         run: |
           bash "$RUNNER_TEMP/e2e-stage-input/fetch-pdk.sh" \
             "$RUNNER_TEMP/e2e-stage-input/pdk-source.json" "$RUNNER_TEMP/e2e-pdk/icsprout55-pdk"
