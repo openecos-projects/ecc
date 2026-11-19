@@ -147,7 +147,11 @@ def validate_workspace_spec(spec: object, bindings: object) -> dict[str, Any]:
         )
 
     flow = _mapping(spec.get("flow"), "/flow", issues)
-    _unknown_fields(flow, {"flowId", "fromStepId", "throughStepId"}, "/flow", issues)
+    _unknown_fields(
+        flow, {"flowId", "fromStepId", "throughStepId", "stepSubprocess"}, "/flow", issues
+    )
+    if "stepSubprocess" in flow and not isinstance(flow["stepSubprocess"], bool):
+        issues.append(_issue("invalid_type", "/flow/stepSubprocess", expected="boolean"))
     _validate_flow(flow, issues)
 
     mpc = spec.get("mpc")

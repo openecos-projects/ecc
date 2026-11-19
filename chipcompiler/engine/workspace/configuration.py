@@ -443,7 +443,12 @@ def build_workspace_configuration_projection(
             except (OSError, ValueError, JsonReadError):
                 if strict:
                     raise
-    flow = {"flowId": _flow_id(flow_names)}
+    flow: dict[str, Any] = {"flowId": _flow_id(flow_names)}
+    from chipcompiler.data.workspace.execution import declared_step_subprocess
+
+    step_subprocess = declared_step_subprocess(workspace.flow.data)
+    if step_subprocess is not None:
+        flow["stepSubprocess"] = step_subprocess
     if flow_names:
         flow.update({"fromStepId": flow_names[0], "throughStepId": flow_names[-1]})
     inputs, input_bindings = _workspace_inputs(workspace)
