@@ -85,15 +85,24 @@ def relocate_project(relocation: Relocation) -> str | None:
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = relocation.project_dir
+    # Every configuration file is read before the first one is written: a
+    # file that cannot be parsed stops the repair with nothing changed.
+    planned = []
     for workspace_id, path in relocation.workspaces:
         if not os.path.isdir(path):
             continue  # reported as missing-directory once the manifest loads
         try:
+            rewrites = _planned_config_rewrites(path, relocation.recorded_root, project_dir)
+        except (OSError, ValueError) as exc:
+            return f"workspace {workspace_id}: {exc}"
+        planned.append((workspace_id, path, rewrites))
+    for workspace_id, path, rewrites in planned:
+        try:
             with workspace_lock(Path(path), blocking=False):
-                _rebase_workspace_config(path, relocation.recorded_root, project_dir)
+                _write_config_rewrites(rewrites)
         except BlockingIOError:
             return f"workspace {workspace_id} is busy"
-        except (OSError, ValueError) as exc:
+        except OSError as exc:
             return f"workspace {workspace_id}: {exc}"
 
     new_root = os.path.abspath(project_dir)
@@ -141,6 +150,12 @@ def _rebased_path(value: str, recorded_root: str, new_root: str) -> str | None:
         return None
     normalized = os.path.normpath(value)
     for root in _root_spellings(recorded_root):
+        if _is_below(new_root, root) and _is_below(normalized, new_root):
+            # The project now lies below the root it records (a copy made
+            # inside the original). A path below the new root is already in
+            # place - written by an earlier, interrupted repair - although it
+            # still starts with the recorded root.
+            return None
         if normalized == root:
             return new_root
         if normalized.startswith(root + os.sep):
@@ -148,23 +163,44 @@ def _rebased_path(value: str, recorded_root: str, new_root: str) -> str | None:
     return None
 
 
-def _rebase_workspace_config(workspace_dir: str, recorded_root: str, project_dir: str) -> None:
-    """Rewrite absolute paths below ``recorded_root`` in ``config/*.json``.
+def _is_below(path: str, root: str) -> bool:
+    return path == root or path.startswith(root + os.sep)
+
+
+def _planned_config_rewrites(
+    workspace_dir: str, recorded_root: str, project_dir: str
+) -> list[tuple[Path, object]]:
+    """The ``config/*.json`` files whose absolute paths lie below ``recorded_root``.
 
     The tool configuration keeps a few absolute paths into the workspace
     (the default timing constraints, the EMIR technology file). Left alone
     they name files of the former location: gone after a move, the original
     project's after a copy.
-    """
-    from chipcompiler.utility import json_write
 
+    Only a file that resolves to a place inside the relocated project is
+    planned. A ``config`` directory or a file that is a symbolic link out of
+    it belongs to someone else - after a link-preserving copy, to the
+    original project - and is left as it is.
+    """
     new_root = os.path.realpath(project_dir)
+    rewrites: list[tuple[Path, object]] = []
     for path in sorted(Path(workspace_dir, "config").glob("*.json")):
         if path.is_symlink() or not path.is_file():
             continue
+        if not _is_below(os.path.realpath(path), new_root):
+            continue
         document = json.loads(path.read_text(encoding="utf-8"))
         rebased = _rebase_values(document, recorded_root, new_root)
-        if rebased != document and not json_write(path, rebased):
+        if rebased != document:
+            rewrites.append((path, rebased))
+    return rewrites
+
+
+def _write_config_rewrites(rewrites: list[tuple[Path, object]]) -> None:
+    from chipcompiler.utility import json_write
+
+    for path, document in rewrites:
+        if not json_write(path, document):
             raise OSError(f"cannot rewrite {path}")
 
 

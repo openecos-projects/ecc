@@ -558,6 +558,77 @@ class TestProjectDoctorMovedProject:
         capsys.readouterr()
         assert _manifest(moved)["root_path"] == str(moved)
 
+    def test_fix_does_not_follow_a_config_link_into_the_original(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """A link-preserving copy shares the linked directory with the original."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        shared = tmp_path / "shared-config"
+        (project_dir / "ws_0001" / "config").rename(shared)
+        (project_dir / "ws_0001" / "config").symlink_to(shared, target_is_directory=True)
+        original = {path.name: path.read_bytes() for path in shared.iterdir()}
+        copy = tmp_path / "gcd-copy"
+        shutil.copytree(project_dir, copy, symlinks=True)
+        assert (copy / "ws_0001" / "config").resolve() == shared
+
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+
+        assert _manifest(copy)["root_path"] == str(copy)
+        assert {path.name: path.read_bytes() for path in shared.iterdir()} == original
+        assert _run_doctor(project_dir) == 0
+
+    def test_fix_follows_a_config_link_that_stays_inside_the_project(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        inside = project_dir / "shared-config"
+        (project_dir / "ws_0001" / "config").rename(inside)
+        (project_dir / "ws_0001" / "config").symlink_to(
+            os.path.join("..", "shared-config"), target_is_directory=True
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
+        assert sdc_path == f"{os.path.realpath(moved)}/ws_0001/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+
+    def test_interrupted_fix_of_a_copy_inside_the_original_can_be_repeated(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        """The copy lies below the root it records: rebased paths still start with it."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        staging = tmp_path / "staging"
+        shutil.copytree(project_dir, staging)
+        copy = project_dir / "copy"
+        staging.rename(copy)
+        workspace = copy / "ws_0001"
+        expected = f"{os.path.realpath(workspace)}/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+        broken = workspace / "config" / "emir_ecc.json"
+        intact = broken.read_text()
+        broken.write_text("{ not json")
+        before = (workspace / "config" / "db_ecc.json").read_bytes()
+
+        assert _run_doctor(copy, "--fix") == 1
+        capsys.readouterr()
+        # Nothing is written while one file cannot be read.
+        assert (workspace / "config" / "db_ecc.json").read_bytes() == before
+
+        broken.write_text(intact)
+        assert _run_doctor(copy, "--fix") == 0
+        assert _tool_config(workspace)[0]["sdc_path"] == expected
+        # A repair on top of rewritten paths leaves them where they are.
+        manifest = _manifest(copy)
+        manifest["root_path"] = str(project_dir)
+        (copy / "project.json").write_text(json.dumps(manifest))
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+        assert _tool_config(workspace)[0]["sdc_path"] == expected
+        assert _manifest(copy)["workspaces"][0]["workspace_path"] == os.path.realpath(workspace)
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 
