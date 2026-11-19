@@ -47,6 +47,24 @@ logger = logging.getLogger(__name__)
 PAYLOAD_SCHEMA_VERSION = 2
 RESULT_SCHEMA_VERSION = 1
 _RESULT_NAME = "step-worker.v1.json"
+_ENABLED_ENV = "ECC_STEP_SUBPROCESS"
+
+
+def execution_mode(workspace: Workspace | None = None) -> tuple[bool, str]:
+    """Resolve a temporary environment override before the workspace choice."""
+    from chipcompiler.data.workspace.execution import declared_step_subprocess
+
+    if _ENABLED_ENV in os.environ:
+        return os.environ[_ENABLED_ENV] != "0", _ENABLED_ENV
+    declared = declared_step_subprocess(workspace.flow.data) if workspace is not None else None
+    if declared is not None:
+        return declared, "home/flow.json"
+    return True, "default"
+
+
+def is_enabled(workspace: Workspace | None = None) -> bool:
+    """Return whether isolated step execution is enabled for this workspace."""
+    return execution_mode(workspace)[0]
 
 
 def execute_step_subprocess(
