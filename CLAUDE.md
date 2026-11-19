@@ -28,6 +28,16 @@ This project uses Python 3+. You should not use the `__future__` module.
 
 If you need to worry about feature compatibility between different 3.xx point releases, check the closest pyproject.toml's requires-python field to see what minimum runtime version is supported.
 
+# Module Layout
+
+- One concept, one package. Don't add prefixed sibling modules (`flow_*.py`, `workspace_*.py`,
+  `step_*.py`); put the module in the concept's package under a short name (`flow/plan.py`,
+  not `flow_plan.py`).
+- Existing prefixed groups predate this rule: don't extend them; move the group into a package
+  in its own refactor commit.
+- A package's own `AGENTS.md` declares its scope and rules; update it when the scope changes.
+  Package `AGENTS.md` files are excluded from the wheel and the bundle.
+
 # Gotchas
 
 - ECC-Tools tool identifier in code is `"ecc"`, not `"ecc-tools"`. Wrapper: `chipcompiler/tools/ecc/`
