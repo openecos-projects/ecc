@@ -193,6 +193,8 @@ def _execute_workspace_run(
                 ]
             )
 
+        outcome = None
+
         def run_failed(
             kind: str,
             reason: str | None = None,
@@ -200,6 +202,8 @@ def _execute_workspace_run(
             details=(),
             **fields,
         ) -> CommandResult:
+            if outcome is not None:
+                outcome.error = {"code": kind, "message": reason or ""}
             return CommandResult.err(
                 [
                     {
@@ -230,7 +234,7 @@ def _execute_workspace_run(
                 )
             else:
                 process_context = nullcontext()
-            with process_context:
+            with process_context as outcome:
                 engine_flow = EngineFlow(workspace=workspace)
                 engine_flow.max_parallel_steps = max_parallel_steps
                 if not engine_flow.has_init():
@@ -326,6 +330,8 @@ def _execute_workspace_run(
                             )
                 except ValueError as exc:
                     return run_failed("step_unavailable", str(exc))
+                if outcome is not None:
+                    outcome.succeeded = result.ok
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

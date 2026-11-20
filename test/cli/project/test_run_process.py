@@ -23,6 +23,7 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
     manifest_path = tmp_path / "project.json"
     manifest_path.write_text(json.dumps(manifest))
     script = dedent("""
+        import json
         import sys
         from pathlib import Path
         from types import SimpleNamespace
@@ -36,16 +37,31 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
         workspace = SimpleNamespace()
         request = RunInput(
             output=OutputOptions(), project=ProjectOptions(project=str(project)),
-            no_wait=True, run_id=str(uuid4()),
+            no_wait=True, run_id=str(uuid4()), only="synthesis",
         )
         print("ready", flush=True)
         with managed_run_process(
             request, project, "baseline", workspace, workspace_path=str(project / "baseline")
-        ) as entry:
-            assert read_runtime_process(project, "baseline") == entry
+        ) as outcome:
+            entry = read_runtime_process(project, "baseline")
+            assert entry["run_id"] == request.run_id
+            assert entry["selection"] == {"only": "synthesis"}
+            outcome.succeeded = True
             assert workspace._ecc_run_id == request.run_id
             print("registered", flush=True)
         assert not hasattr(workspace, "_ecc_run_id")
+        report_path = project / "baseline" / "log" / f"{request.run_id}.run.json"
+        report = json.loads(report_path.read_text())
+        assert report == {
+            "schema_version": 1,
+            "run_id": request.run_id,
+            "workspace_id": "baseline",
+            "started_at": entry["started_at"],
+            "finished_at": report["finished_at"],
+            "runtime_id": entry["runtime_id"],
+            "state": "succeeded",
+            "only": "synthesis",
+        }
     """)
     child = None
     try:

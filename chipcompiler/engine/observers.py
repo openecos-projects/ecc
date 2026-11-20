@@ -163,7 +163,7 @@ class _EngineeringCommitSink:
         self.workspace = workspace
         self.snapshot = ensure_engineering_snapshot(workspace)
 
-    def on_step_completed(self, _step: Any, state: Any, _error: str | None = None) -> None:
+    def on_step_completed(self, step: Any, state: Any, error: str | None = None) -> None:
         from chipcompiler.engine.snapshot.store import commit_engineering_snapshot
 
         # The snapshot projects the ledger: build and publish it from one
@@ -174,6 +174,10 @@ class _EngineeringCommitSink:
                 workspace_id=self.snapshot["workspaceId"],
                 cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
             )
+
+        report_error = getattr(self.workspace, "_ecc_report_step_error", None)
+        if error and callable(report_error):
+            report_error(step.name, error)
 
     @property
     def execution(self) -> dict[str, Any] | None:

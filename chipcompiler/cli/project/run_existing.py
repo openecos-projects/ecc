@@ -429,7 +429,7 @@ def _execute_existing_run(
                 )
             else:
                 process_context = nullcontext()
-            with process_context:
+            with process_context as outcome:
                 engine_flow = EngineFlow(workspace=workspace)
                 engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
                 flow_ok = True
@@ -473,6 +473,8 @@ def _execute_existing_run(
                     )
                     failure = preflight_failure(preflight)
                     if failure is not None:
+                        if outcome is not None:
+                            outcome.error = {"code": failure["error"], "message": failure["reason"]}
                         return CommandResult.err(
                             warnings
                             + [
@@ -528,6 +530,8 @@ def _execute_existing_run(
                                 through=through,
                             )
                     flow_ok = run_result.ok
+                if outcome is not None:
+                    outcome.succeeded = flow_ok
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

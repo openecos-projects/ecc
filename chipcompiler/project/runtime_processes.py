@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
 import signal
+import stat
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
@@ -91,6 +93,56 @@ def create_run_log(workspace: str | Path, log_path: str) -> int:
         return os.open(target, flags, 0o600)
     except OSError as exc:
         raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
+
+
+def write_run_result(
+    workspace: str | Path,
+    workspace_id: str,
+    entry: dict[str, Any],
+    state: Literal["succeeded", "failed", "interrupted", "cancelled"],
+    error: dict[str, str] | None = None,
+) -> None:
+    """Publish the result while holding the Workspace lock.
+
+    Reconcile can retry after a completed run saved its result but failed
+    to unregister. Preserve the result already on disk.
+    """
+    from chipcompiler.utility.file import write_text_atomic
+
+    root = Path(workspace).resolve()
+    directory = root / "log"
+    if directory.resolve() != directory:
+        raise OSError("The Workspace log directory must not be a symbolic link.")
+    run_id = normalize_run_id(entry["run_id"])
+    path = directory / f"{run_id}.run.json"
+    try:
+        existing_mode = path.lstat().st_mode
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISREG(existing_mode):
+            raise OSError("The ECC run result must be a regular file.")
+        if state == "interrupted":
+            return
+    directory.mkdir(mode=0o700, exist_ok=True)
+    record = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "workspace_id": workspace_id,
+        "started_at": entry["started_at"],
+        "finished_at": max(entry["started_at"], time.time()),
+        "runtime_id": entry["runtime_id"],
+        "state": state,
+    }
+    selection = entry.get("selection", {})
+    if isinstance(selection, dict):
+        for field in ("only", "from_step", "through_step"):
+            value = selection.get(field)
+            if isinstance(value, str):
+                record[field] = value[:256]
+    if state == "failed" and error:
+        record["error"] = {"code": error["code"], "message": error["message"][:500]}
+    write_text_atomic(path, json.dumps(record) + "\n")
 
 
 def current_process_identity() -> ProcessIdentity:

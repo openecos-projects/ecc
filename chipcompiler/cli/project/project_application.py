@@ -336,6 +336,7 @@ def _reconcile_workspace_state(
         RuntimeProcessError,
         identity_is_live,
         validate_runtime_entry,
+        write_run_result,
     )
     from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -370,6 +371,8 @@ def _reconcile_workspace_state(
             run_id=process["run_id"] if process is not None else None,
             allow_markerless=process is None,
         )
+        if process is not None:
+            write_run_result(workspace, workspace_id, process, "interrupted")
         _remove_runtime_entry(project, workspace_id, raw_entry, blocking=blocking)
         repairs.append(f"runtime:{workspace_id}")
         if recovered:

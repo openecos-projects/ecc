@@ -651,7 +651,7 @@ def execute_fresh_run(
                 )
             else:
                 process_context = nullcontext()
-            with process_context:
+            with process_context as outcome:
                 plan = ExecutionPlan(intent="run")
                 if should_enable_run_progress(ctx, sys.stderr):
                     with (
@@ -661,6 +661,8 @@ def execute_fresh_run(
                         flow_ok = execute(engine_flow, plan, event_sink=sink).succeeded
                 else:
                     flow_ok = execute(engine_flow, plan).succeeded
+                if outcome is not None:
+                    outcome.succeeded = flow_ok
 
             if not flow_ok:
                 failure_records = [

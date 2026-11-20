@@ -1,12 +1,11 @@
 """Manifest runtime-process lifecycle for one locked ECC run."""
 
-from __future__ import annotations
-
 import os
 import signal
 import sys
 import threading
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 
 from chipcompiler.project.runtime_processes import (
     RuntimeProcessError,
@@ -17,7 +16,19 @@ from chipcompiler.project.runtime_processes import (
     normalize_runtime_id,
     register_runtime_process,
     unregister_runtime_process,
+    write_run_result,
 )
+
+
+@dataclass
+class RunOutcome:
+    succeeded: bool = False
+    error: dict[str, str] | None = None
+    step_error: str | None = None
+
+    def report_step_error(self, step: str, error: str) -> None:
+        if self.step_error is None:
+            self.step_error = f"{step}: {error}"[:500]
 
 
 @contextmanager
@@ -49,7 +60,7 @@ def run_log_stdio(command_input, workspace_path):
 def managed_run_process(
     command_input, project_dir, workspace_id, workspace, *, workspace_path: str, run_log=None
 ):
-    """Register this process and expose its execution marker to Engine."""
+    """Register the run and persist its terminal result before unregistering."""
     from chipcompiler import __version__
 
     run_id = normalize_run_id(command_input.run_id)
@@ -67,10 +78,13 @@ def managed_run_process(
         log_descriptor = run_log
         close_log = False
     cancel_event = threading.Event()
+    outcome = RunOutcome()
+    interrupted = False
     old_handler = None
-    registered = False
+    registered_entry = None
     old_run_id = getattr(workspace, "_ecc_run_id", None)
     old_cancel_event = getattr(workspace, "_ecc_cancel_event", None)
+    old_report_step_error = getattr(workspace, "_ecc_report_step_error", None)
     try:
         _ensure_process_group_leader()
         old_handler = signal.getsignal(signal.SIGUSR1)
@@ -82,11 +96,22 @@ def managed_run_process(
             runtime_id=runtime_id,
             log_path=log_path,
         )
+        scope = {
+            key: value
+            for key, value in (
+                ("only", command_input.only),
+                ("from_step", command_input.from_step),
+                ("through_step", command_input.to_step),
+            )
+            if value is not None
+        }
+        entry["selection"] = scope
         # Only Workspace contention is nonblocking; Project registration writes must serialize.
         register_runtime_process(project_dir, workspace_id, entry)
-        registered = True
+        registered_entry = entry
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
+        workspace._ecc_report_step_error = outcome.report_step_error
         os.write(log_descriptor, f"ECC run {run_id} started\n".encode())
         # The existing-run paths redirect from run_log_stdio before preflight;
         # the fresh-run path (workspace created above this context) redirects
@@ -94,9 +119,31 @@ def managed_run_process(
         with _redirect_stdio_to_descriptor(
             log_descriptor, enabled=run_log is None and bool(command_input.log_file)
         ):
-            yield entry
+            try:
+                yield outcome
+            except KeyboardInterrupt:
+                interrupted = True
+                raise
+            except Exception as exc:
+                outcome.error = {"code": "flow_failed", "message": str(exc)}
+                raise
     finally:
-        if registered:
+        if registered_entry is not None:
+            try:
+                state = "succeeded" if outcome.succeeded else "failed"
+                if cancel_event.is_set():
+                    state = "cancelled"
+                elif interrupted:
+                    state = "interrupted"
+                error = outcome.error
+                if error is None and outcome.step_error is not None:
+                    error = {"code": "step_worker_failed", "message": outcome.step_error}
+                write_run_result(workspace_path, workspace_id, registered_entry, state, error)
+            except OSError as exc:
+                with suppress(OSError):
+                    os.write(
+                        log_descriptor, f"WARNING: failed to save run result: {exc}\n".encode()
+                    )
             try:
                 os.write(log_descriptor, f"ECC run {run_id} finished\n".encode())
                 os.fsync(log_descriptor)
@@ -116,6 +163,10 @@ def managed_run_process(
             workspace.__dict__.pop("_ecc_cancel_event", None)
         else:
             workspace._ecc_cancel_event = old_cancel_event
+        if old_report_step_error is None:
+            workspace.__dict__.pop("_ecc_report_step_error", None)
+        else:
+            workspace._ecc_report_step_error = old_report_step_error
         if old_handler is not None:
             signal.signal(signal.SIGUSR1, old_handler)
         if close_log:
