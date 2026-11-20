@@ -468,6 +468,29 @@ class TestProjectDoctorMovedProject:
         }
         assert _run_doctor(moved) == 0
 
+    def test_fix_detaches_a_copy_from_the_runs_of_the_original(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """The copy must not keep the run registration of the original's workspace."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        manifest = _manifest(project_dir)
+        manifest["runtime_processes"] = {
+            "ws_0001": {"run_id": "original-run", "workspace_path": "ws_0001"},
+            "elsewhere": {"run_id": "external-run", "workspace_path": "/external/ws"},
+        }
+        (project_dir / "project.json").write_text(json.dumps(manifest))
+        original = (project_dir / "project.json").read_bytes()
+        copy = tmp_path / "gcd-copy"
+        shutil.copytree(project_dir, copy)
+
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+
+        processes = _manifest(copy)["runtime_processes"]
+        assert "ws_0001" not in processes
+        assert processes["elsewhere"]["run_id"] == "external-run"
+        assert (project_dir / "project.json").read_bytes() == original
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

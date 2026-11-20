@@ -140,6 +140,14 @@ def relocate_project(relocation: Relocation) -> str | None:
                 continue
             if os.path.isabs(str(entry.get("workspace_path"))):
                 entry["workspace_path"] = local[entry["workspace_id"]]
+        # A run registered for a workspace of the former location is not a run
+        # of this project: after a copy it is the original's process, which a
+        # cancel through the copy would signal. A run of this directory would
+        # hold the workspace lock, and the repair does not get that far then.
+        processes = document.get("runtime_processes")
+        if isinstance(processes, dict):
+            for workspace_id in local:
+                processes.pop(workspace_id, None)
         # Paths base_design keeps below the recorded root (a PDK inside the
         # project, an entry input) moved too; paths elsewhere are left alone.
         if isinstance(document.get("base_design"), dict):
