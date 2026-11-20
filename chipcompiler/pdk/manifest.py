@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +15,29 @@ class DescriptorError(ValueError):
     def __init__(self, code: str, message: str):
         self.code = code
         super().__init__(message)
+
+
+def release_version(root: Path) -> str | None:
+    path = root / "VERSION"
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise DescriptorError("invalid_version", "VERSION must be a regular file")
+    if not path.exists():
+        return None
+    with path.open("rb") as stream:
+        raw = stream.read(131)
+    match = re.fullmatch(rb"([A-Za-z0-9][A-Za-z0-9._+-]{0,127})(?:\r?\n)?", raw)
+    if not match:
+        raise DescriptorError("invalid_version", "VERSION must contain one release number")
+    return match[1].decode("ascii")
+
+
+def check_release(root: Path, release: str) -> str | None:
+    version = release_version(root)
+    if version is not None and version != release:
+        raise DescriptorError(
+            "release_mismatch", f"PDK VERSION {version} differs from configured release {release}"
+        )
+    return version
 
 
 class StrictModel(BaseModel):
@@ -129,7 +153,9 @@ def load_descriptor(root: Path, path: Path | None = None) -> Descriptor:
         from .profiles import detect_release
 
         return detect_release(root).resolved()
-    return read_configuration(source_path(root, path)).resolved()
+    descriptor = read_configuration(source_path(root, path)).resolved()
+    check_release(root, descriptor.release)
+    return descriptor
 
 
 def resource_path(root: Path, resource: Resource) -> Path:
@@ -148,11 +174,14 @@ def file_digest(path: Path) -> str:
 
 
 def content_identity(root: Path, descriptor: Descriptor) -> tuple[str, dict[str, str]]:
+    version = check_release(root, descriptor.release)
     hashes = {}
     for name, resource in sorted(descriptor.resources.items()):
         path = resource_path(root, resource)
         if not path.is_file():
             raise DescriptorError("resource_missing", f"missing resource {name}: {path}")
+        if version is not None:
+            continue
         actual = file_digest(path)
         if resource.sha256 is not None and actual != resource.sha256:
             raise DescriptorError("content_mismatch", f"resource checksum differs: {name}")

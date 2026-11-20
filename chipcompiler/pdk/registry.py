@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .documents import document_digest, process_identity, split_descriptor
 from .managed import adopt_configuration, configuration_path, legacy_identity, save_configuration
-from .manifest import DescriptorError, content_identity, load_descriptor
+from .manifest import DescriptorError, content_identity, load_descriptor, release_version
 
 
 def inventory_path() -> Path:
@@ -83,6 +83,7 @@ def register(root: Path) -> dict:
     descriptor = load_descriptor(root)
     digest, hashes = content_identity(root, descriptor)
     identities = {
+        "dataVersion": release_version(root),
         "contentDigest": digest,
         "pdkDigest": process_identity(descriptor, hashes),
         "adaptationDigest": document_digest(split_descriptor(descriptor).adaptation),

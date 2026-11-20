@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from .manifest import Descriptor, DescriptorError, file_digest, resource_path
+from .manifest import Descriptor, DescriptorError, check_release, file_digest, resource_path
 
 _STAGE_RESOURCES = {
     "synthesis": {"liberty"},
@@ -19,6 +19,7 @@ _STAGE_RESOURCES = {
 
 
 def validate_resources(root: Path, descriptor: Descriptor) -> dict:
+    version = check_release(root, descriptor.release)
     diagnostics = []
     available = set()
     failed_roles = set()
@@ -27,7 +28,11 @@ def validate_resources(root: Path, descriptor: Descriptor) -> dict:
             path = resource_path(root, resource)
             if not path.is_file():
                 raise DescriptorError("resource_missing", f"resource does not exist: {path}")
-            if resource.sha256 is not None and file_digest(path) != resource.sha256:
+            if (
+                version is None
+                and resource.sha256 is not None
+                and file_digest(path) != resource.sha256
+            ):
                 raise DescriptorError("content_mismatch", f"resource checksum differs: {name}")
             available.add(resource.role)
         except (DescriptorError, OSError) as exc:

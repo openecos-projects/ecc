@@ -1,10 +1,12 @@
 # PDK descriptions and project bindings
 
-PDK providers may publish `ecc-pdk.json` containing **process facts only**:
-`schema_version: 2`, `family_id`, `release`, `resources`, and
-`views`. ICS55 v1, v2 and other processes use exactly this format. Technology
-files and timing views are facts; tool configuration and the
-selection of cells/views for execution are ECC policy.
+An ICS55 package publishes a single plain-text `VERSION` file at its root.
+Its only line is the generation identifier, `ics55-v1` or `ics55-v2`. `ecc pdk version --root /data/pdk`
+can print it before large assets are extracted. ECC selects the bundled profile
+for a recognized release. It checks paths and roles before running and permits
+updated resources within the same version. For a custom version, use `configure
+init` or import a matching configuration. Older packages containing `ecc-pdk.json`
+remain supported. ECC owns the resource descriptions and tool adaptations.
 
 ECC owns a separate adaptation schema (`schema_version: 1`): an exact
 `description_digest` binding, `profile_revision`, `cells` (selected roles),
@@ -16,7 +18,7 @@ Imported descriptions and adaptations are stored together as separate objects in
 an atomic ECC-managed `configuration.json`, under
 `<inventory-directory>/pdk-configurations/<canonical-root-hash>/`. This avoids
 partially updating a description without its matching adaptation. Their schemas
-and hashes remain independent. Nothing is written into the PDK root.
+and hashes remain independent. The generated STA catalog can be shared in the PDK root.
 
 When a vendor description is missing, including ICS55, CLI/Studio creates a local
 description in that same management directory. When the description is present
@@ -70,7 +72,7 @@ the package, including symlinks, are rejected. `views` and `synthesis_libraries`
 reference Liberty resource IDs. `cells` supplies site and standard-cell roles.
 ECC derives ICS55 sizing candidates from the standard-cell LEFs selected by the exact
 bundled profile. Import and workspace refresh verify `<PDK_ROOT>/cell_catalog.tsv` against its
-expected SHA-256. ECC atomically rebuilds a missing or damaged file. When the
+generated cell table. ECC atomically rebuilds a missing or damaged file. When the
 installation is read-only and needs a new table, ECC uses
 `pdk-catalogs/<table-sha256>/cell_catalog.tsv` beside the PDK inventory. Each workspace records the absolute path in
 `STA.-cell_catalog`. Older descriptors and custom PDKs with explicit cell lists
@@ -106,16 +108,15 @@ ICS55 profile values and stage settings are recorded below.
 
 ## Bundled ICS55 profiles
 
-The profile index maps exact normalized description digests to independent
+The profile index maps public release numbers and legacy description digests to independent
 description and adaptation JSON files. Those files are included in the Python
 wheel and frozen CLI; they contain process metadata and policy, not PDK payloads.
-Every referenced resource is checked against its SHA-256 before a default is
-applied.
+Versioned installations check that the referenced files exist.
 
 | Profile | PDK release | Site and cells | Rail | Detailed routing |
 | --- | --- | --- | --- | --- |
-| `ics55-v1` | `v1.10.103` | 7T `core7`; H7H/H7R/H7L | 0.16 um | MET2-MET5 |
-| `ics55-v2` | `v2-2026.10.28-7d83e6d` | 9T `SC9T_site`; 9THVT/9TSVT/9TLVT | 0.30 um | MET1-MET5 |
+| `ics55-v1` | `ics55-v1` | 7T `core7`; H7H/H7R/H7L | 0.16 um | MET2-MET5 |
+| `ics55-v2` | `ics55-v2` | 9T `SC9T_site`; 9THVT/9TSVT/9TLVT | 0.30 um | MET1-MET5 |
 
 The v2 description includes the full 25-resource set, including five GDS
 resources. The catalog also recognizes the earlier 20-resource v2 descriptor.
@@ -191,8 +192,7 @@ reselected from defaults. `ECC_PDK_ROOT` applies to every process.
 ## Installation updates and workspace history
 
 Studio records the selected registry release and archive checksum during download.
-For an installation without a vendor descriptor, ECC identifies a supported release
-by checking all declared resources against its bundled SHA-256 values. Unknown
+ECC first reads `VERSION`. Legacy installations with neither `VERSION` nor a vendor description use the bundled resource checksums as a compatibility fallback. Unknown
 packages can be configured explicitly. The official ICS55 packages do not need to
 provide an ECC-specific file.
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from .documents import document_digest, process_identity, split_descriptor
 from .managed import legacy_identity
-from .manifest import Descriptor, content_identity, resource_path
+from .manifest import Descriptor, content_identity, release_version, resource_path
 
 
 def database_units(root: Path, descriptor: Descriptor) -> int | None:
@@ -56,13 +56,14 @@ def resolved_context(root: Path, descriptor: Descriptor) -> dict:
     digest, hashes = content_identity(root, descriptor)
     return {
         "schema_version": 1,
+        "data_version": release_version(root),
         "content_digest": digest,
         "legacy_content_digest": legacy_identity(root, descriptor, hashes),
         "pdk_digest": process_identity(descriptor, hashes),
         "adaptation_digest": document_digest(split_descriptor(descriptor).adaptation),
         "resource_root": str(root.resolve()),
         "resources": {
-            name: {"path": resource.path, "sha256": hashes[name]}
+            name: {"path": resource.path, **({"sha256": hashes[name]} if name in hashes else {})}
             for name, resource in descriptor.resources.items()
         },
         "site_width_dbu": site_width_dbu(root, descriptor),

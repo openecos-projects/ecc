@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -30,6 +31,22 @@ pdk_app.add_typer(profiles_app, name="profiles")
 
 def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("pdk", command_input, handler, render_key=f"pdk:{subcommand}")
+
+
+@pdk_app.command("version")
+def version_cmd(root: Annotated[Path, typer.Option(exists=True, file_okay=False)]) -> None:
+    """Print the installed process release, including before resource extraction."""
+    from chipcompiler.pdk.manifest import DescriptorError, load_descriptor, release_version
+
+    from .configure import _failure
+
+    try:
+        version = release_version(root) or load_descriptor(root).release
+        if not version:
+            raise DescriptorError("version_missing", "PDK release is not configured")
+        typer.echo(version)
+    except (ValueError, OSError) as exc:
+        _failure(exc)
 
 
 @pdk_app.command("set-root")

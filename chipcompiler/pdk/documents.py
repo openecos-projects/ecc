@@ -84,6 +84,10 @@ def split_descriptor(descriptor: Descriptor) -> ManagedConfiguration:
 
 
 def process_identity(descriptor: Descriptor, hashes: dict[str, str]) -> str:
+    if not hashes:
+        return hashlib.sha256(
+            json.dumps([descriptor.family_id, descriptor.release]).encode()
+        ).hexdigest()
     description = split_descriptor(descriptor).description
     payload = {"description": description.model_dump(), "resources": hashes}
     return hashlib.sha256(

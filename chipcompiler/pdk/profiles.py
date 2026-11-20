@@ -1,4 +1,4 @@
-"""Bundled, exact-content default adaptations. Never infer policy from a name."""
+"""Bundled adaptations for published data versions and legacy installations."""
 
 import json
 from pathlib import Path
@@ -7,7 +7,14 @@ from pydantic import Field
 
 from .compatibility import ecc_compatible
 from .documents import ManagedConfiguration, PdkDescription, document_digest
-from .manifest import DescriptorError, StrictModel, content_identity, file_digest
+from .manifest import (
+    DescriptorError,
+    StrictModel,
+    check_release,
+    content_identity,
+    file_digest,
+    release_version,
+)
 
 PROFILE_DIRECTORY = Path(__file__).parent / "profiles"
 
@@ -74,8 +81,25 @@ def validated_default(
     root: Path, profile: Profile, source: PdkDescription | None = None
 ) -> ManagedConfiguration:
     configuration = profile_configuration(profile)
-    # Previously published descriptions carried the cell list. Keep that exact
-    # order in the resolved descriptor for existing identities and snapshots.
+    version = release_version(root)
+    if version is not None:
+        check_release(root, profile.id)
+        facts = configuration.description.model_copy(
+            update={
+                "release": version,
+                "resources": {
+                    key: item.model_copy(update={"sha256": None})
+                    for key, item in configuration.description.resources.items()
+                },
+            }
+        )
+        configuration = ManagedConfiguration(
+            description=facts,
+            adaptation=configuration.adaptation.model_copy(
+                update={"description_digest": document_digest(facts)}
+            ),
+        )
+    # Preserve the cell order in previously published descriptions.
     if source is not None and source.cell_catalog and not configuration.description.cell_catalog:
         facts = configuration.description.model_copy(update={"cell_catalog": source.cell_catalog})
         configuration = ManagedConfiguration(
@@ -87,7 +111,9 @@ def validated_default(
     ecc_compatible(configuration.adaptation.tools)
     # All bundled resource identities must be pinned. Validate contents before
     # publishing anything in management, including explicitly selected v1 roots.
-    if not all(resource.sha256 for resource in configuration.description.resources.values()):
+    if version is None and not all(
+        resource.sha256 for resource in configuration.description.resources.values()
+    ):
         raise DescriptorError("profile_invalid", "bundled resources must have content hashes")
     content_identity(root, configuration.resolved())
     return configuration
@@ -97,6 +123,14 @@ def detect_release(root: Path) -> ManagedConfiguration:
     """Identify an unpacked release from its installed resources, independent of its name."""
     from .manifest import resource_path
 
+    version = release_version(root)
+    if version is not None:
+        candidates = [profile for profile in catalog() if profile.id == version]
+        if len(candidates) == 1:
+            return validated_default(root, candidates[0])
+        raise DescriptorError(
+            "profile_unresolved", f"Select or import a PDK configuration for VERSION {version}"
+        )
     matches = []
     for profile in catalog():
         facts = profile_configuration(profile).description
@@ -142,7 +176,14 @@ def apply_profile(root: Path, profile_id: str, expected_revision: str | None) ->
     if exists:
         current = read_configuration(source)
         source_description = current.description
-        if document_digest(current.description) not in profile.description_digests:
+        if release_version(root) is not None:
+            if (
+                current.description.family_id
+                != profile_configuration(profile).description.family_id
+            ):
+                raise DescriptorError("family_mismatch", "profile does not match the PDK family")
+            check_release(root, current.description.release)
+        elif document_digest(current.description) not in profile.description_digests:
             raise DescriptorError("profile_mismatch", "profile does not match the PDK description")
         if configuration_path(root).exists() and expected_revision is None:
             raise DescriptorError(

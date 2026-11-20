@@ -9,7 +9,14 @@ from pathlib import Path
 from chipcompiler.utility.file import write_text_atomic
 
 from .documents import split_descriptor
-from .manifest import CellVariant, Descriptor, DescriptorError, file_digest, resource_path
+from .manifest import (
+    CellVariant,
+    Descriptor,
+    DescriptorError,
+    file_digest,
+    release_version,
+    resource_path,
+)
 from .profiles import CatalogRule, matching_profile
 from .registry import inventory_path
 
@@ -22,7 +29,9 @@ def _generate(root: Path, descriptor: Descriptor, rule: CatalogRule) -> list[Cel
     for key in rule.lefs:
         resource = descriptor.resources[key]
         content = resource_path(root, resource).read_bytes()
-        if resource.role != "lef" or hashlib.sha256(content).hexdigest() != resource.sha256:
+        if resource.role != "lef" or (
+            release_version(root) is None and hashlib.sha256(content).hexdigest() != resource.sha256
+        ):
             raise DescriptorError("content_mismatch", f"unexpected catalog LEF: {resource.path}")
         for name in sorted(_MACRO.findall(content)):
             master = name.decode("ascii")
@@ -53,6 +62,7 @@ def _render(rows: list[CellVariant], *, compact: bool) -> str:
 
 
 def shared_sta_catalog(root: Path, descriptor: Descriptor) -> Path | None:
+    version = release_version(root)
     profile = matching_profile(split_descriptor(descriptor))
     if profile is None and not descriptor.cell_catalog:
         from .profiles import catalog, profile_configuration
@@ -63,15 +73,22 @@ def shared_sta_catalog(root: Path, descriptor: Descriptor) -> Path | None:
             facts = profile_configuration(candidate).description
             if (descriptor.family_id, descriptor.release) == (
                 facts.family_id,
-                facts.release,
+                candidate.id if version else facts.release,
             ) and all(
-                descriptor.resources.get(key) == facts.resources[key]
+                key in descriptor.resources and descriptor.resources[key].role == "lef"
                 for key in candidate.sta_catalog.lefs
             ):
                 profile = candidate
                 break
     rule = profile.sta_catalog if profile else None
-    if rule:
+    if rule and version:
+        text = _render(_generate(root, descriptor, rule), compact=rule.compact_drive)
+        if not text:
+            raise DescriptorError(
+                "invalid_cell_catalog", "no matching cells in the configured LEFs"
+            )
+        checksum = hashlib.sha256(text.encode()).hexdigest()
+    elif rule:
         checksum = rule.sha256
         text = None
     elif descriptor.cell_catalog:

@@ -29,6 +29,7 @@ def list_profiles() -> None:
                 {
                     "id": profile.id,
                     "family_id": configuration.description.family_id,
+                    "data_version": profile.id,
                     "release": configuration.description.release,
                     "profile_revision": configuration.adaptation.profile_revision,
                     "description_digests": profile.description_digests,

@@ -235,3 +235,29 @@ def test_initial_apply_cannot_overwrite_a_concurrent_configuration(bundled, monk
     assert read_configuration(configuration_path(root)).adaptation.parameters == {
         "bottom_layer": "CONCURRENT"
     }
+
+
+def test_versioned_registration_allows_updated_files_but_checks_release(bundled, monkeypatch):
+    from chipcompiler.pdk.registry import register
+
+    root, _, _ = bundled
+    monkeypatch.setenv("ECC_PDK_INVENTORY", str(root.parent / "inventory.json"))
+    marker = root / "VERSION"
+    marker.write_text("example-r1\n")
+    record = register(root)
+    (root / "cells.lib").write_text("library(revised) {}\n")
+    assert register(root) == record
+    marker.write_text("r2\n")
+    with pytest.raises(DescriptorError, match="differs from configured release"):
+        register(root)
+
+
+def test_version_query_before_extraction_and_rejects_extra_metadata(tmp_path):
+    from chipcompiler.cli.commands.pdk import pdk_app
+
+    marker = tmp_path / "VERSION"
+    marker.write_text("ics55-v2\n")
+    args = ["version", "--root", str(tmp_path)]
+    assert CliRunner().invoke(pdk_app, args).output == "ics55-v2\n"
+    marker.write_text("ics55-v2\nsha256=abc\n")
+    assert CliRunner().invoke(pdk_app, args).exit_code == 2

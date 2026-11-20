@@ -19,8 +19,10 @@ from chipcompiler.pdk.managed import (
 from chipcompiler.pdk.manifest import (
     Descriptor,
     DescriptorError,
+    check_release,
     file_digest,
     load_descriptor,
+    release_version,
     resource_path,
 )
 from chipcompiler.pdk.validation import validate_resources
@@ -77,7 +79,10 @@ def initialize(root: Root, family: Annotated[str, typer.Option()], output: Outpu
     """Create an incomplete draft without guessing a process or overwriting files."""
     try:
         path, revision = save_configuration(
-            root, split_descriptor(Descriptor(family_id=family)), create=True, output=output
+            root,
+            split_descriptor(Descriptor(family_id=family, release=release_version(root) or "")),
+            create=True,
+            output=output,
         )
         _print({"path": str(path), "revision": revision, "state": "draft"})
     except (ValueError, OSError) as exc:
@@ -104,6 +109,7 @@ def show(root: Root, output: Output = None) -> None:
         else:
             configuration = read_configuration(path)
         descriptor = configuration.resolved()
+        check_release(root, descriptor.release)
         resources = {
             name: {"role": resource.role, "path": str(resource_path(root, resource))}
             for name, resource in descriptor.resources.items()

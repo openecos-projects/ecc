@@ -14,7 +14,7 @@ from .documents import (
     document_digest,
     split_descriptor,
 )
-from .manifest import DESCRIPTOR_FILENAME, Descriptor, DescriptorError, file_digest
+from .manifest import DESCRIPTOR_FILENAME, Descriptor, DescriptorError, check_release, file_digest
 
 
 def configuration_path(root: Path) -> Path:
@@ -62,6 +62,7 @@ def save_configuration(
     output: Path | None = None,
     import_new: bool = False,
 ) -> tuple[Path, str]:
+    check_release(root, configuration.description.release)
     destination = output or configuration_path(root)
     if destination.resolve().is_relative_to(root.resolve()):
         raise DescriptorError(
@@ -191,7 +192,9 @@ def adopt_configuration(root: Path) -> Path:
                 raise
     from .catalog import shared_sta_catalog
 
-    shared_sta_catalog(root, read_configuration(destination).resolved())
+    descriptor = read_configuration(destination).resolved()
+    check_release(root, descriptor.release)
+    shared_sta_catalog(root, descriptor)
     return destination
 
 
