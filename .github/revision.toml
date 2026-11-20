@@ -35,5 +35,5 @@ git_commit = "b021e8329b29a8407550563ed769f7f7a15a8683"
 
 [e2e-designs]
 repo = "openecos-projects/ecc-ci-designs"
-git_commit = "151fb0d499168ef1d7494c0febd041c60aca9541"
-sha256 = "17d41c37c5884cc1019dab3c3794f9307a1af4529c8089c0d0aff305f51fc3bb"
+git_commit = "2527282601d7df5a065fc79514c9e37cbef0d024"
+sha256 = "1a9641d703a317ab46ef9e674d0281e46d920b4d3aea7b45d04375020aa9c46e"

@@ -22,8 +22,6 @@ def test_ics55_gcd(run_workspace_flow_factory):
         build_rtl2gds_flow,
         workspace_suffix="ics55_gcd_tool",
         with_engine_db=True,
-        # Synthetic electrical values exercise the flow, not IR/EM signoff.
-        synthetic_emir=True,
     )
 
 

@@ -25,13 +25,10 @@ def run_workspace_flow(
     workspace_suffix,
     pdk_root=None,
     with_engine_db=False,
-    synthetic_emir=False,
 ):
     workspace_dir = workspace_base / workspace_suffix
     # Let create_workspace derive process defaults from the selected adaptation.
     parameters = {"design": design_name, "top_module": design_name, "clock": "clk"}
-    if synthetic_emir:
-        parameters["config_overrides"] = {"emir": {"synthetic_model": "ics55"}}
 
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)

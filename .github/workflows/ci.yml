@@ -104,6 +104,24 @@ jobs:
           set -euo pipefail
           nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
 
+      - name: Fetch pinned E2E design archive
+        env:
+          DESIGN_REPO: ${{ steps.resolve.outputs.e2e_designs_repo }}
+          DESIGN_REV: ${{ steps.resolve.outputs.e2e_designs_git_commit }}
+          DESIGN_SHA256: ${{ steps.resolve.outputs.e2e_designs_sha256 }}
+        run: |
+          curl --fail --location --retry 3 "https://codeload.github.com/$DESIGN_REPO/tar.gz/$DESIGN_REV" -o designs.tar.gz
+          printf '%s  designs.tar.gz\n' "$DESIGN_SHA256" | sha256sum -c -
+
+      - name: Share pinned E2E design archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecc-e2e-design-inputs
+          path: designs.tar.gz
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload CI actions
         uses: actions/upload-artifact@v4
         with:
@@ -745,13 +763,18 @@ jobs:
           name: ecc-ci-actions
           path: .github/actions
 
-      - name: Checkout designs on cache miss
+      - name: Download verified design archive on cache miss
         if: steps.source.outputs.hit == 'false'
-        uses: actions/checkout@v4
+        uses: actions/download-artifact@v4
         with:
-          repository: ${{ needs.list-versions.outputs.e2e_designs_repo }}
-          ref: ${{ needs.list-versions.outputs.e2e_designs_git_commit }}
-          path: designs
+          name: ecc-e2e-design-inputs
+          path: ${{ runner.temp }}/design-inputs
+
+      - name: Extract designs on cache miss
+        if: steps.source.outputs.hit == 'false'
+        run: |
+          mkdir designs
+          tar -xf "$RUNNER_TEMP/design-inputs/designs.tar.gz" --strip-components=1 -C designs
 
       - name: Stage E2E designs on cache miss
         if: steps.source.outputs.hit == 'false'
