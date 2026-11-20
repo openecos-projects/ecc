@@ -155,7 +155,9 @@ def unregister_missing_workspace(
             raise WorkspaceLifecycleError(
                 "workspace_identity_changed", "Workspace directory exists; delete it as a Workspace"
             )
-        staged = sorted(project.glob(f"{_DELETE_STAGING_PREFIX}{workspace_id}-*"))
+        # Matched literally: a workspace id may contain glob characters.
+        prefix = f"{_DELETE_STAGING_PREFIX}{workspace_id}-"
+        staged = sorted(path for path in project.iterdir() if path.name.startswith(prefix))
         if staged:
             raise WorkspaceLifecycleError(
                 "workspace_delete_recovery_required",
