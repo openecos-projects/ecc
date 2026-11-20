@@ -76,6 +76,33 @@ class TestPlainQuoting:
         assert json.loads(record["placements"]) == values["placements"]
         assert json.loads(record["counts"]) == values["counts"]
 
+    def test_plain_collections_stay_strict_json_for_non_finite_numbers(self, plain_records):
+        """JSON has no NaN or Infinity; a strict parser must still accept the value."""
+        import json
+
+        def strict(text: str):
+            def refuse(token: str):
+                raise ValueError(f"not JSON: {token}")
+
+            return json.loads(text, parse_constant=refuse)
+
+        nan, inf = float("nan"), float("inf")
+        buf = StringIO()
+        render_plain(
+            (
+                {
+                    "kind": "probe",
+                    "values": [1.5, nan, inf, -inf],
+                    "rows": {"slack": nan, "x": (inf, 2)},
+                },
+            ),
+            file=buf,
+        )
+
+        (record,) = plain_records(buf.getvalue())
+        assert strict(record["values"]) == [1.5, None, None, None]
+        assert strict(record["rows"]) == {"slack": None, "x": [None, 2]}
+
     def test_plain_value_numeric(self):
         assert _plain_value(42) == "42"
 

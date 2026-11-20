@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 
@@ -32,13 +33,27 @@ def render_plain(records: tuple[dict, ...], file=None) -> None:
         print(" ".join(parts), file=target)
 
 
+def _json_value(value):
+    """*value* as JSON can express it: a non-finite float inside a collection is null.
+
+    ``json.dumps`` would write ``NaN`` and ``Infinity``, which a JSON parser rejects.
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    return value
+
+
 def _plain_value(value) -> str:
     # Plain values are parsed, never evaluated: a boolean is written as in
     # JSON, and a list, tuple or mapping is written as JSON (#413).
     if isinstance(value, bool):
         s = "true" if value else "false"
     elif isinstance(value, (list, tuple, dict)):
-        s = json.dumps(value, ensure_ascii=False, default=str)
+        s = json.dumps(_json_value(value), ensure_ascii=False, allow_nan=False, default=str)
     else:
         s = str(value)
     if any(c.isspace() for c in s) or "\\" in s or '"' in s or "=" in s:
