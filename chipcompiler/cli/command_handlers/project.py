@@ -988,10 +988,15 @@ def _run_project(
 
     # The selector path executes steps. `workspace create` on an existing
     # target must not reach it: it reports the workspace instead (#393, #442).
+    # It also works on declared workspaces only, so an existing directory the
+    # manifest does not declare goes through the dispatcher, which registers
+    # it first - the same route an absolute workspace path takes.
+    undeclared_directory = project_state == "manifest" and not workspace_registered
     if (
         execute_flow
         and not fresh_target
         and not ctx.workspace_path_explicit
+        and not undeclared_directory
         and (
             command_input.resume
             or command_input.from_step is not None

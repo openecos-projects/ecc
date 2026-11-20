@@ -83,6 +83,24 @@ def _diverging_workspace_param_fixes(
     return fixes
 
 
+def rejected_run_overrides(run_name: str, run_dir: str) -> CommandResult:
+    """``ecc run --set`` on an existing workspace: overrides belong to a fresh one."""
+    from chipcompiler.cli.core.records import error_record
+
+    return CommandResult.err(
+        [
+            error_record(
+                "set_requires_fresh_run",
+                workspace_id=run_name,
+                workspace=run_dir,
+                reason=(
+                    "--set applies only to fresh workspaces; use --overwrite or a new --workspace"
+                ),
+            )
+        ]
+    )
+
+
 def run_existing_workspace(
     command_input,
     ctx,
@@ -103,21 +121,7 @@ def run_existing_workspace(
     """
 
     if cli_overrides:
-        from chipcompiler.cli.core.records import error_record
-
-        return CommandResult.err(
-            [
-                error_record(
-                    "set_requires_fresh_run",
-                    workspace_id=run_name,
-                    workspace=run_dir,
-                    reason=(
-                        "--set applies only to fresh workspaces; use --overwrite "
-                        "or a new --workspace"
-                    ),
-                )
-            ]
-        )
+        return rejected_run_overrides(run_name, run_dir)
     if command_input.from_step is not None or command_input.only is not None:
         from chipcompiler.cli.project.run_workspace import execute_workspace_run
 

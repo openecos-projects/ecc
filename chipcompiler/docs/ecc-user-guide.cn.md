@@ -1018,7 +1018,10 @@ Engineering Snapshot）时报 `workspace_fork_source_unavailable`。
 `--from`/`--to` 需要同时给出 SOURCE 与 TARGET；没有终端时报
 `workspace_fork_requires_terminal`。脚本、agent 和 ECOS Studio 传 SOURCE 与 TARGET；
 旧名称 `ecc workspace derive` 对它们仍然可用。`archive` 是让 workspace 退出自动选择的推荐方式
-（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。自动化选项按需适用
+（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。`delete` 保留下来的目录仍是磁盘上的一个
+workspace：用同一个名字执行 `create` 或 `ecc run` 会把它连同已保存的状态重新登记；
+想从空的 workspace 开始，请在删除时加 `--delete-directory`，或运行时加
+`--overwrite`。自动化选项按需适用
 （archive/delete/reset-flow 带 `--expected-revision`；创建/fork 类子命令带
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
 `workspace_busy`（退出码 20）。
