@@ -316,7 +316,7 @@ max_parallel_steps = 4
 ecc check [--project DIR] [--workspace NAME] [--plain]
 ```
 
-Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check). With `--workspace NAME` the check runs against the effective configuration resolved for that declared workspace (manifest fallback and entry-layer range applied) instead of the bare project:
+Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check). With `--workspace NAME` the check runs against the effective configuration resolved for that declared workspace (manifest fallback and entry-layer range applied) instead of the bare project. Without `--workspace`, a project that has no active workspace yet is checked as the bare project, a single active workspace is selected automatically, and several active workspaces require `--workspace` (`workspace_required`):
 
 ```console
 $ ecc check        # PDK not ready

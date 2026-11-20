@@ -373,7 +373,7 @@ max_parallel_steps = 4
 ecc check [--project DIR] [--workspace NAME] [--plain]
 ```
 
-校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty），并逐一校验每个声明的 RTL 源文件（源文件缺失即失败）。指定 `--workspace NAME` 时改为按该 workspace 解析出的有效配置校验（应用 manifest 回退与入口层范围），而不是裸项目：
+校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty），并逐一校验每个声明的 RTL 源文件（源文件缺失即失败）。指定 `--workspace NAME` 时改为按该 workspace 解析出的有效配置校验（应用 manifest 回退与入口层范围），而不是裸项目。不带 `--workspace` 时：项目还没有活动的 workspace 则校验裸项目，只有一个活动 workspace 则自动选中它，有多个则必须指定 `--workspace`（否则报 `workspace_required`）：
 
 ```console
 $ ecc check        # PDK 未就绪时
