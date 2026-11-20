@@ -356,8 +356,12 @@ def dispatch_project_run(
             if not workspace_registered and (
                 ctx.workspace_path_explicit or project_state == "manifest"
             ):
-                # A create this branch is going to refuse registers nothing.
+                # A command this branch is going to refuse registers nothing.
                 rejected = rejected_create_overrides()
+                if rejected is None and execute_flow and cli_overrides:
+                    from chipcompiler.cli.project.run_existing import rejected_run_overrides
+
+                    rejected = rejected_run_overrides(run_name, run_dir)
                 if rejected is not None:
                     return rejected
                 from chipcompiler.cli.core.records import error_record
@@ -374,7 +378,10 @@ def dispatch_project_run(
                         pdk_root=resolve_pdk_root(cfg),
                         workspace_id=run_name,
                         workspace_path=run_dir,
+                        blocking=not command_input.no_wait,
                     )
+                except BlockingIOError:
+                    return CommandResult.err([error_record("workspace_busy")], exit_code=20)
                 except WorkspaceRegistrationError as exc:
                     return CommandResult.err(
                         [
@@ -408,8 +415,10 @@ def dispatch_project_run(
                     )
                 workspace_registered = True
                 # This execution must use the imported workspace's own
-                # persisted range, not the project's fresh-run preset.
-                cfg.manifest_driven = True
+                # persisted range, not the project's fresh-run preset - unless
+                # the command names a preset, which is checked against it.
+                if command_input.preset is None:
+                    cfg.manifest_driven = True
         else:
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
             if isinstance(prepared, CommandResult):

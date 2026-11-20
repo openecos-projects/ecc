@@ -170,3 +170,76 @@ def test_run_registers_an_undeclared_workspace_directory_before_it_runs(
     assert rc == 0, records
     assert seen["runs"] == 1
     assert _declared(project) == {"kept": str(project / "kept")}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [["workspace", "create", "kept"], ["run", "--workspace", "kept"]],
+    ids=["create", "run"],
+)
+def test_no_wait_reports_a_busy_undeclared_workspace_directory(
+    project, monkeypatch, capsys, plain_records, command
+):
+    """Registration takes the workspace lock: --no-wait must not wait for it."""
+    import threading
+
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    _workspace_directory(project / "kept")
+    _no_engine(monkeypatch)
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with workspace_lock(project / "kept"):
+            held.set()
+            release.wait(3)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert held.wait(10)
+    try:
+        rc = cli_main.run([*command, "--no-wait", "--project", str(project), "--plain"])
+    finally:
+        release.set()
+        holder.join()
+
+    assert rc == 20
+    assert plain_records(capsys.readouterr().out)[-1]["error"] == "workspace_busy"
+    assert _declared(project) == {}
+
+
+def test_run_with_set_registers_nothing(project, monkeypatch, capsys, plain_records):
+    """The run refuses --set on an existing workspace; it must not register it first."""
+    _workspace_directory(project / "kept")
+    _no_engine(monkeypatch)
+
+    rc = cli_main.run(
+        ["run", "--workspace", "kept", "--set", "placement:place.target_density=0.5"]
+        + ["--project", str(project), "--plain"]
+    )
+
+    assert rc == 1
+    assert plain_records(capsys.readouterr().out)[-1]["error"] == "set_requires_fresh_run"
+    assert _declared(project) == {}
+
+
+def test_run_keeps_an_explicit_preset_for_the_registered_directory(
+    project, monkeypatch, capsys, plain_records
+):
+    """--preset is the target of the run, not the saved range of the directory."""
+    flow_json = _workspace_directory(project / "kept", state="Success")
+    seen = _spy_engine(monkeypatch, flow_json)
+    command = ["run", "--workspace", "kept", "--project", str(project), "--plain"]
+
+    # Without a preset the saved range (synthesis only) is complete: nothing runs.
+    assert cli_main.run(command) == 0
+    assert plain_records(capsys.readouterr().out)[-1]["no_op"] == "True"
+    assert seen["runs"] == 0
+
+    # The same directory, unregistered again, with a preset that reaches further.
+    manifest = json.loads((project / "project.json").read_text())
+    manifest["workspaces"] = []
+    (project / "project.json").write_text(json.dumps(manifest))
+    assert cli_main.run([*command, "--preset", "rtl2gds"]) == 0
+    capsys.readouterr()
+    assert seen["runs"] == 1
