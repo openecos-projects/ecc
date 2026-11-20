@@ -607,6 +607,29 @@ class TestProjectDoctorMovedProject:
         assert config["design"]["sdc"] == str(external)
         assert text.startswith("# keep this comment\n")
 
+    def test_fix_stops_before_writing_an_ecc_toml_it_cannot_edit_in_place(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        """An inline [design] table: no broken TOML, nothing written, the key named."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        (project_dir / "ecc.toml").write_text(
+            f'design = {{ name = "gcd", rtl = ["{project_dir}/rtl/gcd.v"] }}\n'
+            '\n[pdk]\nname = "ics55"\n'
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        before = {
+            name: (moved / name).read_bytes()
+            for name in ("ecc.toml", "project.json", "ws_0001/config/db_ecc.json")
+        }
+
+        assert _run_doctor(moved, "--fix") == 1
+
+        records = plain_records(capsys.readouterr().out)
+        assert records[1]["fix"] == "failed"
+        assert "[design] rtl" in records[1]["fix_detail"]
+        assert {name: (moved / name).read_bytes() for name in before} == before
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

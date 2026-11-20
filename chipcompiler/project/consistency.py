@@ -313,6 +313,9 @@ def _planned_project_config(recorded_root: str, project_dir: str) -> tuple[Path,
     document = tomllib.loads(text)
     new_root = os.path.realpath(project_dir)
     updated = text
+    expected = {
+        table: dict(section) for table, section in document.items() if isinstance(section, dict)
+    }
     for table, key in _PROJECT_PATH_KEYS:
         section = document.get(table)
         if not isinstance(section, dict) or key not in section:
@@ -321,7 +324,29 @@ def _planned_project_config(recorded_root: str, project_dir: str) -> tuple[Path,
         rebased = _rebase_values(value, recorded_root, new_root)
         if rebased != value:
             updated = set_scoped_key(updated, table, key, rebased)
-    return None if updated == text else (path, updated)
+            expected[table][key] = rebased
+    if updated == text:
+        return None
+    # The editor only knows [table] sections. Whatever it wrote has to read
+    # back as the same document with just these values changed; otherwise
+    # (an inline table, say) the repair stops before writing anything.
+    try:
+        written = tomllib.loads(updated)
+    except tomllib.TOMLDecodeError:
+        written = None
+    unchanged = {key: value for key, value in document.items() if not isinstance(value, dict)}
+    if written != {**unchanged, **expected}:
+        keys = ", ".join(
+            f"[{table}] {key}"
+            for table, key in _PROJECT_PATH_KEYS
+            if table in expected
+            and expected[table].get(key) != (document.get(table) or {}).get(key)
+        )
+        raise ValueError(
+            f"cannot rewrite {keys} in place; replace the path into {recorded_root} "
+            f"by one into {new_root} and run the repair again"
+        )
+    return path, updated
 
 
 def _planned_parameter_rewrite(workspace_dir: str, recorded_root: str, project_dir: str):
