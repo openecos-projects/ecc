@@ -54,6 +54,22 @@ def _render(rows: list[CellVariant], *, compact: bool) -> str:
 
 def shared_sta_catalog(root: Path, descriptor: Descriptor) -> Path | None:
     profile = matching_profile(split_descriptor(descriptor))
+    if profile is None and not descriptor.cell_catalog:
+        from .profiles import catalog, profile_configuration
+
+        for candidate in catalog():
+            if not candidate.sta_catalog:
+                continue
+            facts = profile_configuration(candidate).description
+            if (descriptor.family_id, descriptor.release) == (
+                facts.family_id,
+                facts.release,
+            ) and all(
+                descriptor.resources.get(key) == facts.resources[key]
+                for key in candidate.sta_catalog.lefs
+            ):
+                profile = candidate
+                break
     rule = profile.sta_catalog if profile else None
     if rule:
         checksum = rule.sha256

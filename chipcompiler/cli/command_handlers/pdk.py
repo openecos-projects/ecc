@@ -1,7 +1,6 @@
 """Handlers for the `ecc pdk` command group (PDK path configuration)."""
 
 import os
-from pathlib import Path
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
@@ -27,14 +26,6 @@ def _write_root_or_error(config_path: str, value: str, project: str | None) -> C
     from chipcompiler.cli.core.output import disclosure_cmd
 
     try:
-        lock_path = Path(config_path).parent / "pdk.lock.json"
-        if lock_path.exists():
-            from chipcompiler.pdk.locking import read_lock, verify_lock
-
-            if not value:
-                raise ValueError("cannot unset the PDK of a locked project")
-            lock = read_lock(lock_path)
-            verify_lock(Path(value), lock)
         _write_pdk_root(config_path, value)
     except (OSError, ValueError) as exc:
         return CommandResult.err(

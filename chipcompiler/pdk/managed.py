@@ -87,7 +87,7 @@ def save_configuration(
 
 
 def import_configuration(
-    root: Path, description: Path, adaptation: Path | None
+    root: Path, description: Path, adaptation: Path | None, *, expected_revision: str | None = None
 ) -> tuple[Path, str]:
     configuration = read_configuration(description)
     if adaptation is not None:
@@ -95,19 +95,79 @@ def import_configuration(
             description=configuration.description,
             adaptation=EccAdaptation.model_validate_json(adaptation.read_bytes()),
         )
+    elif expected_revision and json.loads(description.read_bytes()).get("schema_version") == 2:
+        current = read_configuration(source_path(root))
+        if (current.description.family_id, current.description.release) != (
+            configuration.description.family_id,
+            configuration.description.release,
+        ):
+            raise DescriptorError(
+                "release_mismatch", "resource updates must match the installed release"
+            )
+        configuration = ManagedConfiguration(
+            description=configuration.description,
+            adaptation=current.adaptation.model_copy(
+                update={"description_digest": document_digest(configuration.description)}
+            ),
+        )
     else:
         from .profiles import default_for
 
         configuration = default_for(root, configuration)
+    return publish_configuration(root, configuration, expected_revision=expected_revision)
+
+
+def publish_configuration(
+    root: Path,
+    configuration: ManagedConfiguration,
+    *,
+    expected_revision: str | None,
+    draft: bool = False,
+) -> tuple[Path, str]:
     destination = configuration_path(root)
-    if destination.exists():
+    if destination.exists() and expected_revision is None:
         raise DescriptorError(
-            "already_exists", "managed configuration exists; edit it using configure set"
+            "already_exists",
+            "managed configuration exists; pass --expected-revision from configure show",
         )
     from .catalog import shared_sta_catalog
+    from .documents import process_identity
+    from .manifest import content_identity
+    from .registry import inventory_transaction
 
-    shared_sta_catalog(root, configuration.resolved())
-    return save_configuration(root, configuration, import_new=True)
+    descriptor = configuration.resolved()
+    with inventory_transaction() as inventory:
+        record = next(
+            (r for r in inventory["installations"] if r["root"] == str(root.resolve())), None
+        )
+        if draft and record is None:
+            return save_configuration(root, configuration, expected_revision=expected_revision)
+        if expected_revision is not None and (
+            not source_path(root).is_file() or file_digest(source_path(root)) != expected_revision
+        ):
+            raise DescriptorError(
+                "revision_conflict", "configuration changed; reload before saving"
+            )
+        if record and record["familyId"] != descriptor.family_id:
+            raise DescriptorError(
+                "family_mismatch", "configuration must match the installed PDK family"
+            )
+        digest, hashes = content_identity(root, descriptor)
+        shared_sta_catalog(root, descriptor)
+        result = save_configuration(
+            root,
+            configuration,
+            expected_revision=expected_revision,
+            import_new=expected_revision is None,
+        )
+        if record:
+            record.update(
+                contentDigest=digest,
+                pdkDigest=process_identity(descriptor, hashes),
+                adaptationDigest=document_digest(configuration.adaptation),
+                configurationPath=str(result[0]),
+            )
+        return result
 
 
 def adopt_configuration(root: Path) -> Path:
@@ -118,7 +178,12 @@ def adopt_configuration(root: Path) -> Path:
 
         source = root / DESCRIPTOR_FILENAME
         revision = file_digest(source) if source.exists() else None
-        configuration = default_for(root, read_configuration(source))
+        if source.exists():
+            configuration = default_for(root, read_configuration(source))
+        else:
+            from .profiles import detect_release
+
+            configuration = detect_release(root)
         try:
             save_configuration(root, configuration, import_new=True, expected_revision=revision)
         except DescriptorError as exc:

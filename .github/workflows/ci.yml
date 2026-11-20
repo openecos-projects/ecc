@@ -362,7 +362,7 @@ jobs:
       - name: Stage PDK provenance and downloader
         run: |
           mkdir pdk-provenance
-          cp pdk-source.json .github/actions/setup-pdk/fetch-pdk.sh pdk-provenance/
+          cp pdk-source.json .github/actions/setup-pdk/fetch-pdk.sh chipcompiler/pdk/profiles/ics55-v2-description.json pdk-provenance/
 
       - name: Upload PDK provenance and downloader
         uses: actions/upload-artifact@v4

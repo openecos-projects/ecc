@@ -454,11 +454,9 @@ def execute_fresh_run(
                 workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
             )
         try:
-            from chipcompiler.pdk.locking import lock_workspace_inputs
+            from chipcompiler.pdk.managed import adopt_configuration
 
-            description_path = lock_workspace_inputs(
-                Path(project_dir), Path(pdk_root), cfg.pdk_name
-            )
+            description_path = adopt_configuration(Path(pdk_root))
             workspace = create_workspace(
                 directory=run_dir,
                 origin_def=origin_def,

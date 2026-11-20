@@ -195,10 +195,6 @@ def _populate(
         staging / MANIFEST_FILENAME,
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
     )
-    if selected[1]:
-        from chipcompiler.pdk.locking import lock_workspace_inputs
-
-        lock_workspace_inputs(staging, Path(selected[1]), selected[0])
     _fsync_directory(rtl)
     _fsync_directory(constraints)
     _fsync_directory(staging)

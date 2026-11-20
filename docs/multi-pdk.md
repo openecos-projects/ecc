@@ -101,7 +101,7 @@ A Liberty-only package can create a synthesis workspace with explicit SDC and
 `synthesis_libraries`; requesting physical steps reports missing resources.
 
 Version-specific changes apply to the selected ECC-managed adaptation, without
-editing PDK files or configurations locked by existing projects. The reviewed
+editing PDK files or the recorded configuration of earlier workspaces. The reviewed
 ICS55 profile values and stage settings are recorded below.
 
 ## Bundled ICS55 profiles
@@ -127,8 +127,8 @@ flow-test-only; it is not foundry signoff data.
 Native tool templates live in each tool adapter’s `configs/defaults/` directory.
 `configs/pdk/<profile>/` holds the fields that change for that release. Objects
 merge recursively, and arrays replace the whole default array. STA resolves
-Liberty resource IDs against the description. Project creation records the
-effective configuration in its lock.
+Liberty resource IDs against the description. Workspace creation records the
+effective configuration.
 
 ## Reviewed ICS55 v2 stage settings
 
@@ -188,26 +188,32 @@ New-project selection is explicit `--pdk-root`, then `ECC_PDK_ROOT`, then the
 chosen client's inventory default. Existing project/workspace bindings are never
 reselected from defaults. `ECC_PDK_ROOT` applies to every process.
 
-## Immutable projects and relocation
+## Installation updates and workspace history
 
-Each project writes `pdk.lock.json` at creation, containing the resolved snapshot,
-all declared file hashes, and separate `pdk_digest` and `adaptation_digest` values.
-The PDK digest excludes ECC policy. An adaptation edit changes its own digest and
-the combined execution digest, but does not change the PDK's identity.
-Existing projects use their locked adaptation for every workspace, even after
-local defaults are edited. Old locks without separate digests remain readable. Workspaces preserve a descriptor and resolved context in
-`home/`. Changes to resources or technology overrides fail instead of silently
-changing the process. Workspace optimization parameters remain editable.
-`ecc pdk library locate` permits moving a package only when content is identical
-and carries its ECC-managed description/adaptation to the new root binding;
-`ecc pdk set-root` verifies an existing project lock before changing its path.
+Studio records the selected registry release and archive checksum during download.
+For an installation without a vendor descriptor, ECC identifies a supported release
+by checking all declared resources against its bundled SHA-256 values. Unknown
+packages can be configured explicitly. The official ICS55 packages do not need to
+provide an ECC-specific file.
+
+The project stores the PDK root in `ecc.toml`. A new workspace uses the current
+ECC-managed configuration at that root. Earlier workspaces keep their descriptor
+and resolved context in `home/`. Recreate a workspace to use the new configuration.
+`ecc pdk set-root` changes the selected installation. `ecc pdk library locate`
+relocates an existing installation after checking its content.
+
+To extend v2, export its description and adaptation, add the resources to the
+installation and update the configuration. Import the updated configuration with
+`ecc pdk configure import --root ROOT --description FILE --expected-revision REV`.
+`ecc pdk configure show --root ROOT` supplies the revision. A description-only update for the same release preserves the current tool settings.
+Pass `--adaptation FILE` to replace them. Use `configure set` for individual fields.
 
 ```sh
 ecc pdk clone-with-pdk --source /data/old-project \
   --target /data/new-project --root /data/another-pdk
 ```
 
-This local command copies RTL and design constraints into a new project with a new PDK lock.
+This local command copies RTL and design constraints into a new project with the selected PDK root.
 It accepts RTL sources or one filelist, does not inherit workspaces or physical
 results, and does not carry old process-specific parameter overrides. Review the
 new project's clock/flow constraints for its new technology. A physically mapped

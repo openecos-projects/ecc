@@ -16,7 +16,6 @@ from chipcompiler.pdk.documents import (
     PdkDescription,
     document_digest,
 )
-from chipcompiler.pdk.locking import bind_project, lock_workspace_inputs, read_lock
 from chipcompiler.pdk.managed import (
     adopt_configuration,
     configuration_path,
@@ -81,12 +80,20 @@ def test_first_adoption_selects_exact_defaults_without_writing_pdk(bundled):
     assert read_configuration(adopt_configuration(root)) == data
 
 
-def test_missing_description_requires_explicit_profile_selection(bundled):
+def test_missing_description_matches_release_content(bundled):
     root, expected, _ = bundled
-    with pytest.raises(DescriptorError, match="description is missing"):
-        adopt_configuration(root)
+    assert read_configuration(adopt_configuration(root)) == expected
     result = CliRunner().invoke(
-        profiles_app, ["apply", "--root", str(root), "--profile", "example-r1"]
+        profiles_app,
+        [
+            "apply",
+            "--root",
+            str(root),
+            "--profile",
+            "example-r1",
+            "--expected-revision",
+            file_digest(configuration_path(root)),
+        ],
     )
     assert result.exit_code == 0, result.output
     assert read_configuration(configuration_path(root)) == expected
@@ -141,7 +148,7 @@ def test_import_without_adapter_uses_default_but_explicit_policy_wins(bundled, t
     assert read_configuration(path).adaptation == policy
 
 
-def test_explicit_upgrade_requires_revision_and_leaves_project_pinned(bundled, tmp_path):
+def test_explicit_upgrade_requires_revision_and_updates_project_preflight(bundled, tmp_path):
     from chipcompiler.pdk.registry import register
 
     root, expected, directory = bundled
@@ -149,7 +156,6 @@ def test_explicit_upgrade_requires_revision_and_leaves_project_pinned(bundled, t
     installation = register(root).copy()
     project = tmp_path / "project"
     project.mkdir()
-    original = bind_project(project, root, expected.resolved())
     replacement = expected.adaptation.model_copy(deep=True)
     replacement.profile_revision = "reviewed-2"
     replacement.parameters["bottom_layer"] = "L3"
@@ -163,15 +169,9 @@ def test_explicit_upgrade_requires_revision_and_leaves_project_pinned(bundled, t
     assert updated["adaptationDigest"] != installation["adaptationDigest"]
     with pytest.raises(DescriptorError, match="configuration changed"):
         profiles.apply_profile(root, "example-r1", revision)
-    assert read_lock(project / "pdk.lock.json") == original
-    assert (
-        load_descriptor(root, lock_workspace_inputs(project, root, "example"))
-        == expected.resolved()
-    )
-    # A broken/new incompatible managed default must not break a locked project.
     path.write_text("{")
     cfg = ProjectConfig(project_dir=str(project), pdk_name="example", pdk_root=str(root))
-    assert pdk_issues_for_config(cfg, ["synthesis"]) == []
+    assert pdk_issues_for_config(cfg, ["synthesis"])
 
 
 def test_profiles_do_not_write_when_ecc_incompatible(bundled):

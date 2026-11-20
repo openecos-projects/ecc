@@ -11,7 +11,7 @@ from .resolver import descriptor_for
 
 
 def bundled_tool_configs(profile_id, description) -> dict:
-    """Expand point-tool defaults and release overrides at the project lock boundary."""
+    """Expand point-tool defaults and release overrides when resolving an installation."""
     tools = Path(__file__).resolve().parents[1] / "tools"
     configs = {}
     names = {"cts": "CTS", "rcx": "RCX", "floorplan": "Floorplan", "routing": "route"}

@@ -12,7 +12,6 @@ from chipcompiler.pdk.documents import (
     document_digest,
     split_descriptor,
 )
-from chipcompiler.pdk.locking import bind_project, lock_workspace_inputs, read_lock, verify_lock
 from chipcompiler.pdk.managed import configuration_path, read_configuration
 from chipcompiler.pdk.manifest import Descriptor, Resource, load_descriptor
 from chipcompiler.pdk.registry import inventory_transaction, register, relocate
@@ -47,7 +46,7 @@ def test_read_only_pdk_without_description_is_authored_outside_root(tmp_path):
         root.chmod(0o755)
 
 
-def test_legacy_migration_separates_policy_and_preserves_project_snapshot(tmp_path):
+def test_legacy_migration_separates_policy_without_changing_vendor_metadata(tmp_path):
     root = tmp_path / "pdk"
     root.mkdir()
     (root / "cells.lib").write_text("library(example) {}")
@@ -61,9 +60,6 @@ def test_legacy_migration_separates_policy_and_preserves_project_snapshot(tmp_pa
     source = root / "ecc-pdk.json"
     write_descriptor(source, legacy)
     original = source.read_bytes()
-    project = tmp_path / "project"
-    project.mkdir()
-    lock = bind_project(project, root, legacy)
     command(root, "adopt")
     before = resolved_context(root, load_descriptor(root))
     shown = command(root, "show")
@@ -83,14 +79,6 @@ def test_legacy_migration_separates_policy_and_preserves_project_snapshot(tmp_pa
     assert source.read_bytes() == original
     assert "tools" not in command(root, "export-description")
     assert command(root, "export-adaptation")["tools"]["configs"]["CTS"]["target_skew"] == 2.0
-    snapshot = lock_workspace_inputs(project, root, "example")
-    assert load_descriptor(root, snapshot) == legacy
-    assert read_lock(project / "pdk.lock.json") == lock
-    # Old lock files from before separate identities remain valid.
-    old_lock = lock.model_dump(exclude={"pdk_digest", "adaptation_digest"})
-    (project / "pdk.lock.json").write_text(json.dumps(old_lock))
-    verify_lock(root, read_lock(project / "pdk.lock.json"))
-    assert load_descriptor(root, lock_workspace_inputs(project, root, "example")) == legacy
 
 
 def test_stale_migration_edit_is_rejected(tmp_path):
@@ -204,3 +192,40 @@ def test_old_inventory_identity_migrates_after_an_adaptation_edit(tmp_path):
         shown["revision"],
     )
     assert register(root)["pdkDigest"] == record["pdkDigest"]
+
+
+def test_registered_import_adds_resource_and_keeps_tuned_policy(tmp_path):
+    root = tmp_path / "pdk"
+    root.mkdir()
+    source = root / "ecc-pdk.json"
+    source.write_text(
+        Descriptor(
+            family_id="example", release="r2", parameters={"density": 0.35}
+        ).model_dump_json()
+    )
+    original = register(root).copy()
+    before = command(root, "show")
+    description = before["description"]
+    description["resources"]["extra"] = {"role": "model", "path": "extra.txt"}
+    (root / "extra.txt").write_text("local model")
+    external = tmp_path / "updated.json"
+    external.write_text(json.dumps(description))
+    result = command(
+        root, "import", "--description", str(external), "--expected-revision", before["revision"]
+    )
+    assert command(root, "show")["descriptor"]["parameters"] == {"density": 0.35}
+    assert register(root)["pdkDigest"] != original["pdkDigest"]
+    stale = CliRunner().invoke(
+        configure_app,
+        [
+            "import",
+            "--root",
+            str(root),
+            "--description",
+            str(external),
+            "--expected-revision",
+            before["revision"],
+        ],
+    )
+    assert json.loads(stale.output)["error"]["code"] == "revision_conflict"
+    assert command(root, "show")["revision"] == result["revision"]

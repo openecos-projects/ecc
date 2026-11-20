@@ -11,6 +11,7 @@ from chipcompiler.pdk.configuration import discover_resources, replace_field
 from chipcompiler.pdk.documents import document_digest, split_descriptor
 from chipcompiler.pdk.managed import (
     import_configuration,
+    publish_configuration,
     read_configuration,
     save_configuration,
     source_path,
@@ -96,7 +97,12 @@ def discover(root: Root) -> None:
 def show(root: Root, output: Output = None) -> None:
     try:
         path = source_path(root, output)
-        configuration = read_configuration(path)
+        if output is None and not path.exists():
+            from chipcompiler.pdk.profiles import detect_release
+
+            configuration = detect_release(root)
+        else:
+            configuration = read_configuration(path)
         descriptor = configuration.resolved()
         resources = {
             name: {"role": resource.role, "path": str(resource_path(root, resource))}
@@ -105,8 +111,8 @@ def show(root: Root, output: Output = None) -> None:
         _print(
             {
                 "descriptor": descriptor.model_dump(),
-                "revision": file_digest(path),
-                "path": str(path),
+                "revision": file_digest(path) if path.exists() else None,
+                "path": str(path) if path.exists() else None,
                 "description": configuration.description.model_dump(),
                 "adaptation": configuration.adaptation.model_dump(),
                 "description_digest": document_digest(configuration.description),
@@ -128,9 +134,15 @@ def set_field(
 ) -> None:
     try:
         descriptor = replace_field(load_descriptor(root, output), field, json.loads(value_json))
-        path, revision = save_configuration(
-            root, split_descriptor(descriptor), expected_revision=expected_revision, output=output
-        )
+        configuration = split_descriptor(descriptor)
+        if output is None:
+            path, revision = publish_configuration(
+                root, configuration, expected_revision=expected_revision, draft=True
+            )
+        else:
+            path, revision = save_configuration(
+                root, configuration, expected_revision=expected_revision, output=output
+            )
         _print({"path": str(path), "revision": revision, **validate_resources(root, descriptor)})
     except (ValueError, OSError) as exc:
         _failure(exc)
@@ -164,10 +176,13 @@ def import_documents(
     root: Root,
     description: Annotated[Path, typer.Option(exists=True, dir_okay=False)],
     adaptation: Annotated[Path | None, typer.Option(exists=True, dir_okay=False)] = None,
+    expected_revision: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Import vendor facts and optional ECC policy, splitting legacy combined files."""
     try:
-        path, revision = import_configuration(root, description, adaptation)
+        path, revision = import_configuration(
+            root, description, adaptation, expected_revision=expected_revision
+        )
         _print({"path": str(path), "revision": revision})
     except (ValueError, OSError) as exc:
         _failure(exc)

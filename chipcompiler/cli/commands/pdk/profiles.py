@@ -61,7 +61,7 @@ def apply(
     profile: Annotated[str, typer.Option()],
     expected_revision: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Change defaults for new projects; existing project locks are not modified."""
+    """Change the defaults used when a workspace is created."""
     try:
         path, revision = apply_profile(Path(root), profile, expected_revision)
         _print({"path": str(path), "revision": revision, "profile": profile})

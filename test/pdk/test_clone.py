@@ -27,12 +27,11 @@ def test_clone_preserves_rtl_but_replaces_pdk_and_discards_results(tmp_path):
     config["design"].update(top="my_top", clock_port="clock", frequency_mhz=73)
     config["params"]["sdc"]["clock_list"] = ""
     config_path.write_text(tomli_w.dumps(config))
-    before = (source / "pdk.lock.json").read_bytes()
+    before = config_path.read_bytes()
     target = clone_with_pdk(source, tmp_path / "clone", roots[1])
-    assert (source / "pdk.lock.json").read_bytes() == before
-    assert (
-        json.loads((target / "pdk.lock.json").read_text())["descriptor"]["family_id"] == "vendor1"
-    )
+    assert config_path.read_bytes() == before
+    assert not (target / "pdk.lock.json").exists()
+    assert load_project_config(str(target / "ecc.toml")).pdk_name == "vendor1"
     assert not (target / "old-workspace").exists()
     assert any(path.read_text() == rtl.read_text() for path in (target / "rtl").rglob("*.v"))
     assert str(source) not in (target / "ecc.toml").read_text()

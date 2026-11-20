@@ -93,6 +93,33 @@ def validated_default(
     return configuration
 
 
+def detect_release(root: Path) -> ManagedConfiguration:
+    """Identify an unpacked release from its installed resources, independent of its name."""
+    from .manifest import resource_path
+
+    matches = []
+    for profile in catalog():
+        facts = profile_configuration(profile).description
+        if not facts.resources or not all(r.sha256 for r in facts.resources.values()):
+            continue
+        if not all(resource_path(root, r).is_file() for r in facts.resources.values()):
+            continue
+        try:
+            matches.append(validated_default(root, profile))
+        except DescriptorError as exc:
+            if exc.code != "content_mismatch":
+                raise
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise DescriptorError("profile_ambiguous", "multiple releases match; select a profile")
+    raise DescriptorError(
+        "pdk_descriptor_missing",
+        "PDK description is missing and no bundled release matches. "
+        "Use ecc pdk configure init or import.",
+    )
+
+
 def default_for(root: Path, configuration: ManagedConfiguration) -> ManagedConfiguration:
     """First import only: preserve any explicit or legacy adaptation policy."""
     from .documents import EccAdaptation

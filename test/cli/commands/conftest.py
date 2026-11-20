@@ -56,8 +56,8 @@ def flow_mocks(monkeypatch):
     from chipcompiler.data.flow import options as flow_options
 
     monkeypatch.setattr(
-        "chipcompiler.pdk.locking.lock_workspace_inputs",
-        lambda project, root, family: root / "ecc-pdk.json",
+        "chipcompiler.pdk.managed.adopt_configuration",
+        lambda root: root / "ecc-pdk.json",
     )
 
     capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}

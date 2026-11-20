@@ -294,7 +294,7 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     if pdk_root:
         if not os.path.isdir(pdk_root):
             errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
-        elif not (Path(cfg.project_dir) / "pdk.lock.json").is_file():
+        else:
             pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
             if pdk_err:
                 errors.append(pdk_err)
@@ -342,16 +342,6 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
 
     errors.extend(cfg._flow_config_errors)
 
-    lock_path = Path(cfg.project_dir) / "pdk.lock.json"
-    if lock_path.is_file() and pdk_root:
-        from chipcompiler.pdk.locking import resolve_project_lock
-
-        try:
-            resolve_project_lock(Path(cfg.project_dir), Path(pdk_root), cfg.pdk_name)
-            if cfg.pdk_overrides:
-                errors.append("project_pdk_immutable: resource overrides require a new PDK profile")
-        except (OSError, ValueError) as exc:
-            errors.append(str(exc))
     return errors
 
 

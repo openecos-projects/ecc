@@ -3,6 +3,11 @@
 set -euo pipefail
 manifest="$1"
 destination="$2"
+resources="$(dirname "$0")/ics55-v2-description.json"
+if [[ ! -f "$resources" ]]; then
+  resources="$(dirname "$0")/../../../chipcompiler/pdk/profiles/ics55-v2-description.json"
+fi
+test -s "$resources"
 repo="$(jq -er '.repo | select(. == "openecos-projects/icsprout55-pdk")' "$manifest")"
 commit="$(jq -er '.git_commit | select(test("^[0-9a-f]{40}$"))' "$manifest")"
 release="$(jq -er '.release | select(test("^v2-[0-9.]+$"))' "$manifest")"
@@ -41,7 +46,7 @@ for vt in HVT LVT SVT; do
   mapfile -t members < <(
     jq -r --arg prefix "IP/STD_cell/$base/" \
       '.resources[] | select(.role == "liberty" and (.path | startswith($prefix))) |
-       .path | ltrimstr($prefix)' "$destination/ecc-pdk.json"
+       .path | ltrimstr($prefix)' "$resources"
   )
   [[ ${#members[@]} -gt 0 ]] || { echo "No declared v2 NLDM resources for $vt" >&2; exit 1; }
   fetch_asset "$asset"
@@ -52,7 +57,7 @@ for vt in HVT LVT SVT; do
   mapfile -t members < <(
     jq -r --arg prefix "IP/STD_cell/$base/" \
       '.resources[] | select(.role == "gds" and (.path | startswith($prefix))) |
-       .path | ltrimstr($prefix)' "$destination/ecc-pdk.json"
+       .path | ltrimstr($prefix)' "$resources"
   )
   [[ ${#members[@]} -gt 0 ]] || { echo "No declared v2 GDS resources for $vt" >&2; exit 1; }
   fetch_asset "$asset"
@@ -62,7 +67,7 @@ done
 mkdir -p "$destination/IP/IO"
 mapfile -t members < <(
   jq -r '.resources[] | select(.role == "gds" and (.path | startswith("IP/IO/"))) |
-    .path | ltrimstr("IP/IO/")' "$destination/ecc-pdk.json"
+    .path | ltrimstr("IP/IO/")' "$resources"
 )
 [[ ${#members[@]} -gt 0 ]] || { echo "No declared v2 IO GDS resources" >&2; exit 1; }
 fetch_asset ICsprout_55LLULP1225_IO_0901_gds.tar.bz2
@@ -76,6 +81,6 @@ while IFS= read -r resource; do
   awk -v resource="$resource" '$2 == resource {print; found = 1} END {if (!found) exit 1}' \
     "$destination/release-files.sha256" >> "$destination/ci-release-files.sha256"
 done < <(jq -r '.resources[] | select(.role == "gds" or .role == "liberty") | .path' \
-  "$destination/ecc-pdk.json")
+  "$resources")
 (cd "$destination" && sha256sum --check --quiet ci-release-files.sha256)
 rm -- "$destination/ci-release-files.sha256"

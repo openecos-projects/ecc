@@ -186,15 +186,6 @@ def _create_workspace_from_spec(
         resolved["pdk"], _string_keyed_dict(binding_map["pdk"])
     )
 
-    if isinstance(pdk, PDK) and pdk.description:
-        from chipcompiler.pdk.locking import bind_project
-        from chipcompiler.pdk.manifest import Descriptor
-
-        for parent in target.parents:
-            if (parent / "project.json").is_file() or (parent / "ecc.toml").is_file():
-                bind_project(parent, Path(pdk_root), Descriptor.model_validate(pdk.description))
-                break
-
     generated_filelist: str | None = None
     generated_pdk_config: str | None = None
     if len(rtl_paths) > 1:
