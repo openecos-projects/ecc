@@ -21,6 +21,8 @@ GIT_TERMINAL_PROMPT=0 git -C "$destination" fetch --depth 1 origin "$commit"
 git -C "$destination" checkout --detach FETCH_HEAD
 test "$(git -C "$destination" rev-parse HEAD)" = "$commit"
 
+[[ "$(cat "$destination/VERSION")" == ics55-v2 ]] || { echo "Expected ICS55 v2 data" >&2; exit 1; }
+
 release_url="${PDK_RELEASE_BASE_URL:-https://github.com/$repo/releases/download/$release}"
 trap 'rm -f -- "$destination"/*.part' EXIT
 fetch_asset() {

@@ -10,11 +10,11 @@ class TestCheckBeforeTheFirstWorkspace:
 
     @staticmethod
     def _new_project(tmp_path, monkeypatch, *, with_rtl=True, with_pdk=True):
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         project_dir = tmp_path / "project"
         assert cli_main.run(["init", str(project_dir)]) == 0
         if with_rtl:
             (project_dir / "rtl" / "project.v").write_text("module project(input clk); endmodule\n")
-        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         if with_pdk:
             pdk = tmp_path / "pdk"
             pdk.mkdir()
@@ -23,8 +23,6 @@ class TestCheckBeforeTheFirstWorkspace:
                 "chipcompiler.cli.project.config._validate_pdk_contents",
                 lambda name, root, overrides=None: None,
             )
-        else:
-            monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         return project_dir
 
     @staticmethod
