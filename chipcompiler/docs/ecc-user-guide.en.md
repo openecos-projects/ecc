@@ -1013,7 +1013,10 @@ retire a workspace from auto-selection (instead of editing `project.json` by han
 unregisters it and optionally removes the directory. A directory that `delete` kept is
 still a workspace on disk: `create` or `ecc run` under the same name registers it again
 with its saved state. To start from an empty workspace instead, delete with
-`--delete-directory` or run with `--overwrite`. The automation flags apply where
+`--delete-directory` or run with `--overwrite`. When the directory of a declared
+workspace has already been removed, `delete` drops the entry (there is no revision left to
+check), while `archive`, `reset-flow` and `refresh` answer `workspace_missing` and name
+`ecc workspace delete` and `ecc workspace create` as the ways out. The automation flags apply where
 relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
 on the creating/branching subcommands; §5.1), and a mutation on an in-use workspace fails
 with `workspace_busy` (exit 20).

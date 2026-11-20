@@ -1,5 +1,6 @@
 import contextlib
 import os
+import shlex
 
 from chipcompiler.cli.core.inputs import (
     CheckInput,
@@ -347,6 +348,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
         )
+    if not os.path.isdir(ctx.run_dir):
+        return _workspace_directory_missing(ctx)
     from chipcompiler.data.workspace.config_manifest import modified_derived_configs
 
     modified = modified_derived_configs(ctx.run_dir)
@@ -609,11 +612,24 @@ def _manage_workspace_lifecycle(
     from chipcompiler.engine.workspace.management import (
         archive_managed_workspace,
         delete_managed_workspace,
+        unregister_missing_workspace,
     )
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
         return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+    missing = not os.path.isdir(ctx.run_dir)
+    if missing and operation != "delete":
+        return _workspace_directory_missing(ctx)
     try:
+        if missing:
+            # Nothing is left but the registration: there is no revision to
+            # check and no directory to keep or remove.
+            workspace = unregister_missing_workspace(
+                ctx.project_dir, ctx.run_id, blocking=not command_input.no_wait
+            )
+            return CommandResult.ok(
+                [{"workspace_id": ctx.run_id, "status": "deleted", "workspace": str(workspace)}]
+            )
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
         command_id = command_input.command_id or str(uuid.uuid4())
@@ -648,6 +664,27 @@ def _manage_workspace_lifecycle(
     )
 
 
+def _workspace_directory_missing(ctx: CommandContext) -> CommandResult:
+    """The error of a command that needs the directory of a declared workspace."""
+    project = ctx.project
+    workspace_id = ctx.run_id or ""
+    return CommandResult.err(
+        [
+            error_record(
+                "workspace_missing",
+                reason=f"workspace directory does not exist: {ctx.run_dir}",
+                workspace_id=workspace_id,
+                delete_cmd=disclosure_cmd(
+                    f"ecc workspace delete {shlex.quote(workspace_id)}", project
+                ),
+                create_cmd=disclosure_cmd(
+                    f"ecc workspace create {shlex.quote(workspace_id)}", project
+                ),
+            )
+        ]
+    )
+
+
 def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandResult:
     from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
     from chipcompiler.engine.workspace.management import reconcile_workspace_deletes as reconcile
@@ -679,6 +716,8 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
         return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+    if not os.path.isdir(ctx.run_dir):
+        return _workspace_directory_missing(ctx)
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
