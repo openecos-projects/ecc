@@ -148,12 +148,19 @@ def unregister_missing_workspace(
     """
     project = Path(project_dir).expanduser().resolve()
     workspace = _manifest_workspace_path(project, workspace_id)
-    with manifest_lock(project, blocking=blocking):
+    # Same lock order as archive and delete: a command that holds the
+    # workspace (a refresh between the two renames of its directory exchange)
+    # makes the directory look absent; the check below runs under its lock.
+    with (
+        workspace_lock(workspace, blocking=blocking),
+        manifest_lock(project, blocking=blocking),
+    ):
         manifest = load_manifest(str(project))
         _require_entry(manifest, workspace_id, workspace)
         if workspace.is_dir():
             raise WorkspaceLifecycleError(
-                "workspace_identity_changed", "Workspace directory exists; delete it as a Workspace"
+                "workspace_identity_changed",
+                "Workspace directory exists; delete it as a Workspace",
             )
         # Matched literally: a workspace id may contain glob characters.
         prefix = f"{_DELETE_STAGING_PREFIX}{workspace_id}-"

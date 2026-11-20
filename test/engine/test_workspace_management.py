@@ -274,3 +274,41 @@ def test_unregister_missing_workspace_leaves_an_interrupted_delete_to_reconcile(
     # The staged directory is still recoverable: the entry was not dropped.
     assert reconcile_workspace_deletes(project, blocking=False) == (f"restored:{workspace_id}",)
     assert workspace.is_dir()
+
+
+def test_unregister_missing_workspace_waits_for_a_command_holding_the_workspace(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """A refresh exchanging the directory holds the lock while the directory is away."""
+    import shutil
+    import threading
+
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    project, workspace = _managed_workspace(tmp_path, minimal_ics55_pdk_factory)
+    away = project / ".baseline.exchange-away"
+    held, release = threading.Event(), threading.Event()
+
+    def exchange() -> None:
+        with workspace_lock(workspace):
+            workspace.rename(away)
+            held.set()
+            release.wait(3)
+            away.rename(workspace)
+
+    holder = threading.Thread(target=exchange)
+    holder.start()
+    assert held.wait(10)
+    try:
+        with pytest.raises(BlockingIOError):
+            unregister_missing_workspace(project, "baseline", blocking=False)
+    finally:
+        release.set()
+        holder.join()
+
+    assert workspace.is_dir()
+    assert [entry["workspace_id"] for entry in load_project_manifest(project)["workspaces"]] == [
+        "baseline"
+    ]
+    shutil.rmtree(workspace)
+    assert unregister_missing_workspace(project, "baseline", blocking=False) == workspace
