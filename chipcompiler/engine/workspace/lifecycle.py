@@ -399,6 +399,9 @@ def _update_workspace_from_spec(
             metadata={
                 "operation": "update",
                 "expectedRevision": expected_workspace_revision,
+                # Recovery rebuilds the fingerprint from this record: it has to
+                # know when the revision is not part of the request.
+                **({} if revision_pinned else {"revisionPinned": False}),
                 "request": {
                     "workspaceSpec": deepcopy(spec),
                     "workspaceBindings": deepcopy(bindings),
