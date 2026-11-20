@@ -165,12 +165,13 @@ jobs:
       - name: Setup PDK
         uses: actions/download-artifact@v4
         with:
-          name: icsprout55-pdk
+          name: ics55-v2-ci-inputs
           path: ../pdk
 
-      - name: Fetch public PDK
+      - name: Extract verified public PDK
         run: |
-          bash ../pdk/fetch-pdk.sh ../pdk/pdk-source.json ../pdk/icsprout55-pdk
+          mkdir ../pdk/icsprout55-pdk
+          tar -xf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
           echo "CHIPCOMPILER_ICS55_PDK_ROOT=$PWD/../pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
@@ -326,6 +327,19 @@ jobs:
       - name: Validate public PDK
         run: |
           bash .github/actions/setup-pdk/fetch-pdk.sh pdk-source.json "$RUNNER_TEMP/pdk"
+
+      - name: Archive verified public PDK inputs
+        run: |
+          tar --exclude='./.git' -C "$RUNNER_TEMP/pdk" -cf - . | gzip -1 > "$RUNNER_TEMP/icsprout55-pdk.tar.gz"
+
+      - name: Share PDK inputs with this run's test jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ics55-v2-ci-inputs
+          path: ${{ runner.temp }}/icsprout55-pdk.tar.gz
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Stage PDK provenance and downloader
         run: |
@@ -536,7 +550,7 @@ jobs:
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
         uses: actions/download-artifact@v4
         with:
-          name: icsprout55-pdk
+          name: ics55-v2-ci-inputs
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download Sizer artifact
@@ -545,14 +559,6 @@ jobs:
         with:
           name: ecc-sizer
           path: ${{ runner.temp }}/e2e-stage-input
-
-      - name: Fetch public PDK for shared storage
-        if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
-        run: |
-          bash "$RUNNER_TEMP/e2e-stage-input/fetch-pdk.sh" \
-            "$RUNNER_TEMP/e2e-stage-input/pdk-source.json" "$RUNNER_TEMP/e2e-pdk/icsprout55-pdk"
-          tar -czf "$RUNNER_TEMP/e2e-stage-input/icsprout55-pdk.tar.gz" \
-            -C "$RUNNER_TEMP/e2e-pdk/icsprout55-pdk" .
 
       - name: Stage PDK on shared storage
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
