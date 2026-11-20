@@ -1,20 +1,75 @@
-"""Render the native STA catalog from the project-locked cell semantics."""
+"""Build and verify the shared native STA table for a locked PDK description."""
 
+import hashlib
+import re
 from pathlib import Path
 
-from .manifest import Descriptor, DescriptorError
+from chipcompiler.utility.file import write_text_atomic
+
+from .documents import split_descriptor
+from .manifest import CellVariant, Descriptor, DescriptorError, file_digest, resource_path
+from .profiles import CatalogRule, matching_profile
+from .registry import inventory_path
+
+_MACRO = re.compile(rb"^[ \t]*MACRO[ \t]+([^\s#;]+)", re.MULTILINE)
 
 
-def write_sta_catalog(description: dict, path: Path) -> None:
-    descriptor = Descriptor.model_validate(description)
+def _generate(root: Path, descriptor: Descriptor, rule: CatalogRule) -> list[CellVariant]:
+    rows = []
+    pattern = re.compile(rule.master)
+    for key in rule.lefs:
+        resource = descriptor.resources[key]
+        content = resource_path(root, resource).read_bytes()
+        if resource.role != "lef" or hashlib.sha256(content).hexdigest() != resource.sha256:
+            raise DescriptorError("content_mismatch", f"unexpected catalog LEF: {resource.path}")
+        for name in sorted(_MACRO.findall(content)):
+            master = name.decode("ascii")
+            if match := pattern.fullmatch(master):
+                rows.append(
+                    CellVariant(
+                        master=master,
+                        family=match[1],
+                        vt=rule.vt[match[3]],
+                        drive_rank=float((match[2] or "1").replace("P", ".")),
+                    )
+                )
+    if rule.sort_by_master:
+        rows.sort(key=lambda row: row.master)
+    return rows
+
+
+def _render(rows: list[CellVariant], *, compact: bool) -> str:
     lines = []
-    for cell in descriptor.cell_catalog:
-        if any(
-            not value or any(char.isspace() for char in value)
-            for value in (cell.master, cell.family, cell.vt)
+    for row in rows:
+        if row.drive_rank < 0 or any(
+            not x or any(c.isspace() for c in x) for x in (row.master, row.family, row.vt)
         ):
-            raise DescriptorError(
-                "invalid_cell_catalog", "STA catalog identifiers must be nonempty tokens"
-            )
-        lines.append(f"{cell.master}\t{cell.family}\t{cell.vt}\t{cell.drive_rank:.17g}")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            raise DescriptorError("invalid_cell_catalog", "invalid STA catalog row")
+        rank = format(row.drive_rank, ".17g") if compact else str(row.drive_rank)
+        lines.append(f"{row.master}\t{row.family}\t{row.vt}\t{rank}\n")
+    return "".join(lines)
+
+
+def shared_sta_catalog(root: Path, descriptor: Descriptor) -> Path | None:
+    profile = matching_profile(split_descriptor(descriptor))
+    rule = profile.sta_catalog if profile else None
+    if rule:
+        checksum = rule.sha256
+        text = None
+    elif descriptor.cell_catalog:
+        text = _render(descriptor.cell_catalog, compact=True)
+        checksum = hashlib.sha256(text.encode()).hexdigest()
+    else:
+        return None
+    path = inventory_path().parent / "pdk-catalogs" / checksum / "cell_catalog.tsv"
+    if path.is_file() and not path.is_symlink() and file_digest(path) == checksum:
+        return path
+    if rule:
+        text = _render(_generate(root, descriptor, rule), compact=rule.compact_drive)
+    if not text or hashlib.sha256(text.encode()).hexdigest() != checksum:
+        raise DescriptorError(
+            "invalid_cell_catalog", "generated STA table differs from the pinned profile"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(path, text)
+    return path

@@ -1,9 +1,9 @@
 # PDK descriptions and project bindings
 
 PDK providers may publish `ecc-pdk.json` containing **process facts only**:
-`schema_version: 2`, `family_id`, `release`, `resources`, `cell_catalog`, and
+`schema_version: 2`, `family_id`, `release`, `resources`, and
 `views`. ICS55 v1, v2 and other processes use exactly this format. Technology
-files, cell candidates and timing views are facts; tool configuration and the
+files and timing views are facts; tool configuration and the
 selection of cells/views for execution are ECC policy.
 
 ECC owns a separate adaptation schema (`schema_version: 1`): an exact
@@ -68,8 +68,12 @@ The JSON schema is the executable format contract. `resources` uses paths relati
 to the package root, optional SHA-256 checksums and explicit roles. Paths escaping
 the package, including symlinks, are rejected. `views` and `synthesis_libraries`
 reference Liberty resource IDs. `cells` supplies site and standard-cell roles.
-`cell_catalog` declares candidate family/VT/drive relationships; native STA still
-checks pin, function and arc compatibility before grouping cells.
+ECC derives ICS55 sizing candidates from the standard-cell LEFs selected by the exact
+bundled profile. Import and workspace refresh verify a shared `cell_catalog.tsv`
+under `pdk-catalogs/<table-sha256>/` beside the PDK inventory. A missing or damaged
+table is regenerated atomically. Each workspace records the absolute path in
+`STA.-cell_catalog`. Older descriptors and custom PDKs with explicit cell lists
+are supported. Unclassified processes retain singleton families in iSTA.
 
 `tools.configs` in the **ECC adaptation** contains each tool's own configuration (`db`, `Floorplan`, `CTS`,
 `route`, `sta`, `sizer`, `RCX`, `dreamplace`, etc.). Electrical/physical settings

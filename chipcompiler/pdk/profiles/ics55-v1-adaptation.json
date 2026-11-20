@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description_digest": "9ff2c22cbdde9472b2dfc7ad8aeb16d55009f8e5b1ed59fd87a568fa827e04dc",
+  "description_digest": "6cdd6d50f784bb14b82cb6eecd72d7f0c60c77214d32526549ac02fe20ddae9d",
   "profile_revision": "ics55-v1-7t-20261118.1",
   "cells": {
     "site_core": "core7",

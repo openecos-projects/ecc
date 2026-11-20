@@ -104,6 +104,9 @@ def import_configuration(
         raise DescriptorError(
             "already_exists", "managed configuration exists; edit it using configure set"
         )
+    from .catalog import shared_sta_catalog
+
+    shared_sta_catalog(root, configuration.resolved())
     return save_configuration(root, configuration, import_new=True)
 
 
@@ -121,7 +124,9 @@ def adopt_configuration(root: Path) -> Path:
         except DescriptorError as exc:
             if exc.code != "already_exists":
                 raise
-    read_configuration(destination)
+    from .catalog import shared_sta_catalog
+
+    shared_sta_catalog(root, read_configuration(destination).resolved())
     return destination
 
 

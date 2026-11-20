@@ -214,31 +214,14 @@ def test_real_catalog_is_self_consistent_and_contains_no_absolute_resource_paths
             r.sha256 and not Path(r.path).is_absolute()
             for r in configuration.description.resources.values()
         )
-        # Every selected primitive/cell role must be in the shipped semantic catalog.
-        masters = {c.master for c in configuration.description.cell_catalog}
-        cells = configuration.adaptation.cells
-        selected = [
-            cells.tap_cell,
-            cells.end_cap,
-            cells.tie_high_cell,
-            cells.tie_low_cell,
-            cells.abc_driver_cell,
-            *cells.buffers,
-        ]
-        selected += [
-            i["master"]
-            for m in configuration.adaptation.tools["synthesis"]["primitive_mappings"]
-            for i in m["instances"]
-        ]
-        assert set(selected) <= masters
 
 
 def test_initial_apply_cannot_overwrite_a_concurrent_configuration(bundled, monkeypatch):
     root, expected, _ = bundled
     validate = profiles.validated_default
 
-    def concurrent_writer(root, profile):
-        checked = validate(root, profile)
+    def concurrent_writer(root, profile, source=None):
+        checked = validate(root, profile, source)
         path = configuration_path(root)
         path.parent.mkdir(parents=True)
         other = expected.model_copy(deep=True)

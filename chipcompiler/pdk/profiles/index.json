@@ -4,19 +4,53 @@
     {
       "id": "ics55-v1",
       "description_digests": [
-        "9ff2c22cbdde9472b2dfc7ad8aeb16d55009f8e5b1ed59fd87a568fa827e04dc"
+        "9ff2c22cbdde9472b2dfc7ad8aeb16d55009f8e5b1ed59fd87a568fa827e04dc",
+        "6cdd6d50f784bb14b82cb6eecd72d7f0c60c77214d32526549ac02fe20ddae9d"
       ],
       "description": "ics55-v1-description.json",
-      "adaptation": "ics55-v1-adaptation.json"
+      "adaptation": "ics55-v1-adaptation.json",
+      "sta_catalog": {
+        "lefs": [
+          "lef-1",
+          "lef-2",
+          "lef-3"
+        ],
+        "master": "(.+?)(?:X([0-9]+(?:P[0-9]+)?))?H7([RLH])",
+        "vt": {
+          "R": "svt",
+          "L": "lvt",
+          "H": "hvt"
+        },
+        "sort_by_master": false,
+        "compact_drive": false,
+        "sha256": "9c518ac46c112f9e8b329fd7d71f7a2a649643a556cf455cfee2d2761f1abd09"
+      }
     },
     {
       "id": "ics55-v2",
       "description_digests": [
         "0c5bbce2438eb3d3fa9fb6a7c60d2ea8302bc981fdb6d081c611cb0ae8dacc60",
-        "c447ad3c7bae97bd066b22a5e18f3f608a2349dff34df231b2f85849898cacb0"
+        "c447ad3c7bae97bd066b22a5e18f3f608a2349dff34df231b2f85849898cacb0",
+        "bbabe492495739c64523654ba7bdb2a39debaed08bc052bb648c28a5f9d3de43"
       ],
       "description": "ics55-v2-description.json",
-      "adaptation": "ics55-v2-adaptation.json"
+      "adaptation": "ics55-v2-adaptation.json",
+      "sta_catalog": {
+        "lefs": [
+          "lef-1",
+          "lef-2",
+          "lef-3"
+        ],
+        "master": "(.+)X([0-9]+(?:P[0-9]+)?)_9T([SLH]VT)",
+        "vt": {
+          "SVT": "svt",
+          "LVT": "lvt",
+          "HVT": "hvt"
+        },
+        "sort_by_master": true,
+        "compact_drive": true,
+        "sha256": "f2a775c0234fba257474de72179681900e889acb3b0e79f0d002dcb24845af30"
+      }
     }
   ]
 }

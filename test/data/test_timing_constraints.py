@@ -214,9 +214,6 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
             for phase in ("pre_CTS", "post_CTS")
         )
     expected_sta = deepcopy(template | overrides)
-    expected_sta["STA"] = {
-        "-cell_catalog": str(workspace.config["sta"].parent / "cell_catalog.tsv")
-    }
     for library in expected_sta["liberty"]:
         library["path"] = [str(pdk_root / path.lstrip("/")) for path in library["path"]]
     assert set((workspace.directory / "origin").rglob("*.tcl")) == expected_scripts

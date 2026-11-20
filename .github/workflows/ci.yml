@@ -913,7 +913,7 @@ jobs:
           export ECC_REPO_ROOT="$PWD"
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}:$PWD/test/lit"
           nix shell \
-            --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.pyyaml ps.typing-extensions ps.tomli-w])" \
+            --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.packaging ps.pydantic ps.pyyaml ps.typing-extensions ps.tomli-w])" \
             -c bash nix/scripts/export-signoff-csv.sh \
             --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
             --out-dir "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}" \

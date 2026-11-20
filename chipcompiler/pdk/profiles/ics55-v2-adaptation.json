@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description_digest": "0c5bbce2438eb3d3fa9fb6a7c60d2ea8302bc981fdb6d081c611cb0ae8dacc60",
+  "description_digest": "bbabe492495739c64523654ba7bdb2a39debaed08bc052bb648c28a5f9d3de43",
   "profile_revision": "ics55-v2-9t-20261118.1",
   "cells": {
     "site_core": "SC9T_site",

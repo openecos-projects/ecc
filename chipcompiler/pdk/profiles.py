@@ -6,13 +6,23 @@ from pathlib import Path
 from pydantic import Field
 
 from .compatibility import ecc_compatible
-from .documents import ManagedConfiguration, document_digest
+from .documents import ManagedConfiguration, PdkDescription, document_digest
 from .manifest import DescriptorError, StrictModel, content_identity, file_digest
 
 PROFILE_DIRECTORY = Path(__file__).parent / "profiles"
 
 
+class CatalogRule(StrictModel):
+    lefs: list[str]
+    master: str
+    vt: dict[str, str]
+    sort_by_master: bool
+    compact_drive: bool
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class Profile(StrictModel):
+    sta_catalog: CatalogRule | None = None
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     description_digests: list[str]
     description: str
@@ -56,8 +66,20 @@ def matching_profile(configuration: ManagedConfiguration) -> Profile | None:
     return matches[0] if matches else None
 
 
-def validated_default(root: Path, profile: Profile) -> ManagedConfiguration:
+def validated_default(
+    root: Path, profile: Profile, source: PdkDescription | None = None
+) -> ManagedConfiguration:
     configuration = profile_configuration(profile)
+    # Previously published descriptions carried the cell list. Keep that exact
+    # order in the resolved descriptor for existing identities and snapshots.
+    if source is not None and source.cell_catalog and not configuration.description.cell_catalog:
+        facts = configuration.description.model_copy(update={"cell_catalog": source.cell_catalog})
+        configuration = ManagedConfiguration(
+            description=facts,
+            adaptation=configuration.adaptation.model_copy(
+                update={"description_digest": document_digest(facts)}
+            ),
+        )
     ecc_compatible(configuration.adaptation.tools)
     # All bundled resource identities must be pinned. Validate contents before
     # publishing anything in management, including explicitly selected v1 roots.
@@ -75,7 +97,7 @@ def default_for(root: Path, configuration: ManagedConfiguration) -> ManagedConfi
     if configuration.adaptation != empty:
         return configuration
     profile = matching_profile(configuration)
-    return validated_default(root, profile) if profile else configuration
+    return validated_default(root, profile, configuration.description) if profile else configuration
 
 
 def apply_profile(root: Path, profile_id: str, expected_revision: str | None) -> tuple[Path, str]:
@@ -85,8 +107,10 @@ def apply_profile(root: Path, profile_id: str, expected_revision: str | None) ->
     profile = find_profile(profile_id)
     source = source_path(root)
     exists = source.exists()
+    source_description = None
     if exists:
         current = read_configuration(source)
+        source_description = current.description
         if document_digest(current.description) not in profile.description_digests:
             raise DescriptorError("profile_mismatch", "profile does not match the PDK description")
         if configuration_path(root).exists() and expected_revision is None:
@@ -97,7 +121,7 @@ def apply_profile(root: Path, profile_id: str, expected_revision: str | None) ->
         expected_revision = expected_revision or file_digest(source)
     elif expected_revision is not None:
         raise DescriptorError("revision_conflict", "configuration no longer exists")
-    configuration = validated_default(root, profile)
+    configuration = validated_default(root, profile, source_description)
     from .documents import process_identity
     from .registry import inventory_transaction
 

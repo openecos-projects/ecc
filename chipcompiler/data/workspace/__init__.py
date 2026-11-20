@@ -319,7 +319,7 @@ def _refresh_sta_config(workspace: Workspace) -> None:
             for path in liberty.get("path", [])
         ]
     if workspace.pdk.description:
-        from chipcompiler.pdk.catalog import write_sta_catalog
+        from chipcompiler.pdk.catalog import shared_sta_catalog
         from chipcompiler.pdk.manifest import Descriptor, DescriptorError, resource_path
 
         descriptor = Descriptor.model_validate(workspace.pdk.description)
@@ -328,9 +328,11 @@ def _refresh_sta_config(workspace: Workspace) -> None:
             for resource in descriptor.resources.values()
             if resource.role == "liberty"
         }
-        catalog_path = sta_path.parent / "cell_catalog.tsv"
-        write_sta_catalog(workspace.pdk.description, catalog_path)
-        sta.setdefault("STA", {})["-cell_catalog"] = str(catalog_path)
+        path = shared_sta_catalog(workspace.pdk.require_root(), descriptor)
+        if path:
+            sta.setdefault("STA", {})["-cell_catalog"] = str(path)
+        elif "STA" in sta:
+            sta["STA"].pop("-cell_catalog", None)
         for view in sta.get("liberty", []):
             for library in view.get("path", []):
                 if Path(library).resolve() not in declared:
