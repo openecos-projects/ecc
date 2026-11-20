@@ -271,3 +271,32 @@ def test_refresh_does_not_write_manifest_flow_status(
     assert records[-1]["status"] == "refreshed"
     document = json.loads((project_path / "project.json").read_text())
     assert document["workspaces"][0]["status"] == "success"
+
+
+@pytest.mark.parametrize(
+    ("options", "pinned"),
+    [([], False), (["--expected-revision", "1"], True)],
+    ids=["current-revision", "named-revision"],
+)
+def test_refresh_tells_the_engine_whether_the_revision_was_named(
+    create_cli_project, create_flow_json, manifest_stubs, monkeypatch, options, pinned
+):
+    project_dir = create_cli_project()
+    project_path = Path(project_dir)
+    manifest_stubs.write(project_path, [manifest_stubs.entry(project_path, "baseline")])
+    create_flow_json(os.path.join(project_dir, "baseline"))
+    calls = []
+
+    def update(
+        path, expected, spec, bindings, command_id, *, blocking, retain_backup, revision_pinned=True
+    ):
+        calls.append((expected, command_id, revision_pinned))
+        return SimpleNamespace(directory=Path(path))
+
+    monkeypatch.setattr("chipcompiler.engine.update_workspace_from_spec", update)
+    command = ["workspace", "refresh", "baseline", "--command-id", "refresh-1", *options]
+
+    assert cli_main.run([*command, "--project", project_dir, "--plain"]) == 0
+
+    # The revision is always checked; it identifies the request only when named.
+    assert calls == [(1, "refresh-1", pinned)]

@@ -49,6 +49,7 @@ from .lifecycle import (
     WorkspaceLifecycleError,
     _load_committed_workspace,
     command_retry_matches,
+    request_revision,
     workspace_command_fingerprint,
     write_workspace_command,
 )
@@ -85,6 +86,7 @@ def apply_workspace_parameters(
     step_id: str | None = None,
     commit_step_output: bool = False,
     command_id: str = "",
+    revision_pinned: bool = True,
 ):
     """Atomically apply and verify a validated batch of Workspace parameters."""
     target = Path(target_directory).expanduser().resolve()
@@ -100,6 +102,7 @@ def apply_workspace_parameters(
             step_id=step_id,
             commit_step_output=commit_step_output,
             command_id=command_id,
+            revision_pinned=revision_pinned,
         ),
     )
 
@@ -113,6 +116,7 @@ def _apply_workspace_parameters(
     step_id: str | None,
     commit_step_output: bool,
     command_id: str,
+    revision_pinned: bool = True,
 ):
     set_keys = set(sets)
     unset_keys = set(unsets)
@@ -131,7 +135,7 @@ def _apply_workspace_parameters(
             "commitStepOutput": commit_step_output,
         },
         {},
-        expected_workspace_revision,
+        request_revision(expected_workspace_revision, pinned=revision_pinned),
     )
     if command_id and command_retry_matches(target, command_id, fingerprint):
         return _load_committed_workspace(target)

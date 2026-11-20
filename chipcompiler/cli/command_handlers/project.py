@@ -402,9 +402,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         import inspect
         from pathlib import Path
 
-        supports_backup = (
-            "retain_backup" in inspect.signature(update_workspace_from_spec).parameters
-        )
+        update_parameters = inspect.signature(update_workspace_from_spec).parameters
+        supports_backup = "retain_backup" in update_parameters
         if command_input.keep_backup and not supports_backup:
             from shutil import copytree
 
@@ -416,6 +415,10 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
             "blocking": not command_input.no_wait,
             **({"retain_backup": command_input.keep_backup} if supports_backup else {}),
         }
+        if not command_input.expected_revision and "revision_pinned" in update_parameters:
+            # The revision was filled in above, not named by the caller: it
+            # is checked, but it is not part of the command's identity.
+            update_kwargs["revision_pinned"] = False
         workspace = update_workspace_from_spec(
             ctx.run_dir,
             expected,
@@ -684,6 +687,7 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
             expected,
             command_id=command_input.command_id or str(uuid.uuid4()),
             blocking=not command_input.no_wait,
+            revision_pinned=bool(command_input.expected_revision),
         )
         snapshot = read_engineering_snapshot(workspace)
     except BlockingIOError:

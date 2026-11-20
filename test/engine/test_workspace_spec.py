@@ -279,6 +279,50 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
     assert read_engineering_snapshot(repeated.workspace) == after
 
 
+def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """A caller that names no revision passes the current one for the check only."""
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["design"]["clockPort"] = "clock"
+
+    updated = update_workspace_from_spec(
+        target, 1, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    after = read_engineering_snapshot(updated.workspace)
+    assert after["workspaceRevision"] == 2
+    # The retry arrives with the revision that is current now.
+    repeated = update_workspace_from_spec(
+        target, 2, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    assert read_engineering_snapshot(repeated.workspace) == after
+
+    # Another request under the same id is a conflict, and the revision is
+    # still checked for a new command.
+    with pytest.raises(WorkspaceLifecycleError) as reused:
+        update_workspace_from_spec(
+            target, 2, payload["workspaceSpec"], bindings, "update-1", revision_pinned=False
+        )
+    assert reused.value.code == "idempotency_conflict"
+    with pytest.raises(WorkspaceLifecycleError) as stale:
+        update_workspace_from_spec(
+            target, 1, payload["workspaceSpec"], bindings, "update-2", revision_pinned=False
+        )
+    assert stale.value.code == "revision_conflict"
+    assert read_engineering_snapshot(repeated.workspace) == after
+
+
 def test_workspace_spec_update_preserves_unknown_config_extensions(
     tmp_path, minimal_ics55_pdk_factory
 ):

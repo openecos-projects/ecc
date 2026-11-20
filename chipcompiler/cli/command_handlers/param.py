@@ -518,6 +518,7 @@ def param_apply(args, ctx: CommandContext) -> CommandResult:
                 step_id=args.step,
                 commit_step_output=args.commit_step_output,
                 command_id=args.command_id,
+                revision_pinned=bool(args.expected_revision),
             )
             committed = read_engineering_snapshot_from_directory(ctx.run_dir)
     except BlockingIOError:

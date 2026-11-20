@@ -4,6 +4,8 @@ import uuid
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.project_application import reconcile_project_state
 from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
@@ -105,8 +107,9 @@ def test_reconcile_registers_a_proven_derive_orphan(tmp_path, minimal_ics55_pdk_
     assert branch["source_workspace_id"] == "source"
 
 
+@pytest.mark.parametrize("revision_pinned", [True, False], ids=["named", "current"])
 def test_reconcile_cleans_a_proven_post_exchange_refresh_staging(
-    tmp_path, minimal_ics55_pdk_factory
+    tmp_path, minimal_ics55_pdk_factory, revision_pinned
 ):
     project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
     workspace = project / "baseline"
@@ -114,7 +117,10 @@ def test_reconcile_cleans_a_proven_post_exchange_refresh_staging(
     _register(project, "baseline")
     staging = project / ".baseline.staging-crash"
     shutil.copytree(workspace, staging)
-    update_workspace_from_spec(workspace, 1, spec, bindings, "refresh-1")
+    # The refresh of a caller that named no revision is recorded without one.
+    update_workspace_from_spec(
+        workspace, 1, spec, bindings, "refresh-1", revision_pinned=revision_pinned
+    )
 
     report = reconcile_project_state(project, blocking=True)
 
@@ -155,8 +161,9 @@ def test_reconcile_reports_a_live_unlocked_runtime_process_as_busy(
     assert processes.get("live") == entry
 
 
+@pytest.mark.parametrize("revision_pinned", [True, False], ids=["named", "current"])
 def test_reconcile_rolls_forward_a_portable_refresh_with_missing_target(
-    tmp_path, minimal_ics55_pdk_factory
+    tmp_path, minimal_ics55_pdk_factory, revision_pinned
 ):
     project, spec, bindings = _project_and_spec(tmp_path, minimal_ics55_pdk_factory)
     workspace = project / "baseline"
@@ -164,7 +171,10 @@ def test_reconcile_rolls_forward_a_portable_refresh_with_missing_target(
     _register(project, "baseline")
     old_staging = project / ".baseline.staging-crash"
     shutil.copytree(workspace, old_staging)
-    update_workspace_from_spec(workspace, 1, spec, bindings, "refresh-1")
+    # The refresh of a caller that named no revision is recorded without one.
+    update_workspace_from_spec(
+        workspace, 1, spec, bindings, "refresh-1", revision_pinned=revision_pinned
+    )
 
     backup = Path(f"{old_staging}.exchange-old")
     old_staging.rename(backup)

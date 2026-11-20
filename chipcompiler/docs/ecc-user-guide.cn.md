@@ -520,7 +520,9 @@ ecc run [OPTIONS]
 
 自动化选项（供 ECOS Studio 与 CI 驱动使用，交互式使用可忽略）：`--expected-revision N`
 在 workspace revision 已变化时报 `revision_conflict`（退出码 21）；`--command-id TEXT`
-为变更打上幂等/审计标记；`--no-wait` 在 workspace 忙时不等待（直接报错）；
+为变更打上幂等/审计标记（用同一个 id 和相同参数重发的命令返回第一次的结果，不会再次执行；
+同一个 id 下的不同请求报 `idempotency_conflict`；`--expected-revision` 只有在显式给出时才算
+请求的一部分）；`--no-wait` 在 workspace 忙时不等待（直接报错）；
 `--run-id`/`--runtime-id` 命名登记的运行进程；`--log-file PATH` 在预检前以受限权限
 创建运行日志并把整个 run 的 stdout/stderr 重定向进去。这些选项同样出现在其他变更类
 命令上（`param apply`、`macro import`、`workspace …`）；`signoff export` 接受
