@@ -309,13 +309,6 @@ def get_pdk(
     from chipcompiler.pdk.resolver import resolve_pdk
 
     root_selection = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
-    if not root_selection:
-        # Compatibility aliases select a resource root only, never defaults.
-        env_family = pdk_name_normalized.upper().replace("-", "_").replace(".", "_")
-        root_selection = (
-            os.environ.get(f"CHIPCOMPILER_{env_family}_PDK_ROOT", "").strip()
-            or os.environ.get(f"{env_family}_PDK_ROOT", "").strip()
-        )
     descriptor_root = Path(root_selection).expanduser() if root_selection else None
     if pdk_config and "schema_version" in _read_external_pdk_config(pdk_config):
         if descriptor_root is None:
@@ -374,10 +367,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
 
     # Resolve: explicit arg > env vars > default
     root_text = (
-        str(pdk_root).strip()
-        or os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
-        or os.environ.get("ICS55_PDK_ROOT", "").strip()
-        or str(default_pdk_root)
+        str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip() or str(default_pdk_root)
     )
     resolved_root = Path(root_text).expanduser().resolve()
     stdcell_dir = resolved_root / "IP" / "STD_cell"
@@ -457,11 +447,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
 
 
 def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
-    root_text = (
-        str(pdk_root).strip()
-        or os.environ.get("CHIPCOMPILER_SG13G2_PDK_ROOT", "").strip()
-        or os.environ.get("SG13G2_PDK_ROOT", "").strip()
-    )
+    root_text = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
     resolved_root = Path(root_text).expanduser().resolve()
 
     tech_path = resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_tech.lef"

@@ -734,7 +734,7 @@ uv run ecc doctor --project gcd --plain
 `ecc pdk set-root <path>` wires an already-ready ics55 PDK into the
 project (writes `[pdk] root` in `ecc.toml` as an absolute path; incomplete
 contents are advisory). `ecc pdk show` reports the effective root, which
-resolver won (ecc.toml / `CHIPCOMPILER_ICS55_PDK_ROOT` / `ICS55_PDK_ROOT` /
+resolver won (ecc.toml / `ECC_PDK_ROOT` /
 repo default), and a contents check; `ecc pdk unset` clears the override:
 
 ```bash
@@ -1017,7 +1017,7 @@ Runtime handling:
 If Yosys is not found, install the managed toolchain with the ECC installer
 `--with-toolchain` flag (see the [README](../README.md#installation)). The
 installer wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and
-`CHIPCOMPILER_ICS55_PDK_ROOT`. To point at an existing OSS CAD Suite instead:
+`ECC_PDK_ROOT`. To point at an existing OSS CAD Suite instead:
 
 ```bash
 export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
@@ -1124,7 +1124,7 @@ For the ICS55 GCD tool integration test:
 ```bash
 nix develop
 export PATH=/path/to/ecc-sizer/build/src:$PATH
-export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
+export ECC_PDK_ROOT=/path/to/ics55-pdk
 .venv/bin/python -m pytest test/integration/test_rtl2gds_flow.py::test_ics55_gcd -q -s
 ```
 

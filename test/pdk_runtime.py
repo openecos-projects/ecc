@@ -15,10 +15,7 @@ def _resolve_ics55_root(pdk_root: str = "") -> str:
     if explicit:
         return os.path.abspath(os.path.expanduser(explicit))
 
-    env_root = (
-        os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
-        or os.environ.get("ICS55_PDK_ROOT", "").strip()
-    )
+    env_root = os.environ.get("ECC_PDK_ROOT", "").strip()
     if env_root:
         return os.path.abspath(os.path.expanduser(env_root))
 

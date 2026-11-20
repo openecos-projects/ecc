@@ -25,11 +25,11 @@ def test_only_selected_tools_are_probed(monkeypatch):
     tools = {
         "compatibility": {"distributions": {"ecc-dreamplace": "==0.1.0a7"}, "sizer_vt_contract": 1}
     }
-    assert runtime_issues(tools, ["Synthesis"]) == []
+    assert runtime_issues(tools, ["synthesis"]) == []
     version.assert_not_called()
-    assert runtime_issues(tools, ["place"]) == []
+    assert runtime_issues(tools, ["placement"]) == []
     version.return_value = "0.1.0a6"
-    assert "found 0.1.0a6" in runtime_issues(tools, ["place"])[0]
+    assert "found 0.1.0a6" in runtime_issues(tools, ["placement"])[0]
 
 
 @pytest.mark.parametrize("response", ["valid", "old", "malformed", "array", "timeout"])

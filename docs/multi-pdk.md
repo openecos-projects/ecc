@@ -120,9 +120,15 @@ applied.
 The v2 description includes the full 25-resource set, including five GDS
 resources. The catalog also recognizes the earlier 20-resource v2 descriptor.
 The v1 adaptation is based on the pre-v2 7T configuration; v2 defaults were
-checked against the public 9T package. Neither profile changes or writes into
-the PDK directory. Both explicitly mark the bundled ICS55 synthetic EM model as
+checked against the public 9T package. ECC stores the management configuration outside the PDK. When it prepares STA,
+it writes a shared cell catalog under the installed root. Both explicitly mark the bundled ICS55 synthetic EM model as
 flow-test-only; it is not foundry signoff data.
+
+Native tool templates live in each tool adapter’s `configs/defaults/` directory.
+`configs/pdk/<profile>/` holds the fields that change for that release. Objects
+merge recursively, and arrays replace the whole default array. STA resolves
+Liberty resource IDs against the description. Project creation records the
+effective configuration in its lock.
 
 ## Reviewed ICS55 v2 stage settings
 
@@ -180,8 +186,7 @@ lock stealing. Studio migrates its old resource manifest on first access.
 
 New-project selection is explicit `--pdk-root`, then `ECC_PDK_ROOT`, then the
 chosen client's inventory default. Existing project/workspace bindings are never
-reselected from defaults. Legacy ICS55 root environment aliases remain read
-compatibility inputs for older configurations, not process default generators.
+reselected from defaults. `ECC_PDK_ROOT` applies to every process.
 
 ## Immutable projects and relocation
 
@@ -202,7 +207,7 @@ ecc pdk clone-with-pdk --source /data/old-project \
   --target /data/new-project --root /data/another-pdk
 ```
 
-Clone copies RTL and design constraints into a new project with a new PDK lock.
+This local command copies RTL and design constraints into a new project with a new PDK lock.
 It accepts RTL sources or one filelist, does not inherit workspaces or physical
 results, and does not carry old process-specific parameter overrides. Review the
 new project's clock/flow constraints for its new technology. A physically mapped

@@ -121,7 +121,7 @@ class TestPdkShow:
         project_dir = create_cli_project(pdk_root="")
         env_dir = tmp_path / "env-pdk"
         env_dir.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_dir))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_dir))
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
@@ -131,7 +131,7 @@ class TestPdkShow:
 
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
+        assert record["source"] == "ECC_PDK_ROOT"
         assert record["root"] == str(env_dir)
 
     def test_show_rejects_missing_repo_default_without_displaying_path(
@@ -147,8 +147,7 @@ class TestPdkShow:
             "__file__",
             str(tmp_path / "repo/ecc/chipcompiler/cli/command_handlers/pdk.py"),
         )
-        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
-        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
 
         rc = cli_main.run(["pdk", "show", "--project", str(project_dir), "--plain"])
 
@@ -168,8 +167,7 @@ class TestPdkShow:
         self, tmp_path, capsys, monkeypatch, create_cli_project, plain_records
     ):
         project_dir = create_cli_project(pdk_root=str(tmp_path / "ghost"))  # never created
-        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
-        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
 
         rc = cli_main.run(["pdk", "show", "--project", project_dir, "--plain"])
 
@@ -225,7 +223,7 @@ class TestPdkUnset:
         project_dir = create_cli_project(pdk_root=str(tmp_path))
         env_dir = tmp_path / "env-pdk"
         env_dir.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_dir))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_dir))
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
@@ -237,7 +235,7 @@ class TestPdkUnset:
 
         record = plain_records(capsys.readouterr().out)[0]
         assert rc == 0
-        assert record["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
+        assert record["source"] == "ECC_PDK_ROOT"
 
 
 def test_pdk_verify_fails_closed_for_incomplete_contents(monkeypatch):

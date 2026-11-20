@@ -11,7 +11,10 @@ from chipcompiler.utility import json_read
 @pytest.fixture
 def dreamplace_default_config():
     config_path = (
-        Path(dreamplace_builder.__file__).resolve().parent / "configs" / "dreamplace_ecc.json"
+        Path(dreamplace_builder.__file__).resolve().parent
+        / "configs"
+        / "defaults"
+        / "dreamplace_ecc.json"
     )
     config = json_read(config_path)
     config["buffering_fixed_buffer_master"] = "fixture_buffer"

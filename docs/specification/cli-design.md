@@ -382,9 +382,7 @@ Runs against an existing workspace can surface two advisory warnings without
 changing execution:
 
 - `pdk_root_env_fallback` — the workspace persists an empty `[pdk] root`, so
-  the PDK root resolves from the `CHIPCOMPILER_ICS55_PDK_ROOT` /
-  `ICS55_PDK_ROOT` environment variables (only for an `ics55` or unnamed
-  PDK). The warning names the winning variable; `ecc run --overwrite` pins
+  the PDK root resolves from the `ECC_PDK_ROOT` environment variable. The warning names the winning variable; `ecc run --overwrite` pins
   the resolved root into the workspace.
 - `workspace_spec_drift` — a CLI run of a spec-mode workspace (one carrying
   `home/engineering-snapshot.json`) whose `home/params.toml` is newer than
@@ -630,8 +628,7 @@ inserted.
 `design.rtl` accepts one or more source entries. A filelist (`.f`, `.fl`, or
 `.filelist`) is also accepted; multiple direct source entries are assembled
 into a generated filelist when the workspace is created. If `pdk.root` is
-empty, the CLI falls back to `CHIPCOMPILER_ICS55_PDK_ROOT` or
-`ICS55_PDK_ROOT`.
+empty, the CLI falls back to `ECC_PDK_ROOT`.
 
 ### PDK Field Overrides
 

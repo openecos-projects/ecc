@@ -22,6 +22,7 @@ class CatalogRule(StrictModel):
 
 
 class Profile(StrictModel):
+    point_tool_configs: bool = False
     sta_catalog: CatalogRule | None = None
     id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
     description_digests: list[str]
@@ -45,10 +46,13 @@ def profile_configuration(profile: Profile) -> ManagedConfiguration:
             raise DescriptorError("unsafe_path", "profile document escapes catalog")
         return path.read_bytes()
 
-    return ManagedConfiguration(
-        description=PdkDescription.model_validate_json(read(profile.description)),
-        adaptation=EccAdaptation.model_validate_json(read(profile.adaptation)),
-    )
+    description = PdkDescription.model_validate_json(read(profile.description))
+    adaptation = EccAdaptation.model_validate_json(read(profile.adaptation))
+    if profile.point_tool_configs:
+        from .workspace import bundled_tool_configs
+
+        adaptation.tools["configs"] = bundled_tool_configs(profile.id, description)
+    return ManagedConfiguration(description=description, adaptation=adaptation)
 
 
 def find_profile(profile_id: str) -> Profile:

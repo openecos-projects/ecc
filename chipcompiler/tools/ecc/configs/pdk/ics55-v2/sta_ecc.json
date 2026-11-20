@@ -1,0 +1,49 @@
+{
+  "liberty": [
+    {
+      "corner": "MAX",
+      "temperature": 125,
+      "libraries": [
+        "liberty-6",
+        "liberty-5",
+        "liberty-4"
+      ]
+    },
+    {
+      "corner": "WCL",
+      "temperature": -40,
+      "libraries": [
+        "liberty-8",
+        "liberty-9",
+        "liberty-10"
+      ]
+    },
+    {
+      "corner": "TYP",
+      "temperature": 25,
+      "libraries": [
+        "liberty-11",
+        "liberty-12",
+        "liberty-13"
+      ]
+    },
+    {
+      "corner": "MIN",
+      "temperature": -40,
+      "libraries": [
+        "liberty-14",
+        "liberty-15",
+        "liberty-16"
+      ]
+    },
+    {
+      "corner": "ML",
+      "temperature": 125,
+      "libraries": [
+        "liberty-17",
+        "liberty-18",
+        "liberty-19"
+      ]
+    }
+  ]
+}

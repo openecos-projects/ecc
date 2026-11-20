@@ -32,7 +32,7 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
             _issue(
                 "pdk",
                 f"pdk.name={cfg.pdk_name}",
-                "Set pdk.root in ecc.toml or ECC_PDK_ROOT to a directory containing ecc-pdk.json.",
+                "Set pdk.root in ecc.toml or ECC_PDK_ROOT to an imported PDK directory.",
             )
         ]
     try:

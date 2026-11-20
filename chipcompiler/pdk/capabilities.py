@@ -6,23 +6,24 @@ from .manifest import Descriptor
 from .validation import validate_resources
 
 _STEP_STAGE = {
-    "Synthesis": "synthesis",
+    "synthesis": "synthesis",
     "lec": "synthesis",
-    "preFloorplan": "floorplan",
-    "postFloorplan": "floorplan",
-    "macroPlacement": "floorplan",
+    "pre_floorplan": "floorplan",
+    "post_floorplan": "floorplan",
+    "macro_placement": "floorplan",
     "preplace": "sizing",
-    "Timing optimization": "sizing",
+    "timing_optimization": "sizing",
     "diff_sizing": "sizing",
     "diff_opt": "placement",
-    "place": "placement",
+    "placement": "placement",
     "legalization": "placement",
-    "CTS": "cts",
-    "route": "routing",
+    "cts": "cts",
+    "routing": "routing",
     "sta": "sta",
-    "RCX": "extraction",
+    "rcx": "extraction",
     "emir": "emir",
-    "GDS": "gds",
+    "gds": "gds",
+    "harden": "gds",
 }
 
 

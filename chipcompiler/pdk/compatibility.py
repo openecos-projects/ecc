@@ -52,7 +52,7 @@ def runtime_issues(tools: dict, steps) -> list[str]:
     except DescriptorError as exc:
         issues.append(str(exc))
     selected = set(steps)
-    dreamplace = {"macroPlacement", "place", "diff_sizing", "diff_opt", "legalization"}
+    dreamplace = {"macro_placement", "placement", "diff_sizing", "diff_opt", "legalization"}
     for distribution, spec in policy.distributions.items():
         if distribution == "ecc-dreamplace" and not selected & dreamplace:
             continue
@@ -64,7 +64,7 @@ def runtime_issues(tools: dict, steps) -> list[str]:
                 issues.append(f"adaptation requires {distribution}{spec}; found {actual}")
         except PackageNotFoundError:
             issues.append(f"adaptation requires {distribution}{spec}; distribution is missing")
-    if policy.sizer_vt_contract and selected & {"preplace", "Timing optimization"}:
+    if policy.sizer_vt_contract and selected & {"preplace", "timing_optimization"}:
         from chipcompiler.tools.ecc_sizer.utility import get_sizer_command
 
         command = get_sizer_command()

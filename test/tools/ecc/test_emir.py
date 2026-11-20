@@ -74,7 +74,7 @@ def emir_case(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     workspace.config = build_workspace_config_paths(workspace)
     workspace.config["dir"].mkdir()
-    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    template = Path(builder.__file__).parent / "configs" / "defaults" / "emir_ecc.json"
     config = json_read(template)
     config["technology_file_path"] = str(tmp_path / "process.tech")
     (tmp_path / "process.tech").write_text("# Test process model\n")
@@ -171,7 +171,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
 
 def test_emir_placeholder_does_not_run_native_analysis(emir_case):
     workspace, step, module, save_data = emir_case
-    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    template = Path(builder.__file__).parent / "configs" / "defaults" / "emir_ecc.json"
     assert json_write(workspace.config[StepEnum.EMIR.value], json_read(template))
 
     assert runner.run_step(workspace, step, module) is False
@@ -254,7 +254,7 @@ def test_emir_publishes_synthetic_model_provenance(emir_case):
 
     workspace, step, module, _save_data = emir_case
     assert builder.__file__ is not None
-    model = Path(builder.__file__).parent / "configs" / "ics55_synthetic.tech"
+    model = Path(builder.__file__).parent / "configs" / "defaults" / "ics55_synthetic.tech"
     config = json_read(workspace.config["emir"])
     config["technology_file_path"] = str(model)
     json_write(workspace.config["emir"], config)

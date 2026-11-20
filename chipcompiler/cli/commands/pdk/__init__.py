@@ -37,7 +37,9 @@ def set_root_cmd(
     *,
     path: Annotated[
         str,
-        typer.Argument(help="Path to a PDK with ecc-pdk.json (absolute after expansion)"),
+        typer.Argument(
+            help="Local PDK directory. For legacy ICS55, first apply its bundled profile."
+        ),
     ],
     project: ProjectOption = None,
     plain: PlainOption = False,
@@ -102,7 +104,10 @@ def unset_cmd(
     _finish("unset", command_input, pdk_handlers.unset)
 
 
-@pdk_app.command("clone-with-pdk")
+@pdk_app.command(
+    "clone-with-pdk",
+    help="Copy a local RTL project and bind the copy to an installed PDK.",
+)
 def clone_with_pdk_cmd(
     source: Annotated[str, typer.Option(help="Source RTL project")],
     target: Annotated[str, typer.Option(help="New project directory; must not exist")],

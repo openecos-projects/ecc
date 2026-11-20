@@ -477,13 +477,7 @@ def _validate_pdk_contents(
 
 
 def _pdk_root_from_env() -> str:
-    for key in ("ECC_PDK_ROOT", "CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-        val = os.environ.get(key, "").strip()
-        if not val:
-            continue
-        # Absolute: the value becomes the join base for serialized override
-        # paths consumed from step working directories.
-        val = os.path.abspath(val)
-        if os.path.isdir(val):
-            return val
+    value = os.environ.get("ECC_PDK_ROOT", "").strip()
+    if value and os.path.isdir(value):
+        return os.path.abspath(value)
     return ""

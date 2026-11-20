@@ -53,7 +53,8 @@ def resolve_model(pdk, config: dict) -> EmirModel:
         if synthetic != "ics55" or pdk.name.casefold() != "ics55":
             raise DescriptorError("invalid_emir_model", "the ICS55 fixture requires an ICS55 PDK")
         return EmirModel(
-            str(Path(__file__).parent / "configs" / "ics55_synthetic.tech"), synthetic=True
+            str(Path(__file__).parent / "configs" / "defaults" / "ics55_synthetic.tech"),
+            synthetic=True,
         )
     return EmirModel("")
 

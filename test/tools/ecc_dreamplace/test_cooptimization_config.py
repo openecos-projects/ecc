@@ -152,7 +152,7 @@ def test_batch_profile_survives_public_params_and_geometry_mode_isolation(tmp_pa
     step_params = build_step_params(resolve_parameters(toml_overrides=parsed)[0])
     parameters = step_parameter_view({"step_params": step_params}, "placement")
     path = tmp_path / "dreamplace.json"
-    baseline = root / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
+    baseline = root / "chipcompiler/tools/ecc_dreamplace/configs/defaults/dreamplace_ecc.json"
     path.write_text(baseline.read_text())
     apply_config_overrides({"dreamplace": path}, parameters)
     actual = json.loads(path.read_text())

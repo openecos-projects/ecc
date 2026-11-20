@@ -35,7 +35,7 @@ def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
     """Keep the complete default script set, with configured scenarios taking precedence."""
     from . import workspace_config_key_path
 
-    template = Path(__file__).resolve().parents[2] / "tools/ecc/configs/sta_ecc.json"
+    template = Path(__file__).resolve().parents[2] / "tools/ecc/configs/defaults/sta_ecc.json"
     path = workspace_config_key_path(workspace.directory, "sta")
     baseline = (
         workspace.pdk.description.get("tools", {}).get("configs", {}).get("sta", {})

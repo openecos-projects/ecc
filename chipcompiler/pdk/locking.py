@@ -101,12 +101,4 @@ def lock_workspace_inputs(project: Path, root: Path, family: str) -> Path:
     if descriptor.family_id.casefold() != family.casefold():
         raise DescriptorError("family_mismatch", "project and PDK description families differ")
     bind_project(project, root, descriptor)
-    # The project lock carries the authoritative snapshot; the creator receives
-    # a normal descriptor so its existing pdk_config snapshot protocol applies.
-    path = project / ".ecc-pdk-snapshot.json"
-    content = json.dumps(descriptor.model_dump(), indent=2) + "\n"
-    with workspace_lock(project):
-        if path.is_symlink():
-            raise DescriptorError("unsafe_path", "PDK snapshot must not be a symlink")
-        write_text_atomic(str(path), content)
-    return path
+    return lock_path

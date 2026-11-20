@@ -167,7 +167,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     original_config = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "chipcompiler/tools/ecc/configs/floorplan_ecc.json"
+            / "chipcompiler/tools/ecc/configs/defaults/floorplan_ecc.json"
         ).read_text()
     )
     original_config["macro_placer"].update(

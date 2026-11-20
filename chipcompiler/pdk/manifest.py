@@ -125,6 +125,10 @@ class Descriptor(StrictModel):
 def load_descriptor(root: Path, path: Path | None = None) -> Descriptor:
     from .managed import read_configuration, source_path
 
+    if path is not None and path.name == "pdk.lock.json":
+        from .locking import read_lock
+
+        return read_lock(path).descriptor
     return read_configuration(source_path(root, path)).resolved()
 
 

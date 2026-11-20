@@ -24,7 +24,8 @@
         "sort_by_master": false,
         "compact_drive": false,
         "sha256": "9c518ac46c112f9e8b329fd7d71f7a2a649643a556cf455cfee2d2761f1abd09"
-      }
+      },
+      "point_tool_configs": true
     },
     {
       "id": "ics55-v2",
@@ -50,7 +51,8 @@
         "sort_by_master": true,
         "compact_drive": true,
         "sha256": "f2a775c0234fba257474de72179681900e889acb3b0e79f0d002dcb24845af30"
-      }
+      },
+      "point_tool_configs": true
     }
   ]
 }

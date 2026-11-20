@@ -321,7 +321,7 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
     }
     config_path = (
         Path(__file__).resolve().parents[3]
-        / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
+        / "chipcompiler/tools/ecc_dreamplace/configs/defaults/dreamplace_ecc.json"
     )
     owner = StepEnum.MACRO_PLACEMENT.value
     step_config = tmp_path / "macro_placement" / "config" / "dreamplace_ecc.json"

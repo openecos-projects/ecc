@@ -43,7 +43,8 @@ ECC_PACKAGE_RESOURCES = (
     "chipcompiler/pdk/profiles",
     "chipcompiler/tools/ecc/configs",
     "chipcompiler/tools/yosys/scripts",
-    "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json",
+    "chipcompiler/tools/ecc_dreamplace/configs",
+    "chipcompiler/tools/ecc_sizer/configs",
 )
 
 DREAMPLACE_THIRDPARTY_FILES = (

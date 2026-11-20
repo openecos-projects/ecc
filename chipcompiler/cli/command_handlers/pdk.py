@@ -56,10 +56,11 @@ def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
         from chipcompiler.cli.project.config import _resolve_path
 
         return _resolve_path(cfg.project_dir or project_dir, cfg.pdk_root), "ecc.toml"
-    for var in ("ECC_PDK_ROOT", "CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-        value = os.environ.get(var, "").strip()
-        if value and os.path.isdir(os.path.abspath(value)):
-            return os.path.abspath(value), var
+    from chipcompiler.cli.project.config import _pdk_root_from_env
+
+    root = _pdk_root_from_env()
+    if root:
+        return root, "ECC_PDK_ROOT"
     return "", "unbound"
 
 

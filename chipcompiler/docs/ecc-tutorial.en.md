@@ -65,7 +65,7 @@ The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`,
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPILER_ICS55_PDK_ROOT`, so Yosys and the ICS55 PDK are configured by the wrapper; when the toolchain is missing later, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor` (see §2.4).
+The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `ECC_PDK_ROOT`, so Yosys and the ICS55 PDK are configured by the wrapper; when the toolchain is missing later, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor` (see §2.4).
 
 ### 2.2 Running from source (optional)
 
@@ -93,7 +93,7 @@ mkdir -p ~/.local/bin && ln -sf ~/.local/ecc/ecc ~/.local/bin/ecc   # ~/.local/b
 # ② PDK: icsprout55-pdk; liberty/GDS need `make unzip` (~1 GB, from the PDK's own Releases)
 git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ~/.local/icsprout55-pdk
 make -C ~/.local/icsprout55-pdk unzip
-export CHIPCOMPILER_ICS55_PDK_ROOT=~/.local/icsprout55-pdk   # recommended: add to ~/.bashrc
+export ECC_PDK_ROOT=~/.local/icsprout55-pdk   # recommended: add to ~/.bashrc
 
 # ③ Yosys: OSS CAD Suite (needs yosys ≥ v0.67 for the built-in slang frontend)
 #    Download the linux-x64 package from https://github.com/YosysHQ/oss-cad-suite-build/releases, then:
@@ -218,7 +218,7 @@ frequency_mhz = 100.0    # target frequency (MHz)
 
 [pdk]
 name = "ics55"           # ics55 is currently the only supported PDK
-root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT env var
+root = ""                # empty = fall back to the ECC_PDK_ROOT env var
 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
@@ -242,7 +242,7 @@ ecc project show                              # list what ecc.toml declares
 Two things worth knowing:
 
 - **No hand-written SDC needed**: the flow generates `origin/gcd.sdc` from `clock_port` and `frequency_mhz`, with zero input/output delay, separate setup/hold uncertainty, transition and maximum-fanout constraints, and the PDK output load when configured. A user-supplied `design.sdc` is copied unchanged instead;
-- **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
+- **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `ECC_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
 
 ### 3.4 Validate
 
@@ -897,7 +897,7 @@ Plan/results schemas, ranking, and promotion rules are in [User Guide §11.5](ec
 | `[error] derived_configs_modified` | `workspace refresh` found a managed JSON config or `macro_location.tcl` changed since the last derivation | preserve the change through `ecc param`/`ecc macro`/`ecc.toml`, or rerun refresh with `--force` to discard it |
 | run summary carries `warning: ecc.toml values override different project.json base values` (`config_layer_diverged`) | `ecc.toml` effectively disagrees with the baseline the first run recorded in `project.json`: `pdk.root` resolves to a different PDK than the first run used (e.g. the env var was repointed), or `flow.preset` differs from the workspace's declared range (e.g. a workspace created with `--preset synthesis_lec` under an `rtl2gds` ecc.toml) | does not affect the run result — safe to ignore; aligning the two sides makes it go away (`ecc pdk set-root`, or fix `flow.preset`) |
 | `[error] signoff_incomplete` (at export) | required deliverables missing (e.g. a failed step) | `ecc signoff inspect` for blocked items; debug with `ecc status`/`ecc log`, then rerun |
-| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk set-root <path>` or set `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` reports `pdk.root is required` | no PDK found | `ecc pdk set-root <path>` or set `ECC_PDK_ROOT` |
 | PDK liberty missing | PDK cloned without data files | `make -C ~/.local/icsprout55-pdk unzip` (add `USE_PROXY=true GH_PROXY=...` if needed) |
 | Downloads time out | restricted network | retry the installer; or install manually per §2.3 (the PDK's `make unzip` supports `USE_PROXY=true GH_PROXY=...`) |
 | doctor shows `sizer: fail` | required Sizer component not installed | `ecc doctor` exits non-zero. The complete `rtl2gds` chain contains Timing optimization, so install Sizer before running it. Build ecc-sizer per the remediation hint |

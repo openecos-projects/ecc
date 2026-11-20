@@ -896,6 +896,7 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     sta = json.loads(load_workspace(target).config["sta"].read_text(encoding="utf-8"))
     assert all(str(new_pdk) in path for entry in sta["liberty"] for path in entry["path"])
 
+
 def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
     tmp_path, minimal_ics55_pdk_factory
 ):

@@ -171,7 +171,7 @@ def test_explicit_upgrade_requires_revision_and_leaves_project_pinned(bundled, t
     # A broken/new incompatible managed default must not break a locked project.
     path.write_text("{")
     cfg = ProjectConfig(project_dir=str(project), pdk_name="example", pdk_root=str(root))
-    assert pdk_issues_for_config(cfg, ["Synthesis"]) == []
+    assert pdk_issues_for_config(cfg, ["synthesis"]) == []
 
 
 def test_profiles_do_not_write_when_ecc_incompatible(bundled):

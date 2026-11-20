@@ -1,5 +1,6 @@
 """Project-independent rendering helpers for description-backed workspaces."""
 
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -7,6 +8,30 @@ from chipcompiler.utility import json_write
 
 from .manifest import DescriptorError
 from .resolver import descriptor_for
+
+
+def bundled_tool_configs(profile_id, description) -> dict:
+    """Expand point-tool defaults and release overrides at the project lock boundary."""
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    configs = {}
+    names = {"cts": "CTS", "rcx": "RCX", "floorplan": "Floorplan", "routing": "route"}
+    for owner in ("ecc", "ecc_dreamplace", "ecc_sizer"):
+        directory = tools / owner / "configs"
+        for default in sorted((directory / "defaults").glob("*_ecc.json")):
+            key = default.stem.removesuffix("_ecc")
+            override = directory / "pdk" / profile_id / default.name
+            config = json.loads(default.read_bytes())
+            if override.exists():
+                patch = json.loads(override.read_bytes())
+                if key == "sta":
+                    for corner in patch.get("liberty", []):
+                        corner["path"] = [
+                            "/" + description.resources[resource].path
+                            for resource in corner.pop("libraries")
+                        ]
+                config = _merge_config(config, patch)
+            configs[names.get(key, key)] = config
+    return configs
 
 
 def initialize_tool_configs(workspace) -> bool:

@@ -113,8 +113,7 @@ class TestCheck:
         assert any(r.get("check") == "rtl" and r.get("status") == "fail" for r in records)
 
     def test_check_fails_empty_pdk_root(self, tmp_path, create_cli_project, monkeypatch):
-        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
-        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         project_dir = create_cli_project(pdk_root="")
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1

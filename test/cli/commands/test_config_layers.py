@@ -101,8 +101,7 @@ class TestExplicitEmptyStaysExplicit:
             "chipcompiler.cli.project.config._validate_pdk_contents",
             lambda name, root, overrides=None: None,
         )
-        for env_key in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-            monkeypatch.delenv(env_key, raising=False)
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         return project_dir
 
     _CASES = [
@@ -195,7 +194,7 @@ class TestExplicitEmptyStaysExplicit:
             monkeypatch,
             _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
         )
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(project_dir / "pdk"))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(project_dir / "pdk"))
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 
@@ -216,7 +215,7 @@ class TestExplicitEmptyStaysExplicit:
         )
         other_root = project_dir / "pdk-env"
         other_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(other_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(other_root))
 
         rc = cli_main.run(["check", "--project", str(project_dir), "--plain"])
 

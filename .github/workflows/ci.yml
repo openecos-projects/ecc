@@ -191,7 +191,7 @@ jobs:
           mkdir ../pdk/icsprout55-pdk
           tar -xf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
-          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$PWD/../pdk/icsprout55-pdk" >> "$GITHUB_ENV"
+          echo "ECC_PDK_ROOT=$PWD/../pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
       - name: Setup OSS CAD Suite
         uses: ./.github/actions/setup-oss-cad-suite-cached
@@ -840,7 +840,7 @@ jobs:
       - name: Setup PDK from shared storage
         run: |
           test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
-          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
+          echo "ECC_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
       - name: Setup OSS CAD Suite from shared storage
         run: |

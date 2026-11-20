@@ -238,7 +238,7 @@ def _load_default_floorplan_config() -> dict:
     from chipcompiler.utility import json_read
 
     root_dir = Path(__file__).resolve().parent.parent.parent
-    return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
+    return json_read(root_dir / "tools" / "ecc" / "configs" / "defaults" / "floorplan_ecc.json")
 
 
 def _refresh_emir_config(workspace: Workspace) -> None:
@@ -478,12 +478,13 @@ def init_workspace_config(workspace: Workspace) -> None:
 
     config_dir = workspace.config["dir"]
     root_dir = Path(__file__).resolve().parent.parent.parent
-    ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
-    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
-
+    ecc_config_dir = root_dir / "tools" / "ecc" / "configs" / "defaults"
     _copy_missing_files(ecc_config_dir, config_dir)
-    if not workspace.config["dreamplace"].exists():
-        shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
+    for key in ("dreamplace", "sizer"):
+        destination = workspace.config[key]
+        if not destination.exists():
+            source = root_dir / "tools" / f"ecc_{key}" / "configs" / "defaults" / destination.name
+            shutil.copy2(source, destination)
     from chipcompiler.pdk.workspace import initialize_tool_configs
 
     initialize_tool_configs(workspace)
@@ -884,7 +885,13 @@ def create_workspace(
             from copy import deepcopy
 
             workspace.parameters = Parameters(
-                data=deepcopy(workspace.pdk.description["parameters"])
+                data={
+                    "design": "",
+                    "top_module": "",
+                    "clock": "",
+                    "frequency_max": 100,
+                    **deepcopy(workspace.pdk.description["parameters"]),
+                }
             )
             workspace.parameters.data["pdk"] = pdk_name
         else:
@@ -969,7 +976,7 @@ def create_workspace(
             if key in persisted_overrides:
                 persisted_overrides[key] = path_text(getattr(workspace.pdk, key))
         workspace.parameters.data["pdk_overrides"] = persisted_overrides
-    if pdk_json:
+    if pdk_json and not workspace.pdk.description:
         pdk_config_path = home_dir / "pdk.json"
         shutil.copy(pdk_json, pdk_config_path)
         workspace.parameters.data["pdk_config"] = str(pdk_config_path)

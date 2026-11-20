@@ -169,11 +169,11 @@ def test_liberty_only_workspace_can_be_created_without_physical_defaults(tmp_pat
         pdk_root=root,
         sdc=sdc,
         parameters={"design": "top", "top_module": "top", "frequency_max": 100.0},
-        flow_config={"steps": ["Synthesis"]},
+        flow_config={"steps": ["synthesis"]},
     )
     assert workspace is not None
-    assert stage_diagnostics(workspace.pdk, ["Synthesis"]) == []
-    assert stage_diagnostics(workspace.pdk, ["route"])
+    assert stage_diagnostics(workspace.pdk, ["synthesis"]) == []
+    assert stage_diagnostics(workspace.pdk, ["routing"])
     assert workspace.pdk.tech is None
     assert workspace.pdk.buffers == []
 
