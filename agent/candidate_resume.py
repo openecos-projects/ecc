@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 from chipcompiler.data.types import StepEnum
@@ -59,6 +60,7 @@ def candidate_resume(api, request: CandidateResumeRequest) -> dict:
             rerun=True,
             step=StepEnum.HARDEN.value,
             idempotency_key=request.idempotency_key,
+            command_input=asdict(request),
             runner=lambda observer: _candidate_resume(api, session, request, observer),
         )
     except RuntimeOperationConflict as exc:

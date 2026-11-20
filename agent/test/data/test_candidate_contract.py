@@ -58,14 +58,15 @@ def _workspace(tmp_path: Path):
                 "schema_version": 3,
                 "steps": [
                     {
-                        "name": "cts",
-                        "tool": "ecc",
-                        **step_fields("cts", "ecc"),
-                    },
-                    {
                         "name": "legalization",
                         "tool": "dreamplace",
                         **step_fields("legalization", "dreamplace"),
+                    },
+                    {
+                        "name": "cts",
+                        "tool": "ecc",
+                        **step_fields("cts", "ecc"),
+                        "input_step": "legalization",
                     },
                 ],
             }

@@ -2,11 +2,12 @@ import json
 import os
 import re
 import shutil
+from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 
 import chipcompiler
-from chipcompiler.data.types import LEC_STEP_TOOLS, StepEnum
+from chipcompiler.data.types import StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
@@ -21,6 +22,7 @@ from .data import (
     validate_candidate_step_contract,
 )
 from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
+from .data.candidate_input_binding import candidate_source_step
 from .data.candidate_materialization import (
     candidate_written_patch,
     validate_candidate_materialization_receipt,
@@ -131,6 +133,7 @@ class FlowAgentRuntimeApi:
                 rerun=True,
                 step=request.target_step,
                 idempotency_key=request.idempotency_key,
+                command_input=asdict(request),
                 runner=lambda observer: self._candidate_rerun(session, request, observer),
             )
         except RuntimeOperationConflict as exc:
@@ -659,12 +662,25 @@ def _candidate_workspace_receipt(
         design_name = getattr(getattr(workspace, "design", None), "name", None)
         if not isinstance(design_name, str) or not design_name:
             raise RuntimeApiError("command_failed", "candidate design name is unavailable")
+        records = workspace.flow.data.get("steps", [])
+        harden_directory = next(
+            (
+                row["directory"]
+                for row in records
+                if row.get("name") == StepEnum.HARDEN.value and "directory" in row
+            ),
+            "harden_ecc",
+        )
+        from chipcompiler.data.step.directories import is_step_directory_name
+
+        if not isinstance(harden_directory, str) or not is_step_directory_name(harden_directory):
+            raise RuntimeApiError("command_failed", "candidate harden step directory is invalid")
         for key, suffix in (
             ("harden_gds", "gds"),
             ("harden_lef", "lef"),
             ("harden_lib", "lib"),
         ):
-            relative = f"harden_ecc/output/{design_name}_harden.{suffix}"
+            relative = f"{harden_directory}/output/{design_name}_harden.{suffix}"
             artifact = candidate_root / relative
             artifacts[key] = {
                 "ref": relative,
@@ -862,7 +878,15 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         .removesuffix(".gz")
         .endswith((".v", ".sv", ".vh", ".svh", ".vhd", ".vhdl"))
     )
-    sdc_files = sorted(origin.glob("*.sdc"))
+    sdc_files = sorted(
+        path
+        for path in origin.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix == ".sdc"
+            or (path.suffix == ".tcl" and path.parent.name in {"pre_CTS", "post_CTS"})
+        )
+    )
     if not rtl_files or not sdc_files:
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
     try:
@@ -898,9 +922,11 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()),
         None,
     )
-    if filelist is None:
-        raise RuntimeApiError("command_failed", "candidate filelist fingerprint is unavailable")
-    filelist_sha256 = f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
+    filelist_sha256 = (
+        _stable_hash({"rtl_files": [path.relative_to(root).as_posix() for path in rtl_files]})
+        if filelist is None
+        else f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
+    )
     rtl_sha256 = rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
     sdc_sha256 = sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
     design_sha256 = _stable_hash(
@@ -997,21 +1023,13 @@ def _validate_runtime_report_binding(
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
-    # The RPC-level "floorplan" target binds the post-synthesis netlist: the
-    # floorplan sub-steps consume the synthesis output as their phase input.
-    if target_step == StepEnum.FLOORPLAN.value:
-        return StepEnum.SYNTHESIS.value
-    steps = flow.workspace.flow.data.get("steps", [])
-    for index, step in enumerate(steps):
-        if step.get("name") == target_step and index:
-            for source_step in reversed(steps[:index]):
-                # An LEC check reads a netlist and changes nothing.
-                if source_step.get("tool") in LEC_STEP_TOOLS:
-                    continue
-                source = source_step.get("name")
-                if isinstance(source, str):
-                    return source
-    raise RuntimeApiError("invalid_request", f"candidate target has no predecessor: {target_step}")
+    records = flow.workspace.flow.data.get("steps", [])
+    source_step = candidate_source_step(records, target_step)
+    if source_step is None:
+        raise RuntimeApiError(
+            "invalid_request", f"candidate target has no predecessor: {target_step}"
+        )
+    return source_step
 
 
 def _reapply_candidate_input(workspace, flow, target_step: str) -> None:
