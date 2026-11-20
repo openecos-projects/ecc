@@ -36,6 +36,13 @@ SCHEMAS = (
         "Standard-cell Liberty timing-library paths, resolved relative to pdk.root when relative.",
     ),
     _pdk_path(
+        "gds",
+        [],
+        "list[str]",
+        "Standard-cell/IO/macro GDS libraries merged into the final GDS, "
+        "resolved relative to pdk.root when relative.",
+    ),
+    _pdk_path(
         "mapping_file",
         "",
         "str",

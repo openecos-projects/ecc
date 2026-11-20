@@ -20,6 +20,7 @@ from chipcompiler.tools.ecc.clock_tree import (
     clock_tree_stage_for_step,
 )
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
+from chipcompiler.tools.ecc.gds_merge import merge_pdk_cell_layouts
 from chipcompiler.tools.ecc.lvs_artifacts import (
     copy_lvs_outputs as copy_lvs_outputs,
 )
@@ -807,6 +808,8 @@ def run_filler(
             output_path=step.output.gds or "",
             layer_map_path=workspace.pdk.mapping_file or "",
         )
+        if not merge_pdk_cell_layouts(workspace, step):
+            return False
         reslut = save_data(
             workspace=workspace,
             step=step,
@@ -954,6 +957,8 @@ def run_harden(
             output_path=step.output.gds or "",
             layer_map_path=layer_map_path,
         )
+        if not merge_pdk_cell_layouts(workspace, step):
+            return False
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 
