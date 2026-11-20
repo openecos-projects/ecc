@@ -491,6 +491,61 @@ class TestProjectDoctorMovedProject:
         assert processes["elsewhere"]["run_id"] == "external-run"
         assert (project_dir / "project.json").read_bytes() == original
 
+    def test_fix_rebases_the_pdk_root_a_workspace_keeps(self, tmp_path, capsys, manifest_stubs):
+        """The workspace loader validates the PDK root stored in home/params.toml."""
+        from chipcompiler.data.parameter import load_parameter, save_parameter
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        params = project_dir / "ws_0001" / "home" / "params.toml"
+        parameters = load_parameter(params)
+        parameters.data["pdk_root"] = str(project_dir / "pdk")
+        assert save_parameter(parameters)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        data = load_parameter(moved / "ws_0001" / "home" / "params.toml").data
+        assert data["pdk_root"] == f"{os.path.realpath(moved)}/pdk"
+        assert data["design"] == "gcd"
+        assert data["_flow"] == {"start": "synthesis", "end": "harden"}
+
+    def test_fix_keeps_generated_configs_unmodified_for_refresh(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """A rewritten generated config is not a hand edit; an earlier edit stays one."""
+        from chipcompiler.data.workspace.config_manifest import (
+            derived_config_manifest_path,
+            modified_derived_configs,
+        )
+        from chipcompiler.utility import file_digest
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        config = project_dir / "ws_0001" / "config"
+        records = {}
+        for name in ("db_ecc.json", "emir_ecc.json"):
+            digest = file_digest(config / name)
+            assert digest is not None
+            records[name] = {"sha256": digest[0], "size": digest[1]}
+        derived_config_manifest_path(project_dir / "ws_0001").write_text(
+            json.dumps({"files": records})
+        )
+        # emir_ecc.json was edited by hand before the move.
+        emir = json.loads((config / "emir_ecc.json").read_text())
+        emir["note"] = "edited"
+        (config / "emir_ecc.json").write_text(json.dumps(emir))
+        assert modified_derived_configs(project_dir / "ws_0001") == ["emir_ecc.json"]
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        assert modified_derived_configs(moved / "ws_0001") == ["emir_ecc.json"]
+        sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
+        assert sdc_path.startswith(os.path.realpath(moved))
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

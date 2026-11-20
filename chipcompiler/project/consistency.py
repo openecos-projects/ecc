@@ -117,12 +117,14 @@ def relocate_project(relocation: Relocation) -> str | None:
         for path, workspace_id in present:
             try:
                 rewrites = _planned_config_rewrites(path, relocation.recorded_root, project_dir)
+                parameters = _planned_parameter_rewrite(path, relocation.recorded_root, project_dir)
             except (OSError, ValueError) as exc:
                 return f"workspace {workspace_id}: {exc}"
-            planned.append((workspace_id, rewrites))
-        for workspace_id, rewrites in planned:
+            planned.append((workspace_id, path, rewrites, parameters))
+        for workspace_id, path, rewrites, parameters in planned:
             try:
-                _write_config_rewrites(rewrites)
+                _write_config_rewrites(path, rewrites)
+                _write_parameter_rewrite(parameters)
             except OSError as exc:
                 return f"workspace {workspace_id}: {exc}"
 
@@ -242,12 +244,55 @@ def _planned_config_rewrites(
     return rewrites
 
 
-def _write_config_rewrites(rewrites: list[tuple[Path, object]]) -> None:
+def _write_config_rewrites(workspace_dir: str, rewrites: list[tuple[Path, object]]) -> None:
+    """Write the rebased configs; a generated file stays a generated file.
+
+    A file that matched its last derivation before the rewrite is recorded
+    again with its new content, so ``workspace refresh`` does not take the
+    relocation for a hand edit. A file that had been edited stays reported.
+    """
+    from chipcompiler.data.workspace.config_manifest import (
+        modified_derived_configs,
+        rerecord_derived_configs,
+    )
     from chipcompiler.utility import json_write
 
+    edited = set(modified_derived_configs(workspace_dir))
     for path, document in rewrites:
         if not json_write(path, document):
             raise OSError(f"cannot rewrite {path}")
+    untouched = [path.name for path, _document in rewrites if path.name not in edited]
+    if not rerecord_derived_configs(workspace_dir, untouched):
+        raise OSError(f"cannot update the derivation record of {workspace_dir}")
+
+
+def _planned_parameter_rewrite(workspace_dir: str, recorded_root: str, project_dir: str):
+    """The workspace parameters (``home/params.toml``) with their paths rebased.
+
+    They keep paths of their own - the PDK root above all, which the
+    workspace loader validates - next to the copies in the manifest. None
+    when nothing below the recorded root is recorded there.
+    """
+    from chipcompiler.data.parameter import Parameters, load_parameter
+
+    path = Path(workspace_dir) / "home" / "params.toml"
+    if path.is_symlink() or not path.is_file():
+        return None
+    new_root = os.path.realpath(project_dir)
+    if not _is_below(os.path.realpath(path), new_root):
+        return None
+    parameters = load_parameter(path)
+    rebased = _rebase_values(parameters.data, recorded_root, new_root)
+    if not isinstance(rebased, dict) or rebased == parameters.data:
+        return None
+    return Parameters(path=path, data=rebased)
+
+
+def _write_parameter_rewrite(parameters) -> None:
+    from chipcompiler.data.parameter import save_parameter
+
+    if parameters is not None and not save_parameter(parameters):
+        raise OSError(f"cannot rewrite {parameters.path}")
 
 
 def _rebase_values(value, recorded_root: str, new_root: str):
