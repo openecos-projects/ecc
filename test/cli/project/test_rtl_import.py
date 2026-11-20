@@ -285,3 +285,24 @@ def test_import_filelist_rejects_a_source_named_like_an_include_directory(tmp_pa
     assert error.value.code == "rtl_target_collision"
     # Refused before anything is copied.
     assert _files(project / "rtl") == []
+
+
+def test_import_filelist_copies_headers_reached_through_a_directory_link(tmp_path):
+    """``inc/alias -> real``: an include of ``alias/defs.vh`` still resolves after the import."""
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "inc" / "real").mkdir(parents=True)
+    (source_root / "inc" / "real" / "defs.vh").write_text("`define DEMO 1\n")
+    (source_root / "inc" / "alias").symlink_to("real", target_is_directory=True)
+    # A link back to a parent directory must not send the walk in circles.
+    (source_root / "inc" / "real" / "up").symlink_to(source_root / "inc", target_is_directory=True)
+    (source_root / "demo.v").write_text('`include "alias/defs.vh"\nmodule demo; endmodule\n')
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+inc\ndemo.v\n")
+
+    import_project_rtl(str(project), filelist=str(filelist))
+
+    assert (project / "rtl" / "inc" / "alias" / "defs.vh").read_text() == "`define DEMO 1\n"
+    assert (project / "rtl" / "inc" / "real" / "defs.vh").read_text() == "`define DEMO 1\n"
+    assert not (project / "rtl" / "inc" / "real" / "up").exists()

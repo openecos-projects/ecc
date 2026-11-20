@@ -177,15 +177,22 @@ def _include_files(
     directory, and ``rtl/`` - the output of an earlier import, when the
     include directory is the project root - are left out. Each destination is
     checked like the target of a listed source: it has to stay below ``rtl/``.
+
+    A directory link inside an include directory is followed, so a header
+    included through the link is there after the import; a link that leads
+    back to one of its own parent directories is not entered again.
     """
     known = set(copied)
     files: list[tuple[Path, Path]] = []
     for source_dir, target_dir in include_dirs.items():
-        for current, directories, names in os.walk(source_dir):
+        for current, directories, names in os.walk(source_dir, followlinks=True):
+            here = Path(current).resolve()
             directories[:] = sorted(
                 name
                 for name in directories
-                if (Path(current) / name).resolve() not in (project_root, rtl_root)
+                if (resolved := (Path(current) / name).resolve()) not in (project_root, rtl_root)
+                and resolved != here
+                and resolved not in here.parents
             )
             for name in sorted(names):
                 source = Path(current) / name
