@@ -173,16 +173,19 @@ def _include_files(
 
     Every file is taken, as workspace creation does for a filelist: an
     ``include`` may name a path below the directory. Files the filelist
-    already lists, and the project itself when it lies inside an include
-    directory, are left out. Each destination is checked like the target of a
-    listed source: it has to stay below ``rtl/``.
+    already lists, the project itself when it lies inside an include
+    directory, and ``rtl/`` - the output of an earlier import, when the
+    include directory is the project root - are left out. Each destination is
+    checked like the target of a listed source: it has to stay below ``rtl/``.
     """
     known = set(copied)
     files: list[tuple[Path, Path]] = []
     for source_dir, target_dir in include_dirs.items():
         for current, directories, names in os.walk(source_dir):
             directories[:] = sorted(
-                name for name in directories if (Path(current) / name).resolve() != project_root
+                name
+                for name in directories
+                if (Path(current) / name).resolve() not in (project_root, rtl_root)
             )
             for name in sorted(names):
                 source = Path(current) / name
@@ -206,6 +209,13 @@ def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -
         if target.exists() and not force:
             raise RtlImportError(
                 "rtl_target_exists", "target exists; use --force to replace it", str(target)
+            )
+    # A file cannot be written where another input needs a directory: a listed
+    # source named like an include directory would stop the copy half-way.
+    for target in sorted(targets):
+        if any(parent in targets for parent in target.parents):
+            raise RtlImportError(
+                "rtl_target_collision", "one input maps into the target of another", str(target)
             )
 
 

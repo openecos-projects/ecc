@@ -246,3 +246,42 @@ def test_import_filelist_follows_a_link_that_stays_inside_rtl(tmp_path):
     import_project_rtl(str(project), filelist=str(filelist))
 
     assert (project / "rtl" / "headers" / "defs.vh").read_text() == "`define DEMO 1\n"
+
+
+def test_import_filelist_does_not_copy_its_own_output_again(tmp_path):
+    """The include directory is the project root: ``rtl/`` holds the previous import."""
+    project = tmp_path / "project"
+    _project(project)
+    (project / "demo.v").write_text("module demo; endmodule\n")
+    (project / "defs.vh").write_text("`define DEMO 1\n")
+    filelist = project / "sources.f"
+    filelist.write_text("+incdir+.\ndemo.v\n")
+
+    for force in (False, True, True):
+        import_project_rtl(str(project), filelist=str(filelist), force=force)
+
+    imported = _files(project / "rtl")
+    assert {"defs.vh", "demo.v"} <= set(imported)
+    assert not (project / "rtl" / "rtl").exists()
+    assert [name for name in imported if name.startswith("rtl/")] == []
+
+
+def test_import_filelist_rejects_a_source_named_like_an_include_directory(tmp_path):
+    """``rtl/inc`` cannot be both a copied file and the directory of the headers."""
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    (source_root / "inc").mkdir(parents=True)
+    (source_root / "inc" / "defs.vh").write_text("`define DEMO 1\n")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "inc").write_text("module inc; endmodule\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text(f"+incdir+inc\n{elsewhere / 'inc'}\n")
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist))
+
+    assert error.value.code == "rtl_target_collision"
+    # Refused before anything is copied.
+    assert _files(project / "rtl") == []
