@@ -546,6 +546,67 @@ class TestProjectDoctorMovedProject:
         sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
         assert sdc_path.startswith(os.path.realpath(moved))
 
+    def test_fix_settles_an_interrupted_configuration_update_first(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """A pending backup would otherwise be restored over the repair by the next load."""
+        from chipcompiler.data.workspace import transaction as module
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        workspace = project_dir / "ws_0001"
+        config = workspace / "config" / "db_ecc.json"
+        pending = module.WorkspaceFileTransaction.begin(workspace, [config])
+        half_written = json.loads(config.read_text())
+        half_written["INPUT"]["half_written"] = True
+        config.write_text(json.dumps(half_written))
+        # The process that began the update is gone without committing.
+        pending.lock.close()
+        module._ACTIVE.discard(workspace.resolve())
+        assert (workspace / "home" / module._BACKUP_NAME).exists()
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        assert not (moved / "ws_0001" / "home" / module._BACKUP_NAME).exists()
+        inputs = _tool_config(moved / "ws_0001")[0]
+        assert "half_written" not in inputs
+        assert inputs["sdc_path"].startswith(os.path.realpath(moved))
+
+    def test_fix_rebases_absolute_ecc_toml_paths_into_the_former_location(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        (project_dir / "pdk").mkdir(exist_ok=True)
+        external = tmp_path / "external.sdc"
+        external.write_text("# sdc\n")
+        (project_dir / "ecc.toml").write_text(
+            "# keep this comment\n"
+            "[design]\n"
+            'name = "gcd"\n'
+            f'rtl = ["rtl/gcd.v", "{project_dir}/rtl/extra.v"]\n'
+            f'sdc = "{external}"\n'
+            "\n[pdk]\n"
+            'name = "ics55"\n'
+            f'root = "{project_dir}/pdk"\n'
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        import tomllib
+
+        text = (moved / "ecc.toml").read_text()
+        config = tomllib.loads(text)
+        new_root = os.path.realpath(moved)
+        assert config["pdk"]["root"] == f"{new_root}/pdk"
+        assert config["design"]["rtl"] == ["rtl/gcd.v", f"{new_root}/rtl/extra.v"]
+        assert config["design"]["sdc"] == str(external)
+        assert text.startswith("# keep this comment\n")
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

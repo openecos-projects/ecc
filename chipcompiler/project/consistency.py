@@ -92,6 +92,8 @@ def relocate_project(relocation: Relocation) -> str | None:
     """
     from contextlib import ExitStack
 
+    from chipcompiler.data.workspace.transaction import recover_workspace_file_transaction
+    from chipcompiler.utility.file import write_text_atomic
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = relocation.project_dir
@@ -116,17 +118,30 @@ def relocate_project(relocation: Relocation) -> str | None:
         planned = []
         for path, workspace_id in present:
             try:
+                # A configuration update interrupted before the move left its
+                # backup behind; the next load would restore it over what is
+                # rewritten here. It is settled first, as a load would.
+                recover_workspace_file_transaction(path)
                 rewrites = _planned_config_rewrites(path, relocation.recorded_root, project_dir)
                 parameters = _planned_parameter_rewrite(path, relocation.recorded_root, project_dir)
             except (OSError, ValueError) as exc:
                 return f"workspace {workspace_id}: {exc}"
             planned.append((workspace_id, path, rewrites, parameters))
+        try:
+            project_config = _planned_project_config(relocation.recorded_root, project_dir)
+        except (OSError, ValueError) as exc:
+            return f"ecc.toml: {exc}"
         for workspace_id, path, rewrites, parameters in planned:
             try:
                 _write_config_rewrites(path, rewrites)
                 _write_parameter_rewrite(parameters)
             except OSError as exc:
                 return f"workspace {workspace_id}: {exc}"
+        if project_config is not None:
+            try:
+                write_text_atomic(*project_config)
+            except OSError as exc:
+                return f"ecc.toml: {exc}"
 
     new_root = os.path.abspath(project_dir)
 
@@ -264,6 +279,49 @@ def _write_config_rewrites(workspace_dir: str, rewrites: list[tuple[Path, object
     untouched = [path.name for path, _document in rewrites if path.name not in edited]
     if not rerecord_derived_configs(workspace_dir, untouched):
         raise OSError(f"cannot update the derivation record of {workspace_dir}")
+
+
+# ecc.toml keys that name files or directories.
+_PROJECT_PATH_KEYS = (
+    ("design", "rtl"),
+    ("design", "netlist"),
+    ("design", "golden_netlist"),
+    ("design", "def"),
+    ("design", "sdc"),
+    ("design", "spef"),
+    ("pdk", "root"),
+)
+
+
+def _planned_project_config(recorded_root: str, project_dir: str) -> tuple[Path, str] | None:
+    """``ecc.toml`` with its absolute paths below ``recorded_root`` rebased.
+
+    An explicit ecc.toml value outranks the manifest, so a path written there
+    as an absolute path into the former location would shadow the repaired
+    manifest. Only those values change: relative paths, paths elsewhere and
+    the rest of the file (comments, layout) stay as written.
+    """
+    import tomllib
+
+    from chipcompiler.cli.project.toml_edit import set_scoped_key
+    from chipcompiler.project.manifest import CONFIG_FILENAME
+
+    path = Path(project_dir) / CONFIG_FILENAME
+    if path.is_symlink() or not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    document = tomllib.loads(text)
+    new_root = os.path.realpath(project_dir)
+    updated = text
+    for table, key in _PROJECT_PATH_KEYS:
+        section = document.get(table)
+        if not isinstance(section, dict) or key not in section:
+            continue
+        value = section[key]
+        rebased = _rebase_values(value, recorded_root, new_root)
+        if rebased != value:
+            updated = set_scoped_key(updated, table, key, rebased)
+    return None if updated == text else (path, updated)
 
 
 def _planned_parameter_rewrite(workspace_dir: str, recorded_root: str, project_dir: str):
