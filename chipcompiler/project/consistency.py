@@ -50,6 +50,9 @@ class Relocation:
     project_dir: str
     # (workspace_id, path below project_dir) of every project-local workspace.
     workspaces: tuple[tuple[str, str], ...] = ()
+    # (name, path) of the workspace directories below project_dir that have no
+    # manifest entry: the repair that follows registers them where they are.
+    unregistered: tuple[tuple[str, str], ...] = ()
 
 
 def find_relocation(project_dir: str) -> Relocation | None:
@@ -68,9 +71,14 @@ def find_relocation(project_dir: str) -> Relocation | None:
         return None
     if os.path.realpath(recorded) == os.path.realpath(project_dir):
         return None
-    return Relocation(
-        recorded, project_dir, tuple(_local_workspaces(document, recorded, project_dir))
+    local = tuple(_local_workspaces(document, recorded, project_dir))
+    known = {path for _workspace_id, path in local}
+    unregistered = tuple(
+        (name, path)
+        for name, path in _workspace_directories(project_dir)
+        if os.path.realpath(path) not in known
     )
+    return Relocation(recorded, project_dir, local, unregistered)
 
 
 def relocate_project(relocation: Relocation) -> str | None:
@@ -88,7 +96,11 @@ def relocate_project(relocation: Relocation) -> str | None:
 
     project_dir = relocation.project_dir
     # reported as missing-directory once the manifest loads
-    present = sorted((path, workspace_id) for workspace_id, path in relocation.workspaces)
+    # An unregistered workspace directory moved with the project as well; it
+    # is rewritten now, because nothing reports the former root once the
+    # manifest records the new one.
+    candidates = (*relocation.workspaces, *relocation.unregistered)
+    present = sorted({(os.path.realpath(path), workspace_id) for workspace_id, path in candidates})
     present = [(path, workspace_id) for path, workspace_id in present if os.path.isdir(path)]
     # The workspace locks are taken first, in a fixed order, and held until
     # the last file is written: what is read here cannot be changed by another
@@ -128,6 +140,12 @@ def relocate_project(relocation: Relocation) -> str | None:
                 continue
             if os.path.isabs(str(entry.get("workspace_path"))):
                 entry["workspace_path"] = local[entry["workspace_id"]]
+        # Paths base_design keeps below the recorded root (a PDK inside the
+        # project, an entry input) moved too; paths elsewhere are left alone.
+        if isinstance(document.get("base_design"), dict):
+            document["base_design"] = _rebase_values(
+                document["base_design"], recorded, os.path.realpath(new_root)
+            )
         document["root_path"] = new_root
         document["updated_at"] = now_iso()
 
@@ -308,29 +326,33 @@ def _check_entry(manifest: ProjectManifest, entry) -> ConsistencyFinding | None:
     return None
 
 
-def _scan_unregistered(manifest: ProjectManifest) -> list[ConsistencyFinding]:
+def _workspace_directories(project_dir: str) -> list[tuple[str, str]]:
+    """(name, path) of the direct children of ``project_dir`` that are workspaces."""
     from chipcompiler.cli.project.workspace_registration import is_ecc_workspace_directory
 
-    project_dir = manifest.project_dir
-    registered = {os.path.realpath(w.workspace_path) for w in manifest.workspaces}
-    findings = []
+    directories = []
     for name in sorted(os.listdir(project_dir)):
         if name == "runs":
             # The legacy runs/ container holds run directories, never one workspace.
             continue
         path = os.path.join(project_dir, name)
-        if os.path.realpath(path) in registered:
-            continue
         if is_ecc_workspace_directory(path):
-            findings.append(
-                ConsistencyFinding(
-                    UNREGISTERED_DIRECTORY,
-                    name,
-                    path,
-                    "workspace directory has no manifest entry",
-                )
-            )
-    return findings
+            directories.append((name, path))
+    return directories
+
+
+def _scan_unregistered(manifest: ProjectManifest) -> list[ConsistencyFinding]:
+    registered = {os.path.realpath(w.workspace_path) for w in manifest.workspaces}
+    return [
+        ConsistencyFinding(
+            UNREGISTERED_DIRECTORY,
+            name,
+            path,
+            "workspace directory has no manifest entry",
+        )
+        for name, path in _workspace_directories(manifest.project_dir)
+        if os.path.realpath(path) not in registered
+    ]
 
 
 def _remove_dead_entry(manifest: ProjectManifest, finding: ConsistencyFinding) -> FixAction:

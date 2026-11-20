@@ -414,6 +414,60 @@ class TestProjectDoctorMovedProject:
         assert (moved / "project.json").read_bytes() == before
         assert (moved / "ws_0001" / "config" / "db_ecc.json").read_bytes() == config
 
+    def test_fix_rebases_the_paths_base_design_keeps_inside_the_project(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """A PDK kept in the project moves with it; a PDK elsewhere stays where it is."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        assert _manifest(project_dir)["base_design"]["pdk_root"] == str(project_dir / "pdk")
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        base_design = _manifest(moved)["base_design"]
+        assert base_design["pdk_root"] == f"{os.path.realpath(moved)}/pdk"
+        assert os.path.isdir(base_design["pdk_root"])
+        assert base_design["rtl_list"] == ["rtl/gcd.v"]
+
+        external = tmp_path / "external-pdk"
+        external.mkdir()
+        manifest = _manifest(moved)
+        manifest["base_design"]["pdk_root"] = str(external)
+        (moved / "project.json").write_text(json.dumps(manifest))
+        again = tmp_path / "gcd-again"
+        moved.rename(again)
+
+        assert _run_doctor(again, "--fix") == 0
+        capsys.readouterr()
+
+        assert _manifest(again)["base_design"]["pdk_root"] == str(external)
+
+    def test_fix_relocates_a_workspace_directory_that_is_not_registered(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        """The repair registers it afterwards; its configuration has to be right by then."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        _make_workspace(project_dir, "ws_0002")
+        _write_tool_config(project_dir / "ws_0002")
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        for name in ("ws_0001", "ws_0002"):
+            workspace = os.path.realpath(moved / name)
+            inputs, technology = _tool_config(moved / name)
+            assert inputs["sdc_path"] == f"{workspace}/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+            assert technology == f"{workspace}/config/ics55_synthetic.tech"
+        assert {entry["workspace_id"] for entry in _manifest(moved)["workspaces"]} == {
+            "ws_0001",
+            "ws_0002",
+        }
+        assert _run_doctor(moved) == 0
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 
