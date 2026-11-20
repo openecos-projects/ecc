@@ -435,8 +435,8 @@ class TestWorkspaceRun:
         assert record["workspace_id"] == "workspace"
         assert record["status"] == "success"
         assert record["workspace"] == workspace_mocks.run_dir
-        assert record["executed_steps"] == "[placement]"
-        assert record["no_op"] == "False"
+        assert record["executed_steps"] == '["placement"]'
+        assert record["no_op"] == "false"
 
     def test_default_selector_is_resume(self, workspace_mocks):
         rc = cli_main.run(
@@ -569,7 +569,7 @@ class TestWorkspaceRun:
             "status": "success",
             "workspace": workspace_mocks.run_dir,
             "executed_steps": "[]",
-            "no_op": "True",
+            "no_op": "true",
         }
 
     def test_failed_run_reports_failed_step_and_resume(
@@ -597,7 +597,7 @@ class TestWorkspaceRun:
             "status": "failed",
             "workspace": workspace_mocks.run_dir,
             "executed_steps": "[]",
-            "no_op": "False",
+            "no_op": "false",
             "failed_step": "placement",
             "resume_cmd": "ecc run --workspace workspace --resume",
         }
@@ -777,7 +777,7 @@ class TestWorkspaceNoOp:
         assert rc == 0
         record = plain_records(capsys.readouterr().out)[0]
         assert record["status"] == "success"
-        assert record["no_op"] == "True"
+        assert record["no_op"] == "true"
         # The adopted narrower target replaced the stale wider one.
         from chipcompiler.data.workspace.config import load_workspace_config
 

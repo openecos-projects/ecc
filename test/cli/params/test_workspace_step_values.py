@@ -45,7 +45,7 @@ def test_a_diff_opt_value_invalidates_from_diff_opt_and_keeps_placement(
     record = plain_records(capsys.readouterr().out)[0]
     assert (record["from_step"], record["invalidated_steps"]) == (
         "diff_opt",
-        "['diff_opt', 'routing']",
+        '["diff_opt", "routing"]',
     )
     assert {step["name"]: step["state"] for step in workspace.flow.data["steps"]} == {
         "synthesis": "Success",

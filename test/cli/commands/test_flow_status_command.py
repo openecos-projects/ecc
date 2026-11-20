@@ -220,8 +220,8 @@ def test_plain_records_name_the_missing_design_data(capsys, create_cli_project):
     assert [
         line for line in capsys.readouterr().out.splitlines() if "record=flow_violation" in line
     ] == [
-        f"record=flow_violation severity=warning step={step} missing=['clock_tree'] "
-        f"fixes=['cts'] reason=\"{step} runs with degraded results without clock_tree; "
+        f'record=flow_violation severity=warning step={step} missing="[\\"clock_tree\\"]" '
+        f'fixes="[\\"cts\\"]" reason="{step} runs with degraded results without clock_tree; '
         'enable cts"'
         for step in ("routing", "sta", "power_analysis", "harden")
     ]

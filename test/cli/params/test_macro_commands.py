@@ -110,7 +110,7 @@ def test_macro_set_project_writes_params_table(capsys, create_cli_project, plain
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "set"
     assert record["source"] == "ecc.toml"
-    assert "'u_ram0'" in record["placements"]
+    assert '"u_ram0"' in record["placements"]
     assert _read_macro_placements(project_dir) == [
         {"instance": "u_ram0", "x": 10.0, "y": 20.5, "orientation": "R0"}
     ]
@@ -240,7 +240,7 @@ def test_macro_set_workspace_persists_and_invalidates_suffix(
     assert record["status"] == "set"
     assert record["instance"] == "u_ram0"
     assert record["from_step"] == "macro_placement"
-    assert "'u_ram0'" in record["placements"]
+    assert '"u_ram0"' in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_ram0", "x": 10.0, "y": 20.0, "orientation": "R0"}
     ]
@@ -404,7 +404,7 @@ def test_macro_show_lists_entries_and_file(capsys, create_cli_project, monkeypat
 
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
-    assert "'u_ram0'" in record["placements"]
+    assert '"u_ram0"' in record["placements"]
     assert record["file"] == str(workspace_dir / "config" / "macro_location.tcl")
 
 
@@ -497,7 +497,7 @@ def test_macro_import_workspace_replaces_placements_and_invalidates_suffix(
     record = plain_records(capsys.readouterr().out)[0]
     assert record["status"] == "imported"
     assert record["from_step"] == "macro_placement"
-    assert "'u_a'" in record["placements"]
+    assert '"u_a"' in record["placements"]
     assert workspace.parameters.data["macro"]["placements"] == [
         {"instance": "u_a", "x": 10.0, "y": 20.5, "orientation": "R0"}
     ]
@@ -726,8 +726,8 @@ def test_macro_show_reports_file_placements_and_divergence(
 
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
-    assert "'u_ram0'" in record["file_placements"]
-    assert record["diverged"] == "False"
+    assert '"u_ram0"' in record["file_placements"]
+    assert record["diverged"] == "false"
 
     tcl_path.write_text("placeInstance u_ram0 11 20 R0\n")
     capsys.readouterr()
@@ -738,7 +738,7 @@ def test_macro_show_reports_file_placements_and_divergence(
 
     assert rc == 0
     record = plain_records(capsys.readouterr().out)[0]
-    assert record["diverged"] == "True"
+    assert record["diverged"] == "true"
 
 
 def test_macro_show_reports_missing_handoff_file(

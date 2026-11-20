@@ -155,7 +155,7 @@ class TestDoctorCommand:
         assert rc == 1
         assert records[0]["status"] == "failed"
         assert records[0]["failed"] == "1"
-        assert records[1]["required"] == "True"
+        assert records[1]["required"] == "true"
 
     def test_sizer_probe_is_required(self, monkeypatch):
         monkeypatch.setattr(

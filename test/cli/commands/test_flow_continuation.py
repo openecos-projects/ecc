@@ -113,7 +113,7 @@ class TestFlowContinuation:
         assert rc == 0
         records = _records(capsys, plain_records)
         assert records[0]["status"] == "success"
-        assert records[0]["no_op"] == "True"
+        assert records[0]["no_op"] == "true"
 
     def test_stale_suffix_reexecuted_via_run_resume(
         self,
