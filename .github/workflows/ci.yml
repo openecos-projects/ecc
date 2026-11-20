@@ -172,6 +172,7 @@ jobs:
         run: |
           bash ../pdk/fetch-pdk.sh ../pdk/pdk-source.json ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
+          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$PWD/../pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
       - name: Setup OSS CAD Suite
         uses: ./.github/actions/setup-oss-cad-suite-cached
@@ -860,11 +861,7 @@ jobs:
       - name: Run design flows
         id: design-flow
         run: |
-          python3 .github/scripts/prepare-pdk-test-profile.py \
-            "$CHIPCOMPILER_ICS55_PDK_ROOT" "$RUNNER_TEMP/e2e-test-pdk" \
-            --em-model "$PWD/test/fixtures/emir/ics55_synthetic.tech"
-          export CHIPCOMPILER_ICS55_PDK_ROOT="$RUNNER_TEMP/e2e-test-pdk"
-          export ECC_PDK_ROOT="$RUNNER_TEMP/e2e-test-pdk"
+          echo "::warning::ICS55 v2 EMIR uses ECC's bundled synthetic model for flow testing, not signoff."
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir "$RUNNER_TEMP/e2e-design-input" \

@@ -8,7 +8,7 @@ import typer
 from chipcompiler.cli.core.apps import create_app
 from chipcompiler.pdk.registry import inventory_transaction, register, relocate, set_default
 
-from .pdk_configure import _failure, _print
+from .configure import _failure, _print
 
 library_app = create_app(help="Manage the local PDK library shared with Studio")
 

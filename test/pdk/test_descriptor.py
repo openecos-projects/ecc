@@ -3,7 +3,7 @@ import json
 import pytest
 from typer.testing import CliRunner
 
-from chipcompiler.cli.commands.pdk_configure import configure_app
+from chipcompiler.cli.commands.pdk.configure import configure_app
 from chipcompiler.pdk.configuration import replace_field, write_descriptor
 from chipcompiler.pdk.manifest import (
     Descriptor,

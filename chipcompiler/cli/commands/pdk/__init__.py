@@ -18,9 +18,9 @@ from chipcompiler.cli.core.options import (
     ProjectOption,
 )
 
-from .pdk_configure import configure_app
-from .pdk_library import library_app
-from .pdk_profiles import profiles_app
+from .configure import configure_app
+from .library import library_app
+from .profiles import profiles_app
 
 pdk_app = create_app(help="Show and configure the PDK path used by this project")
 pdk_app.add_typer(configure_app, name="configure")
@@ -112,7 +112,7 @@ def clone_with_pdk_cmd(
 
     from chipcompiler.pdk.clone import clone_with_pdk
 
-    from .pdk_configure import _failure, _print
+    from .configure import _failure, _print
 
     try:
         created = clone_with_pdk(Path(source), Path(target), Path(root))

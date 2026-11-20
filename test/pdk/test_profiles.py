@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from chipcompiler.cli.commands.pdk_profiles import profiles_app
+from chipcompiler.cli.commands.pdk.profiles import profiles_app
 from chipcompiler.cli.project.config import ProjectConfig
 from chipcompiler.cli.project.run_preflight import pdk_issues_for_config
 from chipcompiler.pdk import profiles

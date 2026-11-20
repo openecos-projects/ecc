@@ -95,10 +95,66 @@ support and process qualification; readable files do not certify physical signof
 A Liberty-only package can create a synthesis workspace with explicit SDC and
 `synthesis_libraries`; requesting physical steps reports missing resources.
 
-For the reviewed ICS55 9T defaults and update procedure, see
-[ICS55 v2 stage configuration](ics55-v2-defaults.md). Version-specific changes
-apply to the selected ECC-managed adaptation, without editing PDK files or
-configurations locked by existing projects.
+Version-specific changes apply to the selected ECC-managed adaptation, without
+editing PDK files or configurations locked by existing projects. The reviewed
+ICS55 profile values and stage settings are recorded below.
+
+## Bundled ICS55 profiles
+
+The profile index maps exact normalized description digests to independent
+description and adaptation JSON files. Those files are included in the Python
+wheel and frozen CLI; they contain process metadata and policy, not PDK payloads.
+Every referenced resource is checked against its SHA-256 before a default is
+applied.
+
+| Profile | PDK release | Site and cells | Rail | Detailed routing |
+| --- | --- | --- | --- | --- |
+| `ics55-v1` | `v1.10.103` | 7T `core7`; H7H/H7R/H7L | 0.16 um | MET2-MET5 |
+| `ics55-v2` | `v2-2026.10.28-7d83e6d` | 9T `SC9T_site`; 9THVT/9TSVT/9TLVT | 0.30 um | MET1-MET5 |
+
+The v2 description includes the full 25-resource set, including five GDS
+resources. The catalog also recognizes the earlier 20-resource v2 descriptor.
+The v1 adaptation is based on the pre-v2 7T configuration; v2 defaults were
+checked against the public 9T package. Neither profile changes or writes into
+the PDK directory. Both explicitly mark the bundled ICS55 synthetic EM model as
+flow-test-only; it is not foundry signoff data.
+
+## Reviewed ICS55 v2 stage settings
+
+V2 uses 1.8 um rows from `SC9T_site`; do not carry over v1's 1.4 um row height.
+The technology LEF supplies row geometry, while the floorplan adaptation reserves
+the 0.30 um power rail. Routing tracks retain their physical pitch; no 9/7 scale
+factor is applied.
+
+| Stage | Default or decision |
+| --- | --- |
+| Synthesis | Select the 9T libraries, tie cells, and driver cells from the v2 adaptation. Keep the 1.08 V / 125 C synthesis view. |
+| Floorplan | Use `SC9T_site`, LEF-derived row geometry, 0.4 die-util target, and 2 um margins. Reserve a 0.30 um PDN follow-pin rail. |
+| Tap and boundary | Keep the reviewed 58 um tap spacing and 30 um boundary rule; exclude pre-route FILLCAP cells from post-route whitespace filling. |
+| Placement and legalization | Use the selected v2 site and VT definitions. Retain one-site padding where configured. |
+| Placement optimization | Use MET2-MET5 for coarse DreamPlace global routing; keep MET1-MET5 for detailed routing. |
+| CTS and timing optimization | Use v2 buffers, libraries, and ordered VT groups. Keep the declared hold view and existing skew/slew limits. |
+| Filler | Restrict insertion to the six configured passive v2 filler masters. An empty resolved list blocks insertion rather than selecting all CORE cells. |
+| STA | Report TYP and four MIN RC corners; do not add SS reports. |
+| EMIR | Prefer a declared EM resource. The synthetic model is an explicitly labeled flow fixture only. |
+| Harden and delivery | Register available GDS resources and layer map in the PDK description; registration alone does not establish tapeout qualification. |
+
+The retained AES route checkpoint still has one MET1 pin-access spacing marker:
+the BUFX10_9TLVT access via has 0.088 um clearance to an internal obstruction,
+below the 0.090 um rule. The router reports it before filler insertion. This is
+not a reason to narrow the rail or expand the filler list, and the DRC is not
+waived. The updated GCD run completed all enabled flow stages; post-filler DRC
+and LVS report zero violations/opens/shorts for that test design. This evidence
+checks the profile defaults and flow wiring, not foundry qualification.
+
+ECC CI runs the ICS55 v2 profile only. Its PDK fetch downloads three NLDM
+Liberty archives and four GDS archives, then extracts only the 15 Liberty and
+five GDS files declared by the ECC v2 profile. Each archive is checked against
+`release-assets.sha256`, and each extracted file against `release-files.sha256`.
+Unused NLDM views and the much larger CCS archives are not unpacked/downloaded.
+This is a verified CI resource subset, not a full PDK release integrity check;
+users installing the complete PDK should continue to use
+`make -C icsprout55-pdk unzip`.
 
 ## Shared library and independent defaults
 

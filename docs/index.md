@@ -23,8 +23,8 @@ The `ecc` command-line tool ships bilingual guides (`.en.md` / `.cn.md`):
 
 ## Core Documentation
 
-- **[PDK Default Profiles](pdk-default-profiles.md)** - Versioned ECC adaptations,
-  exact resource matching, CLI/Studio selection, compatibility and project locks
+- **[PDK Management and Profiles](multi-pdk.md)** - Process descriptions,
+  ECC-owned adaptations, ICS55 defaults, CLI/Studio selection and project locks
 
 - **[Development Guide](development.md)** / **[中文开发指南](development.cn.md)** - Development environment setup and workflows
   - Environment configuration

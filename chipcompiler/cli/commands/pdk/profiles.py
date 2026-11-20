@@ -14,7 +14,7 @@ from chipcompiler.pdk.profiles import (
     profile_configuration,
 )
 
-from .pdk_configure import Root, _failure, _print
+from .configure import Root, _failure, _print
 
 profiles_app = create_app(help="Inspect or apply bundled ECC default adaptations")
 

@@ -139,8 +139,7 @@ include = [
   "docs/examples",
 ]
 exclude = ["chipcompiler/thirdparty"]
-# Resolve the pinned tool API from its source when local wheels predate the checkout.
-extraPaths = ["test/lit", "chipcompiler/thirdparty/ecc-dreamplace"]
+extraPaths = ["test/lit"]
 
 [tool.ty]
 environment.python-version = "3.11"
