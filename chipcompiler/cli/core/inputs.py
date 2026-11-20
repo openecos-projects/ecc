@@ -39,6 +39,13 @@ class FlowStatusInput:
 
 
 @dataclass(frozen=True)
+class WorkspaceFlowPlanInput:
+    output: OutputOptions
+    workspace: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class FlowEditInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
