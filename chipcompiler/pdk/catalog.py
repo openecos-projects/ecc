@@ -1,6 +1,8 @@
 """Build and verify the shared native STA table for a locked PDK description."""
 
+import errno
 import hashlib
+import os
 import re
 from pathlib import Path
 
@@ -61,15 +63,29 @@ def shared_sta_catalog(root: Path, descriptor: Descriptor) -> Path | None:
         checksum = hashlib.sha256(text.encode()).hexdigest()
     else:
         return None
-    path = inventory_path().parent / "pdk-catalogs" / checksum / "cell_catalog.tsv"
-    if path.is_file() and not path.is_symlink() and file_digest(path) == checksum:
+
+    def ensure(path: Path) -> Path:
+        nonlocal text
+        if path.is_symlink():
+            raise DescriptorError("unsafe_path", f"STA catalog must not be a symlink: {path}")
+        if path.is_file() and file_digest(path) == checksum:
+            return path
+        if text is None and rule:
+            text = _render(_generate(root, descriptor, rule), compact=rule.compact_drive)
+        if not text or hashlib.sha256(text.encode()).hexdigest() != checksum:
+            raise DescriptorError(
+                "invalid_cell_catalog", "generated STA table differs from the pinned profile"
+            )
+        write_text_atomic(path, text)
         return path
-    if rule:
-        text = _render(_generate(root, descriptor, rule), compact=rule.compact_drive)
-    if not text or hashlib.sha256(text.encode()).hexdigest() != checksum:
-        raise DescriptorError(
-            "invalid_cell_catalog", "generated STA table differs from the pinned profile"
-        )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_text_atomic(path, text)
-    return path
+
+    local = root.resolve() / "cell_catalog.tsv"
+    if local.exists() or os.access(local.parent, os.W_OK):
+        try:
+            return ensure(local)
+        except OSError as exc:
+            if exc.errno not in {errno.EROFS, errno.EACCES, errno.EPERM}:
+                raise
+    cache = inventory_path().parent / "pdk-catalogs" / checksum / local.name
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    return ensure(cache)

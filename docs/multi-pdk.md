@@ -69,9 +69,10 @@ to the package root, optional SHA-256 checksums and explicit roles. Paths escapi
 the package, including symlinks, are rejected. `views` and `synthesis_libraries`
 reference Liberty resource IDs. `cells` supplies site and standard-cell roles.
 ECC derives ICS55 sizing candidates from the standard-cell LEFs selected by the exact
-bundled profile. Import and workspace refresh verify a shared `cell_catalog.tsv`
-under `pdk-catalogs/<table-sha256>/` beside the PDK inventory. A missing or damaged
-table is regenerated atomically. Each workspace records the absolute path in
+bundled profile. Import and workspace refresh verify `<PDK_ROOT>/cell_catalog.tsv` against its
+expected SHA-256. ECC atomically rebuilds a missing or damaged file. When the
+installation is read-only and needs a new table, ECC uses
+`pdk-catalogs/<table-sha256>/cell_catalog.tsv` beside the PDK inventory. Each workspace records the absolute path in
 `STA.-cell_catalog`. Older descriptors and custom PDKs with explicit cell lists
 are supported. Unclassified processes retain singleton families in iSTA.
 

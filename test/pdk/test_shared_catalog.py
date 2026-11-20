@@ -46,7 +46,7 @@ def test_import_cache_reuses_and_repairs_verified_content(tmp_path, monkeypatch)
     with ThreadPoolExecutor(4) as pool:
         paths = list(pool.map(lambda _: ensure(), range(8)))
     path = paths[0]
-    assert set(paths) == {path}
+    assert set(paths) == {tmp_path / "cell_catalog.tsv"}
     assert path.read_bytes() == expected
     stamp = path.stat().st_mtime_ns
     assert ensure().stat().st_mtime_ns == stamp
@@ -54,6 +54,15 @@ def test_import_cache_reuses_and_repairs_verified_content(tmp_path, monkeypatch)
     assert ensure().read_bytes() == expected
     path.unlink()
     assert ensure().read_bytes() == expected
+    path.unlink()
+    with monkeypatch.context() as readonly:
+        readonly.setattr("chipcompiler.pdk.catalog.os.access", lambda *_: False)
+        cached = ensure()
+        assert cached == tmp_path / "state/pdk-catalogs" / rule.sha256 / path.name
+        assert cached.read_bytes() == expected
+        assert not path.exists()
+        path.write_bytes(expected)
+        assert ensure() == path
     path.unlink()
     source.write_bytes(b"MACRO BUFX3S\n")
     with pytest.raises(DescriptorError, match="unexpected catalog LEF"):
