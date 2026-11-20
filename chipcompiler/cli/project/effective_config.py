@@ -75,7 +75,11 @@ def skip_steps_shadow_warning(entry, cfg) -> dict | None:
         return None
     from chipcompiler.rtl2gds.builder import resolve_skip_steps
 
-    toml_effective = resolve_skip_steps({"skip_steps": list(cfg.flow_skip_steps or [])})
+    try:
+        toml_effective = resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+    except ValueError:
+        # An invalid list shadows nothing; config validation reports it.
+        return None
     manifest_effective = resolve_skip_steps({"skip_steps": list(manifest_value)})
     if toml_effective == manifest_effective:
         return None

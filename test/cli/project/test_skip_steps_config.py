@@ -230,6 +230,14 @@ class TestSkipStepsShadowWarning:
 
         assert skip_steps_shadow_warning(entry, cfg) is None
 
+    @pytest.mark.parametrize("toml_skip", [["route"], ["lec", "nosuch"], [1], "lec", 3])
+    def test_no_warning_for_an_invalid_ecc_toml_list(self, tmp_path, toml_skip):
+        """An invalid list is reported by validation, not raised from here."""
+        entry, cfg = self._entry_and_cfg(tmp_path, manifest_skip=["lec"], toml_skip=toml_skip)
+
+        assert skip_steps_shadow_warning(entry, cfg) is None
+        assert any("skip_steps" in err for err in validate_project_config(cfg))
+
     def test_no_warning_without_a_manifest_entry(self, tmp_path):
         _write_manifest(tmp_path, [_workspace(tmp_path)])
         entry = load_manifest(str(tmp_path)).workspaces[0]
