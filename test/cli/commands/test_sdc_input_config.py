@@ -18,11 +18,11 @@ def test_toml_timing_inputs_survive_cli_creation_reload_and_refresh(
     tmp_path, flow_mocks, minimal_ics55_pdk_factory, custom
 ):
     project = tmp_path / "project"
-    assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
     pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
+    assert cli_main.run(["init", str(project), "--design-name", "gcd", "--pdk-root", str(pdk)]) == 0
     (project / "rtl/gcd.v").write_text("module gcd(input ref_clk); endmodule\n")
     config = project / "ecc.toml"
-    text = config.read_text().replace('root = ""', f'root = "{pdk}"')
+    text = config.read_text()
     values = {
         "clock_list": "ref_clk MAX:50 WCL:80 MIN:200 ML:125 TYP:83.25",
         "generated_clock_txt": "create_generated_clock -name CLK_div2 -divide_by 2 \\\n"
