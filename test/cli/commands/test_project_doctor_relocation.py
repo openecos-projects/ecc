@@ -630,6 +630,51 @@ class TestProjectDoctorMovedProject:
         assert "[design] rtl" in records[1]["fix_detail"]
         assert {name: (moved / name).read_bytes() for name in before} == before
 
+    def test_failed_config_write_is_rolled_back_with_its_derivation_record(
+        self, tmp_path, capsys, manifest_stubs, monkeypatch
+    ):
+        """A retry after a failed write leaves no generated config looking hand-edited."""
+        import chipcompiler.utility as utility
+        from chipcompiler.data.workspace.config_manifest import (
+            derived_config_manifest_path,
+            modified_derived_configs,
+        )
+        from chipcompiler.utility import file_digest
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        config = project_dir / "ws_0001" / "config"
+        records = {}
+        for name in ("db_ecc.json", "emir_ecc.json"):
+            digest = file_digest(config / name)
+            assert digest is not None
+            records[name] = {"sha256": digest[0], "size": digest[1]}
+        derived_config_manifest_path(project_dir / "ws_0001").write_text(
+            json.dumps({"files": records})
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        db_before = (moved / "ws_0001" / "config" / "db_ecc.json").read_bytes()
+        real_write = utility.json_write
+
+        def failing_write(path, document, *args, **kwargs):
+            if Path(path).name == "emir_ecc.json":
+                return False
+            return real_write(path, document, *args, **kwargs)
+
+        monkeypatch.setattr(utility, "json_write", failing_write)
+        assert _run_doctor(moved, "--fix") == 1
+        capsys.readouterr()
+        # db_ecc.json was written first; the failure restored it.
+        assert (moved / "ws_0001" / "config" / "db_ecc.json").read_bytes() == db_before
+
+        monkeypatch.setattr(utility, "json_write", real_write)
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        assert modified_derived_configs(moved / "ws_0001") == []
+        sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
+        assert sdc_path.startswith(os.path.realpath(moved))
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

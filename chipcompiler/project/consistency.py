@@ -133,8 +133,7 @@ def relocate_project(relocation: Relocation) -> str | None:
             return f"ecc.toml: {exc}"
         for workspace_id, path, rewrites, parameters in planned:
             try:
-                _write_config_rewrites(path, rewrites)
-                _write_parameter_rewrite(parameters)
+                _write_workspace_rewrites(path, rewrites, parameters)
             except OSError as exc:
                 return f"workspace {workspace_id}: {exc}"
         if project_config is not None:
@@ -257,6 +256,37 @@ def _planned_config_rewrites(
         if rebased != document:
             rewrites.append((path, rebased))
     return rewrites
+
+
+def _write_workspace_rewrites(workspace_dir: str, rewrites, parameters) -> None:
+    """Write one workspace's rebased files as one workspace file transaction.
+
+    The configs, the parameters and the derivation record change together:
+    if one write fails, the files already written are restored, so a retry
+    plans the same rewrite again instead of skipping files whose record was
+    never updated.
+    """
+    from chipcompiler.data.workspace.config_manifest import derived_config_manifest_path
+    from chipcompiler.data.workspace.transaction import WorkspaceFileTransaction
+
+    if not rewrites and parameters is None:
+        return
+    root = Path(workspace_dir).resolve()
+    managed = [path for path, _document in rewrites]
+    if parameters is not None:
+        managed.append(Path(parameters.path))
+    managed.append(derived_config_manifest_path(workspace_dir))
+    # A config directory linked elsewhere inside the project lies outside
+    # the workspace; the transaction covers the files inside it.
+    managed = [path for path in managed if _is_below(str(path.resolve()), str(root))]
+    transaction = WorkspaceFileTransaction.begin(root, managed)
+    try:
+        _write_config_rewrites(workspace_dir, rewrites)
+        _write_parameter_rewrite(parameters)
+        transaction.commit()
+    except BaseException:
+        transaction.rollback()
+        raise
 
 
 def _write_config_rewrites(workspace_dir: str, rewrites: list[tuple[Path, object]]) -> None:
