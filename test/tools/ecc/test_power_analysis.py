@@ -208,6 +208,10 @@ def test_power_analysis_uses_typical_signoff_item_even_when_configured_later(tmp
     for path in (typical_liberty, typical_spef):
         path.write_text("input\n", encoding="utf-8")
     sdc.write_text("# ECC-generated SDC file\n", encoding="utf-8")
+    config_path = tmp_path / "config/sta_ecc.json"
+    config_path.parent.mkdir()
+    defaults = Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json"
+    config_path.write_text(json.dumps(json.loads(defaults.read_text())["sta"]))
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",

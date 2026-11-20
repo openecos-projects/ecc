@@ -216,8 +216,8 @@ class TestValueParsing:
         assert errors == []
 
     def test_choice_validation_rejects_invalid(self):
-        schema = _required_schema("route.top_layer")
-        errors = validate_value("MET99", schema)
+        schema = _required_schema("timing_opt.hold_rc_mode")
+        errors = validate_value("unknown", schema)
         assert len(errors) > 0
         assert "not in allowed choices" in errors[0]
 

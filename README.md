@@ -126,7 +126,7 @@ cp /path/to/gcd.v gcd/rtl/gcd.v  # example design: docs/examples/gcd/gcd.v
 ```
 
 `ecc init` generates `gcd/ecc.toml`. Edit it as needed. `pdk.root` is required
-unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
+unless `ECC_PDK_ROOT` is already set (the installer
 `--with-toolchain` wrapper does this):
 
 ```toml

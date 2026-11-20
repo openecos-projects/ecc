@@ -12,16 +12,16 @@ from chipcompiler.params import list_schemas
 # traversal policy and belong beside the tests that consume them.
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "chipcompiler"
 TEMPLATES = {
-    "db": _PACKAGE_ROOT / "tools/ecc/configs/db_ecc.json",
-    "cts": _PACKAGE_ROOT / "tools/ecc/configs/cts_ecc.json",
-    "floorplan": _PACKAGE_ROOT / "tools/ecc/configs/floorplan_ecc.json",
-    "dreamplace": _PACKAGE_ROOT / "tools/ecc_dreamplace/configs/dreamplace_ecc.json",
-    "routing": _PACKAGE_ROOT / "tools/ecc/configs/routing_ecc.json",
-    "filler": _PACKAGE_ROOT / "tools/ecc/configs/filler_ecc.json",
-    "rcx": _PACKAGE_ROOT / "tools/ecc/configs/rcx_ecc.json",
-    "sta": _PACKAGE_ROOT / "tools/ecc/configs/sta_ecc.json",
-    "emir": _PACKAGE_ROOT / "tools/ecc/configs/emir_ecc.json",
-    "sizer": _PACKAGE_ROOT / "tools/ecc/configs/sizer_ecc.json",
+    "db": _PACKAGE_ROOT / "tools/ecc/configs/defaults/db_ecc.json",
+    "cts": _PACKAGE_ROOT / "tools/ecc/configs/defaults/cts_ecc.json",
+    "floorplan": _PACKAGE_ROOT / "tools/ecc/configs/defaults/floorplan_ecc.json",
+    "dreamplace": _PACKAGE_ROOT / "tools/ecc_dreamplace/configs/defaults/dreamplace_ecc.json",
+    "routing": _PACKAGE_ROOT / "tools/ecc/configs/defaults/routing_ecc.json",
+    "filler": _PACKAGE_ROOT / "tools/ecc/configs/defaults/filler_ecc.json",
+    "rcx": _PACKAGE_ROOT / "tools/ecc/configs/defaults/rcx_ecc.json",
+    "sta": _PACKAGE_ROOT / "tools/ecc/configs/defaults/sta_ecc.json",
+    "emir": _PACKAGE_ROOT / "tools/ecc/configs/defaults/emir_ecc.json",
+    "sizer": _PACKAGE_ROOT / "tools/ecc_sizer/configs/defaults/sizer_ecc.json",
 }
 # drc_ecc.json is empty today; add it here once it grows static fields so the
 # coverage test starts pinning them.
@@ -50,6 +50,12 @@ PROTECTED_FIELDS = {
         ("macro_only",),
         ("result_dir",),
         ("verilog_input",),
+        ("diff_buffering_rounds",),
+        ("diff_buffering_selection_fraction",),
+        ("diff_buffering_coefficients", "wns"),
+        ("diff_buffering_coefficients", "tns"),
+        ("diff_buffering_coefficients", "slew"),
+        ("diff_buffering_coefficients", "cap"),
     },
     "routing": {("RT", "-temp_directory_path")},
     "rcx": {("output",)},

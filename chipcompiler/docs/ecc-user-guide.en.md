@@ -35,7 +35,7 @@ The wrapper installs to `~/.local/bin`. If that directory is not on your `PATH`,
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `CHIPCOMPILER_ICS55_PDK_ROOT`, so Yosys and the PDK are configured by the wrapper; when the toolchain is missing, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor`.
+The `--with-toolchain` wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and `ECC_PDK_ROOT`, so Yosys and the PDK are configured by the wrapper; when the toolchain is missing, re-run the installer with `--with-toolchain`. Check the environment with `ecc doctor`.
 
 ### Pre-built CLI bundle (manual install)
 
@@ -293,7 +293,7 @@ rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple s
 
 [pdk]
 name = "ics55"           # ics55 is the currently supported PDK
-root = ""                # icsprout55-pdk path; empty falls back to CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT
+root = ""                # icsprout55-pdk path; empty falls back to ECC_PDK_ROOT
 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
@@ -415,7 +415,7 @@ rc=1
 
 Notes:
 
-- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout; used by the data layer and `ecc pdk show`. `ecc check`/`ecc run` still require one of the first three and report `pdk.root is required` otherwise).
+- PDK root resolution priority: `pdk.root` in `ecc.toml` > `ECC_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout; used by the data layer and `ecc pdk show`. `ecc check`/`ecc run` still require one of the first three and report `pdk.root is required` otherwise).
 - The synthesis step still fails fast internally on slang problems (the log reports `yosys slang frontend check failed`); inspect afterwards with `ecc log synthesis`.
 - Reinstall/repair toolchain: re-run the section 0 installer (with `--with-toolchain`).
 
@@ -447,7 +447,7 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 
 Notes:
 
-- PDK root resolution priority: `pdk.root` in `ecc.toml` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (`ecc check`/`ecc run` still require one of the first three).
+- PDK root resolution priority: `pdk.root` in `ecc.toml` > `ECC_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (`ecc check`/`ecc run` still require one of the first three).
 - ECC-Tools / DreamPlace ship as Python wheels (`ecc-tools-bin`, `ecc-dreamplace`) bundled in the CLI package; a normal install is all they need.
 
 ## 5. run — execute a flow
@@ -1545,7 +1545,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-The resolution priority is unchanged: `ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout). Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
+The resolution priority is unchanged: `ecc.toml [pdk] root` > `ECC_PDK_ROOT` > the repo default `<ecc checkout>/../pdk/icsprout55-pdk` (ecos-studio workspace layout). Keep `pdk.root` on `ecc pdk set-root`; `pdk.tech`, `pdk.lefs`, `pdk.libs`, `pdk.mapping_file`, `pdk.sdc`, and `pdk.spef` use `ecc param set KEY VALUE`, which writes `[pdk.overrides]`.
 
 ## 11. signoff — signoff package
 

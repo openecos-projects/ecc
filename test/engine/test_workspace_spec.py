@@ -175,6 +175,25 @@ def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
     pdk_root.mkdir()
     for name in ("tech.lef", "cells.lef", "typ.lib"):
         (pdk_root / name).write_text(name)
+    descriptor = {
+        "family_id": "ics55",
+        "parameters": {"frequency_max": 100},
+        "resources": {
+            "tech": {"path": "tech.lef", "role": "tech"},
+            "cells": {"path": "cells.lef", "role": "lef"},
+            "lib": {"path": "typ.lib", "role": "liberty"},
+        },
+        "synthesis_libraries": ["lib"],
+        "tools": {
+            "configs": {
+                "sta": {
+                    "liberty": [{"corner": "TYP", "temperature": 25, "path": ["typ.lib"]}],
+                    "signoff": [{"TYP": ["TYPICAL"]}],
+                }
+            }
+        },
+    }
+    (pdk_root / "ecc-pdk.json").write_text(json.dumps(descriptor))
     spec = _valid_spec()
     spec["flow"] = {"flowId": "syn_sta"}
     spec["pdk"] = {
@@ -276,50 +295,6 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
             "update-2",
         )
     assert conflict.value.code == "revision_conflict"
-    assert read_engineering_snapshot(repeated.workspace) == after
-
-
-def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
-    tmp_path, minimal_ics55_pdk_factory
-):
-    """A caller that names no revision passes the current one for the check only."""
-    from chipcompiler.engine import (
-        WorkspaceLifecycleError,
-        create_workspace_from_spec,
-        update_workspace_from_spec,
-    )
-    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
-
-    payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
-    target = tmp_path / "workspace"
-    create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
-    updated_spec = deepcopy(payload["workspaceSpec"])
-    updated_spec["design"]["clockPort"] = "clock"
-
-    updated = update_workspace_from_spec(
-        target, 1, updated_spec, bindings, "update-1", revision_pinned=False
-    )
-    after = read_engineering_snapshot(updated.workspace)
-    assert after["workspaceRevision"] == 2
-    # The retry arrives with the revision that is current now.
-    repeated = update_workspace_from_spec(
-        target, 2, updated_spec, bindings, "update-1", revision_pinned=False
-    )
-    assert read_engineering_snapshot(repeated.workspace) == after
-
-    # Another request under the same id is a conflict, and the revision is
-    # still checked for a new command.
-    with pytest.raises(WorkspaceLifecycleError) as reused:
-        update_workspace_from_spec(
-            target, 2, payload["workspaceSpec"], bindings, "update-1", revision_pinned=False
-        )
-    assert reused.value.code == "idempotency_conflict"
-    with pytest.raises(WorkspaceLifecycleError) as stale:
-        update_workspace_from_spec(
-            target, 1, payload["workspaceSpec"], bindings, "update-2", revision_pinned=False
-        )
-    assert stale.value.code == "revision_conflict"
     assert read_engineering_snapshot(repeated.workspace) == after
 
 
@@ -832,6 +807,18 @@ def test_workspace_spec_update_carries_parameters_when_the_flow_changes(
 def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk(
     tmp_path, minimal_ics55_pdk_factory
 ):
+    def add_liberty_resource(root):
+        path = root / "liberty" / "cell.lib"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(cell) {}\n")
+        descriptor_path = root / "ecc-pdk.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        descriptor["resources"]["workspace-test-lib"] = {
+            "path": "liberty/cell.lib",
+            "role": "liberty",
+        }
+        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
     from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
@@ -839,6 +826,7 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
     payload, bindings = _shared_fixture("valid.json")
     old_pdk = minimal_ics55_pdk_factory(tmp_path / "old-pdk")
     bindings["pdk"]["root"] = str(old_pdk)
+    add_liberty_resource(old_pdk)
     target = tmp_path / "workspace"
     create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
     declared_liberty = [{"corner": "MAX", "temperature": 25, "path": ["liberty/cell.lib"]}]
@@ -847,6 +835,7 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
     assert sta["liberty"][0]["path"] == [str(old_pdk / "liberty/cell.lib")]
 
     new_pdk = minimal_ics55_pdk_factory(tmp_path / "new-pdk")
+    add_liberty_resource(new_pdk)
     update_workspace_from_spec(
         target,
         read_engineering_snapshot_from_directory(target)["workspaceRevision"],
@@ -862,6 +851,18 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
 def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     tmp_path, minimal_ics55_pdk_factory
 ):
+    def add_liberty_resource(root):
+        path = root / "liberty" / "cell.lib"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(cell) {}\n")
+        descriptor_path = root / "ecc-pdk.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        descriptor["resources"]["workspace-test-lib"] = {
+            "path": "liberty/cell.lib",
+            "role": "liberty",
+        }
+        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import (
         apply_workspace_parameters,
@@ -871,7 +872,9 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     payload, bindings = _shared_fixture("valid.json")
-    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "old-pdk"))
+    old_pdk = minimal_ics55_pdk_factory(tmp_path / "old-pdk")
+    add_liberty_resource(old_pdk)
+    bindings["pdk"]["root"] = str(old_pdk)
     target = tmp_path / "workspace"
     create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
     declared = [{"corner": "MAX", "temperature": 25, "path": ["liberty/cell.lib"]}]
@@ -881,6 +884,7 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
     apply_workspace_parameters(target, revision, {}, ("sta.liberty",))
 
     new_pdk = minimal_ics55_pdk_factory(tmp_path / "new-pdk")
+    add_liberty_resource(new_pdk)
     update_workspace_from_spec(
         target,
         read_engineering_snapshot_from_directory(target)["workspaceRevision"],
@@ -891,3 +895,47 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
 
     sta = json.loads(load_workspace(target).config["sta"].read_text(encoding="utf-8"))
     assert all(str(new_pdk) in path for entry in sta["liberty"] for path in entry["path"])
+
+
+def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """A caller that names no revision passes the current one for the check only."""
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["design"]["clockPort"] = "clock"
+
+    updated = update_workspace_from_spec(
+        target, 1, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    after = read_engineering_snapshot(updated.workspace)
+    assert after["workspaceRevision"] == 2
+    # The retry arrives with the revision that is current now.
+    repeated = update_workspace_from_spec(
+        target, 2, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    assert read_engineering_snapshot(repeated.workspace) == after
+
+    # Another request under the same id is a conflict, and the revision is
+    # still checked for a new command.
+    with pytest.raises(WorkspaceLifecycleError) as reused:
+        update_workspace_from_spec(
+            target, 2, payload["workspaceSpec"], bindings, "update-1", revision_pinned=False
+        )
+    assert reused.value.code == "idempotency_conflict"
+    with pytest.raises(WorkspaceLifecycleError) as stale:
+        update_workspace_from_spec(
+            target, 1, payload["workspaceSpec"], bindings, "update-2", revision_pinned=False
+        )
+    assert stale.value.code == "revision_conflict"
+    assert read_engineering_snapshot(repeated.workspace) == after

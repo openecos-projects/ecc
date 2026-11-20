@@ -10,21 +10,19 @@ class TestCheckBeforeTheFirstWorkspace:
 
     @staticmethod
     def _new_project(tmp_path, monkeypatch, *, with_rtl=True, with_pdk=True):
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         project_dir = tmp_path / "project"
         assert cli_main.run(["init", str(project_dir)]) == 0
         if with_rtl:
             (project_dir / "rtl" / "project.v").write_text("module project(input clk); endmodule\n")
-        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
         if with_pdk:
             pdk = tmp_path / "pdk"
             pdk.mkdir()
-            monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk))
+            monkeypatch.setenv("ECC_PDK_ROOT", str(pdk))
             monkeypatch.setattr(
                 "chipcompiler.cli.project.config._validate_pdk_contents",
                 lambda name, root, overrides=None: None,
             )
-        else:
-            monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
         return project_dir
 
     @staticmethod

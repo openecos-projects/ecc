@@ -167,7 +167,7 @@ def test_split_floorplan_runs_pre_and_post_phases_independently(monkeypatch, tmp
     original_config = json.loads(
         (
             Path(__file__).resolve().parents[3]
-            / "chipcompiler/tools/ecc/configs/floorplan_ecc.json"
+            / "chipcompiler/tools/ecc/configs/defaults/floorplan_ecc.json"
         ).read_text()
     )
     original_config["macro_placer"].update(
@@ -813,6 +813,7 @@ def _make_rcx_step(tmp_path):
 
 def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule(init_ok=False)
     sub_flow = _fake_subflow()
@@ -832,6 +833,7 @@ def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
 
 def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule(run_ok=False)
     sub_flow = _fake_subflow()
@@ -851,6 +853,7 @@ def test_run_rcx_propagates_native_run_failure(tmp_path, monkeypatch):
 
 def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
@@ -883,6 +886,7 @@ def test_run_rcx_publishes_fresh_spef_and_releases_extractor_once(tmp_path, monk
 
 def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     spef_writer = tmp_path / "rcx_ecc" / "data" / "spef_writer"
     spef_writer.mkdir(parents=True)
@@ -904,6 +908,7 @@ def test_run_rcx_wipes_stale_spef_and_fails_when_extraction_produces_nothing(tmp
 
 def test_run_rcx_fails_when_spef_writer_dir_is_missing(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, logger=_fake_logger())
+    workspace.pdk.description = {"tools": {"extraction": {"backend_id": "native"}}}
     step = _make_rcx_step(tmp_path)
     module: Any = FakeRcxModule()
     sub_flow = _fake_subflow()

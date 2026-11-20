@@ -66,6 +66,8 @@ class PDK:
     abc_load: float = DEFAULT_ABC_LOAD  # ABC output load (fF)
     sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
 
+    description: dict = field(default_factory=dict)  # resolved portable description
+
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
         self.tech = optional_path(self.tech)
@@ -75,8 +77,27 @@ class PDK:
         self.sdc = optional_path(self.sdc)
         self.spef = optional_path(self.spef)
 
+    def require_root(self) -> Path:
+        if self.root is None:
+            raise ValueError("PDK resources require an explicit root")
+        return self.root
+
     def validate(self) -> None:
         """Check that critical PDK paths exist. Raises ValueError if not."""
+        if self.description:
+            from chipcompiler.pdk.manifest import Descriptor
+            from chipcompiler.pdk.validation import validate_resources
+
+            result = validate_resources(
+                self.require_root(), Descriptor.model_validate(self.description)
+            )
+            _raise_pdk_validation_error([item["message"] for item in result["diagnostics"]])
+            # Missing resource roles are checked for the requested stage, not
+            # globally: a synthesis-only description need not contain a LEF.
+            for path in [self.tech, *self.lefs, *self.libs]:
+                if path and not path.is_file():
+                    _raise_pdk_validation_error([f"PDK resource not found: {path}"])
+            return
         errors = []
         if self.root and not self.root.is_dir():
             errors.append(f"PDK root directory not found: {self.root}")
@@ -108,7 +129,7 @@ def _raise_pdk_validation_error(errors: list) -> None:
 
 
 _DEFAULT_PDK = PDK()
-_PROTECTED_FIELDS = {"name", "version"}
+_PROTECTED_FIELDS = {"name", "version", "description"}
 
 # Fields whose values are filesystem paths, derived from the dataclass
 # annotations so CLI path resolution and override validation stay in sync
@@ -198,6 +219,9 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
                         f"got {type(element).__name__} at index {index}"
                     )
 
+    if pdk.description and set(overrides) - {"sdc", "spef"}:
+        raise ValueError("project PDK is immutable; create a new description profile and project")
+
     return replace(pdk, **overrides)
 
 
@@ -282,6 +306,26 @@ def get_pdk(
     Return the PDK instance based on the given pdk name.
     """
     pdk_name_normalized = (pdk_name or "").strip().lower()
+    from chipcompiler.pdk.resolver import resolve_pdk
+
+    root_selection = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
+    descriptor_root = Path(root_selection).expanduser() if root_selection else None
+    if pdk_config and "schema_version" in _read_external_pdk_config(pdk_config):
+        if descriptor_root is None:
+            raise ValueError("a portable PDK description requires an explicit resource root")
+        pdk = resolve_pdk(
+            descriptor_root, name=pdk_name_normalized, descriptor_path=Path(pdk_config)
+        )
+        pdk = apply_pdk_overrides(pdk, overrides or {})
+        if validate:
+            _validate_resolved_pdk(pdk, overrides or {})
+        return pdk
+    if descriptor_root is not None and not pdk_config:
+        pdk = resolve_pdk(descriptor_root, name=pdk_name_normalized)
+        pdk = apply_pdk_overrides(pdk, overrides or {})
+        if validate:
+            _validate_resolved_pdk(pdk, overrides or {})
+        return pdk
     if pdk_config:
         external_data = _read_external_pdk_config(pdk_config)
         external_pdk = _pdk_from_external_config(
@@ -298,20 +342,23 @@ def get_pdk(
             else external_pdk
         )
     else:
-        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
+        raise ValueError("PDK root is required; set pdk.root or ECC_PDK_ROOT")
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
     if validate:
-        pdk.validate()
-        errors = []
-        for key, label in _OPTIONAL_PATH_LABELS.items():
-            if key not in overrides:
-                continue
+        _validate_resolved_pdk(pdk, overrides)
+    return pdk
+
+
+def _validate_resolved_pdk(pdk: PDK, overrides: dict) -> None:
+    pdk.validate()
+    errors = []
+    for key, label in _OPTIONAL_PATH_LABELS.items():
+        if key in overrides:
             path = getattr(pdk, key)
             if path and not path.is_file():
                 errors.append(f"{label}: {path}")
-        _raise_pdk_validation_error(errors)
-    return pdk
+    _raise_pdk_validation_error(errors)
 
 
 def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
@@ -320,39 +367,22 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
 
     # Resolve: explicit arg > env vars > default
     root_text = (
-        str(pdk_root).strip()
-        or os.environ.get("CHIPCOMPILER_ICS55_PDK_ROOT", "").strip()
-        or os.environ.get("ICS55_PDK_ROOT", "").strip()
-        or str(default_pdk_root)
+        str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip() or str(default_pdk_root)
     )
     resolved_root = Path(root_text).expanduser().resolve()
-    stdcell_dir = resolved_root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
-
+    stdcell_dir = resolved_root / "IP" / "STD_cell"
+    variants = ("SVT", "LVT", "HVT")
     tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     lef_paths = [
-        stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
-        stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
-        stdcell_dir / "ics55_LLSC_H7CH" / "lef" / "ics55_LLSC_H7CH_ecos.lef",
+        stdcell_dir / f"ICsprout55_SC9T_BASIC_{vt}" / "lef" / f"ICsprout55_9T{vt}_basic.lef"
+        for vt in variants
     ]
     lib_paths = [
-        (
-            stdcell_dir
-            / "ics55_LLSC_H7CR"
-            / "liberty"
-            / "ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
-        ),
-        (
-            stdcell_dir
-            / "ics55_LLSC_H7CL"
-            / "liberty"
-            / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
-        ),
-        (
-            stdcell_dir
-            / "ics55_LLSC_H7CH"
-            / "liberty"
-            / "ics55_LLSC_H7CH_ss_rcworst_1p08_125_nldm.lib"
-        ),
+        stdcell_dir
+        / f"ICsprout55_SC9T_BASIC_{vt}"
+        / "liberty"
+        / f"ICsprout55_9T{vt}_ss_v1p08_125c_basic_nldm.lib"
+        for vt in variants
     ]
     mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
     mapping_file = mapping_path if mapping_path.is_file() else None
@@ -366,37 +396,39 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
 
     pdk = PDK(
         name="ics55",
-        version="V1p10C100",
+        version="v2-2026.10.28",
         root=resolved_root,
-        tech=tech_path if tech_path.is_file() else None,
-        lefs=[path for path in lef_paths if path.is_file()],
-        libs=[path for path in lib_paths if path.is_file()],
+        tech=tech_path,
+        lefs=lef_paths,
+        libs=lib_paths,
         mapping_file=mapping_file,
         corners=corners,
-        site_core="core7",
-        site_io="core7",
-        site_corner="core7",
-        tap_cell="FILLTAPH7R",
-        end_cap="FILLTAPH7R",
-        buffers=["BUFX8H7L", "BUFX12H7L", "BUFX16H7L", "BUFX20H7L"],
+        site_core="SC9T_site",
+        site_io="IOSite",
+        site_corner="CornerSite",
+        tap_cell="TAPX1_9TSVT",
+        # Preserve the row-edge tap placement policy; this is not a dedicated endcap.
+        end_cap="TAPX1_9TSVT",
+        buffers=["BUFX8_9TLVT", "BUFX12_9TLVT", "BUFX16_9TLVT", "BUFX24_9TLVT"],
         fillers=[
-            "FILLER64H7R",
-            "FILLER32H7R",
-            "FILLER16H7R",
-            "FILLER8H7R",
-            "FILLER4H7R",
-            "FILLER2H7R",
-            "FILLER1H7R",
+            "FILL32_9TSVT",
+            "FILL16_9TSVT",
+            "FILL8_9TSVT",
+            "FILL4_9TSVT",
+            "FILL2_9TSVT",
+            "FILL1_9TSVT",
         ],
-        tie_high_cell="TIEHIH7R",
-        tie_high_port="Z",
-        tie_low_cell="TIELOH7R",
-        tie_low_port="Z",
-        abc_driver_cell="BUFX0P5H7R",
+        tie_high_cell="TIEHIX1_9TSVT",
+        tie_high_port="Y",
+        tie_low_cell="TIELOX1_9TSVT",
+        tie_low_port="Y",
+        abc_driver_cell="BUFX0P5_9TSVT",
         # ABC uses fF; SDC uses pF. Values are passed through without unit conversion.
         abc_load=200.0,  # 200 fF = 0.2 pF, matching sdc_load below.
         sdc_load=0.2,
         dont_use=[
+            # v2 BENC LEF MET1/MET2 disagree with Liberty M1/M2.
+            "BENCX*",
             "DFFSRQX*",
             "DFFSRX*",
             "*AO222*",
@@ -415,11 +447,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
 
 
 def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
-    root_text = (
-        str(pdk_root).strip()
-        or os.environ.get("CHIPCOMPILER_SG13G2_PDK_ROOT", "").strip()
-        or os.environ.get("SG13G2_PDK_ROOT", "").strip()
-    )
+    root_text = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
     resolved_root = Path(root_text).expanduser().resolve()
 
     tech_path = resolved_root / "libs.ref" / "sg13g2_stdcell" / "lef" / "sg13g2_tech.lef"

@@ -67,10 +67,10 @@ def test_harden_signoff_source_reads_the_step_directory_table(tmp_path):
 
 
 def test_configured_sta_directories_follow_default_five_signoff_corners(tmp_path):
-    template = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
+    template = Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json"
     config_path = tmp_path / "config" / "sta_ecc.json"
     config_path.parent.mkdir()
-    config_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    config_path.write_text(json.dumps(json.loads(template.read_text())["sta"]), encoding="utf-8")
     workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: config_path})
 
     directories = configured_sta_artifact_directories(

@@ -205,11 +205,7 @@ def _placement_wire_rc(workspace: Workspace) -> tuple[str, float, float] | None:
     if not isinstance(placement_config, dict):
         raise ValueError("sizer hold_stage placement_wire_rc must be an object")
     config = placement_config
-    corner = str(
-        config.get("corner", config.get("placement_wire_rc_corner", "MIN_m40/Cbest"))
-    ).strip()
-    if not corner:
-        raise ValueError("sizer placement wire RC corner must be non-empty")
+    corner = str(config.get("corner", config.get("placement_wire_rc_corner", ""))).strip()
     resistance = config.get(
         "resistance_ohm_per_um", config.get("placement_wire_resistance_ohm_per_um")
     )
@@ -222,6 +218,8 @@ def _placement_wire_rc(workspace: Workspace) -> tuple[str, float, float] | None:
         raise ValueError(
             "sizer placement wire resistance and capacitance must be configured together"
         )
+    if not corner:
+        raise ValueError("sizer placement wire RC corner must be non-empty")
     try:
         resistance = float(resistance)
         capacitance = float(capacitance)
@@ -269,7 +267,7 @@ def _global_routing_rc(workspace: Workspace) -> tuple[str, dict, dict]:
     raw = config.get("global_routing_rc", {})
     if not isinstance(raw, dict):
         raise ValueError("sizer hold_stage global_routing_rc must be an object")
-    corner = str(raw.get("corner", "MIN_m40/Cbest")).strip()
+    corner = str(raw.get("corner", "")).strip()
     layers = raw.get("layers", {})
     vias = raw.get("vias", {})
     if not corner or not isinstance(layers, dict) or not isinstance(vias, dict):
@@ -364,8 +362,12 @@ def min_corner_libs(workspace: Workspace) -> list[Path]:
     """
     config_path = workspace.config.get(StepEnum.STA.value)
     sta_config = json_read(config_path) if config_path else {}
+    description = getattr(workspace.pdk, "description", {})
+    hold_view = (
+        description.get("tools", {}).get("sizer", {}).get("hold_view", "") if description else "MIN"
+    )
     for liberty in sta_config.get("liberty", []):
-        if str(liberty.get("corner", "")).upper() == "MIN":
+        if hold_view and str(liberty.get("corner", "")) == hold_view:
             return [Path(raw_path) for raw_path in liberty.get("path", [])]
     return []
 
@@ -470,8 +472,11 @@ def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path])
     if env_path is None or cmd_path is None:
         raise ValueError("sizer step is missing script env/cmd paths")
 
+    from .pdk_config import vt_environment
+
     env_template = _sizer_env_template()
     _copy_or_seed_template(env_template, Path(env_path), "-num_vt 1\n")
+    _append_text(Path(env_path), vt_environment(workspace.pdk))
     _append_text(Path(env_path), _tech_text(workspace, libs=libs))
     Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)
     rc_path = sizer_hold_rc(step)
@@ -493,6 +498,8 @@ def clear_hold_config(step: EccStep) -> None:
 
 
 def build_step_config(workspace: Workspace, step: EccStep) -> None:
+    from .pdk_config import vt_environment
+
     env_template = _sizer_env_template()
     env_path = step.script.sizer_env
     cmd_path = step.script.sizer_cmd
@@ -504,6 +511,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     with Path(cmd_path).open("w", encoding="utf-8"):
         pass
 
+    _append_text(env_path, vt_environment(workspace.pdk))
     _append_text(env_path, _tech_text(workspace))
     _append_text(cmd_path, _cmd_text(workspace, step))
 

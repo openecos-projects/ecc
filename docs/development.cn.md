@@ -498,7 +498,7 @@ uv run ecc doctor --project gcd --plain
 
 ### PDK 路径
 
-`ecc pdk set-root <path>` 把已就绪的 ics55 PDK 接入项目（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；内容不完整只提示不阻断）。`ecc pdk show` 报告生效的 root、命中的解析来源（ecc.toml / `CHIPCOMPILER_ICS55_PDK_ROOT` / `ICS55_PDK_ROOT` / 仓库默认）以及内容校验；`ecc pdk unset` 清除该覆盖：
+`ecc pdk set-root <path>` 把已就绪的 ics55 PDK 接入项目（写入 `ecc.toml` 的 `[pdk] root`，自动展开为绝对路径；内容不完整只提示不阻断）。`ecc pdk show` 报告生效的 root、命中的解析来源（ecc.toml / `ECC_PDK_ROOT` / 仓库默认）以及内容校验；`ecc pdk unset` 清除该覆盖：
 
 ```bash
 uv run ecc pdk set-root ~/pdk/icsprout55-pdk
@@ -636,7 +636,7 @@ filelist 模式下把 `design.rtl` 设为单个 filelist 路径，如 `rtl = ["r
 - `get_yosys_runtime()` 返回供子进程使用的 `(command, env)`；
 - `check_slang_support()` 执行 slang 前端预检：先探测内置前端（`yosys -p "help read_slang"`），再回退到旧式插件构建的 `yosys -p "plugin -i slang"`。
 
-找不到 Yosys 时，用 ECC 安装脚本的 `--with-toolchain` 安装受管工具链（见 [README](../README.cn.md#安装)）。安装脚本的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`。指向已有的 OSS CAD Suite：
+找不到 Yosys 时，用 ECC 安装脚本的 `--with-toolchain` 安装受管工具链（见 [README](../README.cn.md#安装)）。安装脚本的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `ECC_PDK_ROOT`。指向已有的 OSS CAD Suite：
 
 ```bash
 export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
@@ -684,7 +684,7 @@ ICS55 GCD 工具集成测试：
 ```bash
 nix develop
 export PATH=/path/to/ecc-sizer/build/src:$PATH
-export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
+export ECC_PDK_ROOT=/path/to/ics55-pdk
 .venv/bin/python -m pytest test/integration/test_rtl2gds_flow.py::test_ics55_gcd -q -s
 ```
 
@@ -693,16 +693,15 @@ export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
 `chipcompiler/data/pdk.py` 中 `get_pdk("ics55")` 的解析优先级：
 
 1. 显式的 `pdk_root` 参数；
-2. `CHIPCOMPILER_ICS55_PDK_ROOT` 环境变量；
-3. 旧的 `ICS55_PDK_ROOT` 环境变量；
-4. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
+2. `ECC_PDK_ROOT` 环境变量；
+3. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
 
-Project 使用 `ecc pdk set-root` 或 `ecc project apply` 配置运行时路径。Workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 Workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 Workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源；该警告仅在 Workspace 的 PDK 名为 ics55（或未命名 PDK）时触发，因为这些环境变量只适用于 ics55。执行 `ecc workspace refresh` 可把当前 Project 配置投影到 Workspace。
+Project 使用 `ecc pdk set-root` 或 `ecc project apply` 配置运行时路径。Workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 Workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 Workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源。执行 `ecc workspace refresh` 可把当前 Project 配置投影到 Workspace。
 
 示例：
 
 ```bash
-CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk uv run ecc
+ECC_PDK_ROOT=/path/to/pdk uv run ecc
 ```
 
 ## 常见工作流

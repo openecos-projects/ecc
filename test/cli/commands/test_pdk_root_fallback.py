@@ -3,7 +3,7 @@
 A fresh run persists the resolved absolute PDK root in the workspace's
 home/params.toml, so the workspace is reproducible across machines. An
 existing workspace without a persisted root silently resolves the root from
-the CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT environment variables; the
+the ECC_PDK_ROOT environment variables; the
 run paths must surface that fallback as a pdk_root_env_fallback warning.
 """
 
@@ -31,7 +31,7 @@ class TestEnvFallbackWarning:
     def test_warns_when_root_missing_and_env_resolves(self, tmp_path, monkeypatch):
         env_root = tmp_path / "env-pdk"
         env_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters())
 
@@ -39,47 +39,35 @@ class TestEnvFallbackWarning:
 
         assert warning is not None
         assert warning["warning"] == "pdk_root_env_fallback"
-        assert warning["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
+        assert warning["source"] == "ECC_PDK_ROOT"
         assert warning["resolved_root"] == str(env_root)
-
-    def test_legacy_env_var_is_reported_as_source(self, tmp_path, monkeypatch):
-        env_root = tmp_path / "env-pdk"
-        env_root.mkdir()
-        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
-        monkeypatch.setenv("ICS55_PDK_ROOT", str(env_root))
-        run_dir = str(tmp_path / "ws")
-        _write_workspace(run_dir, _base_parameters())
-
-        warning = pdk_root_env_fallback_warning(run_dir)
-
-        assert warning is not None
-        assert warning["source"] == "ICS55_PDK_ROOT"
 
     def test_no_warning_when_root_is_persisted(self, tmp_path, monkeypatch):
         env_root = tmp_path / "env-pdk"
         env_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters(pdk_root=str(tmp_path / "pinned")))
 
         assert pdk_root_env_fallback_warning(run_dir) is None
 
     def test_no_warning_without_a_resolving_env_var(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("CHIPCOMPILER_ICS55_PDK_ROOT", raising=False)
-        monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
+        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters())
 
         assert pdk_root_env_fallback_warning(run_dir) is None
 
-    def test_no_warning_for_a_non_ics55_pdk(self, tmp_path, monkeypatch):
+    def test_generic_root_for_another_pdk(self, tmp_path, monkeypatch):
         env_root = tmp_path / "env-pdk"
         env_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters(pdk="sg13g2"))
 
-        assert pdk_root_env_fallback_warning(run_dir) is None
+        warning = pdk_root_env_fallback_warning(run_dir)
+        assert warning is not None
+        assert warning["resolved_root"] == str(env_root)
 
 
 class TestRunWarnsOnEnvFallbackRoot:
@@ -121,7 +109,7 @@ class TestRunWarnsOnEnvFallbackRoot:
         plain_records,
     ):
         env_root = minimal_ics55_pdk_factory(tmp_path / "env-pdk")
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
         project_dir = create_cli_project(pdk_root=env_root)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -151,7 +139,7 @@ class TestRunWarnsOnEnvFallbackRoot:
         records = plain_records(capsys.readouterr().out)
         warning = [r for r in records if r.get("warning") == "pdk_root_env_fallback"]
         assert len(warning) == 1
-        assert warning[0]["source"] == "CHIPCOMPILER_ICS55_PDK_ROOT"
+        assert warning[0]["source"] == "ECC_PDK_ROOT"
 
     def test_run_stays_quiet_when_root_is_persisted(
         self,
@@ -163,7 +151,7 @@ class TestRunWarnsOnEnvFallbackRoot:
         plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(pdk_root))
         project_dir = create_cli_project(pdk_root=pdk_root)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -202,7 +190,7 @@ class TestFreshRunPersistsResolvedRoot:
     ):
         env_root = tmp_path / "env-pdk"
         env_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(env_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
         project_dir = create_cli_project(pdk_root="")
 
         rc = cli_main.run(["run", "--project", project_dir])

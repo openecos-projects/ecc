@@ -1,12 +1,12 @@
 import logging
 import os
 import tomllib
+from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
-
-SUPPORTED_PDK_NAMES = {"ics55"}
 
 
 def _unsupported_flow_run_problem(value: object) -> str:
@@ -169,22 +169,35 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         if param_errors:
             cfg._param_errors = param_errors
 
+    if not cfg.pdk_name and cfg.pdk_root:
+        from chipcompiler.pdk.manifest import DescriptorError, load_descriptor
+
+        with suppress(DescriptorError, OSError):
+            cfg.pdk_name = load_descriptor(
+                Path(_resolve_path(cfg.project_dir, cfg.pdk_root))
+            ).family_id
     resolve_clock_list_metadata(cfg)
     return cfg
 
 
 def resolve_clock_list_metadata(cfg: ProjectConfig) -> None:
-    """Derive legacy single-clock tool inputs from the first declared TYP clock."""
+    """Derive single-clock metadata without requiring a process-specific corner name."""
     cfg._timing_input_error = None
     if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
         return
 
-    from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+    from chipcompiler.data.workspace.sdc_inputs import SdcInputs, parse_clock_list
 
     try:
+        clock_list = cfg.params_overrides["sdc.clock_list"]
+        if not isinstance(clock_list, str):
+            raise ValueError("sdc.clock_list must be a string")
+        definitions = parse_clock_list(clock_list)
+        first = next(iter(definitions.values()), {})
+        corner = "TYP" if "TYP" in first else next(iter(first), "")
         clocks = SdcInputs.from_parameters(
             {"sdc": {"clock_list": cfg.params_overrides["sdc.clock_list"]}}
-        ).clocks({}, "TYP")
+        ).clocks({}, corner)
         if not clocks:
             if {"design.clock_port", "design.frequency_mhz"} <= cfg._explicit_keys:
                 return
@@ -277,11 +290,6 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
             errors.append("design.clock_port is required")
         if cfg.design_frequency_mhz <= 0:
             errors.append("design.frequency_mhz must be greater than 0")
-    if not cfg.pdk_name:
-        errors.append("pdk.name is required")
-    elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
-        errors.append(f"unsupported pdk.name: {cfg.pdk_name}")
-
     pdk_root = _resolve_pdk_root(cfg)
     if pdk_root:
         if not os.path.isdir(pdk_root):
@@ -459,13 +467,7 @@ def _validate_pdk_contents(
 
 
 def _pdk_root_from_env() -> str:
-    for key in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-        val = os.environ.get(key, "").strip()
-        if not val:
-            continue
-        # Absolute: the value becomes the join base for serialized override
-        # paths consumed from step working directories.
-        val = os.path.abspath(val)
-        if os.path.isdir(val):
-            return val
+    value = os.environ.get("ECC_PDK_ROOT", "").strip()
+    if value and os.path.isdir(value):
+        return os.path.abspath(value)
     return ""

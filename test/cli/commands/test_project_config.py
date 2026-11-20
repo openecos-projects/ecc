@@ -105,7 +105,6 @@ def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
     text = config.read_text()
     clock_list = tomllib.loads(text)["params"]["sdc"]["clock_list"]
     text = text.replace(f"clock_list = '''\n{clock_list}'''", "clock_list = ''")
-    text = text.replace("[design]", '[design]\nclock_port = "clk"\nfrequency_mhz = 100.0')
     config.write_text(text)
     pdk = tmp_path / "pdk"
     pdk.mkdir()
