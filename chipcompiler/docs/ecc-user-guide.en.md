@@ -846,7 +846,11 @@ ecc rtl import \
 For a filelist, paths are resolved relative to the filelist's directory. The
 filelist and referenced files are copied below `<project>/rtl/` while retaining
 their relative layout. The copied filelist is rewritten to reference only
-project-local paths. Existing targets are rejected unless `--force` is passed.
+project-local paths. Each `+incdir+` directory is imported with all the files below
+it: a directory below the filelist's directory keeps its relative path, any other
+one (`../common`, an absolute path) is placed under `rtl/` by its name and its
+directive is rewritten; a directory that does not exist is rejected with
+`rtl_incdir_not_found`. Existing targets are rejected unless `--force` is passed.
 Unsupported recursive/library filelist options (`-f`, `-v`, and `-y`) must be
 expanded before import.
 
