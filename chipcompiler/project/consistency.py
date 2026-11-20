@@ -82,28 +82,37 @@ def relocate_project(relocation: Relocation) -> str | None:
     paths in the manifest. The manifest goes last so that a failed run can be
     repeated. A workspace registered elsewhere is external and is left alone.
     """
+    from contextlib import ExitStack
+
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = relocation.project_dir
-    # Every configuration file is read before the first one is written: a
-    # file that cannot be parsed stops the repair with nothing changed.
-    planned = []
-    for workspace_id, path in relocation.workspaces:
-        if not os.path.isdir(path):
-            continue  # reported as missing-directory once the manifest loads
-        try:
-            rewrites = _planned_config_rewrites(path, relocation.recorded_root, project_dir)
-        except (OSError, ValueError) as exc:
-            return f"workspace {workspace_id}: {exc}"
-        planned.append((workspace_id, path, rewrites))
-    for workspace_id, path, rewrites in planned:
-        try:
-            with workspace_lock(Path(path), blocking=False):
+    # reported as missing-directory once the manifest loads
+    present = sorted((path, workspace_id) for workspace_id, path in relocation.workspaces)
+    present = [(path, workspace_id) for path, workspace_id in present if os.path.isdir(path)]
+    # The workspace locks are taken first, in a fixed order, and held until
+    # the last file is written: what is read here cannot be changed by another
+    # command before it is written back. Every configuration file is read
+    # before the first one is written, so a file that cannot be parsed stops
+    # the repair with nothing changed.
+    with ExitStack() as locks:
+        for path, workspace_id in present:
+            try:
+                locks.enter_context(workspace_lock(Path(path), blocking=False))
+            except BlockingIOError:
+                return f"workspace {workspace_id} is busy"
+        planned = []
+        for path, workspace_id in present:
+            try:
+                rewrites = _planned_config_rewrites(path, relocation.recorded_root, project_dir)
+            except (OSError, ValueError) as exc:
+                return f"workspace {workspace_id}: {exc}"
+            planned.append((workspace_id, rewrites))
+        for workspace_id, rewrites in planned:
+            try:
                 _write_config_rewrites(rewrites)
-        except BlockingIOError:
-            return f"workspace {workspace_id} is busy"
-        except OSError as exc:
-            return f"workspace {workspace_id}: {exc}"
+            except OSError as exc:
+                return f"workspace {workspace_id}: {exc}"
 
     new_root = os.path.abspath(project_dir)
 
@@ -115,7 +124,9 @@ def relocate_project(relocation: Relocation) -> str | None:
             return
         local = dict(_local_workspaces(document, recorded, project_dir))
         for entry in document.get("workspaces", []):
-            if isinstance(entry, dict) and entry.get("workspace_id") in local:
+            if not isinstance(entry, dict) or entry.get("workspace_id") not in local:
+                continue
+            if os.path.isabs(str(entry.get("workspace_path"))):
                 entry["workspace_path"] = local[entry["workspace_id"]]
         document["root_path"] = new_root
         document["updated_at"] = now_iso()
@@ -126,15 +137,24 @@ def relocate_project(relocation: Relocation) -> str | None:
 
 
 def _local_workspaces(document: dict, recorded_root: str, project_dir: str):
-    """(workspace_id, path below project_dir) for entries registered below recorded_root."""
+    """(workspace_id, path below project_dir) for entries registered below recorded_root.
+
+    A relative registration is resolved below the project directory, as the
+    manifest loader does; it moved with the project like an absolute one.
+    """
     new_root = os.path.realpath(project_dir)
     for entry in document.get("workspaces") or []:
         if not isinstance(entry, dict):
             continue
         workspace_id, path = entry.get("workspace_id"), entry.get("workspace_path")
-        if not isinstance(workspace_id, str) or not isinstance(path, str):
+        if not isinstance(workspace_id, str) or not isinstance(path, str) or not path:
             continue
-        rebased = _rebased_path(path, recorded_root, new_root)
+        if os.path.isabs(path):
+            rebased = _rebased_path(path, recorded_root, new_root)
+        else:
+            rebased = os.path.realpath(os.path.join(new_root, path))
+            if not _is_below(rebased, new_root):
+                continue  # escapes the project: the loader reports it
         if rebased is not None and rebased != new_root:
             yield workspace_id, rebased
 

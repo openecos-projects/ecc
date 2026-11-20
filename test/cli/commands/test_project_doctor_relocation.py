@@ -1,0 +1,425 @@
+"""`ecc project doctor` on a project directory that was renamed, moved or copied (#453)."""
+
+import json
+import os
+import shutil
+from pathlib import Path
+
+import pytest
+
+from test.cli.commands.test_project_doctor import _make_workspace, _manifest, _run_doctor
+
+
+def _write_tool_config(workspace_dir):
+    """Tool configuration with the absolute paths a real workspace keeps."""
+    config = workspace_dir / "config"
+    config.mkdir()
+    (config / "db_ecc.json").write_text(
+        json.dumps(
+            {
+                "INPUT": {
+                    "sdc_path": str(workspace_dir / "origin" / "pre_CTS" / "TYP_25_TYPICAL.tcl"),
+                    "lef_paths": ["/pdk/cells.lef"],
+                }
+            }
+        )
+    )
+    (config / "emir_ecc.json").write_text(
+        json.dumps({"technology_file_path": str(config / "ics55_synthetic.tech")})
+    )
+
+
+def _tool_config(workspace_dir):
+    config = workspace_dir / "config"
+    return (
+        json.loads((config / "db_ecc.json").read_text())["INPUT"],
+        json.loads((config / "emir_ecc.json").read_text())["technology_file_path"],
+    )
+
+
+class TestProjectDoctorMovedProject:
+    """A project directory that was renamed, moved or copied (root_path mismatch)."""
+
+    @staticmethod
+    def _project(tmp_path, manifest_stubs, name="gcd"):
+        project_dir = tmp_path / name
+        _make_workspace(project_dir, "ws_0001")
+        _write_tool_config(project_dir / "ws_0001")
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001")])
+        return project_dir
+
+    def test_moved_project_is_reported_and_not_touched(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        before = (moved / "project.json").read_bytes()
+
+        rc = _run_doctor(moved)
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 1
+        assert records[0] == {
+            "doctor": "project",
+            "status": "failed",
+            "checked": "0",
+            "inconsistent": "1",
+        }
+        assert records[1]["check"] == "moved-project"
+        assert records[1]["recorded_root"] == str(project_dir)
+        assert records[1]["project"] == str(moved)
+        assert "ws_0001" in records[1]["workspaces"]
+        assert "ecc project doctor --fix" in records[1]["remediation"]
+        assert (moved / "project.json").read_bytes() == before
+
+    def test_fix_relocates_a_moved_project(self, tmp_path, capsys, manifest_stubs, plain_records):
+        from chipcompiler.project.manifest import load_manifest
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        rc = _run_doctor(moved, "--fix")
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 0
+        assert records[0] == {
+            "doctor": "project",
+            "status": "fixed",
+            "checked": "1",
+            "inconsistent": "1",
+            "fixed": "1",
+        }
+        assert records[1]["check"] == "moved-project"
+        assert records[1]["fix"] == "relocated"
+        assert "ws_0001" in records[1]["workspaces"]
+        manifest = _manifest(moved)
+        assert manifest["root_path"] == str(moved)
+        assert manifest["workspaces"][0]["workspace_path"] == os.path.realpath(moved / "ws_0001")
+        loaded = load_manifest(str(moved))
+        assert [w.workspace_path for w in loaded.workspaces] == [
+            os.path.realpath(moved / "ws_0001")
+        ]
+        workspace = os.path.realpath(moved / "ws_0001")
+        assert _tool_config(moved / "ws_0001") == (
+            {
+                "sdc_path": f"{workspace}/origin/pre_CTS/TYP_25_TYPICAL.tcl",
+                "lef_paths": ["/pdk/cells.lef"],
+            },
+            f"{workspace}/config/ics55_synthetic.tech",
+        )
+
+        assert _run_doctor(moved) == 0
+        assert plain_records(capsys.readouterr().out) == [
+            {"doctor": "project", "status": "ok", "checked": "1", "inconsistent": "0"}
+        ]
+
+    def test_fix_makes_a_copy_independent_of_the_original(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        original = (project_dir / "project.json").read_bytes()
+        copy = tmp_path / "gcd-copy"
+        shutil.copytree(project_dir, copy)
+
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+
+        manifest = _manifest(copy)
+        assert manifest["root_path"] == str(copy)
+        assert manifest["workspaces"][0]["workspace_path"] == os.path.realpath(copy / "ws_0001")
+        assert _tool_config(copy / "ws_0001")[1] == (
+            f"{os.path.realpath(copy / 'ws_0001')}/config/ics55_synthetic.tech"
+        )
+        assert (project_dir / "project.json").read_bytes() == original
+        assert _tool_config(project_dir / "ws_0001")[1] == (
+            f"{project_dir / 'ws_0001'}/config/ics55_synthetic.tech"
+        )
+        assert _run_doctor(project_dir) == 0
+
+    def test_fix_keeps_the_path_of_an_external_workspace(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001")
+        _make_workspace(tmp_path / "elsewhere", "ws_ext")
+        _write_tool_config(tmp_path / "elsewhere" / "ws_ext")
+        external_config = (
+            tmp_path / "elsewhere" / "ws_ext" / "config" / "db_ecc.json"
+        ).read_bytes()
+        external = {
+            "workspace_id": "ws_ext",
+            "workspace_path": str(tmp_path / "elsewhere" / "ws_ext"),
+            "status": "success",
+        }
+        manifest_stubs.write(project_dir, [manifest_stubs.entry(project_dir, "ws_0001"), external])
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        rc = _run_doctor(moved, "--fix")
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 0
+        assert "ws_0001" in records[1]["workspaces"]
+        assert "ws_ext" not in records[1]["workspaces"]
+        paths = {w["workspace_id"]: w["workspace_path"] for w in _manifest(moved)["workspaces"]}
+        assert paths == {
+            "ws_0001": os.path.realpath(moved / "ws_0001"),
+            "ws_ext": str(tmp_path / "elsewhere" / "ws_ext"),
+        }
+        assert (
+            tmp_path / "elsewhere" / "ws_ext" / "config" / "db_ecc.json"
+        ).read_bytes() == external_config
+
+    def test_fix_follows_a_root_recorded_through_a_symlink(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        # root_path is stored as typed, workspace paths are stored resolved.
+        real = tmp_path / "real"
+        real.mkdir()
+        link = tmp_path / "link"
+        link.symlink_to(real)
+        _make_workspace(real / "gcd", "ws_0001")
+        manifest_stubs.write(real / "gcd", [manifest_stubs.entry(real / "gcd", "ws_0001")])
+        document = _manifest(real / "gcd")
+        document["root_path"] = str(link / "gcd")
+        (real / "gcd" / "project.json").write_text(json.dumps(document))
+        assert _run_doctor(link / "gcd") == 0
+        capsys.readouterr()
+        moved = tmp_path / "gcd-moved"
+        (real / "gcd").rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+
+        capsys.readouterr()
+        assert _manifest(moved)["workspaces"][0]["workspace_path"] == os.path.realpath(
+            moved / "ws_0001"
+        )
+
+    def test_fix_relocates_and_repairs_other_findings_in_one_call(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001")
+        manifest_stubs.write(
+            project_dir,
+            [
+                manifest_stubs.entry(project_dir, "ws_0001"),
+                manifest_stubs.entry(project_dir, "gone"),
+            ],
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        rc = _run_doctor(moved, "--fix")
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 0
+        assert records[0]["status"] == "fixed"
+        assert (records[0]["inconsistent"], records[0]["fixed"]) == ("2", "2")
+        assert [record["check"] for record in records[1:]] == ["moved-project", "missing-directory"]
+        assert records[2]["workspace"] == os.path.realpath(moved / "gone")
+        assert [w["workspace_id"] for w in _manifest(moved)["workspaces"]] == ["ws_0001"]
+
+    def test_failed_workspace_rewrite_leaves_the_manifest_for_a_retry(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        broken = moved / "ws_0001" / "config" / "db_ecc.json"
+        intact = broken.read_text()
+        broken.write_text("{ not json")
+        before = (moved / "project.json").read_bytes()
+
+        rc = _run_doctor(moved, "--fix")
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 1
+        assert records[0]["status"] == "failed"
+        assert records[1]["fix"] == "failed"
+        assert "ws_0001" in records[1]["fix_detail"]
+        assert (moved / "project.json").read_bytes() == before
+
+        broken.write_text(intact)
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+        assert _manifest(moved)["root_path"] == str(moved)
+
+    def test_fix_does_not_follow_a_config_link_into_the_original(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        """A link-preserving copy shares the linked directory with the original."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        shared = tmp_path / "shared-config"
+        (project_dir / "ws_0001" / "config").rename(shared)
+        (project_dir / "ws_0001" / "config").symlink_to(shared, target_is_directory=True)
+        original = {path.name: path.read_bytes() for path in shared.iterdir()}
+        copy = tmp_path / "gcd-copy"
+        shutil.copytree(project_dir, copy, symlinks=True)
+        assert (copy / "ws_0001" / "config").resolve() == shared
+
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+
+        assert _manifest(copy)["root_path"] == str(copy)
+        assert {path.name: path.read_bytes() for path in shared.iterdir()} == original
+        assert _run_doctor(project_dir) == 0
+
+    def test_fix_follows_a_config_link_that_stays_inside_the_project(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        project_dir = self._project(tmp_path, manifest_stubs)
+        inside = project_dir / "shared-config"
+        (project_dir / "ws_0001" / "config").rename(inside)
+        (project_dir / "ws_0001" / "config").symlink_to(
+            os.path.join("..", "shared-config"), target_is_directory=True
+        )
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
+        assert sdc_path == f"{os.path.realpath(moved)}/ws_0001/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+
+    def test_interrupted_fix_of_a_copy_inside_the_original_can_be_repeated(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        """The copy lies below the root it records: rebased paths still start with it."""
+        project_dir = self._project(tmp_path, manifest_stubs)
+        staging = tmp_path / "staging"
+        shutil.copytree(project_dir, staging)
+        copy = project_dir / "copy"
+        staging.rename(copy)
+        workspace = copy / "ws_0001"
+        expected = f"{os.path.realpath(workspace)}/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+        broken = workspace / "config" / "emir_ecc.json"
+        intact = broken.read_text()
+        broken.write_text("{ not json")
+        before = (workspace / "config" / "db_ecc.json").read_bytes()
+
+        assert _run_doctor(copy, "--fix") == 1
+        capsys.readouterr()
+        # Nothing is written while one file cannot be read.
+        assert (workspace / "config" / "db_ecc.json").read_bytes() == before
+
+        broken.write_text(intact)
+        assert _run_doctor(copy, "--fix") == 0
+        assert _tool_config(workspace)[0]["sdc_path"] == expected
+        # A repair on top of rewritten paths leaves them where they are.
+        manifest = _manifest(copy)
+        manifest["root_path"] = str(project_dir)
+        (copy / "project.json").write_text(json.dumps(manifest))
+        assert _run_doctor(copy, "--fix") == 0
+        capsys.readouterr()
+        assert _tool_config(workspace)[0]["sdc_path"] == expected
+        assert _manifest(copy)["workspaces"][0]["workspace_path"] == os.path.realpath(workspace)
+
+    def test_fix_relocates_a_workspace_registered_with_a_relative_path(
+        self, tmp_path, capsys, manifest_stubs
+    ):
+        project_dir = tmp_path / "gcd"
+        _make_workspace(project_dir, "ws_0001")
+        _write_tool_config(project_dir / "ws_0001")
+        entry = manifest_stubs.entry(project_dir, "ws_0001")
+        entry["workspace_path"] = "ws_0001"
+        manifest_stubs.write(project_dir, [entry])
+        assert _run_doctor(project_dir) == 0
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        workspace = os.path.realpath(moved / "ws_0001")
+        inputs, technology = _tool_config(moved / "ws_0001")
+        assert inputs["sdc_path"] == f"{workspace}/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+        assert technology == f"{workspace}/config/ics55_synthetic.tech"
+        manifest = _manifest(moved)
+        assert manifest["root_path"] == str(moved)
+        # The registration stays as it was written.
+        assert manifest["workspaces"][0]["workspace_path"] == "ws_0001"
+        assert _run_doctor(moved) == 0
+
+    def test_fix_reads_the_configuration_under_the_workspace_lock(
+        self, tmp_path, capsys, manifest_stubs, monkeypatch
+    ):
+        """Nobody can change a configuration between its read and its rewrite."""
+        import threading
+
+        from chipcompiler.project import consistency
+        from chipcompiler.utility.workspace_lock import workspace_lock
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        planner = consistency._planned_config_rewrites
+        seen = []
+
+        def planned(workspace_dir, *arguments):
+            def probe() -> None:
+                try:
+                    with workspace_lock(Path(workspace_dir), blocking=False):
+                        seen.append("free")
+                except BlockingIOError:
+                    seen.append("held")
+
+            thread = threading.Thread(target=probe)
+            thread.start()
+            thread.join()
+            return planner(workspace_dir, *arguments)
+
+        monkeypatch.setattr(consistency, "_planned_config_rewrites", planned)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        assert seen == ["held"]
+        assert _manifest(moved)["root_path"] == str(moved)
+
+    def test_fix_leaves_a_busy_workspace_and_the_manifest_alone(
+        self, tmp_path, capsys, manifest_stubs, plain_records
+    ):
+        import threading
+
+        from chipcompiler.utility.workspace_lock import workspace_lock
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+        before = (moved / "project.json").read_bytes()
+        config = (moved / "ws_0001" / "config" / "db_ecc.json").read_bytes()
+        held, release = threading.Event(), threading.Event()
+
+        def hold() -> None:
+            with workspace_lock(moved / "ws_0001"):
+                held.set()
+                release.wait(3)
+
+        holder = threading.Thread(target=hold)
+        holder.start()
+        assert held.wait(10)
+        try:
+            rc = _run_doctor(moved, "--fix")
+        finally:
+            release.set()
+            holder.join()
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 1
+        assert "busy" in records[1]["fix_detail"]
+        assert (moved / "project.json").read_bytes() == before
+        assert (moved / "ws_0001" / "config" / "db_ecc.json").read_bytes() == config
+
+    def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
+        from chipcompiler.project.manifest import ManifestError, load_manifest
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        with pytest.raises(ManifestError, match="does not match .*ecc project doctor --fix"):
+            load_manifest(str(moved))
