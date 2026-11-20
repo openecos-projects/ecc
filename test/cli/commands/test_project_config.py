@@ -198,3 +198,69 @@ def test_project_set_prevents_config_layer_divergence(tmp_path, monkeypatch, cap
     )
     records = _records(capsys, plain_records)
     assert not [record for record in records if record.get("warning") == "config_layer_diverged"]
+
+
+def test_project_set_warns_when_the_clock_list_decides_the_clock(
+    tmp_path, monkeypatch, capsys, plain_records
+):
+    # ecc init declares [params.sdc] clock_list: its first row supplies the
+    # clock port and frequency, so the [design] keys do not change the flow.
+    project_dir = _manifest_project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for key, value in (("design.frequency_mhz", "300"), ("design.clock_port", "sys_clk")):
+        rc = cli_main.run(["project", "set", key, value, "--project", str(project_dir), "--plain"])
+
+        records = _records(capsys, plain_records)
+        assert rc == 0
+        assert [record.get("warning") for record in records] == [
+            "clock_list_overrides_design",
+            None,
+        ]
+        assert key in records[0]["keys"]
+        assert "sdc.clock_list" in records[0]["set"]
+        assert (records[1]["project_field"], records[1]["status"]) == (key, "set")
+
+    # project apply validates the whole configuration, so it needs a PDK root
+    # of its own instead of one from the environment.
+    pdk = tmp_path / "pdk"
+    pdk.mkdir()
+    rc = cli_main.run(
+        [
+            "project",
+            "apply",
+            "--set",
+            f"pdk.root={pdk}",
+            "--set",
+            "design.frequency_mhz=250",
+            "--project",
+            str(project_dir),
+            "--plain",
+        ]
+    )
+    records = _records(capsys, plain_records)
+    assert rc == 0
+    assert records[0]["warning"] == "clock_list_overrides_design"
+    assert records[1]["status"] == "applied"
+
+    rc = cli_main.run(
+        ["project", "set", "design.top", "gcd", "--project", str(project_dir), "--plain"]
+    )
+    assert rc == 0
+    assert [record.get("kind") for record in _records(capsys, plain_records)] == [None]
+
+
+def test_project_set_does_not_warn_once_the_clock_list_is_out_of_use(
+    tmp_path, monkeypatch, capsys, plain_records
+):
+    project_dir = _manifest_project(tmp_path, monkeypatch)
+    config = project_dir / "ecc.toml"
+    config.write_text(config.read_text().replace("\nclk MAX:", "\n# clk MAX:"))
+    capsys.readouterr()
+
+    rc = cli_main.run(
+        ["project", "set", "design.frequency_mhz", "300", "--project", str(project_dir), "--plain"]
+    )
+
+    assert rc == 0
+    assert [record.get("kind") for record in _records(capsys, plain_records)] == [None]

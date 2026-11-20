@@ -290,8 +290,6 @@ rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple s
 # def = "inputs/gcd.def"
 # sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # ics55 is the currently supported PDK
@@ -308,6 +306,15 @@ skip_steps = ["diff_opt"]
 # Run-time only: at most this many independent steps of one stage run at once
 # (default 4; 1 = one at a time). See section 8.6.
 max_parallel_steps = 4
+
+[params.sdc]
+# Primary clocks, one row each: <port-or-pin> <corner>:<MHz> ...
+# The first row's TYP value also supplies the clock port and frequency of the flow.
+# (The generated file continues with four optional timing inputs, all commented out;
+# see section 1.7 of the configuration reference.)
+clock_list = '''
+clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
+'''
 ```
 
 ## 4. check — validate the project configuration
@@ -813,6 +820,14 @@ ecc project baseline <WORKSPACE_ID> [--reason TEXT]   # select the workspace who
 ecc project reconcile                 # repair provable project intermediate states (e.g. half-finished deletes)
 ecc project doctor [--fix]            # cross-check project.json against workspace directories; --fix repairs
 ```
+
+In a project that declares `[params.sdc] clock_list` (every `ecc init` project does), the
+clock port and the clock frequency come from the first row of that list, not from
+`[design] clock_port` / `frequency_mhz`. `project set` and `project apply` still write these
+two keys, and print `warning=clock_list_overrides_design` because the values are not used.
+Change the clock with `ecc param set sdc.clock_list '<port> <corner>:<MHz> ...'`;
+`ecc param set design.frequency_mhz` (§9) changes the frequency of that first clock, for
+synthesis and for the generated constraints alike.
 
 For manifest projects, `project set`/`unset`/`add`/`remove` use the same atomic update path
 and immediately sync `project.json.base_design`. `project apply` batches multiple edits so

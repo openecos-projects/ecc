@@ -191,6 +191,37 @@ def create_command_spec(command_input, run_name: str) -> dict:
     }
 
 
+def _resolve_clock_metadata(cfg, resolved, parameters: dict) -> None:
+    """Settle the primary clock of a new workspace where the sources are known.
+
+    Records whether ``design.frequency_mhz`` was set explicitly (ecc.toml
+    ``[params]`` or ``--set``): only then does it take precedence over the
+    first row of the clock list when the constraints are generated.
+
+    ``clock`` and ``frequency_max`` are derived from the first row of the
+    ecc.toml clock list when the config is loaded. ``--set sdc.clock_list=...``
+    replaces the list after that, so the metadata follows the new first row,
+    unless the frequency is explicit.
+    """
+    from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY, SdcInputs
+
+    sources = {item.param: item.source for item in resolved}
+    explicit = sources.get("design.frequency_mhz", "default") != "default"
+    if explicit:
+        parameters[EXPLICIT_FREQUENCY_KEY] = True
+    if cfg.design_sdc or sources.get("sdc.clock_list") != "cli":
+        return
+    try:
+        clocks = SdcInputs.from_parameters(parameters).clocks({}, "TYP")
+    except ValueError:
+        return  # workspace creation reports the invalid list
+    if not clocks:
+        return
+    parameters["clock"] = clocks[0].target
+    if not explicit:
+        parameters["frequency_max"] = clocks[0].frequency_mhz
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -384,6 +415,7 @@ def execute_fresh_run(
             pdk=cfg.pdk_name or None,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
+        _resolve_clock_metadata(cfg, resolved, parameters)
         config_overrides = build_config_overrides(resolved)
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
