@@ -3,13 +3,13 @@
 import json
 import os
 import shutil
-import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
 from chipcompiler.cli.project.config import (
     load_project_config,
+    parse_project_config,
     resolve_pdk_root,
     validate_project_config,
 )
@@ -250,6 +250,10 @@ def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: boo
                 or not isinstance(request, dict)
                 or Path(str(metadata.get("workspacePath", ""))).resolve() != candidate
             ):
+                continue
+            # A draft also changes Project configuration. A workspace directory
+            # alone cannot prove that its Project changes were published.
+            if request.get("draft") is not None:
                 continue
             expected_revision = metadata.get("expectedRevision")
             if expected_revision is not None and (
@@ -714,24 +718,26 @@ def _parse_field_value(field, raw: str) -> object:
         raise ProjectApplicationError("invalid_project_value", str(exc), key=field.key) from exc
 
 
+def apply_settings_text(text: str, sets: tuple[str, ...]) -> str:
+    """Apply the same registered project fields without publishing the file."""
+    updated, _ = _apply_text(
+        text, parsed_sets=_parse_sets(sets), unsets=(), add_rtl=(), remove_rtl=()
+    )
+    return updated
+
+
 def _validate_text(project: Path, text: str, *, validate: bool = True):
-    descriptor, name = tempfile.mkstemp(prefix=".ecc.toml.validate-", dir=project)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-            output.write(text)
-            output.flush()
-            os.fsync(output.fileno())
-        cfg = load_project_config(name)
-        # The temporary file is in the Project root, so relative paths resolve identically.
+        cfg = parse_project_config(text, str(project / CONFIG_FILENAME))
+    except tomllib.TOMLDecodeError as exc:
         if validate:
-            errors = validate_project_config(cfg)
-            if errors:
-                raise ProjectApplicationError("invalid_project_config", errors[0])
-        cfg.config_path = str(project / CONFIG_FILENAME)
-        cfg.project_dir = str(project)
-        return cfg
-    finally:
-        Path(name).unlink(missing_ok=True)
+            raise ProjectApplicationError("invalid_project_config", str(exc)) from exc
+        raise
+    if validate:
+        errors = validate_project_config(cfg)
+        if errors:
+            raise ProjectApplicationError("invalid_project_config", errors[0])
+    return cfg
 
 
 def _update_summary_locked(project: Path, cfg) -> bool:

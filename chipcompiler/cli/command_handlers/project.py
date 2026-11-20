@@ -299,6 +299,7 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
 def create_workspace(command_input, ctx: CommandContext) -> CommandResult:
     """Create and register a Workspace without executing its flow."""
+    import hashlib
     import uuid
     from pathlib import Path
 
@@ -314,6 +315,8 @@ def create_workspace(command_input, ctx: CommandContext) -> CommandResult:
                 )
             ]
         )
+    raw_draft = command_input.draft
+    draft_id = hashlib.sha256(raw_draft.encode()).hexdigest() if raw_draft is not None else None
     run_input = RunInput(
         output=command_input.output,
         project=command_input.project,
@@ -323,11 +326,48 @@ def create_workspace(command_input, ctx: CommandContext) -> CommandResult:
         param_set=command_input.param_set,
         command_id=command_input.command_id or str(uuid.uuid4()),
         no_wait=command_input.no_wait,
+        create_draft_id=draft_id,
     )
     try:
-        return _run_project(run_input, ctx, execute_flow=False)
+        draft = None
+        if raw_draft is not None and not ctx.manifest_error:
+            from chipcompiler.cli.project.draft import prepare_creation_draft
+
+            if (target / "home" / "flow.json").is_file():
+                return _existing_draft_workspace(run_input, ctx, preview=command_input.preview)
+            prepared = prepare_creation_draft(ctx, raw_draft)
+            if isinstance(prepared, CommandResult):
+                return prepared
+            ctx, draft = prepared
+        return _run_project(
+            run_input, ctx, execute_flow=False, draft=draft, preview=command_input.preview
+        )
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
+
+
+def _existing_draft_workspace(command_input, ctx, *, preview: bool) -> CommandResult:
+    from pathlib import Path
+
+    from chipcompiler.cli.project.run_dispatch import _repeats_recorded_create
+    from chipcompiler.project.manifest import load_manifest
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    target = Path(ctx.run_dir)
+    with workspace_lock(target, blocking=not command_input.no_wait):
+        entry = load_manifest(ctx.project_dir).find_workspace(ctx.run_id)
+        if (
+            not preview
+            and entry
+            and Path(entry.workspace_path).resolve() == target.resolve()
+            and _repeats_recorded_create(command_input, ctx.run_dir, ctx.run_id)
+        ):
+            return CommandResult.ok(
+                [{"workspace_id": ctx.run_id, "workspace": ctx.run_dir, "status": "created"}]
+            )
+    return CommandResult.err(
+        [error_record("workspace_conflict", reason=f"Workspace already exists: {target}")]
+    )
 
 
 def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
@@ -708,7 +748,12 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
 
 
 def _run_project(
-    command_input: RunInput, ctx: CommandContext, *, execute_flow: bool
+    command_input: RunInput,
+    ctx: CommandContext,
+    *,
+    execute_flow: bool,
+    draft=None,
+    preview: bool = False,
 ) -> CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
@@ -915,6 +960,10 @@ def _run_project(
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
+    if preview and not fresh_target:
+        return error("workspace_conflict", reason=f"Workspace already exists: {run_dir}")
+    if draft is not None and not fresh_target:
+        return _existing_draft_workspace(command_input, ctx, preview=preview)
     if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
         return run_dispatch.dispatch_project_run(
             command_input,
@@ -938,6 +987,7 @@ def _run_project(
         fresh=fresh_target,
         flow_config=flow_config,
         cli_overrides=cli_overrides,
+        check_pdk_files=not preview,
     )
     if errors:
         return CommandResult.err(
@@ -966,6 +1016,22 @@ def _run_project(
                         "workspace name must not resolve to the project or legacy runs container"
                     ),
                 }
+            ]
+        )
+
+    if preview:
+        from chipcompiler.cli.project.config import resolve_max_parallel_steps
+        from chipcompiler.cli.project.flow_selection import project_flow_plan, selection_warnings
+
+        plan = project_flow_plan(cfg, flow_config)
+        return CommandResult.ok(
+            [
+                {
+                    "record": "workspace_preview",
+                    "steps": [step.name for step in plan.steps if step.enabled] if plan else [],
+                    "max_parallel_steps": resolve_max_parallel_steps(cfg),
+                },
+                *selection_warnings(cfg, flow_config),
             ]
         )
 
@@ -1012,6 +1078,7 @@ def _run_project(
         warning_records,
         workspace_registered=workspace_registered,
         execute_flow=execute_flow,
+        draft=draft,
     )
 
 

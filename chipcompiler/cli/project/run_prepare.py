@@ -183,11 +183,13 @@ def _quote_filelist_path(path: str) -> str:
 
 def create_command_spec(command_input, run_name: str) -> dict:
     """The request `workspace create` records under its command id."""
+    draft_id = getattr(command_input, "create_draft_id", None)
     return {
         "workspace": run_name,
         "from": command_input.from_step,
         "to": command_input.to_step,
         "parameters": list(command_input.param_set),
+        **({"draft": draft_id} if draft_id else {}),
     }
 
 
@@ -208,6 +210,7 @@ def execute_fresh_run(
     ws_locks=None,
     registration_created: bool = False,
     execute_flow: bool = True,
+    draft=None,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
 
@@ -569,6 +572,12 @@ def execute_fresh_run(
                             "expectedRevision": command_input.expected_revision,
                         },
                     )
+            if draft is not None:
+                draft.publish(
+                    cfg, flow_config, run_name, run_dir, blocking=not command_input.no_wait
+                )
+                workspace_registered = True
+
             retained_backup = commit_replacement()
 
             if not workspace_registered:

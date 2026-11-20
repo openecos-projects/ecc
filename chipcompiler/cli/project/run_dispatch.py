@@ -238,6 +238,7 @@ def dispatch_project_run(
     *,
     workspace_registered: bool,
     execute_flow: bool = True,
+    draft=None,
 ) -> CommandResult:
     """Serialize target creation/replacement with workspace locks, then execute."""
 
@@ -310,6 +311,7 @@ def dispatch_project_run(
             ws_locks=ws_locks,
             registration_created=registration_created,
             execute_flow=execute_flow,
+            draft=draft,
         )
 
     project_dir = ctx.project_dir
@@ -334,6 +336,10 @@ def dispatch_project_run(
     try:
         existing = os.path.exists(flow_json) and not command_input.overwrite
         if existing:
+            if draft is not None:
+                from chipcompiler.cli.command_handlers.project import _existing_draft_workspace
+
+                return _existing_draft_workspace(command_input, ctx, preview=False)
             unsafe = _existing_target_guard(run_dir, project_dir, run_name)
             if unsafe is not None:
                 return unsafe

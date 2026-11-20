@@ -85,6 +85,11 @@ def load_project_config(config_path: str) -> ProjectConfig:
     return _parse_config(data, config_path)
 
 
+def parse_project_config(text: str, config_path: str) -> ProjectConfig:
+    """Parse draft content with the real config path for relative inputs."""
+    return _parse_config(tomllib.loads(text), config_path)
+
+
 def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     design = data.get("design", {})
     pdk = data.get("pdk", {})
@@ -242,7 +247,7 @@ def _supported_flow_presets() -> set[str]:
     return set(rtl2gds_api.get_flow_builders())
 
 
-def validate_project_config(cfg: ProjectConfig) -> list[str]:
+def validate_project_config(cfg: ProjectConfig, *, check_pdk_files: bool = True) -> list[str]:
     if cfg._toml_error:
         return [f"malformed ecc.toml: {cfg._toml_error}"]
 
@@ -270,16 +275,17 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
         errors.append(f"unsupported pdk.name: {cfg.pdk_name}")
 
-    pdk_root = _resolve_pdk_root(cfg)
-    if pdk_root:
-        if not os.path.isdir(pdk_root):
-            errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
+    if check_pdk_files:
+        pdk_root = _resolve_pdk_root(cfg)
+        if pdk_root:
+            if not os.path.isdir(pdk_root):
+                errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
+            else:
+                pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
+                if pdk_err:
+                    errors.append(pdk_err)
         else:
-            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
-            if pdk_err:
-                errors.append(pdk_err)
-    else:
-        errors.append("pdk.root is required")
+            errors.append("pdk.root is required")
 
     if not cfg.flow_preset:
         errors.append("flow.preset is required")

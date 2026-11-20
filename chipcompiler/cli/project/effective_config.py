@@ -294,7 +294,9 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     resolve_clock_list_metadata(cfg)
 
 
-def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
+def validate_effective(
+    ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None, check_pdk_files: bool = True
+) -> list[str]:
     """Validate the effective config for a manifest-backed project.
 
     Relaxations vs legacy projects: [flow] is optional when a target can be
@@ -306,7 +308,7 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     from chipcompiler.cli.project import flow_selection
     from chipcompiler.cli.project.config import validate_project_config
 
-    errors = validate_project_config(cfg)
+    errors = validate_project_config(cfg, check_pdk_files=check_pdk_files)
     # validate_project_config checks the ecc.toml policy on the preset; the
     # run's own flow config (a range or a project.json policy) is checked here.
     if isinstance(flow_config, dict):

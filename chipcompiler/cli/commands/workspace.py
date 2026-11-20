@@ -20,7 +20,7 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import PlainOption, ProjectOption
+from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption
 
 workspace_app = create_app(help="Import or refresh managed workspaces")
 
@@ -165,10 +165,17 @@ def create_cmd(
     param_set: Annotated[list[str] | None, typer.Option("--set")] = None,
     command_id: Annotated[str, typer.Option("--command-id")] = "",
     no_wait: Annotated[bool, typer.Option("--no-wait")] = False,
+    draft: Annotated[
+        str | None, typer.Option("--draft", help="JSON project and flow settings")
+    ] = None,
+    preview: Annotated[
+        bool, typer.Option("--preview", help="Validate and show the plan without creating it")
+    ] = False,
+    json_output: JsonOption = False,
     plain: PlainOption = False,
 ) -> None:
     command_input = WorkspaceCreateInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
         path=path,
@@ -177,6 +184,8 @@ def create_cmd(
         param_set=tuple(param_set or ()),
         command_id=command_id,
         no_wait=no_wait,
+        draft=draft,
+        preview=preview,
     )
     execute_command("workspace", command_input, project_handlers.create_workspace)
 

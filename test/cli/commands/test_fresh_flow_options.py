@@ -103,3 +103,84 @@ def test_workspace_flow_plan_reads_the_selected_ledger(fresh_project, capsys):
     ]
     assert steps[1]["needs"]["filled"] == "filler"
     assert flow_json.read_bytes() == original
+
+
+def test_workspace_preview_create_and_retry_use_one_draft(fresh_project, capsys):
+    import tomllib
+
+    from chipcompiler.cli.project.toml_edit import set_scoped_key
+
+    path = fresh_project / "ecc.toml"
+    path.write_text(set_scoped_key(path.read_text(), "flow", "insert_steps", ["lec@synthesis"]))
+    original_config = path.read_bytes()
+    original_manifest = (fresh_project / "project.json").read_bytes()
+    draft = json.dumps({"remove": ["lec@synthesis"], "maxParallelSteps": 3})
+    args = [
+        "workspace",
+        "create",
+        "draft",
+        "--project",
+        str(fresh_project),
+        "--from",
+        "synthesis",
+        "--to",
+        "pre_floorplan",
+        "--draft",
+        draft,
+        "--command-id",
+        "draft-test",
+        "--json",
+    ]
+    capsys.readouterr()
+    assert cli_main.run([*args, "--preview"]) == 0
+    preview = json.loads(capsys.readouterr().out)[0]
+    assert preview == {
+        "record": "workspace_preview",
+        "steps": ["synthesis", "pre_floorplan"],
+        "max_parallel_steps": 3,
+    }
+    assert path.read_bytes() == original_config
+    assert (fresh_project / "project.json").read_bytes() == original_manifest
+    assert not (fresh_project / "draft").exists()
+
+    assert cli_main.run(args) == 0
+    flow = json.loads((fresh_project / "draft" / "home" / "flow.json").read_text())
+    assert [step["name"] for step in flow["steps"]] == preview["steps"]
+    config = tomllib.loads(path.read_text())["flow"]
+    assert (config["insert_steps"], config["max_parallel_steps"]) == ([], 3)
+    assert cli_main.run(args) == 0
+
+
+def test_failed_draft_publication_rolls_back_project_config_and_rtl(
+    fresh_project, monkeypatch, tmp_path
+):
+    config, manifest = (fresh_project / name for name in ("ecc.toml", "project.json"))
+    original_config, original_manifest = config.read_bytes(), manifest.read_bytes()
+    rtl = tmp_path / "new.v"
+    rtl.write_text("module gcd(input clk); endmodule\n")
+    new_rtl = fresh_project / "rtl/new.v"
+
+    def fail_publication(_project, _mutator):
+        assert new_rtl.exists()
+        assert config.read_bytes() != original_config
+        return False
+
+    monkeypatch.setattr("chipcompiler.cli.project.draft.update_manifest_locked", fail_publication)
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "create",
+                "rejected",
+                "--project",
+                str(fresh_project),
+                "--draft",
+                json.dumps({"rtl": [str(rtl)], "maxParallelSteps": 2}),
+            ]
+        )
+        != 0
+    )
+    assert config.read_bytes() == original_config
+    assert manifest.read_bytes() == original_manifest
+    assert not new_rtl.exists()
+    assert not (fresh_project / "rejected").exists()

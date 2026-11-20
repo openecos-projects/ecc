@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 
 from chipcompiler.cli.project.toml_edit import set_scoped_key
@@ -32,11 +34,81 @@ def import_project_rtl(
         raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
     if not (root / MANIFEST_FILENAME).is_file():
         raise RtlImportError("missing_manifest", "project.json was not found", str(root))
+    plan = plan_project_rtl(root, filelist=filelist, verilog=verilog)
+    plan.copy(force=force)
+    rtl_config, rtl_entries = plan.configured_paths, plan.rtl_entries
+
+    text = config_path.read_text(encoding="utf-8")
+    text = set_scoped_key(text, "design", "rtl", rtl_config)
+    config_path.write_text(text, encoding="utf-8")
+
+    def mutate(document: dict) -> None:
+        base = document.setdefault("base_design", {})
+        base["rtl_list"] = rtl_entries
+        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
+        if filelist:
+            base["origin_filelist"] = rtl_config[0]
+        document["design_name"] = document.get("design_name") or root.name
+
+    update_manifest(root, mutate)
+    return {
+        "project": str(root),
+        "status": "rtl_imported",
+        "filelist": rtl_config[0] if filelist else None,
+        "rtl": rtl_entries,
+    }
+
+
+@dataclass(frozen=True)
+class RtlImportPlan:
+    copied: list[tuple[Path, Path]]
+    source_list: Path | None
+    configured_paths: list[str]
+    rtl_entries: list[str]
+
+    @property
+    def source_paths(self) -> list[str]:
+        return (
+            [str(self.source_list)]
+            if self.source_list
+            else [str(source) for source, _ in self.copied]
+        )
+
+    def copy(self, *, force: bool = False, rollback: ExitStack | None = None) -> None:
+        _ensure_targets_available(self.copied, force=force)
+        for source, target in self.copied:
+            if rollback is None:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+            else:
+                _create_parents(target.parent, rollback)
+                with target.open("xb") as output:
+                    rollback.callback(target.unlink, missing_ok=True)
+                    with source.open("rb") as data:
+                        shutil.copyfileobj(data, output)
+                shutil.copystat(source, target)
+        if self.source_list:
+            _write_filelist(self.copied[0][1], self.source_list, self.copied[1:])
+
+
+def _create_parents(parent: Path, rollback: ExitStack) -> None:
+    if parent.is_dir():
+        return
+    _create_parents(parent.parent, rollback)
+    parent.mkdir()
+    rollback.callback(parent.rmdir)
+
+
+def plan_project_rtl(
+    root: Path,
+    *,
+    filelist: str | None = None,
+    verilog: tuple[str, ...] = (),
+) -> RtlImportPlan:
     if filelist and verilog:
         raise RtlImportError("rtl_inputs_exclusive", "use --filelist or --verilog, not both")
 
     rtl_root = root / "rtl"
-    rtl_root.mkdir(exist_ok=True)
     copied: list[tuple[Path, Path]] = []
     source_list: Path | None = None
     if filelist:
@@ -75,33 +147,7 @@ def import_project_rtl(
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
-    _ensure_targets_available(copied, force=force)
-    for source, target in copied:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    if filelist:
-        assert source_list is not None
-        _write_filelist(copied[0][1], source_list, copied[1:])
-
-    text = config_path.read_text(encoding="utf-8")
-    text = set_scoped_key(text, "design", "rtl", rtl_config)
-    config_path.write_text(text, encoding="utf-8")
-
-    def mutate(document: dict) -> None:
-        base = document.setdefault("base_design", {})
-        base["rtl_list"] = rtl_entries
-        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
-        if filelist:
-            base["origin_filelist"] = rtl_config[0]
-        document["design_name"] = document.get("design_name") or root.name
-
-    update_manifest(root, mutate)
-    return {
-        "project": str(root),
-        "status": "rtl_imported",
-        "filelist": rtl_config[0] if filelist else None,
-        "rtl": rtl_entries,
-    }
+    return RtlImportPlan(copied, source_list, rtl_config, rtl_entries)
 
 
 def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
