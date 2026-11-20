@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from chipcompiler.data import create_workspace, get_design_parameters, get_pdk
+from chipcompiler.data import create_workspace, get_pdk
 from chipcompiler.engine import EngineDB, EngineFlow
 from chipcompiler.utility.log import flush_cstdio
 
@@ -28,12 +28,10 @@ def run_workspace_flow(
     synthetic_emir=False,
 ):
     workspace_dir = workspace_base / workspace_suffix
-    parameters = get_design_parameters(pdk_name, design_name)
-    parameters.data["design"] = design_name
-    parameters.data["top_module"] = design_name
-    parameters.data["clock"] = "clk"
+    # Let create_workspace derive process defaults from the selected adaptation.
+    parameters = {"design": design_name, "top_module": design_name, "clock": "clk"}
     if synthetic_emir:
-        parameters.data["config_overrides"] = {"emir": {"synthetic_model": "ics55"}}
+        parameters["config_overrides"] = {"emir": {"synthetic_model": "ics55"}}
 
     if pdk_root is None:
         pdk = get_pdk(pdk_name=pdk_name)
