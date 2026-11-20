@@ -306,3 +306,24 @@ def test_import_filelist_copies_headers_reached_through_a_directory_link(tmp_pat
     assert (project / "rtl" / "inc" / "alias" / "defs.vh").read_text() == "`define DEMO 1\n"
     assert (project / "rtl" / "inc" / "real" / "defs.vh").read_text() == "`define DEMO 1\n"
     assert not (project / "rtl" / "inc" / "real" / "up").exists()
+
+
+def test_import_filelist_stops_at_directory_links_that_point_at_each_other(tmp_path):
+    """``inc/a/to_b -> ../b`` and ``inc/b/to_a -> ../a``: the walk ends, the headers arrive."""
+    project = tmp_path / "project"
+    _project(project)
+    source_root = tmp_path / "sources"
+    for name in ("a", "b"):
+        (source_root / "inc" / name).mkdir(parents=True)
+        (source_root / "inc" / name / f"{name}.vh").write_text(f"`define {name.upper()} 1\n")
+    (source_root / "inc" / "a" / "to_b").symlink_to("../b", target_is_directory=True)
+    (source_root / "inc" / "b" / "to_a").symlink_to("../a", target_is_directory=True)
+    (source_root / "demo.v").write_text("module demo; endmodule\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("+incdir+inc\ndemo.v\n")
+
+    import_project_rtl(str(project), filelist=str(filelist))
+
+    imported = _files(project / "rtl")
+    assert {"inc/a/a.vh", "inc/b/b.vh", "inc/a/to_b/b.vh", "inc/b/to_a/a.vh"} <= set(imported)
+    assert max(name.count("/") for name in imported) <= 3

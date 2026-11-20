@@ -179,21 +179,27 @@ def _include_files(
     checked like the target of a listed source: it has to stay below ``rtl/``.
 
     A directory link inside an include directory is followed, so a header
-    included through the link is there after the import; a link that leads
-    back to one of its own parent directories is not entered again.
+    included through the link is there after the import. A directory the
+    walk has already entered on the way down is not entered again, however
+    it is reached, so links that point at each other cannot make it loop.
     """
     known = set(copied)
     files: list[tuple[Path, Path]] = []
     for source_dir, target_dir in include_dirs.items():
+        # The real directories entered on the way to each walked path.
+        ancestry: dict[str, frozenset[Path]] = {
+            str(source_dir): frozenset({Path(source_dir).resolve()})
+        }
         for current, directories, names in os.walk(source_dir, followlinks=True):
-            here = Path(current).resolve()
-            directories[:] = sorted(
-                name
-                for name in directories
-                if (resolved := (Path(current) / name).resolve()) not in (project_root, rtl_root)
-                and resolved != here
-                and resolved not in here.parents
-            )
+            entered = ancestry.pop(current, frozenset({Path(current).resolve()}))
+            kept = []
+            for name in sorted(directories):
+                resolved = (Path(current) / name).resolve()
+                if resolved in (project_root, rtl_root) or resolved in entered:
+                    continue
+                kept.append(name)
+                ancestry[os.path.join(current, name)] = entered | {resolved}
+            directories[:] = kept
             for name in sorted(names):
                 source = Path(current) / name
                 target = _contained(target_dir / source.relative_to(source_dir), rtl_root, source)
