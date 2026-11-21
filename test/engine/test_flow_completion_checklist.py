@@ -4,8 +4,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from chipcompiler.data import EccStep, Workspace
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_completion import summarize_step_checklist
+from chipcompiler.engine.flow.completion import summarize_step_checklist
+from chipcompiler.engine.flow.runner import EngineFlow
 from test.flow_fixture import step_directory
 
 
@@ -89,7 +89,7 @@ def test_summarize_step_checklist_is_unknown_for_legacy_missing_file(tmp_path):
 
 
 def test_sync_step_checklist_persists_projection(tmp_path):
-    from chipcompiler.engine.flow_completion import sync_step_checklist
+    from chipcompiler.engine.flow.completion import sync_step_checklist
 
     path = tmp_path / "checklist.json"
     path.write_text(

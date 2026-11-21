@@ -11,7 +11,7 @@ def _write_existing_workspace(
     run_dir, step_names, states=None, preset="rtl2gds", pdk_root=None, extra=None, cts=None
 ):
     """A valid existing workspace: home/params.toml + flow.json with given steps."""
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
     from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
     chain = [

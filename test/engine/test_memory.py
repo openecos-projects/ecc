@@ -2,7 +2,7 @@ import pytest
 
 from chipcompiler.data import Workspace, WorkspaceStep
 from chipcompiler.engine import memory as memory_probe
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.memory import MemoryStatus
 from chipcompiler.tools.ecc import sta_parallel as sta
 

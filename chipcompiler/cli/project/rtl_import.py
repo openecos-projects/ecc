@@ -9,7 +9,11 @@ from pathlib import Path
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from chipcompiler.project.manifest_write import update_manifest
-from chipcompiler.utility.filelist import parse_filelist
+from chipcompiler.utility.filelist import (
+    _remove_inline_comment,
+    parse_filelist,
+    parse_incdir_directives,
+)
 
 
 class RtlImportError(RuntimeError):
@@ -38,6 +42,8 @@ def import_project_rtl(
     rtl_root = root / "rtl"
     rtl_root.mkdir(exist_ok=True)
     copied: list[tuple[Path, Path]] = []
+    sources: list[tuple[Path, Path]] = []
+    include_dirs: dict[Path, Path] = {}
     source_list: Path | None = None
     if filelist:
         source_list = Path(filelist).expanduser().resolve()
@@ -62,6 +68,9 @@ def import_project_rtl(
             copied.append((source, _target_for(source, source_list.parent, rtl_root)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied[1:]]
         rtl_config = [str(list_target.relative_to(root))]
+        sources = copied[1:]
+        include_dirs = _include_directories(source_list, rtl_root)
+        copied.extend(_include_files(include_dirs, root, rtl_root, copied))
     else:
         if not verilog:
             raise RtlImportError("rtl_inputs_missing", "no RTL input was provided")
@@ -81,7 +90,7 @@ def import_project_rtl(
         shutil.copy2(source, target)
     if filelist:
         assert source_list is not None
-        _write_filelist(copied[0][1], source_list, copied[1:])
+        _write_filelist(copied[0][1], source_list, sources, include_dirs)
 
     text = config_path.read_text(encoding="utf-8")
     text = set_scoped_key(text, "design", "rtl", rtl_config)
@@ -101,6 +110,7 @@ def import_project_rtl(
         "status": "rtl_imported",
         "filelist": rtl_config[0] if filelist else None,
         "rtl": rtl_entries,
+        "include_dirs": [str(path.relative_to(root)) for path in include_dirs.values()] or None,
     }
 
 
@@ -109,12 +119,96 @@ def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
         relative = source.relative_to(base)
     except ValueError:
         relative = Path(source.name)
-    target = (rtl_root / relative).resolve()
+    return _contained(rtl_root / relative, rtl_root, source)
+
+
+def _contained(target: Path, rtl_root: Path, source: Path) -> Path:
+    """The resolved *target*, refused when it is not below the project's ``rtl/``.
+
+    Resolving follows the symlinks already present under ``rtl/``, so a link
+    that points out of the project cannot redirect a copy.
+    """
+    target = target.resolve()
     if target != rtl_root and rtl_root not in target.parents:
         raise RtlImportError(
             "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
         )
     return target
+
+
+def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
+    """Map each ``+incdir+`` directory of the filelist to its place below ``rtl/``.
+
+    A directory below the filelist's own directory keeps its relative path,
+    any other one (``../common``, an absolute path) is placed under ``rtl/``
+    by its name - the rule the listed sources follow.
+    """
+    targets: dict[Path, Path] = {}
+    for entry in parse_incdir_directives(str(source_list)):
+        source_dir = (source_list.parent / entry).resolve()
+        if source_dir in targets:
+            continue
+        if not source_dir.is_dir():
+            raise RtlImportError(
+                "rtl_incdir_not_found", "filelist include directory was not found", str(source_dir)
+            )
+        target = _target_for(source_dir, source_list.parent, rtl_root)
+        if target in targets.values():
+            raise RtlImportError(
+                "rtl_target_collision",
+                "multiple include directories map to the same target",
+                str(target),
+            )
+        targets[source_dir] = target
+    return targets
+
+
+def _include_files(
+    include_dirs: dict[Path, Path],
+    project_root: Path,
+    rtl_root: Path,
+    copied: list[tuple[Path, Path]],
+) -> list[tuple[Path, Path]]:
+    """The files below the include directories that still have to be copied.
+
+    Every file is taken, as workspace creation does for a filelist: an
+    ``include`` may name a path below the directory. Files the filelist
+    already lists, the project itself when it lies inside an include
+    directory, and ``rtl/`` - the output of an earlier import, when the
+    include directory is the project root - are left out. Each destination is
+    checked like the target of a listed source: it has to stay below ``rtl/``.
+
+    A directory link inside an include directory is followed, so a header
+    included through the link is there after the import. A directory the
+    walk has already entered on the way down is not entered again, however
+    it is reached, so links that point at each other cannot make it loop.
+    """
+    known = set(copied)
+    files: list[tuple[Path, Path]] = []
+    for source_dir, target_dir in include_dirs.items():
+        # The real directories entered on the way to each walked path.
+        ancestry: dict[str, frozenset[Path]] = {
+            str(source_dir): frozenset({Path(source_dir).resolve()})
+        }
+        for current, directories, names in os.walk(source_dir, followlinks=True):
+            entered = ancestry.pop(current, frozenset({Path(current).resolve()}))
+            kept = []
+            for name in sorted(directories):
+                resolved = (Path(current) / name).resolve()
+                if resolved in (project_root, rtl_root) or resolved in entered:
+                    continue
+                kept.append(name)
+                ancestry[os.path.join(current, name)] = entered | {resolved}
+            directories[:] = kept
+            for name in sorted(names):
+                source = Path(current) / name
+                target = _contained(target_dir / source.relative_to(source_dir), rtl_root, source)
+                pair = (source, target)
+                if pair in known or source.resolve() == pair[1]:
+                    continue
+                known.add(pair)
+                files.append(pair)
+    return files
 
 
 def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
@@ -129,9 +223,21 @@ def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -
             raise RtlImportError(
                 "rtl_target_exists", "target exists; use --force to replace it", str(target)
             )
+    # A file cannot be written where another input needs a directory: a listed
+    # source named like an include directory would stop the copy half-way.
+    for target in sorted(targets):
+        if any(parent in targets for parent in target.parents):
+            raise RtlImportError(
+                "rtl_target_collision", "one input maps into the target of another", str(target)
+            )
 
 
-def _write_filelist(target: Path, source_list: Path, sources: list[tuple[Path, Path]]) -> None:
+def _write_filelist(
+    target: Path,
+    source_list: Path,
+    sources: list[tuple[Path, Path]],
+    include_dirs: dict[Path, Path],
+) -> None:
     original = source_list.read_text(encoding="utf-8")
     replacements = {
         str(source): os.path.relpath(target_path, target.parent) for source, target_path in sources
@@ -139,7 +245,17 @@ def _write_filelist(target: Path, source_list: Path, sources: list[tuple[Path, P
     lines = []
     for line in original.splitlines():
         stripped = line.strip().strip("\"'")
-        if stripped and not stripped.startswith(("#", "//", "+", "-")):
+        if line.strip().startswith("+incdir+"):
+            # Only the path is replaced, and only when it changes: quoting and
+            # an inline comment stay as written.
+            prefix, _, rest = line.partition("+incdir+")
+            entry = _remove_inline_comment(rest).strip().strip("\"'")
+            include_target = include_dirs.get((source_list.parent / entry).resolve())
+            if entry and include_target is not None:
+                local = os.path.relpath(include_target, target.parent)
+                if local != os.path.normpath(entry):
+                    line = f"{prefix}+incdir+{rest.replace(entry, local, 1)}"
+        elif stripped and not stripped.startswith(("#", "//", "+", "-")):
             resolved = (source_list.parent / stripped).resolve()
             if str(resolved) in replacements:
                 line = replacements[str(resolved)]

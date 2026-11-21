@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from chipcompiler.data import StepEnum, WorkspaceStep
-from chipcompiler.data.flow_plan import entry_design_states
+from chipcompiler.data.flow.plan import entry_design_states
 from chipcompiler.data.handshake.files import load_response
 from chipcompiler.data.handshake.messages import ResponseStatus, StepRequest, UpstreamResponse
 from chipcompiler.data.step import StepDirectories

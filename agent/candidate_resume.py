@@ -428,7 +428,7 @@ def _candidate_resume_requested_patch(
 
 def _candidate_resume_config_backups(workspace) -> dict[Path, bytes]:
     """Every config a resume may reapply: the parameter store (step values) and baselines."""
-    from chipcompiler.data.workspace_config import workspace_config_path
+    from chipcompiler.data.workspace.config import workspace_config_path
 
     root = Path(workspace.directory)
     relatives = (

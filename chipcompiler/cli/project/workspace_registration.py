@@ -54,7 +54,7 @@ def inspect_existing_workspace(
         )
 
     from chipcompiler.cli.inspection.discovery import read_flow_json
-    from chipcompiler.data.workspace_config import flow_range_of, load_workspace_config
+    from chipcompiler.data.workspace.config import flow_range_of, load_workspace_config
     from chipcompiler.project.manifest_refresh import manifest_status_of
 
     try:

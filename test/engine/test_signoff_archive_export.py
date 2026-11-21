@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from chipcompiler.engine import signoff_export
-from chipcompiler.engine.signoff_export import SignoffAdditionalFileError, SignoffExportError
+from chipcompiler.engine.signoff import export as signoff_export
+from chipcompiler.engine.signoff.export import SignoffAdditionalFileError, SignoffExportError
 
 
 def test_export_materializes_package_before_archiving(monkeypatch, tmp_path):

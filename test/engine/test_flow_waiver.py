@@ -4,10 +4,10 @@ from types import SimpleNamespace
 import pytest
 
 from chipcompiler.data import Workspace
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.flow_waiver import mark_step_skipped, waive_checklist
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.flow.waiver import mark_step_skipped, waive_checklist
 from chipcompiler.engine.rerun import invalidate_from
-from chipcompiler.engine.workspace_reset import prepare_steps_for_rerun
+from chipcompiler.engine.workspace.reset import prepare_steps_for_rerun
 from test.flow_fixture import step_fields
 
 
@@ -142,7 +142,7 @@ def test_waive_checklist_rolls_back_when_persistence_fails():
 
 
 def test_skipped_timing_optimization_is_transparent_to_route_input():
-    from chipcompiler.data.workspace.flow_policy import FlowInputResolver
+    from chipcompiler.data.flow.policy import FlowInputResolver
 
     workspace = _Workspace(
         [

@@ -9,7 +9,7 @@ from chipcompiler.data.parameter import (
     ICS55_PARAMETERS_TEMPLATE,
     SG13G2_PARAMETERS_TEMPLATE,
 )
-from chipcompiler.data.workspace_config import (
+from chipcompiler.data.workspace.config import (
     WORKSPACE_CONFIG_SCHEMA_VERSION,
     WorkspaceConfigError,
     WorkspaceFlowTargetError,
@@ -335,7 +335,7 @@ def test_flow_validation_rejects_unknown_preset():
 
 
 def test_flow_section_skip_steps_three_states_round_trip(tmp_path):
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     payload = {"design": "gcd", "top_module": "gcd", "clock": "clk"}
 
@@ -427,7 +427,7 @@ def test_save_replace_and_cleanup_failure_returns_false(
     def failing_replace(*args, **kwargs):
         raise OSError("injected replace failure")
 
-    monkeypatch.setattr("chipcompiler.data.workspace_config.os.replace", failing_replace)
+    monkeypatch.setattr("chipcompiler.data.workspace.config.os.replace", failing_replace)
 
     assert save_workspace_config(tmp_path, payload) is False
     assert not workspace_config_path(tmp_path).exists()
@@ -451,7 +451,7 @@ def test_derive_flow_ignores_non_list_ledger_steps(tmp_path):
 
 
 def test_save_refuses_symlinked_config_target(tmp_path):
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     workspace_dir = tmp_path / "ws"
     (workspace_dir / "home").mkdir(parents=True)
@@ -467,7 +467,7 @@ def test_save_refuses_symlinked_config_target(tmp_path):
 
 
 def test_save_refuses_symlinked_home_parent(tmp_path):
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     workspace_dir = tmp_path / "ws"
     external_home = tmp_path / "external-home"
@@ -482,7 +482,7 @@ def test_save_refuses_symlinked_home_parent(tmp_path):
 
 
 def test_save_drops_null_values_instead_of_failing(tmp_path):
-    from chipcompiler.data.workspace_config import load_workspace_config, save_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
 
     workspace_dir = tmp_path / "ws"
     ok = save_workspace_config(

@@ -5,10 +5,10 @@ import pytest
 
 from agent.engine import AgentEngineFlow
 from chipcompiler.data import ChecklistState, EccOutput, EccStep, StateEnum, Workspace
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
-from chipcompiler.engine.flow_completion import sync_step_checklist
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine.flow.completion import sync_step_checklist
+from chipcompiler.engine.step.execution import StepExecutionResult
 from test.flow_fixture import step_directory, step_fields
 
 
@@ -232,7 +232,7 @@ def test_agent_engine_selects_worker_and_layout_policy_per_workspace(
             error=None, elapsed_seconds=0.0, peak_memory_mb=0.0, runtime="0:0:0"
         )
 
-    monkeypatch.setattr("chipcompiler.engine.flow.execute_tool_step", execute)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.execute_tool_step", execute)
     monkeypatch.setattr(flow, "check_step_result", lambda **_kwargs: True)
 
     assert flow.run_step(step) is StateEnum.Success

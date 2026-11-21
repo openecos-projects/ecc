@@ -13,7 +13,7 @@ from chipcompiler.cli.project.config import (
     validate_project_config,
 )
 from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
-from chipcompiler.data.workspace_config import validate_flow_config
+from chipcompiler.data.workspace.config import validate_flow_config
 from chipcompiler.engine import ExecutionPlan, StepRunResult
 from test.cli.commands.test_flow_continuation import RTL2GDS_NAMES, _write_existing_workspace
 

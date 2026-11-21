@@ -62,9 +62,9 @@ def test_a_step_that_did_not_run_or_failed_is_not_checked(tmp_path):
 
 
 def test_saving_the_ledger_resets_steps_built_on_a_changed_run(tmp_path):
+    from chipcompiler.data.flow.document import load_flow_document
+    from chipcompiler.data.flow.ledger import save_ledger
     from chipcompiler.data.workspace import Flow
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
-    from chipcompiler.data.workspace.flow_types import load_flow_document
 
     _run_chain(tmp_path)
     (tmp_path / "home").mkdir()

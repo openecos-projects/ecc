@@ -13,8 +13,8 @@ CORRUPT_FLOW_JSON = "CORRUPT"
 
 
 def read_flow_json(run_dir: str) -> dict | str | None:
+    from chipcompiler.data.flow.document import load_flow_document
     from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
-    from chipcompiler.data.workspace.flow_types import load_flow_document
 
     path = os.path.join(run_dir, "home", "flow.json")
     if not os.path.isfile(path):

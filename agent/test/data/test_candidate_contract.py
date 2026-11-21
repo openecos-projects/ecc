@@ -30,7 +30,7 @@ def _workspace(tmp_path: Path):
     cts_config = tmp_path / "config" / "cts_ecc.json"
     _write_json(cts_config, {"skew_bound": 0.08})
     parameters = tmp_path / "home" / "params.toml"
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(tmp_path, {"core": {"utilitization": 0.6}})
     source_dir = tmp_path / "legalization_dreamplace" / "output"

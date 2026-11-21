@@ -2,7 +2,7 @@
 
 from functools import partial
 
-from chipcompiler.engine.step_subprocess import run_step_worker
+from chipcompiler.engine.step.process import run_step_worker
 from chipcompiler.engine.worker import worker_main
 
 from .engine import AgentEngineFlow

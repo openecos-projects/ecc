@@ -5,9 +5,9 @@ from typing import Any
 
 import pytest
 
-import chipcompiler.engine.workspace_derive_range as derive_range
+import chipcompiler.engine.workspace.derive_range as derive_range
 from chipcompiler.data import Workspace
-from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 from test.flow_fixture import step_fields
 
 _LEDGER = [

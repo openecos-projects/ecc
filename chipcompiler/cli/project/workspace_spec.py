@@ -4,7 +4,7 @@ from copy import deepcopy
 
 from chipcompiler.cli.project.config import resolve_pdk_root
 from chipcompiler.cli.project.design_inputs import resolve_design_inputs
-from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
 
 def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
@@ -14,7 +14,7 @@ def workspace_update_spec(workspace_path: str, cfg, flow_config: dict | None):
     if not isinstance(spec, dict) or not isinstance(bindings, dict):
         # v6 snapshots predate the workspace-spec envelope; rebuild the
         # structural view from the committed workspace instead.
-        from chipcompiler.engine.workspace_configuration import (
+        from chipcompiler.engine.workspace.configuration import (
             read_workspace_configuration_from_directory,
         )
 

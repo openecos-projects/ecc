@@ -7,6 +7,19 @@ from typing import Any, Final
 from chipcompiler.utility import Logger, create_logger, dict_to_str
 from chipcompiler.utility.path import path_is_within, path_text
 
+from ..flow.build import (
+    _canonical_rtl2gds_flow_entries as _canonical_rtl2gds_flow_entries,
+)
+from ..flow.build import (
+    _flow_step_template as _flow_step_template,
+)
+from ..flow.build import (
+    _selected_dynamic_flow_step_names as _selected_dynamic_flow_step_names,
+)
+from ..flow.build import (
+    build_dynamic_flow_data as build_dynamic_flow_data,
+)
+from ..flow.document import FlowDocument, FlowStepEntry, load_flow_document
 from ..parameter import (
     Parameters,
     get_parameters,
@@ -26,26 +39,13 @@ from ..types import (
     StepBaseEnum,
     StepEnum,
 )
-from ..workspace_config import (
+from .config import (
     FLOW_POLICY_KEYS,
 )
-from ..workspace_config import (
+from .config import (
     workspace_config_path as workspace_config_toml_path,
 )
 from .filelist_copy import copy_filelist_with_sources as copy_filelist_with_sources
-from .flow_data import (
-    _canonical_rtl2gds_flow_entries as _canonical_rtl2gds_flow_entries,
-)
-from .flow_data import (
-    _flow_step_template as _flow_step_template,
-)
-from .flow_data import (
-    _selected_dynamic_flow_step_names as _selected_dynamic_flow_step_names,
-)
-from .flow_data import (
-    build_dynamic_flow_data as build_dynamic_flow_data,
-)
-from .flow_types import FlowDocument, FlowStepEntry, load_flow_document
 from .layout import EccData, WorkspaceStepBase
 from .macro_location import refresh_generated_macro_location
 
@@ -871,13 +871,13 @@ def create_workspace(
     workspace.flow.path = home_dir / "flow.json"
     workspace.parameters.path = workspace_config_toml_path(home_dir.parent)
     if dynamic_flow_data:
-        from .flow_ledger import save_ledger
+        from ..flow.ledger import save_ledger
 
         workspace.flow.data = dynamic_flow_data
-        from .flow_options import sync_flow_options_projection
+        from ..flow.options import sync_flow_options_projection
 
         sync_flow_options_projection(workspace)
-        from ..workspace_config import flow_section_from_flow_config
+        from .config import flow_section_from_flow_config
 
         flow_section = flow_section_from_flow_config(flow_config)
         if flow_section:
@@ -894,7 +894,7 @@ def create_workspace(
         # A policy-only flow config selects no steps (the preset or the
         # ledger-less rebuild owns the chain), but the declared policy must
         # still persist so later rebuilds resolve the same chain.
-        from ..workspace_config import validate_flow_config
+        from .config import validate_flow_config
 
         workspace.parameters.data["_flow"] = validate_flow_config(
             {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
@@ -927,7 +927,7 @@ def create_workspace(
 
 def _persisted_golden_verilog(workspace_dir: Path) -> Path | None:
     """The golden netlist explicitly recorded in the current flow ledger."""
-    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.flow.document import load_flow_document
 
     for step in load_flow_document(workspace_dir / "home" / "flow.json").get("steps", []):
         info = step.get("info") or {}

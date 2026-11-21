@@ -30,8 +30,8 @@ from chipcompiler.data import StateEnum
 from chipcompiler.data.parameter import load_parameter, save_parameter
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.step_parameters import set_step_value
+from chipcompiler.data.workspace.config import save_workspace_config
 from chipcompiler.data.workspace.layout import EccData, EccOutput, StepInput
-from chipcompiler.data.workspace_config import save_workspace_config
 from test.flow_fixture import step_fields
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64

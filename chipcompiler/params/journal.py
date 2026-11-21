@@ -14,7 +14,7 @@ from chipcompiler.data.step_parameters import (
     step_values,
 )
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
-from chipcompiler.data.workspace_parameters import (
+from chipcompiler.data.workspace.parameters import (
     PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
     set_workspace_param,
@@ -24,6 +24,7 @@ from chipcompiler.data.workspace_parameters import (
     workspace_param_step,
     workspace_param_value,
 )
+from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY
 
 from .targets import MISSING, stored_value
 
@@ -68,9 +69,11 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
     Structural keys (design, PDK, flow, inputs) come from the new Workspace
     Spec; runtime results (die/core geometry) are regenerated. What survives is
     every stored tunable (``maps_to`` parameters) the user set, the direct
-    config patch, the per-step values and the baseline journal. A stored tunable still at its old
-    PDK default is left to the new template, so a PDK migration picks up the
-    new family's default instead of pinning the old one.
+    config patch, the per-step values and the baseline journal, together with
+    the record of how they were set (sources, an explicit clock frequency). A
+    stored tunable still at its old PDK default is left to the new template,
+    so a PDK migration picks up the new family's default instead of pinning
+    the old one.
     """
     old_pdk = str(parameters.get("pdk") or "") or None
     explicit = _explicit_parameters(parameters)
@@ -95,6 +98,8 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
         WORKSPACE_PARAM_OVERRIDES_KEY,
         PARAM_SOURCES_KEY,
         STEP_PARAMS_KEY,
+        EXPLICIT_FREQUENCY_KEY,
+        "sdc",
     ):
         if key in parameters:
             carried[key] = deepcopy(parameters[key])

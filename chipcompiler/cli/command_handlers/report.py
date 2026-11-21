@@ -67,7 +67,7 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
     if failure is not None:
         return failure
 
-    from chipcompiler.engine.qor_report import build_qor_report, generate_qor_report
+    from chipcompiler.analysis.qor.report import build_qor_report, generate_qor_report
 
     try:
         # Build once and render that snapshot: a second traversal could read
@@ -165,7 +165,7 @@ def _design_name(workspace) -> str:
     if isinstance(parameters, dict):
         return parameters.get("design") or parameters.get("Design") or "design"
 
-    from chipcompiler.data.workspace_config import load_workspace_config
+    from chipcompiler.data.workspace.config import load_workspace_config
 
     try:
         parameters = load_workspace_config(workspace.directory)

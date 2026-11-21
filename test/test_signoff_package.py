@@ -961,7 +961,7 @@ def test_single_step_post_route_lec_ledger_reports_issues(tmp_path):
     import json
 
     from chipcompiler.data import OriginDesign, Workspace
-    from chipcompiler.engine.flow import EngineFlow
+    from chipcompiler.engine.flow.runner import EngineFlow
     from chipcompiler.engine.signoff import SignoffPackageOptions
 
     workspace = Workspace(

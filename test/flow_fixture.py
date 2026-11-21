@@ -7,9 +7,9 @@ preserving each fixture's unindexed directory names.
 from collections.abc import Iterable, Mapping
 from typing import Any, TypedDict, cast
 
+from chipcompiler.data.flow.document import FlowDocument, FlowStepEntry
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import default_flow_step_category
-from chipcompiler.data.workspace.flow_types import FlowDocument, FlowStepEntry
 
 
 class StepFields(TypedDict):

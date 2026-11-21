@@ -17,12 +17,12 @@ from chipcompiler.data import (
     Workspace,
     inserted_step_kind,
 )
-from chipcompiler.data.step import StepDirectories, recorded_step_directory
-from chipcompiler.data.workspace.flow_policy import (
+from chipcompiler.data.flow.policy import (
     FlowInputResolver,
     ledger_category,
     step_name,
 )
+from chipcompiler.data.step import StepDirectories, recorded_step_directory
 
 
 def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
@@ -48,7 +48,7 @@ def latest_pnr_output(workspace: Workspace, suffix: str) -> Path | None:
 def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | None]:
     """(golden, gate) netlists the post-route LEC proof compares."""
     design = getattr(getattr(workspace, "design", None), "name", "") or ""
-    # Golden precedence mirrors the execution wiring (engine/flow.py): the
+    # Golden precedence mirrors the execution wiring (engine/flow/runner.py): the
     # declared golden netlist, else the synthesis output when the flow
     # contains Synthesis, else the origin RTL.
     gate = _post_route_gate(workspace)
@@ -63,7 +63,7 @@ def post_route_lec_netlists(workspace: Workspace) -> tuple[Path | None, Path | N
 
 
 def _post_route_gate(workspace: Workspace) -> Path | None:
-    from chipcompiler.engine.step_chain import build_workspace_step_for_info
+    from chipcompiler.engine.step.chain import build_workspace_step_for_info
 
     records = workspace.flow.steps()
     resolver = FlowInputResolver(records)

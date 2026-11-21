@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from chipcompiler.engine.snapshot_limits import BoundedJsonObject, read_bounded_json_object
+from chipcompiler.engine.snapshot.limits import BoundedJsonObject, read_bounded_json_object
 
 
 def read_workspace_artifact(root: Path, path: Path, max_bytes: int) -> BoundedJsonObject:

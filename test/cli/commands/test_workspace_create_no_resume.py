@@ -164,7 +164,7 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
 ):
     """A retry of the command that created the workspace is not a new --set request."""
     from chipcompiler.cli.project.run_prepare import create_command_spec
-    from chipcompiler.engine.workspace_lifecycle import (
+    from chipcompiler.engine.workspace.lifecycle import (
         workspace_command_fingerprint,
         write_workspace_command,
     )

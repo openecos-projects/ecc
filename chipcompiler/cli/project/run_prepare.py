@@ -191,6 +191,16 @@ def create_command_spec(command_input, run_name: str) -> dict:
     }
 
 
+def _mark_explicit_frequency(resolved, parameters: dict) -> None:
+    """Preserve explicit frequency overrides for legacy clock-list snapshots."""
+    from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY
+
+    sources = {item.param: item.source for item in resolved}
+    explicit = sources.get("design.frequency_mhz", "default") != "default"
+    if explicit:
+        parameters[EXPLICIT_FREQUENCY_KEY] = True
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -267,7 +277,7 @@ def execute_fresh_run(
                 )
             return None
         from chipcompiler.cli.core.records import error_record
-        from chipcompiler.engine.workspace_backup import retain_replaced_tree
+        from chipcompiler.engine.workspace.backup import retain_replaced_tree
         from chipcompiler.project import register_workspace_backup
 
         retained = retain_replaced_tree(Path(backup_path), Path(run_dir))
@@ -384,6 +394,7 @@ def execute_fresh_run(
             pdk=cfg.pdk_name or None,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
+        _mark_explicit_frequency(resolved, parameters)
         config_overrides = build_config_overrides(resolved)
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
@@ -467,7 +478,7 @@ def execute_fresh_run(
                 # normalizer).
                 workspace_parameters = getattr(workspace, "parameters", None)
                 if workspace_parameters is not None:
-                    from chipcompiler.data.workspace_config import (
+                    from chipcompiler.data.workspace.config import (
                         FLOW_POLICY_KEYS,
                         validate_flow_config,
                     )
@@ -527,7 +538,7 @@ def execute_fresh_run(
             # add_step saves the ledger without the options projection.
             # Write it once here, so the first workspace load finds a
             # complete flow.json and has nothing to rewrite.
-            from chipcompiler.data.workspace.flow_options import (
+            from chipcompiler.data.flow.options import (
                 sync_flow_options_projection,
             )
 
@@ -537,12 +548,12 @@ def execute_fresh_run(
             # The previous workspace's backup is obsolete (or retained as an
             # archived replace-backup under --keep-backup), the new tree owns
             # the target, and later failures are a normal failed run.
-            from chipcompiler.engine.snapshot import create_engineering_snapshot
+            from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 
             if getattr(workspace, "directory", None):
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
-                    from chipcompiler.engine.workspace_lifecycle import (
+                    from chipcompiler.engine.workspace.lifecycle import (
                         workspace_command_fingerprint,
                         write_workspace_command,
                     )

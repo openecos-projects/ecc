@@ -14,7 +14,10 @@ from chipcompiler.engine import (
     update_workspace_from_spec,
     update_workspace_step_configuration,
 )
-from chipcompiler.engine.snapshot import create_engineering_snapshot, read_engineering_snapshot
+from chipcompiler.engine.snapshot.store import (
+    create_engineering_snapshot,
+    read_engineering_snapshot,
+)
 from chipcompiler.params import lookup_schema, workspace_param_value
 from test.flow_fixture import step_fields
 

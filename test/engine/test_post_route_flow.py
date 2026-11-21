@@ -1,7 +1,7 @@
 import pytest
 
 from chipcompiler.data import OriginDesign, StepEnum, Workspace
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.rtl2gds import build_flow_range
 from chipcompiler.tools.ecc.builder import build_step as build_ecc_step
 from chipcompiler.tools.kepler_formal.builder import build_step as build_kepler_step
@@ -101,7 +101,7 @@ def test_post_route_flow_preserves_physical_inputs_and_sta_parasitics(
     )
 
     # Read-only workspace projections must use the same bypass as execution.
-    from chipcompiler.engine.workspace_flow import iter_workspace_steps
+    from chipcompiler.engine.step.chain import iter_workspace_steps
 
     projected = {entry["name"]: step for entry, step in iter_workspace_steps(workspace)}
     for name in ("lvs", "drc", "rcx", "sta", "power_analysis", "emir", "harden"):

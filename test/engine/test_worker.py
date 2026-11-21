@@ -60,17 +60,17 @@ def _stop_process(process: subprocess.Popen) -> None:
 
 def test_worker_command_selects_source_and_frozen_dispatch(monkeypatch):
     monkeypatch.delattr(sys, "frozen", raising=False)
-    assert worker.worker_command("chipcompiler.engine.step_subprocess") == [
+    assert worker.worker_command("chipcompiler.engine.step.process") == [
         sys.executable,
         "-m",
-        "chipcompiler.engine.step_subprocess",
+        "chipcompiler.engine.step.process",
     ]
 
     monkeypatch.setattr(sys, "frozen", True, raising=False)
-    assert worker.worker_command("chipcompiler.engine.step_subprocess") == [
+    assert worker.worker_command("chipcompiler.engine.step.process") == [
         sys.executable,
         "--ecc-worker",
-        "chipcompiler.engine.step_subprocess",
+        "chipcompiler.engine.step.process",
     ]
 
 

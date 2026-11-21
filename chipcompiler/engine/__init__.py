@@ -1,9 +1,9 @@
 from .db import EngineDB
 from .execution import ExecutionPlan, ExecutionResult, execute
-from .flow import EngineFlow
+from .flow.runner import EngineFlow
 from .rerun import StepRunResult
 from .signoff import SignoffPackageCollector, SignoffPackageOptions
-from .workspace_configuration import (
+from .workspace.configuration import (
     apply_workspace_parameters,
     read_step_configuration,
     read_step_configuration_from_directory,
@@ -12,7 +12,7 @@ from .workspace_configuration import (
     update_workspace_configuration,
     update_workspace_step_configuration,
 )
-from .workspace_lifecycle import (
+from .workspace.lifecycle import (
     WorkspaceLifecycleError,
     apply_workspace_bindings,
     assess_execution_readiness,
@@ -20,8 +20,8 @@ from .workspace_lifecycle import (
     describe_workspace_binding_requirement,
     update_workspace_from_spec,
 )
-from .workspace_reset import reset_workspace_flow
-from .workspace_spec import describe_workspace_spec, validate_workspace_spec
+from .workspace.reset import reset_workspace_flow
+from .workspace.spec import describe_workspace_spec, validate_workspace_spec
 
 __all__ = [
     "EngineDB",

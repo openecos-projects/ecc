@@ -3,8 +3,8 @@
 import logging
 from types import SimpleNamespace
 
+from chipcompiler.data.flow.ledger import save_ledger
 from chipcompiler.data.workspace import Flow
-from chipcompiler.data.workspace.flow_ledger import save_ledger
 from test.engine.step_execution_double import _initialize_worker_db, _worker_view
 from test.flow_fixture import current_flow_document
 

@@ -15,7 +15,7 @@ from chipcompiler.data.parameter_schema import list_schemas
 from chipcompiler.data.step_parameters import is_step_scoped, step_key
 from chipcompiler.data.workspace import step_config_keys
 from chipcompiler.data.workspace.config_overrides import config_path_for_key
-from chipcompiler.data.workspace_parameters import (
+from chipcompiler.data.workspace.parameters import (
     PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
     workspace_param_value,

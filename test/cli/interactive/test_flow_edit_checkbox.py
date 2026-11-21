@@ -10,7 +10,7 @@ from chipcompiler.cli.interactive.flow_edit import EditedSelection, edit_selecti
 from chipcompiler.cli.interactive.terminal import confirm_write, split_keys
 from chipcompiler.cli.project.flow_status_view import StatusView, status_view
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
+from chipcompiler.data.flow.plan import inserted_chain, plan_flow, preset_chain
 from chipcompiler.rtl2gds import rtl2gds_step_names
 
 _DOWN = "\x1b[B"

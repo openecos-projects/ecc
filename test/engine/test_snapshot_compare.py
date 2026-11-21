@@ -2,8 +2,8 @@ from copy import deepcopy
 
 import pytest
 
-from chipcompiler.engine.snapshot_compare import SnapshotComparisonError, compare_snapshots
-from chipcompiler.engine.snapshot_qor import build_qor_snapshot_extension
+from chipcompiler.engine.snapshot.compare import SnapshotComparisonError, compare_snapshots
+from chipcompiler.engine.snapshot.qor import build_qor_snapshot_extension
 from test.flow_fixture import step_fields
 
 

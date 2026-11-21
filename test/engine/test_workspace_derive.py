@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.engine import create_workspace_from_spec
-from chipcompiler.engine.workspace_derive import derive_workspace
-from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+from chipcompiler.engine.workspace.derive import derive_workspace
+from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 
 
 def test_derive_rejects_existing_target(tmp_path):

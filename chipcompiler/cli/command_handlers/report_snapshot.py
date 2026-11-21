@@ -2,8 +2,8 @@ from chipcompiler.cli.core.records import error_record, manifest_error_record
 from chipcompiler.cli.core.snapshot_inputs import ReportSnapshotInput
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import resolve_workspace_path
-from chipcompiler.engine.snapshot import EngineeringSnapshotError
-from chipcompiler.engine.snapshot_export import SnapshotDestinationError, save_engineering_snapshot
+from chipcompiler.engine.snapshot.export import SnapshotDestinationError, save_engineering_snapshot
+from chipcompiler.engine.snapshot.store import EngineeringSnapshotError
 
 
 def snapshot(command_input: ReportSnapshotInput, ctx: CommandContext) -> CommandResult:

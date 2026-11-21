@@ -74,6 +74,7 @@ build-backend.source-exclude = [
 ]
 build-backend.wheel-exclude = [
   "chipcompiler/thirdparty/**",
+  "**/AGENTS.md",
 ]
 
 [[tool.uv.index]]

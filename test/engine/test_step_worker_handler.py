@@ -10,7 +10,7 @@ import pytest
 
 from chipcompiler.data import OutputPaths
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine import step_subprocess
+from chipcompiler.engine.step import process as step_subprocess
 
 
 def _ns(**kwargs: object) -> Any:
@@ -82,7 +82,7 @@ def _patch_worker_dependencies(monkeypatch, tmp_path, step, flow, run_step, *, b
         return step if built is None else built
 
     monkeypatch.setattr("chipcompiler.data.load_workspace", load_workspace)
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda workspace: flow)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineFlow", lambda workspace: flow)
     monkeypatch.setattr("chipcompiler.tools.create_step", create_step)
     monkeypatch.setattr("chipcompiler.tools.run_step", run_step)
     monkeypatch.setattr("chipcompiler.tools.save_layout_image", lambda **_kwargs: True)
@@ -172,7 +172,7 @@ def test_worker_main_success_writes_result(monkeypatch, tmp_path):
 def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
     from contextlib import nullcontext
 
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
+    from chipcompiler.data.flow.ledger import save_ledger
 
     step = _workspace_step(tmp_path)
     result_path = tmp_path / "out" / "result.json"
@@ -188,7 +188,7 @@ def test_worker_main_rejects_ledger_save_without_writing(monkeypatch, tmp_path):
         "chipcompiler.data.load_workspace",
         lambda directory, *, read_only=False: workspace,
     )
-    monkeypatch.setattr("chipcompiler.engine.flow.EngineFlow", lambda _workspace: flow)
+    monkeypatch.setattr("chipcompiler.engine.flow.runner.EngineFlow", lambda _workspace: flow)
     monkeypatch.setattr("chipcompiler.tools.create_step", lambda **_kwargs: step)
     monkeypatch.setattr(
         "chipcompiler.utility.log.capture_stdio_to_file", lambda _path: nullcontext()
@@ -428,7 +428,7 @@ def test_worker_writes_parameter_evidence_for_every_attempt(monkeypatch, tmp_pat
     step = _workspace_step(tmp_path)
     written = []
     monkeypatch.setattr(
-        "chipcompiler.engine.step_subprocess.write_step_parameter_evidence",
+        "chipcompiler.engine.step.process.write_step_parameter_evidence",
         lambda _workspace, built_step, directory: written.append((built_step.name, directory)),
     )
 

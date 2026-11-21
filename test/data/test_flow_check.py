@@ -4,7 +4,7 @@ from itertools import chain, combinations
 
 import pytest
 
-from chipcompiler.data.flow_check import FlowViolation, Severity, check_flow
+from chipcompiler.data.flow.check import FlowViolation, Severity, check_flow
 from chipcompiler.data.types import (
     AnalysisData,
     DesignState,

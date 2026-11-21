@@ -17,7 +17,7 @@ from chipcompiler.cli.rendering.flow_selection_view import (
     render_flow_status_text,
 )
 from chipcompiler.data import DEFAULT_SKIP_STEPS
-from chipcompiler.data.flow_plan import inserted_chain, plan_flow, preset_chain
+from chipcompiler.data.flow.plan import inserted_chain, plan_flow, preset_chain
 
 _LEGEND = "┐…┘ same number = can run in parallel, up to 4 at once"
 

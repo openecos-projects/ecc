@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from chipcompiler.engine.analysis import collect_workspace_projections
+from chipcompiler.engine.snapshot.projections import collect_workspace_projections
 from test.flow_fixture import step_fields
 
 

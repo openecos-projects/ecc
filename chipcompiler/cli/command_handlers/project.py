@@ -1,5 +1,6 @@
 import contextlib
 import os
+import shlex
 
 from chipcompiler.cli.core.inputs import (
     CheckInput,
@@ -347,6 +348,8 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
         )
+    if not os.path.isdir(ctx.run_dir):
+        return _workspace_directory_missing(ctx)
     from chipcompiler.data.workspace.config_manifest import modified_derived_configs
 
     modified = modified_derived_configs(ctx.run_dir)
@@ -383,11 +386,11 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         )
     from chipcompiler.cli.project.workspace_spec import workspace_update_spec
     from chipcompiler.engine import update_workspace_from_spec
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
 
     backup_directory = None
     fallback_backup = None
@@ -402,13 +405,12 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
         import inspect
         from pathlib import Path
 
-        supports_backup = (
-            "retain_backup" in inspect.signature(update_workspace_from_spec).parameters
-        )
+        update_parameters = inspect.signature(update_workspace_from_spec).parameters
+        supports_backup = "retain_backup" in update_parameters
         if command_input.keep_backup and not supports_backup:
             from shutil import copytree
 
-            from chipcompiler.engine.workspace_backup import _free_backup_path
+            from chipcompiler.engine.workspace.backup import _free_backup_path
 
             fallback_backup = _free_backup_path(Path(ctx.run_dir))
             copytree(ctx.run_dir, fallback_backup)
@@ -416,6 +418,10 @@ def refresh_workspace(command_input, ctx: CommandContext) -> CommandResult:
             "blocking": not command_input.no_wait,
             **({"retain_backup": command_input.keep_backup} if supports_backup else {}),
         }
+        if not command_input.expected_revision and "revision_pinned" in update_parameters:
+            # The revision was filled in above, not named by the caller: it
+            # is checked, but it is not part of the command's identity.
+            update_kwargs["revision_pinned"] = False
         workspace = update_workspace_from_spec(
             ctx.run_dir,
             expected,
@@ -601,16 +607,29 @@ def _manage_workspace_lifecycle(
 ) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_management import (
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.management import (
         archive_managed_workspace,
         delete_managed_workspace,
+        unregister_missing_workspace,
     )
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
         return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+    missing = not os.path.isdir(ctx.run_dir)
+    if missing and operation != "delete":
+        return _workspace_directory_missing(ctx)
     try:
+        if missing:
+            # Nothing is left but the registration: there is no revision to
+            # check and no directory to keep or remove.
+            workspace = unregister_missing_workspace(
+                ctx.project_dir, ctx.run_id, blocking=not command_input.no_wait
+            )
+            return CommandResult.ok(
+                [{"workspace_id": ctx.run_id, "status": "deleted", "workspace": str(workspace)}]
+            )
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
         command_id = command_input.command_id or str(uuid.uuid4())
@@ -645,9 +664,30 @@ def _manage_workspace_lifecycle(
     )
 
 
+def _workspace_directory_missing(ctx: CommandContext) -> CommandResult:
+    """The error of a command that needs the directory of a declared workspace."""
+    project = ctx.project
+    workspace_id = ctx.run_id or ""
+    return CommandResult.err(
+        [
+            error_record(
+                "workspace_missing",
+                reason=f"workspace directory does not exist: {ctx.run_dir}",
+                workspace_id=workspace_id,
+                delete_cmd=disclosure_cmd(
+                    f"ecc workspace delete {shlex.quote(workspace_id)}", project
+                ),
+                create_cmd=disclosure_cmd(
+                    f"ecc workspace create {shlex.quote(workspace_id)}", project
+                ),
+            )
+        ]
+    )
+
+
 def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_management import reconcile_workspace_deletes as reconcile
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.management import reconcile_workspace_deletes as reconcile
 
     if ctx.project_state != "manifest" or ctx.manifest_error:
         return CommandResult.err([error_record("manifest_invalid", reason=ctx.manifest_error)])
@@ -667,15 +707,17 @@ def reconcile_workspace_deletes(command_input, ctx: CommandContext) -> CommandRe
 def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     import uuid
 
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
-    from chipcompiler.engine.workspace_lifecycle import WorkspaceLifecycleError
-    from chipcompiler.engine.workspace_reset import reset_workspace_flow as reset
+    from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+    from chipcompiler.engine.workspace.reset import reset_workspace_flow as reset
 
     if ctx.project_state != "manifest" or ctx.manifest_error or ctx.run_id is None:
         return CommandResult.err([manifest_error_record(ctx.manifest_error)])
+    if not os.path.isdir(ctx.run_dir):
+        return _workspace_directory_missing(ctx)
     try:
         current = read_engineering_snapshot_from_directory(ctx.run_dir)
         expected = command_input.expected_revision or current["workspaceRevision"]
@@ -684,6 +726,7 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
             expected,
             command_id=command_input.command_id or str(uuid.uuid4()),
             blocking=not command_input.no_wait,
+            revision_pinned=bool(command_input.expected_revision),
         )
         snapshot = read_engineering_snapshot(workspace)
     except BlockingIOError:
@@ -828,7 +871,7 @@ def _run_project(
     # The resolved skip policy, LEC engine and inserted steps survive every
     # target override below (they come from configuration, never from the
     # target spelling).
-    from chipcompiler.data.workspace_config import FLOW_POLICY_KEYS
+    from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     policies = (
         {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
@@ -990,10 +1033,15 @@ def _run_project(
 
     # The selector path executes steps. `workspace create` on an existing
     # target must not reach it: it reports the workspace instead (#393, #442).
+    # It also works on declared workspaces only, so an existing directory the
+    # manifest does not declare goes through the dispatcher, which registers
+    # it first - the same route an absolute workspace path takes.
+    undeclared_directory = project_state == "manifest" and not workspace_registered
     if (
         execute_flow
         and not fresh_target
         and not ctx.workspace_path_explicit
+        and not undeclared_directory
         and (
             command_input.resume
             or command_input.from_step is not None

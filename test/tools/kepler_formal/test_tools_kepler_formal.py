@@ -20,7 +20,7 @@ from chipcompiler.data import (
     YosysOutput,
     YosysStep,
 )
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.utility import json_write
 from test.flow_fixture import step_fields
 

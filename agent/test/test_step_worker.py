@@ -16,7 +16,7 @@ from chipcompiler.data import StateEnum, Workspace
 from chipcompiler.data.handshake import build_step_request, write_request
 from chipcompiler.data.parameter import Parameters, save_parameter
 from chipcompiler.data.workspace import Flow
-from chipcompiler.engine.step_subprocess import run_step_worker
+from chipcompiler.engine.step.process import run_step_worker
 from test.flow_fixture import publish_response
 
 
@@ -168,7 +168,7 @@ from types import SimpleNamespace
 from agent import tools as agent_tools
 from agent.data import floorplan_parameter_observer as floorplan_observer
 from agent.data.floorplan_parameter_observer import step_path
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 
 boundary = {"init_fp_call_count": 0, "run_fp_call_count": 0, "run_fp_completed": False}
 

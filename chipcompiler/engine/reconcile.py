@@ -156,7 +156,7 @@ def _built_with_removed_lec(workspace_dir: Path, persisted: list[tuple[str, str]
     """
     import tomllib
 
-    from chipcompiler.data.workspace_config import workspace_config_path
+    from chipcompiler.data.workspace.config import workspace_config_path
 
     if any(name == _REMOVED_LEC_STEP or tool in _REMOVED_LEC_TOOLS for name, tool in persisted):
         return True
@@ -218,9 +218,9 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
     the workspace excludes; its inserted steps follow their steps inside the
     range, run by the section's LEC engine.
     """
+    from chipcompiler.data.flow.build import _flow_entries_for_config
     from chipcompiler.data.workspace import _canonical_rtl2gds_flow_entries
-    from chipcompiler.data.workspace.flow_data import _flow_entries_for_config
-    from chipcompiler.data.workspace_config import flow_range_of
+    from chipcompiler.data.workspace.config import flow_range_of
     from chipcompiler.rtl2gds import (
         filter_flow_steps,
         insert_flow_steps,
@@ -254,14 +254,14 @@ def _target_entries(flow_section: dict) -> list[tuple[str, str]]:
 
 def _derive_section_from_persisted(persisted: list[tuple[str, str]]) -> dict:
     """The [flow] section describing exactly the persisted step list."""
-    from chipcompiler.data.workspace_config import ledger_flow_section
+    from chipcompiler.data.workspace.config import ledger_flow_section
 
     return ledger_flow_section([name for name, _tool in persisted])
 
 
 def _persisted_flow_data(workspace_dir: Path) -> dict:
     """The ledger as the workspace loads it, step results included."""
-    from chipcompiler.data.workspace.flow_types import load_flow_document
+    from chipcompiler.data.flow.document import load_flow_document
 
     return dict(load_flow_document(workspace_dir / "home" / "flow.json"))
 
@@ -287,7 +287,7 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     from chipcompiler.data.schema_versions import (
         UnsupportedSchemaVersionError,
     )
-    from chipcompiler.data.workspace_config import (
+    from chipcompiler.data.workspace.config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
         flow_range_of,
@@ -482,7 +482,7 @@ def reconcile_workspace(
 
 def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) -> ReconcileResult:
     """Append/adopt under the workspace lock for a pending classification."""
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
     from chipcompiler.utility import json_write
 
     persisted = context["persisted"]
@@ -577,6 +577,6 @@ def _apply_mutation(workspace_dir: Path, probe: ReconcileResult, context: dict) 
 
 def _config_path_text(workspace_dir) -> str:
     """The workspace config path for messages — single-sourced name."""
-    from chipcompiler.data.workspace_config import workspace_config_path
+    from chipcompiler.data.workspace.config import workspace_config_path
 
     return str(workspace_config_path(workspace_dir))

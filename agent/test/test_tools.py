@@ -31,7 +31,7 @@ class _Scalar:
 
 
 def _placement_workspace(tmp_path: Path, logger: object) -> Any:
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     config_path = tmp_path / "config" / "dreamplace_ecc.json"
     _write_json(config_path, {"target_density": 0.8})
@@ -60,7 +60,7 @@ def _placement_workspace(tmp_path: Path, logger: object) -> Any:
 def test_tool_runner_restores_candidate_step_values_before_the_step_build(monkeypatch, tmp_path):
     from chipcompiler.data.parameter import load_parameter
     from chipcompiler.data.step_parameters import step_config_patch
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     workspace = _placement_workspace(tmp_path, _ns())
     step = _ns(name="placement", tool="dreamplace", directory=tmp_path / "placement_dreamplace")

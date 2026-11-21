@@ -19,7 +19,7 @@ from chipcompiler.data import (
     Workspace,
     WorkspaceStep,
 )
-from chipcompiler.data.workspace.flow_types import FlowStepEntry
+from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.tools.ecc.metrics import _quality_gates, build_qor_summary_payload
 from chipcompiler.tools.ecc.signoff_checklist import (
     _flow_items,

@@ -1,8 +1,11 @@
 from chipcompiler.cli.core.compare_inputs import CompareRunInput
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
-from chipcompiler.engine.snapshot import EngineeringSnapshotError, read_engineering_snapshot_file
-from chipcompiler.engine.snapshot_compare import SnapshotComparisonError, compare_snapshots
+from chipcompiler.engine.snapshot.compare import SnapshotComparisonError, compare_snapshots
+from chipcompiler.engine.snapshot.store import (
+    EngineeringSnapshotError,
+    read_engineering_snapshot_file,
+)
 
 
 def compare_run(args: CompareRunInput, _ctx: CommandContext) -> CommandResult:

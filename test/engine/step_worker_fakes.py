@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from chipcompiler.data.handshake import ResponseStatus
-from chipcompiler.engine import step_subprocess
+from chipcompiler.engine.step import process as step_subprocess
 
 
 def terminate_fake(process):

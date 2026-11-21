@@ -41,7 +41,7 @@ class TestHybridManifestFallbacks:
                 }
             )
         )
-        from chipcompiler.data.workspace_config import save_workspace_config
+        from chipcompiler.data.workspace.config import save_workspace_config
 
         assert save_workspace_config(
             run_dir,

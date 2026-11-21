@@ -14,8 +14,8 @@ def main() -> int | None:
     if arguments[:1] == ["--ecc-worker"]:
         if len(arguments) != 2:
             raise SystemExit("usage: ecc --ecc-worker <module>")
-        if arguments[1] == "chipcompiler.engine.step_subprocess":
-            from chipcompiler.engine.step_subprocess import main as entrypoint
+        if arguments[1] == "chipcompiler.engine.step.process":
+            from chipcompiler.engine.step.process import main as entrypoint
         elif arguments[1] == "agent.step_worker":
             from agent.step_worker import main as entrypoint
         else:

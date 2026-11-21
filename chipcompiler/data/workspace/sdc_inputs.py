@@ -8,6 +8,11 @@ from pathlib import Path
 
 from .primary_clocks import PrimaryClock, parse_primary_clocks
 
+# Internal workspace parameter: design.frequency_mhz was set explicitly when the
+# workspace was created (ecc.toml [params] or --set), on top of the clock list.
+EXPLICIT_FREQUENCY_KEY = "_explicit_frequency"
+_FREQUENCY_PARAM = "design.frequency_mhz"
+
 # Public file names map to frozen workspace fields at this boundary. Existing
 # workspace snapshots still use the old names and corner:MHz clock rows.
 _FILE_FIELDS = {
@@ -113,14 +118,54 @@ class SdcInputs:
                 else ()
             )
         clocks = []
-        for target, frequencies in definitions.items():
+        for index, (target, frequencies) in enumerate(definitions.items()):
             if corner not in frequencies:
                 raise ValueError(f"sdc.clock_list: {target!r} has no frequency for corner {corner}")
-            clocks.append(PrimaryClock(target, frequencies[corner]))
+            frequency = frequencies[corner]
+            if index == 0:
+                frequency = _primary_clock_frequency(frequency, parameters)
+            clocks.append(PrimaryClock(target, frequency))
         names = [clock.name for clock in clocks]
         if len(set(names)) != len(names):
             raise ValueError("sdc.clock_list: targets produce duplicate clock names")
         return tuple(clocks)
+
+
+def frequency_is_explicit(parameters: dict) -> bool:
+    """True when ``design.frequency_mhz`` was set on top of the clock list.
+
+    Two records say so: the marker written when the workspace was created with
+    an explicit value, and a workspace-scope override of the parameter that
+    changes its value. A ``frequency_max`` that merely differs from the list is
+    not evidence: it is derived metadata and can be older than the list in
+    effect.
+    """
+    if parameters.get(EXPLICIT_FREQUENCY_KEY) is True:
+        return True
+    overrides = parameters.get("workspace_param_overrides")
+    return isinstance(overrides, list) and any(
+        isinstance(item, dict)
+        and item.get("key") == _FREQUENCY_PARAM
+        and item.get("value") != item.get("baseline")
+        for item in overrides
+    )
+
+
+def _primary_clock_frequency(frequency: float, parameters: dict) -> float:
+    """The first clock's frequency, following an explicit ``design.frequency_mhz``.
+
+    Synthesis and the summaries read ``frequency_max``. When the user set
+    ``design.frequency_mhz`` on top of the clock list, the constraints have to
+    describe the same clock, so that value replaces the row's frequency in
+    every corner, as it does for a project without a clock list. Otherwise the
+    rows of the list decide.
+    """
+    if not frequency_is_explicit(parameters):
+        return frequency
+    try:
+        return clock_frequency(parameters.get("frequency_max"))
+    except ValueError:
+        return frequency
 
 
 def _has_commands(text: str) -> bool:

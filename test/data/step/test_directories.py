@@ -3,9 +3,9 @@
 import pytest
 
 from chipcompiler.data import KeplerFormalStep, OriginDesign, Workspace, WorkspaceStep
+from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.data.step import new_step_directory, recorded_step_directory
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 
 
 def _flow(tmp_path, ledger) -> EngineFlow:

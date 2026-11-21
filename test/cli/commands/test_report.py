@@ -69,7 +69,7 @@ def report_mocks(monkeypatch):
     # ChecklistReport.summary is a field default; set explicitly
     checklist_report.summary = {"passed": 1, "blocked": 1, "attention": 1, "unavailable": 0}
 
-    from chipcompiler.engine import qor_report as qor_module
+    from chipcompiler.analysis.qor import report as qor_module
     from chipcompiler.engine.signoff import report_checklist as checklist_module
 
     monkeypatch.setattr(qor_module, "build_qor_report", lambda ws: qor_report)

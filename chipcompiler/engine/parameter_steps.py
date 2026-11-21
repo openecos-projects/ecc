@@ -5,7 +5,7 @@ from typing import Any
 from chipcompiler.data.step_parameters import is_step_scoped
 from chipcompiler.params import list_schemas
 
-from .workspace_lifecycle import WorkspaceLifecycleError
+from .workspace.lifecycle import WorkspaceLifecycleError
 
 
 def step_catalog(workspace: Any, step_id: str):

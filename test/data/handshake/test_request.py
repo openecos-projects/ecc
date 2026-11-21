@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data import EccOutput, OriginDesign, StepEnum, Workspace
+from chipcompiler.data.flow.build import build_dynamic_flow_data
 from chipcompiler.data.handshake import (
     DesignFiles,
     ResponseStatus,
@@ -14,9 +15,8 @@ from chipcompiler.data.handshake import (
     write_response,
 )
 from chipcompiler.data.types import AnalysisData, DesignState
-from chipcompiler.data.workspace.flow_data import build_dynamic_flow_data
-from chipcompiler.engine import step_subprocess
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.step import process as step_subprocess
 
 
 def _wired_flow(tmp_path) -> EngineFlow:

@@ -330,7 +330,7 @@ def _make_workspace(tmp_path, *, full=True):
         },
     )
     if full:
-        from chipcompiler.data.workspace_config import save_workspace_config
+        from chipcompiler.data.workspace.config import save_workspace_config
 
         assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
         _write_json(
@@ -464,7 +464,7 @@ def _make_flow_workspace(root, directories: dict[tuple[str, str], str]):
         for (name, tool), directory in directories.items()
     ]
     _write_json(root / "home" / "flow.json", {"schema_version": 3, "steps": steps})
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     assert save_workspace_config(root, {"design": "gcd", "pdk": "ics55"})
     harden = directories[("harden", "ecc")]

@@ -7,7 +7,7 @@ from agent.requests import CandidateRerunRequest
 from agent.test.test_workspace_api import CONTEXT_SHA256, _stored_step_values
 from agent.workspace_api import _materialize_candidate_rerun
 from chipcompiler.data.parameter import load_parameter
-from chipcompiler.data.workspace_config import save_workspace_config
+from chipcompiler.data.workspace.config import save_workspace_config
 
 
 def _seed_target_workspace(tmp_path: Path) -> tuple[SimpleNamespace, Path]:

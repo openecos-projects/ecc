@@ -72,7 +72,7 @@ def _execute_workspace_run(
     from chipcompiler.cli.project.config import resolve_max_parallel_steps
     from chipcompiler.data import load_workspace
     from chipcompiler.data.schema_versions import UnsupportedSchemaVersionError
-    from chipcompiler.data.workspace_config import (
+    from chipcompiler.data.workspace.config import (
         WorkspaceConfigError,
         WorkspaceFlowTargetError,
     )

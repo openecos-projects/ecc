@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from chipcompiler.data.step import unindexed_step_directory
-from chipcompiler.engine.workspace_spec import (
+from chipcompiler.engine.workspace.spec import (
     describe_workspace_spec,
     validate_workspace_spec,
 )
@@ -236,7 +236,7 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
         create_workspace_from_spec,
         update_workspace_from_spec,
     )
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -279,11 +279,55 @@ def test_workspace_spec_update_is_atomic_revisioned_and_idempotent(
     assert read_engineering_snapshot(repeated.workspace) == after
 
 
+def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
+    tmp_path, minimal_ics55_pdk_factory
+):
+    """A caller that names no revision passes the current one for the check only."""
+    from chipcompiler.engine import (
+        WorkspaceLifecycleError,
+        create_workspace_from_spec,
+        update_workspace_from_spec,
+    )
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+
+    payload, bindings = _shared_fixture("valid.json")
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    target = tmp_path / "workspace"
+    create_workspace_from_spec(target, payload["workspaceSpec"], bindings, "create-1")
+    updated_spec = deepcopy(payload["workspaceSpec"])
+    updated_spec["design"]["clockPort"] = "clock"
+
+    updated = update_workspace_from_spec(
+        target, 1, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    after = read_engineering_snapshot(updated.workspace)
+    assert after["workspaceRevision"] == 2
+    # The retry arrives with the revision that is current now.
+    repeated = update_workspace_from_spec(
+        target, 2, updated_spec, bindings, "update-1", revision_pinned=False
+    )
+    assert read_engineering_snapshot(repeated.workspace) == after
+
+    # Another request under the same id is a conflict, and the revision is
+    # still checked for a new command.
+    with pytest.raises(WorkspaceLifecycleError) as reused:
+        update_workspace_from_spec(
+            target, 2, payload["workspaceSpec"], bindings, "update-1", revision_pinned=False
+        )
+    assert reused.value.code == "idempotency_conflict"
+    with pytest.raises(WorkspaceLifecycleError) as stale:
+        update_workspace_from_spec(
+            target, 1, payload["workspaceSpec"], bindings, "update-2", revision_pinned=False
+        )
+    assert stale.value.code == "revision_conflict"
+    assert read_engineering_snapshot(repeated.workspace) == after
+
+
 def test_workspace_spec_update_preserves_unknown_config_extensions(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -312,7 +356,7 @@ def test_workspace_spec_update_fails_when_current_config_cannot_be_read(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import WorkspaceLifecycleError, create_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -340,7 +384,7 @@ def test_workspace_spec_update_fails_when_current_config_is_malformed(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import WorkspaceLifecycleError, create_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -370,7 +414,7 @@ def test_workspace_spec_update_keeps_generated_filelist_relocatable(
     from chipcompiler.data import load_workspace
     from chipcompiler.data.parameter import load_parameter
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -404,7 +448,7 @@ def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
 ):
     from chipcompiler.data.parameter import load_parameter
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
@@ -481,7 +525,7 @@ def test_workspace_spec_create_and_update_materialize_step_directories(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -514,7 +558,7 @@ def test_workspace_spec_update_without_retain_backup_keeps_no_backup(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -543,7 +587,7 @@ def test_workspace_spec_update_retain_backup_failure_keeps_original_tree(
         create_workspace_from_spec,
         update_workspace_from_spec,
     )
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -571,9 +615,9 @@ def test_workspace_spec_update_retain_backup_failure_keeps_original_tree(
 def test_workspace_spec_update_retain_backup_rolls_back_when_reload_fails(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch
 ):
-    import chipcompiler.engine.workspace_lifecycle as lifecycle
+    import chipcompiler.engine.workspace.lifecycle as lifecycle
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -613,7 +657,7 @@ def test_workspace_spec_update_retain_backup_rolls_back_when_reload_fails(
 
 def test_workspace_spec_update_sweeps_stale_staging_siblings(tmp_path, minimal_ics55_pdk_factory):
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import (
+    from chipcompiler.engine.snapshot.store import (
         read_engineering_snapshot,
         read_engineering_snapshot_from_directory,
     )
@@ -717,7 +761,7 @@ def test_workspace_spec_rejects_invalid_existing_snapshot(tmp_path, minimal_ics5
 
 def _apply(target, sets):
     from chipcompiler.engine import apply_workspace_parameters
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     revision = read_engineering_snapshot_from_directory(target)["workspaceRevision"]
     return apply_workspace_parameters(target, revision, sets, ())
@@ -728,7 +772,7 @@ def test_workspace_spec_update_carries_workspace_parameters_and_their_journal(
 ):
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
     from chipcompiler.params import workspace_param_diff
 
     payload, bindings = _shared_fixture("valid.json")
@@ -762,7 +806,7 @@ def test_workspace_spec_update_carries_parameters_when_the_flow_changes(
     tmp_path, minimal_ics55_pdk_factory
 ):
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
@@ -790,7 +834,7 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
 ):
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     payload, bindings = _shared_fixture("valid.json")
     old_pdk = minimal_ics55_pdk_factory(tmp_path / "old-pdk")
@@ -824,7 +868,7 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
         create_workspace_from_spec,
         update_workspace_from_spec,
     )
-    from chipcompiler.engine.snapshot import read_engineering_snapshot_from_directory
+    from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "old-pdk"))

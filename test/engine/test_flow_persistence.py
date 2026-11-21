@@ -1,8 +1,8 @@
 import json
 
 from chipcompiler.data import Workspace
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.snapshot import create_engineering_snapshot
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.snapshot.store import create_engineering_snapshot
 from test.flow_fixture import step_fields
 
 
@@ -36,7 +36,7 @@ def test_flow_save_keeps_snapshot_and_persisted_ledger_identical(tmp_path):
 
 
 def test_failed_ledger_write_rolls_back_the_step_state(tmp_path, monkeypatch):
-    import chipcompiler.data.workspace.flow_ledger as flow_ledger
+    import chipcompiler.data.flow.ledger as flow_ledger
     from chipcompiler.data import StateEnum
 
     workspace = Workspace(directory=tmp_path)
@@ -63,7 +63,7 @@ def test_failed_ledger_write_rolls_back_the_step_state(tmp_path, monkeypatch):
 
 
 def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
-    import chipcompiler.data.workspace.flow_ledger as flow_ledger
+    import chipcompiler.data.flow.ledger as flow_ledger
 
     workspace = Workspace(directory=tmp_path)
     (tmp_path / "home").mkdir()
@@ -97,7 +97,7 @@ def test_failed_batch_reset_restores_the_ledger(tmp_path, monkeypatch):
 
 
 def test_failed_ledger_write_preserves_the_existing_schema_version(tmp_path, monkeypatch):
-    from chipcompiler.data.workspace.flow_ledger import save_ledger
+    from chipcompiler.data.flow.ledger import save_ledger
 
     workspace = Workspace(directory=tmp_path)
     (tmp_path / "home").mkdir()
@@ -110,7 +110,7 @@ def test_failed_ledger_write_preserves_the_existing_schema_version(tmp_path, mon
 
 
 def test_state_transaction_holds_the_ledger_lock(tmp_path):
-    import chipcompiler.data.workspace.flow_ledger as flow_ledger
+    import chipcompiler.data.flow.ledger as flow_ledger
     from chipcompiler.data import StateEnum
 
     workspace = Workspace(directory=tmp_path)

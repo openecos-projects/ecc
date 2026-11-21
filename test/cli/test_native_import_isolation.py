@@ -21,9 +21,10 @@ from chipcompiler.cli.app import app
 from chipcompiler.cli.core.types import CommandContext, OutputMode
 from chipcompiler.cli.rendering import progress
 from chipcompiler.data import EccStep, Workspace
-from chipcompiler.engine import ExecutionPlan, execute, step_execution
-from chipcompiler.engine.flow import EngineFlow
-from chipcompiler.engine.step_execution import StepExecutionResult
+from chipcompiler.engine import ExecutionPlan, execute
+from chipcompiler.engine.step import execution as step_execution
+from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.engine.step.execution import StepExecutionResult
 
 
 def fake_worker(*_args, **_kwargs):

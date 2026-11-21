@@ -158,7 +158,7 @@ def test_legalization_knob_materializes_as_a_legalization_step_value(
 
 def test_reapply_restores_the_dreamplace_step_value(tmp_path):
     from chipcompiler.data.parameter import load_parameter
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     workspace = cw.workspace(tmp_path)
     receipt = materialize_candidate_config(
@@ -197,7 +197,7 @@ def test_materialize_rejects_multiple_knobs_without_writing_artifacts(tmp_path):
 
 
 def test_materialize_rejects_noop_without_writing_artifacts(tmp_path):
-    from chipcompiler.data.workspace_config import save_workspace_config
+    from chipcompiler.data.workspace.config import save_workspace_config
 
     workspace = cw.workspace(tmp_path)
     assert save_workspace_config(

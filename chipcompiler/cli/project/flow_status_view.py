@@ -10,10 +10,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from chipcompiler.data.flow_check import Severity
-from chipcompiler.data.flow_needs import StepNeeds, plan_needs
-from chipcompiler.data.flow_plan import FlowPlan, PlannedStep
-from chipcompiler.data.flow_stages import StepStage, plan_stages
+from chipcompiler.data.flow.check import Severity
+from chipcompiler.data.flow.needs import StepNeeds, plan_needs
+from chipcompiler.data.flow.plan import FlowPlan, PlannedStep
+from chipcompiler.data.flow.stages import StepStage, plan_stages
 from chipcompiler.data.types import (
     DesignState,
     FlowStepCategory,

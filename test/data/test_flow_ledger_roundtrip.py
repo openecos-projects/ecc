@@ -11,7 +11,7 @@ import pytest
 
 from chipcompiler.data import OriginDesign, Workspace
 from chipcompiler.data.step.results import results_digest
-from chipcompiler.engine.flow import EngineFlow
+from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.rtl2gds import build_flow_range
 from test.flow_fixture import step_fields
 

@@ -35,16 +35,16 @@ class TestRun:
 
         monkeypatch.setattr("chipcompiler.data.create_workspace", lambda **_kwargs: workspace)
         monkeypatch.setattr(
-            "chipcompiler.data.workspace.flow_options.sync_flow_options_projection",
+            "chipcompiler.data.flow.options.sync_flow_options_projection",
             lambda _workspace, **_kwargs: False,
         )
         monkeypatch.setattr(
-            "chipcompiler.engine.snapshot.create_engineering_snapshot",
+            "chipcompiler.engine.snapshot.store.create_engineering_snapshot",
             lambda _workspace, **kwargs: captured.update(kwargs)
             or {"workspaceId": kwargs["workspace_id"], "workspaceRevision": 1},
         )
         monkeypatch.setattr(
-            "chipcompiler.engine.workspace_lifecycle.write_workspace_command",
+            "chipcompiler.engine.workspace.lifecycle.write_workspace_command",
             lambda *_args, **_kwargs: None,
         )
 
@@ -306,7 +306,7 @@ class TestWorkspaceRun:
         run_dir = os.path.join(project_dir, "workspace")
         home = os.path.join(run_dir, "home")
         os.makedirs(home)
-        from chipcompiler.data.workspace_config import save_workspace_config
+        from chipcompiler.data.workspace.config import save_workspace_config
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
         chain = [
@@ -724,7 +724,7 @@ class TestWorkspaceNoOp:
     ):
         import json as _json
 
-        from chipcompiler.data.workspace_config import save_workspace_config
+        from chipcompiler.data.workspace.config import save_workspace_config
 
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
         project_dir = create_cli_project(pdk_root=pdk_root)
@@ -779,6 +779,6 @@ class TestWorkspaceNoOp:
         assert record["status"] == "success"
         assert record["no_op"] == "True"
         # The adopted narrower target replaced the stale wider one.
-        from chipcompiler.data.workspace_config import load_workspace_config
+        from chipcompiler.data.workspace.config import load_workspace_config
 
         assert load_workspace_config(workspace)["_flow"] == {"preset": "rtl2gds"}

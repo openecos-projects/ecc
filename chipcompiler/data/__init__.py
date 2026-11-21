@@ -101,7 +101,7 @@ from .workspace.layout import (
     YosysReport,
     YosysStep,
 )
-from .workspace_transaction import (
+from .workspace.transaction import (
     WorkspaceFileTransaction,
     recover_workspace_file_transaction,
 )

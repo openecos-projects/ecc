@@ -2,7 +2,7 @@ import json
 import shlex
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.engine.workspace_spec import describe_workspace_spec
+from chipcompiler.engine.workspace.spec import describe_workspace_spec
 from chipcompiler.params import list_schemas
 
 
