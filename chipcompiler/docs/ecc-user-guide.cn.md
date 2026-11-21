@@ -903,6 +903,16 @@ workspace 的已存 QoR 为对比基线。`project doctor`（不要与环境自�
 存在问题时退出码为 1；`--fix` 移除缺失目录的登记项、登记未注册的目录；无法读取的
 workspace 需要手动恢复文件，并保留其登记项。
 
+`project.json` 以绝对路径记录项目目录和每个 workspace 的目录。项目目录被改名、移动或
+复制之后，读取 manifest 的命令会报 `manifest_invalid`（`root_path ... does not match
+...`），`project doctor` 报告 `moved-project`。`project doctor --fix` 把项目重新定位到
+它当前所在的目录：先改写每个项目内 workspace 在 `config/*.json` 中保存的绝对路径，再
+改写 `project.json` 的 `root_path` 和 workspace 路径。登记在项目目录之外的 workspace
+保持不变。修复后的副本与原项目相互独立。已经跑完的步骤的结果不会被改写：布线后 LEC
+的结果绑定了它所比较的网表路径，所以在重新定位过的、已跑完的 workspace 上执行
+`ecc signoff export` 会要求重跑该步骤（`ecc run --workspace NAME --only postRouteLec
+--force`，然后 `--resume`）。
+
 ### 将 RTL 导入项目
 
 `ecc rtl import` 会把设计输入复制到项目自己的 `rtl/` 目录，

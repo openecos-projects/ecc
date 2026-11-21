@@ -264,8 +264,11 @@ def load_manifest(project_dir: str) -> ProjectManifest:
     if not root_path:
         raise ManifestError("invalid project manifest: root_path is required")
     if os.path.realpath(root_path) != os.path.realpath(project_dir):
+        # A project directory that was renamed, moved or copied: name the repair.
         raise ManifestError(
             f"invalid project manifest: root_path {root_path} does not match {project_dir}"
+            f" (repair a moved or copied project with: ecc project doctor --fix"
+            f" --project {project_dir})"
         )
     design_name = _optional_str(source.get("design_name"))
     if not design_name:

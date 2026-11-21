@@ -54,6 +54,29 @@ def record_derived_config(workspace: "Workspace") -> bool:
     return json_write(manifest_path, {"files": files})
 
 
+def rerecord_derived_configs(workspace_dir: str | Path, filenames: list[str]) -> bool:
+    """Record the current content of *filenames* as their last derivation.
+
+    For a rewrite that is itself part of a derivation-preserving operation
+    (a relocated project rebasing its paths): files that were untouched stay
+    untouched in the record. Files not named keep their record, so an edit
+    made before stays visible.
+    """
+    if not filenames:
+        return True
+    path = derived_config_manifest_path(workspace_dir)
+    manifest = json_read(path)
+    recorded = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(recorded, dict):
+        return True
+    config_dir = Path(workspace_dir) / "config"
+    for filename in filenames:
+        digest = file_digest(config_dir / filename)
+        if digest is not None and filename in recorded:
+            recorded[filename] = {"sha256": digest[0], "size": digest[1]}
+    return json_write(path, {**manifest, "files": recorded})
+
+
 def modified_derived_configs(workspace_dir: str | Path) -> list[str]:
     """Managed config files whose content differs from the last derivation.
 
