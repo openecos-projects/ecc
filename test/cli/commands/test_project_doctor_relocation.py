@@ -675,6 +675,27 @@ class TestProjectDoctorMovedProject:
         sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
         assert sdc_path.startswith(os.path.realpath(moved))
 
+    def test_fix_follows_a_config_link_inside_the_workspace(self, tmp_path, capsys, manifest_stubs):
+        """config -> shared-config in the same workspace: repaired, and repairable again."""
+        from chipcompiler.data.workspace.transaction import _BACKUP_NAME
+
+        project_dir = self._project(tmp_path, manifest_stubs)
+        workspace = project_dir / "ws_0001"
+        (workspace / "config").rename(workspace / "shared-config")
+        (workspace / "config").symlink_to("shared-config", target_is_directory=True)
+        assert _run_doctor(project_dir) == 0
+        moved = tmp_path / "gcd-moved"
+        project_dir.rename(moved)
+
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
+        sdc_path = _tool_config(moved / "ws_0001")[0]["sdc_path"]
+        assert sdc_path == f"{os.path.realpath(moved)}/ws_0001/origin/pre_CTS/TYP_25_TYPICAL.tcl"
+        assert not (moved / "ws_0001" / "home" / _BACKUP_NAME).exists()
+        assert _run_doctor(moved, "--fix") == 0
+        capsys.readouterr()
+
     def test_loader_names_the_repair_for_a_moved_project(self, tmp_path, manifest_stubs):
         from chipcompiler.project.manifest import ManifestError, load_manifest
 

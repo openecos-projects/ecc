@@ -276,9 +276,11 @@ def _write_workspace_rewrites(workspace_dir: str, rewrites, parameters) -> None:
     if parameters is not None:
         managed.append(Path(parameters.path))
     managed.append(derived_config_manifest_path(workspace_dir))
-    # A config directory linked elsewhere inside the project lies outside
-    # the workspace; the transaction covers the files inside it.
-    managed = [path for path in managed if _is_below(str(path.resolve()), str(root))]
+    # The transaction manages files under the workspace's own config/ and
+    # home/. A config directory linked elsewhere (inside the project, maybe
+    # inside the workspace) resolves outside them; those files are written
+    # without it, so the transaction is never handed a path it refuses.
+    managed = [path for path in managed if _transaction_managed(path, root)]
     transaction = WorkspaceFileTransaction.begin(root, managed)
     try:
         _write_config_rewrites(workspace_dir, rewrites)
@@ -287,6 +289,14 @@ def _write_workspace_rewrites(workspace_dir: str, rewrites, parameters) -> None:
     except BaseException:
         transaction.rollback()
         raise
+
+
+def _transaction_managed(path: Path, workspace: Path) -> bool:
+    try:
+        relative = path.resolve().relative_to(workspace)
+    except ValueError:
+        return False
+    return bool(relative.parts) and relative.parts[0] in ("config", "home")
 
 
 def _write_config_rewrites(workspace_dir: str, rewrites: list[tuple[Path, object]]) -> None:
