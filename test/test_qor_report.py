@@ -9,10 +9,13 @@ from chipcompiler.engine.signoff.report_checklist import (
     build_checklist_report,
     generate_checklist_report,
 )
+from test.analysis.qor.helpers import touch_qor_evidence
 from test.flow_fixture import step_fields
 
 
 def _write(path, payload):
+    if str(path).endswith("qor_metrics.json"):
+        touch_qor_evidence(path, payload)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f)
@@ -31,7 +34,7 @@ def _metric(metric_id, value, project_role="final", **overrides):
         "project_role": project_role,
         "step_role": "primary",
         "rating": {"gate": False, "score": True, "trend": True},
-        "source": {"kind": "analysis", "path": "x"},
+        "source": {"kind": "analysis", "path": "feature/x.json"},
     }
     record.update(overrides)
     return record
@@ -254,6 +257,12 @@ class TestBuildQorReport:
         assert by_key["timing"].state == "WATCH"
         assert report.overall_score == pytest.approx(52.5)
         assert report.scalar_summary.status == "RED"
+        # Only timing is evaluated (weight 0.30): the band is provisional.
+        assert report.scalar_summary.coverage == pytest.approx(0.30)
+        assert report.scalar_summary.band_provisional is True
+        text = generate_qor_report(_make_workspace(tmp_path))
+        assert "Status: RED (provisional)" in text
+        assert "Coverage: 30.0%" in text
 
     def test_dimension_scores_carry_the_five_coordinates(self, tmp_path):
         report = build_qor_report(_make_workspace(tmp_path))
@@ -334,6 +343,21 @@ class TestBuildQorReport:
         assert "(No active feasibility blockers detected)" in text
 
 
+class TestWriteQorReportSnapshot:
+    def test_prebuilt_snapshot_is_persisted_to_home_json(self, tmp_path):
+        from chipcompiler.analysis.qor import report_path, write_qor_report
+
+        workspace = _make_workspace(tmp_path)
+        report = build_qor_report(workspace)
+
+        destination = write_qor_report(workspace, report)
+
+        assert destination == report_path(workspace)
+        saved = json.loads(destination.read_text())
+        assert saved["timestamp"] == report.timestamp
+        assert saved["scoring_engine"] == report.scoring_engine
+
+
 class TestChecklistReport:
     def test_build_from_checklist_json(self, tmp_path):
         report = build_checklist_report(_make_workspace(tmp_path))
@@ -360,3 +384,14 @@ class TestChecklistReport:
     def test_unavailable_text(self, tmp_path):
         text = generate_checklist_report(_make_workspace(tmp_path, with_checklist=False))
         assert "Checklist unavailable" in text
+
+
+class TestGateEvidence:
+    def test_deleted_gate_evidence_makes_gate_unknown(self, tmp_path):
+        workspace = _make_workspace(tmp_path)
+        assert build_qor_report(workspace).feasibility.status != "UNKNOWN"
+        os.remove(os.path.join(workspace.directory, "lvs_ecc", "feature", "x.json"))
+        report = build_qor_report(workspace)
+        gate = next(g for g in report.feasibility.gates if g.id == "GATE_LVS")
+        assert gate.state == "unavailable"
+        assert report.feasibility.status == "UNKNOWN"

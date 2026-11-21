@@ -101,3 +101,13 @@ WORKSPACE_GATE_ALIASES = {
     gate_id: tuple(spec.id for spec in WORKSPACE_GATES if gate_id in spec.qor_gate_ids)
     for gate_id in _QOR_GATE_IDS
 }
+
+
+def gate_metric_ids() -> frozenset[str]:
+    """Metric ids that feed a workspace gate (value, TNS and violation count)."""
+    return frozenset(
+        metric_id
+        for spec in WORKSPACE_GATES
+        for metric_id in (spec.metric_id, spec.tns_metric, spec.nvp_metric)
+        if metric_id
+    )

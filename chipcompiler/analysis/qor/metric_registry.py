@@ -60,6 +60,39 @@ METRIC_REGISTRY = {
     "sta_worst_setup_corner": ("", "trend_only"),
 }
 
+# Optional physical validity ranges: metric id -> (low, high, low_inclusive).
+# ``None`` means unbounded. Values outside the range are physically impossible
+# (e.g. a percentage reported as a ratio) and are treated as UNKNOWN by the
+# loader instead of being scored. Ids absent here are only checked for being
+# finite. Signed ids (slacks) and ``place_rudy_utilization_max`` (may exceed
+# 1.0 when congested) are deliberately not capped.
+_NON_NEGATIVE = (0.0, None, True)
+METRIC_VALID_RANGE = {
+    "core_utilization": (0.0, 1.0, False),
+    "place_rudy_utilization_max": _NON_NEGATIVE,
+    "place_lutrudy_utilization_max": _NON_NEGATIVE,
+    "sta_frequency_mhz": (0.0, None, False),
+    **{
+        metric_id: _NON_NEGATIVE
+        for metric_id, (unit, _direction) in METRIC_REGISTRY.items()
+        if unit in ("um^2", "um", "count", "uW", "fF")
+    },
+}
+
+
+def metric_range_violation(metric_id, value):
+    """Return a short reason when ``value`` is outside the id's valid range."""
+    bounds = METRIC_VALID_RANGE.get(metric_id)
+    if bounds is None:
+        return None
+    low, high, low_inclusive = bounds
+    if low is not None and (value < low or (value == low and not low_inclusive)):
+        return f"must be {'>=' if low_inclusive else '>'} {low:g}"
+    if high is not None and value > high:
+        return f"must be <= {high:g}"
+    return None
+
+
 # Steps whose Success state and analysis payload the engine consumes.
 SCORED_STEP_VALUES = (
     "synthesis",

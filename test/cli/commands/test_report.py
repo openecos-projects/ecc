@@ -74,11 +74,21 @@ def report_mocks(monkeypatch):
 
     monkeypatch.setattr(qor_module, "build_qor_report", lambda ws: qor_report)
     monkeypatch.setattr(qor_module, "generate_qor_report", lambda ws, report=None: "QOR BODY")
+    json_writes = []
+    monkeypatch.setattr(
+        "chipcompiler.analysis.qor.write_qor_report",
+        lambda ws, analysis=None: json_writes.append((ws, analysis)),
+    )
     monkeypatch.setattr(checklist_module, "build_checklist_report", lambda ws: checklist_report)
     monkeypatch.setattr(
         checklist_module, "generate_checklist_report", lambda ws, report=None: "CHECKLIST BODY"
     )
-    return SimpleNamespace(workspace=workspace, qor=qor_report, checklist=checklist_report)
+    return SimpleNamespace(
+        workspace=workspace,
+        qor=qor_report,
+        checklist=checklist_report,
+        json_writes=json_writes,
+    )
 
 
 class TestReportQor:
@@ -121,6 +131,41 @@ class TestReportQor:
         assert record["path"] == expected
         with open(expected) as f:
             assert f.read() == "QOR BODY"
+
+    def test_qor_refreshes_workspace_json_from_same_snapshot(
+        self, capsys, create_cli_project, report_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
+        report_mocks.workspace.directory = run_dir
+
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
+
+        assert rc == 0
+        assert report_mocks.json_writes == [(report_mocks.workspace, report_mocks.qor)]
+
+    def test_qor_json_refresh_failure_only_warns(
+        self, monkeypatch, capsys, create_cli_project, report_mocks, plain_records
+    ):
+        project_dir = create_cli_project()
+        run_dir = os.path.join(project_dir, "default")
+        os.makedirs(run_dir)
+        report_mocks.workspace.directory = run_dir
+
+        def boom(ws, analysis=None):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("chipcompiler.analysis.qor.write_qor_report", boom)
+
+        rc = cli_main.run(["report", "qor", "--project", project_dir, "--plain"])
+
+        records = plain_records(capsys.readouterr().out)
+        assert rc == 0
+        assert records[0]["status"] == "written"
+        assert records[1]["warning"] == "qor_json_refresh_failed"
+        assert "disk full" in records[1]["reason"]
+        assert os.path.isfile(os.path.join(run_dir, "signoff", "gcd_qor_report.txt"))
 
     def test_qor_write_failure_is_a_structured_error_not_a_traceback(
         self, tmp_path, capsys, monkeypatch, create_cli_project, report_mocks, plain_records
@@ -167,6 +212,7 @@ class TestReportQor:
         assert rc == 0
         assert record["path"] == override
         assert os.path.isfile(override)
+        assert report_mocks.json_writes == []
 
     def test_qor_with_workspace_flag(self, tmp_path, capsys, monkeypatch, report_mocks):
         os.makedirs(tmp_path / "ws")

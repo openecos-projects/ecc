@@ -154,3 +154,92 @@ class TestRobustnessQuality:
         _, dims = _dimensions(make_inputs(metrics))
         assert dims["robustness"].value is None
         assert dims["robustness"].state == "UNKNOWN"
+
+
+class TestCalibrationContainment:
+    def test_calibration_error_only_unknowns_its_dimension(self, monkeypatch):
+        from chipcompiler.analysis.qor import dimensions as dims_mod
+        from chipcompiler.analysis.qor.calibration import CalibrationError
+
+        def _power(bundle, inputs):
+            raise CalibrationError("non-finite clamp input: nan")
+
+        monkeypatch.setattr(dims_mod, "_power", _power)
+        _, dims = _dimensions(make_inputs(gcd_metrics(), tclk_ns=20.0))
+        assert dims["power"].value is None
+        assert dims["power"].state == "UNKNOWN"
+        assert dims["timing"].value is not None
+
+
+class TestScoreBounds:
+    def test_inverted_cts_buffer_counts_are_unknown(self):
+        # Reproducer for the >100 composite: min_buffer > max_buffer used to
+        # yield a negative imbalance and a robustness score above 100.
+        metrics = gcd_metrics()
+        metrics["clock_path_max_buffer"].value = 4
+        metrics["clock_path_min_buffer"].value = 50
+        _, dims = _dimensions(make_inputs(metrics, corners=gcd_corners(), tclk_ns=20.0))
+        assert dims["robustness"].value is None
+        assert dims["robustness"].state == "UNKNOWN"
+
+    def test_every_dimension_is_clamped_to_unit_scale(self, monkeypatch):
+        from chipcompiler.analysis.qor import dimensions as dims_mod
+        from chipcompiler.analysis.qor.models import QorDimension
+
+        def _overflow(bundle, inputs):
+            return QorDimension(key="power", value=227.9, state="PASS", features=[])
+
+        def _underflow(bundle, inputs):
+            return QorDimension(key="area", value=-12.0, state="FAIL", features=[])
+
+        monkeypatch.setattr(dims_mod, "_power", _overflow)
+        monkeypatch.setattr(dims_mod, "_area", _underflow)
+        _, dims = _dimensions(make_inputs(gcd_metrics(), tclk_ns=20.0))
+        assert dims["power"].value == 100.0
+        assert dims["area"].value == 0.0
+
+    def test_nonfinite_dimension_score_becomes_unknown(self, monkeypatch):
+        from chipcompiler.analysis.qor import dimensions as dims_mod
+        from chipcompiler.analysis.qor.models import QorDimension
+
+        monkeypatch.setattr(
+            dims_mod,
+            "_power",
+            lambda _b, _i: QorDimension(key="power", value=float("nan"), state="PASS", features=[]),
+        )
+        _, dims = _dimensions(make_inputs(gcd_metrics(), tclk_ns=20.0))
+        assert dims["power"].value is None
+        assert dims["power"].state == "UNKNOWN"
+
+
+class TestPublishedOnlyFeaturesDoNotMoveScores:
+    """TNS / FEP / hold margin / EGR GCell fraction are published, never scored."""
+
+    def test_scores_and_states_ignore_published_only_inputs(self):
+        base_metrics = gcd_metrics()
+        _, base = _dimensions(make_inputs(dict(base_metrics), tclk_ns=1.0, corners=gcd_corners()))
+
+        stressed = dict(base_metrics)
+        for metric_id, value in (
+            ("sta_setup_tns", -1000.0),
+            ("sta_hold_tns", -1000.0),
+            ("sta_hold_wns", -0.5),
+            ("sta_setup_violation_count", 9999),
+            ("sta_hold_violation_count", 9999),
+        ):
+            stressed[metric_id] = make_metric(metric_id, value)
+        _, after = _dimensions(
+            make_inputs(
+                stressed,
+                tclk_ns=1.0,
+                corners=gcd_corners(),
+                egr_gcell_count=100,
+                egr_overflowed_gcell_count=100,
+            )
+        )
+        for key, dimension in base.items():
+            assert after[key].value == dimension.value
+            assert after[key].state == dimension.state
+            assert [f.feature_id for f in after[key].features] == [
+                f.feature_id for f in dimension.features
+            ]

@@ -48,6 +48,9 @@ class TestPsiTarget:
         assert psi_target(0.925, 0.45, 0.70, 1.0) == pytest.approx(0.25)
         assert psi_target(1.0, 0.45, 0.70, 1.0) == 0.0
 
+    def test_negative_value_floors_at_zero(self):
+        assert psi_target(-0.3, 0.45, 0.70, 1.0) == 0.0
+
     def test_strict_positivity_required(self):
         with pytest.raises(CalibrationError):
             psi_target(0.1, 0.0, 0.7, 0.85)

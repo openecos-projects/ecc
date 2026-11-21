@@ -4,6 +4,12 @@ from pathlib import Path
 from chipcompiler.utility import json_read
 
 
+def _values_conflict(first: object, second: object) -> bool:
+    if isinstance(first, bool) != isinstance(second, bool):
+        return True
+    return bool(first != second)
+
+
 class QorMetrics:
     """Read the current V3 scalar metric contract for checklist checks."""
 
@@ -11,6 +17,7 @@ class QorMetrics:
         self.path = Path(path) if path else None
         self.error: str | None = None
         self.records: dict[str, dict] = {}
+        self.conflicts: set[str] = set()
         self._load()
 
     def _load(self) -> None:
@@ -33,14 +40,20 @@ class QorMetrics:
             if not isinstance(metric_id, str) or not metric_id:
                 self.error = "qor_metrics.json contains a metric without a valid id"
                 return
-            if metric_id in self.records:
-                self.error = f"qor_metrics.json contains duplicate metric id {metric_id}"
-                return
-            self.records[metric_id] = record
+            existing = self.records.get(metric_id)
+            if existing is None:
+                self.records[metric_id] = record
+            elif _values_conflict(existing.get("value"), record.get("value")):
+                # Identical duplicates are harmless; conflicting ones make only
+                # that metric unknown, as in the QoR report loader.
+                self.conflicts.add(metric_id)
 
     def number(self, metric_id: str) -> tuple[float | None, str | None]:
         if self.error is not None:
             return None, self.error
+
+        if metric_id in self.conflicts:
+            return None, f"qor_metrics.json contains conflicting duplicate metric id {metric_id}"
 
         record = self.records.get(metric_id)
         if record is None:

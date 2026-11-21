@@ -1,4 +1,4 @@
-"""The seven authoritative physical signoff gates (spec §10).
+"""The authoritative physical signoff gates (spec §10).
 
 Gate evaluation distinguishes a physical failure from missing evidence:
 a missing report or corner never becomes PHYSICAL_FAIL. Reduction order
@@ -16,6 +16,55 @@ _PHYSICAL_FAIL = "PHYSICAL_FAIL"
 _UNKNOWN = "UNKNOWN"
 _NOT_VERIFIED = "NOT_VERIFIED"
 _PASS = "PASS"
+
+# Aggregate STA slacks are written rounded to 3 decimals; allow that much.
+_AGGREGATE_WS_TOLERANCE_NS = 1.5e-3
+
+
+def corner_slack_check(inputs, metric_id: str, nvp_metric: str | None, ws: float):
+    """Cross-check an aggregate STA slack against the per-corner summaries.
+
+    Returns ``(corner_ws, reason)``. ``corner_ws`` is the worst per-corner
+    slack, or None when no per-corner data exists (the aggregate alone then
+    decides). ``reason`` is set when the
+    per-corner evidence is incomplete or disagrees with the aggregate.
+    """
+    is_setup = metric_id.startswith("sta_setup")
+    kind = "setup" if is_setup else "hold"
+    loaded = [
+        (corner.setup_ws if is_setup else corner.hold_ws, corner.corner)
+        for corner in inputs.corners
+        if (corner.setup_ws if is_setup else corner.hold_ws) is not None
+    ]
+    expected = inputs.sta_expected_corners
+    if not loaded:
+        if getattr(inputs, "sta_corner_parse_failures", 0) > 0:
+            return None, f"no valid per-corner {kind} summary could be parsed"
+        # No per-corner evidence at all (legacy or aggregate-only workspace):
+        # the aggregate alone decides, as before.
+        return None, None
+    corner_ws, corner = min(loaded)
+    reason = None
+    if expected is not None and len(loaded) < expected:
+        reason = (
+            f"only {len(loaded)} of {int(expected)} expected corners have a valid {kind} summary"
+        )
+    elif abs(corner_ws - ws) > _AGGREGATE_WS_TOLERANCE_NS:
+        reason = (
+            f"aggregate {metric_id}={ws:g} disagrees with worst per-corner {kind} "
+            f"slack {corner_ws:g} ({corner})"
+        )
+    elif nvp_metric:
+        nvp = inputs.value(nvp_metric)
+        if nvp is not None:
+            counts = [c.setup_nvp if is_setup else c.hold_nvp for c in inputs.corners]
+            valid_counts = [count for count in counts if count is not None]
+            if len(valid_counts) == len(inputs.corners) and sum(valid_counts) != int(nvp):
+                reason = (
+                    f"aggregate {nvp_metric}={int(nvp)} disagrees with per-corner "
+                    f"total {sum(valid_counts)}"
+                )
+    return corner_ws, reason
 
 
 def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
@@ -46,6 +95,20 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             metrics=[spec.metric_id],
             availability="corrupt",
         )
+    corner_ws, reason = corner_slack_check(inputs, spec.metric_id, spec.nvp_metric, ws)
+    if corner_ws is not None:
+        ws = min(ws, corner_ws)  # the worst corner decides
+    if ws >= 0.0 and reason is not None:
+        return FeasibilityGate(
+            id=spec.id,
+            stage=spec.stage,
+            state="unavailable",
+            predicate=f"{spec.metric_id} >= 0.0",
+            blocks_tapeout=True,
+            metrics=[spec.metric_id],
+            availability="corrupt",
+            reason=reason,
+        )
     tns = inputs.value(spec.tns_metric) if spec.tns_metric else None
     nvp_value = inputs.value(spec.nvp_metric) if spec.nvp_metric else None
     slack = SlackView(
@@ -62,6 +125,7 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
         predicate=f"{spec.metric_id} >= 0.0",
         blocks_tapeout=True,
         metrics=[spec.metric_id],
+        reason=reason,
         timing_slack=slack,
     )
 

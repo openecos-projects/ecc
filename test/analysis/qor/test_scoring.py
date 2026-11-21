@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from chipcompiler.analysis.qor.dimensions import evaluate_dimensions
@@ -73,6 +75,37 @@ class TestScalarSummary:
         summary, _ = _summary(make_inputs(metrics, tclk_ns=20.0))
         assert summary.score == pytest.approx(100.0)
         assert summary.status == "GREEN"
+        # The composite is unchanged, but the band is provisional: only
+        # 0.70 of the balanced weight was evaluated.
+        assert summary.coverage == pytest.approx(0.70)
+        assert summary.band_provisional is True
+
+    def test_full_coverage_is_not_provisional(self):
+        feasibility = SimpleNamespace(status="PASS")
+        full = {key: SimpleNamespace(value=95.0) for key in PROFILES["balanced"]}
+        summary = evaluate_scalar_summary(feasibility, full, "balanced")
+        assert summary.coverage == pytest.approx(1.0)
+        assert summary.band_provisional is False
+        partial = dict(full, power=SimpleNamespace(value=None))
+        summary = evaluate_scalar_summary(feasibility, partial, "balanced")
+        assert summary.score == pytest.approx(95.0)
+        assert summary.coverage == pytest.approx(0.85)
+        assert summary.band_provisional is True
+
+    def test_reference_gcd_is_provisional(self):
+        summary, _ = _summary(make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0))
+        assert summary.coverage == pytest.approx(0.85)
+        assert summary.band_provisional is True
+
+    def test_veto_and_not_rated_carry_no_coverage(self):
+        states = {
+            step: "Success"
+            for step in ("synthesis", "post_floorplan", "placement", "cts", "routing")
+        }
+        states["drc"] = "Unstart"
+        summary, _ = _summary(make_inputs(gcd_metrics(), states))
+        assert summary.coverage is None
+        assert summary.band_provisional is False
 
     def test_profile_weights_change_ranking(self):
         base = make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0)
