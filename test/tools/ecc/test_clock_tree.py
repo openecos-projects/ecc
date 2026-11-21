@@ -11,6 +11,7 @@ from chipcompiler.tools.ecc.clock_tree import (
     _select_typical_spef,
     capture_filler_clock_tree,
 )
+from chipcompiler.utility.threads import thread_budget
 
 
 def _sta_config(tmp_path: Path, *, typ_temperature: int = 25) -> tuple[Path, Path]:
@@ -140,7 +141,8 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
             self.calls.append(("init_rcx", config))
             payload = json.loads(Path(config).read_text(encoding="utf-8"))
             assert payload == rcx_payload | {
-                "output": str(tmp_path / "filler_ecc/data/clock_tree/rcx")
+                "thread_num": thread_budget(default=64),
+                "output": str(tmp_path / "filler_ecc/data/clock_tree/rcx"),
             }
             _write_spef(Path(payload["output"]) / "spef_writer" / "gcd_TYPICAL_25C.spef")
             return True
@@ -175,6 +177,9 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
         "destroy_sta",
     ]
     assert module.native.calls[3][1]["config_dict"]["-timing_corner"] == "TYP"
+    assert module.native.calls[3][1]["config_dict"]["-thread_number"] == str(
+        thread_budget(default=64)
+    )
     assert graph is not None
     assert graph["stage"] == "filler"
     assert graph["analysis_source"] == "ista_typical"
@@ -182,3 +187,78 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
     assert graph["liberty_corner"] == "TYP"
     assert graph["temperature_c"] == 25.0
     assert "SPEF=gcd_TYPICAL_25C.spef" in graph["diagnostics"][-1]
+
+
+def test_capture_filler_clock_tree_honors_ecc_threads(tmp_path, monkeypatch):
+    sta_config, _liberty = _sta_config(tmp_path)
+    rcx_config = tmp_path / "rcx_ecc.json"
+    rcx_config.write_text(json.dumps({"thread_num": 64}), encoding="utf-8")
+    sdc = tmp_path / "gcd.sdc"
+    sdc.write_text("create_clock -period 10 clk\n", encoding="utf-8")
+    monkeypatch.setenv("ECC_THREADS", "5")
+    workspace = Workspace(
+        directory=tmp_path,
+        pdk=PDK(name="fixture", sdc=sdc),
+        parameters=Parameters(
+            path=tmp_path / "home" / "params.toml",
+            data={"geometry": {"clock_tree": True}},
+        ),
+        config={StepEnum.STA.value: sta_config, StepEnum.RCX.value: rcx_config},
+    )
+    step = SimpleNamespace(
+        name=StepEnum.FILLER.value,
+        directory=tmp_path / "filler_ecc",
+        data=SimpleNamespace(steps={}),
+    )
+
+    class FakeNative:
+        def __init__(self):
+            self.calls = []
+
+        def lib_init(self, **_kwargs):
+            return True
+
+        def sdc_init(self, _path):
+            return True
+
+        def spef_init(self, _path):
+            return True
+
+        def init_sta(self, **kwargs):
+            self.calls.append(kwargs)
+            return True
+
+        def run_sta(self):
+            return True
+
+        def sta_clock_graph(self):
+            return {"clocks": [], "diagnostics": []}
+
+        def destroy_sta(self):
+            return True
+
+    class FakeModule:
+        def __init__(self):
+            self.rcx_thread_num = None
+            self.native = FakeNative()
+
+        def get_ecc(self):
+            return self.native
+
+        def init_rcx(self, config):
+            payload = json.loads(Path(config).read_text(encoding="utf-8"))
+            self.rcx_thread_num = payload["thread_num"]
+            _write_spef(Path(payload["output"]) / "spef_writer" / "gcd_TYPICAL_25C.spef")
+            return True
+
+        def run_rcx(self):
+            return True
+
+        def destroy_rcx(self):
+            return True
+
+    module = FakeModule()
+    capture_filler_clock_tree(workspace, step, module)
+
+    assert module.rcx_thread_num == 5
+    assert module.native.calls[0]["config_dict"]["-thread_number"] == "5"

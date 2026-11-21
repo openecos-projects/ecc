@@ -1,6 +1,7 @@
 """Workspace-local parameter persistence shared by Engine and CLI."""
 
 from copy import deepcopy
+from pathlib import Path
 
 from chipcompiler.data.config_params.common import WORKSPACE_WIDE, ConfigTarget
 from chipcompiler.data.parameter import update_parameters
@@ -265,3 +266,41 @@ def _nested_value(data: object, path: tuple[str, ...]) -> object:
             return _MISSING
         current = current[key]
     return deepcopy(current)
+
+
+def _default_dreamplace_threads(pdk) -> int | None:
+    """Return the immutable PDK/template DreamPlace ``num_threads`` cap, if valid."""
+    from .tool_configs import tool_config
+
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    template = tool_config(
+        root_dir / "tools" / "ecc_dreamplace" / "configs",
+        "dreamplace_ecc.json",
+        pdk,
+    )
+    value = template.get("num_threads")
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def refresh_dreamplace_config(workspace) -> None:
+    """Write the baseline DreamPlace config with the shared CPU thread budget."""
+    from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
+    from chipcompiler.utility import json_write
+    from chipcompiler.utility.threads import thread_budget
+
+    dreamplace = json_read(workspace.config["dreamplace"])
+    if not dreamplace:
+        raise FileNotFoundError(
+            f"DreamPlace config missing or corrupt: {workspace.config['dreamplace']}"
+        )
+    dreamplace["lef_input"] = [
+        str(path) for path in [workspace.pdk.tech, *workspace.pdk.lefs] if path
+    ]
+    dreamplace["base_design_name"] = workspace.design.name
+    # Keep the template cap unless ECC_THREADS explicitly raises it or the host has fewer CPUs;
+    # explicit DreamPlace parameter overrides still win below.
+    dreamplace["num_threads"] = thread_budget(default=_default_dreamplace_threads(workspace.pdk))
+    dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
+    json_write(workspace.config["dreamplace"], dreamplace)

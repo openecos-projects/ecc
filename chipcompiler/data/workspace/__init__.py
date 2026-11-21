@@ -427,8 +427,9 @@ def init_workspace_config(workspace: Workspace) -> None:
 def refresh_workspace_config(workspace: Workspace) -> None:
     """Reload the workspace configuration and refresh configs derived from parameters/PDK."""
     from chipcompiler.params.targets import derive_parameter_configs
-    from chipcompiler.tools.ecc_dreamplace.parameter_overrides import apply_parameter_overrides
     from chipcompiler.utility import json_read, json_write
+
+    from .parameters import refresh_dreamplace_config
 
     _reload_workspace_parameters(workspace)
 
@@ -482,17 +483,7 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     derive_parameter_configs(workspace.config, workspace.parameters.data)
     _refresh_emir_config(workspace)
 
-    dreamplace = json_read(workspace.config["dreamplace"])
-    if not dreamplace:
-        raise FileNotFoundError(
-            f"DreamPlace config missing or corrupt: {workspace.config['dreamplace']}"
-        )
-    dreamplace["lef_input"] = [
-        str(path) for path in [workspace.pdk.tech, *workspace.pdk.lefs] if path
-    ]
-    dreamplace["base_design_name"] = workspace.design.name
-    dreamplace = apply_parameter_overrides(dreamplace, workspace.parameters.data)
-    json_write(workspace.config["dreamplace"], dreamplace)
+    refresh_dreamplace_config(workspace)
 
     from .config_manifest import record_derived_config
     from .config_overrides import apply_config_overrides

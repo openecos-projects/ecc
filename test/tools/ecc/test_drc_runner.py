@@ -12,7 +12,13 @@ class FakeDrcModule(ECCToolsModule):
             ("update_step_paths", {"output_dir": output_dir, "feature_dir": feature_dir})
         )
 
-    def init_drc(self, output_dir: PathArg, therad_number: int = 128):
+    def init_drc(
+        self,
+        output_dir: PathArg,
+        thread_number: int | None = None,
+        *,
+        therad_number: int | None = None,
+    ):
         self.calls.append(("init_drc", {"output_dir": output_dir}))
 
     def run_drc(self) -> bool:
