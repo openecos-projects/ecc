@@ -89,7 +89,11 @@ def derive_workspace(
         staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
         staging.rmdir()
         try:
-            shutil.copytree(source, staging)
+
+            def ignore_source_agent(path: str, _names: list[str]) -> list[str]:
+                return [".agent"] if Path(path) == source else []
+
+            shutil.copytree(source, staging, ignore=ignore_source_agent)
             home = staging / "home"
             for name in (
                 STALE_SNAPSHOT_FILENAME,
