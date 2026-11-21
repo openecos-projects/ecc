@@ -47,7 +47,7 @@ ecc report qor -o /tmp/qor.txt        # custom output path
   ECC QoR ANALYSIS REPORT - Design: gcd
   Workspace: ~/ecc-demo/gcd/ws_0001
 ==============================================================================
-  FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]
+  FEASIBILITY STATUS : PASS [All 10 Physical Signoff Gates Clean]
   EVIDENCE STATE     : HIGH [Integrity: 100.0%, Coverage: 100.0%, Consistency: 100.0%]
   QoR COMPOSITE      : 99.0 / 100 (Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%)
 ------------------------------------------------------------------------------
@@ -92,7 +92,7 @@ When a dimension cannot be evaluated (stage not run, data missing, no budget) it
 
 ### 2.2 Physical Feasibility (seven signoff gates)
 
-Feasibility answers "can this layout be signed off", reduced from seven zero-tolerance gates (details in §5):
+Feasibility answers "can this layout be signed off", reduced from ten zero-tolerance gates (details in §5):
 
 ```
 PHYSICAL_FAIL (any gate failed) ≻ UNKNOWN (corrupt evidence) ≻ NOT_VERIFIED (stage not executed) ≻ PASS
@@ -251,16 +251,20 @@ Inputs: T_clk = 20 ns (frequency_max = 50 MHz), WS = +16.622 ns, HPWL = 3143.52 
 | Q_R | 0.5·0 + 0.5·(2.358/20) = 0.1179 → **94.1** | same |
 | Composite | (0.30+0.25+0.15)·100 + 0.15·94.105 over 0.85 → **98.96 GREEN** | 77.97/0.85 → **91.7 GREEN** |
 
-## 5. Feasibility Gates (7)
+## 5. Feasibility Gates (11)
 
 | Gate | Stage | Input metric | Pass predicate |
 |---|---|---|---|
 | GATE_DRC | DRC | `drc_count` | == 0 |
 | GATE_LVS | LVS | `lvs_count` | == 0 |
+| GATE_ANTENNA | Antenna | `antenna_violation_count` | == 0 (`antenna_signal_net_count > 0`, `antenna_gate_pin_count > 0`; evaluated when `antenna_check` is in flow) |
 | GATE_SETUP_SLACK | STA | `sta_setup_wns` (WS) | ≥ 0.0 ns |
 | GATE_HOLD_SLACK | STA | `sta_hold_wns` (WS) | ≥ 0.0 ns |
 | GATE_SETUP_NVP | STA | `sta_setup_violation_count` | == 0 |
 | GATE_HOLD_NVP | STA | `sta_hold_violation_count` | == 0 |
+| GATE_MAX_TRANSITION | STA | `sta_max_transition_violation_count` | == 0 |
+| GATE_MAX_CAPACITANCE | STA | `sta_max_capacitance_violation_count` | == 0 |
+| GATE_MAX_FANOUT | STA | `sta_max_fanout_violation_count` | == 0 |
 | GATE_HARDEN_ARTIFACTS | Harden | `harden_artifact_missing_count` | == 0 (GDS/LEF/LIB present) |
 
 Key points:
@@ -270,6 +274,7 @@ Key points:
 - Intermediate-stage anomalies (detailed-routing violations, placement congestion overflow) only trigger feature-level WATCH/FAIL diagnoses — only **final signoff checks** that persist trigger PHYSICAL_FAIL.
 - **Setup/hold slack gates are evaluated per corner** from the per-corner `qor_summary.json` files and cross-checked against the aggregate `sta_setup/hold_wns` and violation counts: any failing corner → FAIL (the worst corner decides); fewer valid corner summaries than `sta_expected_corner_count`, or a disagreement beyond 1.5 ps (slack) / any difference (violation total) → `corrupt` (UNKNOWN) with a `reason` on the gate. A workspace with no per-corner summaries at all is still decided by the aggregate alone.
 - Timing gates carry a full slack view: `ws_ns` (signed), `wns_ns` (clamped), `tns_ns`, `nvp`, `worst_corner`.
+- In step signoff summaries and `home/checklist.json`, `qor.sta.drv_clean` is emitted with `blocking: false` / `policy: "warn"` (advisory) so DRV violations are surfaced without blocking signoff export while physical DRV repair is pending.
 
 ## 6. Evidence Completeness Index I_E
 
@@ -363,7 +368,7 @@ Placement: `place_hpwl`, `place_grwl`, `place_flute_wirelength`, `place_congesti
 CTS: `cts_buffer_count`, `cts_inverter_count`, `clock_path_max_buffer/min_buffer`, `clock_wirelength`;
 Routing: `route_wirelength`, `route_via_count`;
 RCX: `rcx_spef_file_count`, `rcx_expected/missing_corner_count`, `rcx_spef_parse_failure_count`, `rcx_worst_total/coupling_capacitance_ff`;
-STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
+STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_max_transition/max_capacitance/max_fanout_violation_count` (DRV counts summed over corners from `design_statistics`), `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
 Power analysis: `power_analysis_internal_uw`, `power_analysis_switching_uw`, `power_analysis_dynamic_uw`, `power_analysis_leakage_uw` (legacy `synthesis_power_*` workspaces remain readable);
 Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 

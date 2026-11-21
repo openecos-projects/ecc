@@ -260,6 +260,7 @@ def _make_signoff_workspace(
         _qor_summary(
             _qor_gate("qor.sta.setup_closed", "STA setup closure"),
             _qor_gate("qor.sta.hold_closed", "STA hold closure"),
+            _qor_gate("qor.sta.drv_clean", "STA max transition / capacitance / fanout"),
         ),
     )
     _write(workspace_dir / "routing_ecc" / "report" / "route.db.rpt")

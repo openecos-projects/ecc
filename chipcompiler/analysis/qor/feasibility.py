@@ -1,4 +1,4 @@
-"""The authoritative physical signoff gates (spec §10).
+"""The authoritative physical signoff gates (spec §10), including the STA DRV gates.
 
 Gate evaluation distinguishes a physical failure from missing evidence:
 a missing report or corner never becomes PHYSICAL_FAIL. Reduction order
@@ -132,6 +132,10 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
 
 def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
     state = inputs.step_state(spec.step)
+    predicate = " and ".join(
+        [*(f"{metric_id} > 0" for metric_id in spec.coverage_metrics), f"{spec.metric_id} == 0"]
+    )
+    gate_metrics = [spec.metric_id, *spec.coverage_metrics]
     if state != StateEnum.Success.value:
         return FeasibilityGate(
             id=spec.id,
@@ -153,13 +157,46 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             metrics=[spec.metric_id],
             availability="corrupt",
         )
+    if value != 0:
+        return FeasibilityGate(
+            id=spec.id,
+            stage=spec.stage,
+            state="failed",
+            predicate=predicate,
+            blocks_tapeout=True,
+            metrics=gate_metrics,
+        )
+    for coverage_metric in spec.coverage_metrics:
+        covered = inputs.value(coverage_metric)
+        if covered is None:
+            return FeasibilityGate(
+                id=spec.id,
+                stage=spec.stage,
+                state="unavailable",
+                predicate=predicate,
+                blocks_tapeout=True,
+                metrics=gate_metrics,
+                availability="corrupt",
+            )
+        if covered <= 0:
+            # The check ran but analysed nothing (no rules / no gate areas):
+            # a zero count is not evidence, so the gate cannot pass.
+            return FeasibilityGate(
+                id=spec.id,
+                stage=spec.stage,
+                state="unavailable",
+                predicate=predicate,
+                blocks_tapeout=True,
+                metrics=gate_metrics,
+                availability="not_verified",
+            )
     return FeasibilityGate(
         id=spec.id,
         stage=spec.stage,
-        state="passed" if value == 0 else "failed",
-        predicate=f"{spec.metric_id} == 0",
+        state="passed",
+        predicate=predicate,
         blocks_tapeout=True,
-        metrics=[spec.metric_id],
+        metrics=gate_metrics,
     )
 
 
@@ -167,6 +204,7 @@ def evaluate_feasibility(inputs) -> Feasibility:
     gates = [
         _slack_gate(spec, inputs) if spec.tns_metric else _count_gate(spec, inputs)
         for spec in WORKSPACE_GATES
+        if not (spec.only_if_in_flow and inputs.step_state(spec.step) is None)
     ]
 
     if any(gate.state == "failed" for gate in gates):

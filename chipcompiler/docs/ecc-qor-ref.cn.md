@@ -47,7 +47,7 @@ ecc report qor -o /tmp/qor.txt        # 自定义输出路径
   ECC QoR ANALYSIS REPORT - Design: gcd
   Workspace: ~/ecc-demo/gcd/ws_0001
 ==============================================================================
-  FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]
+  FEASIBILITY STATUS : PASS [All 10 Physical Signoff Gates Clean]
   EVIDENCE STATE     : HIGH [Integrity: 100.0%, Coverage: 100.0%, Consistency: 100.0%]
   QoR COMPOSITE      : 99.0 / 100 (Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%)
 ------------------------------------------------------------------------------
@@ -249,16 +249,20 @@ Q_summary = 0.0                          若 Feasibility = PHYSICAL_FAIL（否�
 | Q_R | 0.5·0 + 0.5·(2.358/20) = 0.1179 → **94.1** | 同左 |
 | 总分 | (0.30+0.25+0.15)·100 + 0.15·94.105，除以 0.85 → **98.96 GREEN** | 77.97/0.85 → **91.7 GREEN** |
 
-## 5. 可行性门禁（7 条）
+## 5. 可行性门禁（11 条）
 
 | 门禁 | 阶段 | 输入指标 | 通过谓词 |
 |---|---|---|---|
 | GATE_DRC | DRC | `drc_count` | == 0 |
 | GATE_LVS | LVS | `lvs_count` | == 0 |
+| GATE_ANTENNA | Antenna | `antenna_violation_count` | == 0（要求 `antenna_signal_net_count > 0`、`antenna_gate_pin_count > 0`；仅当流程含 `antenna_check` 时评估） |
 | GATE_SETUP_SLACK | STA | `sta_setup_wns`（WS） | ≥ 0.0 ns |
 | GATE_HOLD_SLACK | STA | `sta_hold_wns`（WS） | ≥ 0.0 ns |
 | GATE_SETUP_NVP | STA | `sta_setup_violation_count` | == 0 |
 | GATE_HOLD_NVP | STA | `sta_hold_violation_count` | == 0 |
+| GATE_MAX_TRANSITION | STA | `sta_max_transition_violation_count` | == 0 |
+| GATE_MAX_CAPACITANCE | STA | `sta_max_capacitance_violation_count` | == 0 |
+| GATE_MAX_FANOUT | STA | `sta_max_fanout_violation_count` | == 0 |
 | GATE_HARDEN_ARTIFACTS | Harden | `harden_artifact_missing_count` | == 0（GDS/LEF/LIB 齐全） |
 
 要点：
@@ -268,6 +272,7 @@ Q_summary = 0.0                          若 Feasibility = PHYSICAL_FAIL（否�
 - 中间步骤的异常（布线中的 DR 违规、布局拥塞溢出）只触发特征级 WATCH/FAIL 诊断，不触发 PHYSICAL_FAIL——只有**最终签核检查**持续失败才算。
 - **setup/hold slack 门禁按逐 corner 评估**：读取逐 corner 的 `qor_summary.json` 并与总汇总 `sta_setup/hold_wns` 及违规数交叉校验：任一 corner 失败 → FAIL（最差 corner 决定）；有效 corner 少于 `sta_expected_corner_count`、slack 偏差超过 1.5 ps 或违规总数不一致 → `corrupt`（UNKNOWN）并附带 `reason`。完全没有逐 corner 摘要的工作区仍由总汇总决定。
 - 时序门禁附带完整 slack 视图：`ws_ns`（有符号）、`wns_ns`（钳位）、`tns_ns`、`nvp`、`worst_corner`。
+- 在步骤签核摘要与 `home/checklist.json` 中，`qor.sta.drv_clean` 以 `blocking: false` / `policy: "warn"`（告警模式）输出，在不阻断签核导出的前提下暴露 DRV 违例。
 
 ## 6. 证据完整性指数 I_E
 
@@ -361,7 +366,7 @@ qor_power_budget_w = 0.5
 CTS：`cts_buffer_count`、`cts_inverter_count`、`clock_path_max_buffer/min_buffer`、`clock_wirelength`；
 布线：`route_wirelength`、`route_via_count`；
 RCX：`rcx_spef_file_count`、`rcx_expected/missing_corner_count`、`rcx_spef_parse_failure_count`、`rcx_worst_total/coupling_capacitance_ff`；
-STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup/hold_violation_count`、`sta_frequency_mhz`、`sta_corner_count`、`sta_expected/missing_corner_count`、`sta_worst_setup_corner`；
+STA：`sta_setup/hold_wns`（有符号 WS）、`sta_setup/hold_tns`、`sta_setup/hold_violation_count`、`sta_max_transition/max_capacitance/max_fanout_violation_count`、`sta_frequency_mhz`、`sta_corner_count`、`sta_expected/missing_corner_count`、`sta_worst_setup_corner`；
 功耗分析：`power_analysis_internal_uw`、`power_analysis_switching_uw`、`power_analysis_dynamic_uw`、`power_analysis_leakage_uw`（旧 workspace 的 `synthesis_power_*` 产物仍可兼容读取）；
 签核：`drc_count`、`lvs_count`、`harden_artifact_missing_count`。
 

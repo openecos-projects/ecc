@@ -150,11 +150,100 @@ def test_sta_quality_gates_require_all_corner_coverage_and_closure(tmp_path):
                 _record("sta_hold_wns", 0.1),
                 _record("sta_hold_tns", 0),
                 _record("sta_hold_violation_count", 0),
+                _record("sta_max_transition_violation_count", 0),
+                _record("sta_max_capacitance_violation_count", 0),
+                _record("sta_max_fanout_violation_count", 0),
             ],
         )
     }
     assert gates["qor.sta.setup_closed"]["state"] == "failed"
     assert gates["qor.sta.hold_closed"]["state"] == "pass"
+    assert gates["qor.sta.drv_clean"]["state"] == "pass"
+
+
+def _drv_gate_state(tmp_path, drv_records):
+    feature_path = tmp_path / "sta_ecc" / "feature" / "sta.step.json"
+    feature_path.parent.mkdir(parents=True, exist_ok=True)
+    feature_path.write_text(
+        json.dumps({"sta": {"signoff_metrics": {"coverage": {"status": "pass"}}}}),
+        encoding="utf-8",
+    )
+    step = EccStep(
+        name=StepEnum.STA.value,
+        directory=tmp_path / "sta_ecc",
+        feature=EccFeature(step=feature_path),
+    )
+    gates = {gate["id"]: gate for gate in _quality_gates(step, drv_records)}
+    return gates["qor.sta.drv_clean"]
+
+
+def test_sta_drv_gate_fails_on_any_violation_and_is_unknown_without_data(tmp_path):
+    clean = [
+        _record("sta_max_transition_violation_count", 0),
+        _record("sta_max_capacitance_violation_count", 0),
+        _record("sta_max_fanout_violation_count", 0),
+    ]
+    assert _drv_gate_state(tmp_path, clean)["state"] == "pass"
+
+    violated = [_record("sta_max_capacitance_violation_count", 4), *clean[:1], clean[2]]
+    gate = _drv_gate_state(tmp_path, violated)
+    assert gate["state"] == "failed"
+    assert gate["blocking"] is False
+
+    # A missing count is unavailable (UNKNOWN), never pass.
+    assert _drv_gate_state(tmp_path, clean[:2])["state"] == "unavailable"
+    assert _drv_gate_state(tmp_path, [])["state"] == "unavailable"
+
+
+def test_home_checklist_warns_on_failed_or_missing_sta_drv_gate(tmp_path):
+    from chipcompiler.analysis.qor.gate_catalog import QOR_STEP_GATE_IDS
+    from chipcompiler.tools.ecc.signoff_checklist import _quality_gate_items_from_summary
+
+    assert "qor.sta.drv_clean" in QOR_STEP_GATE_IDS[StepEnum.STA.value]
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    sta_dir = tmp_path / "sta_ecc"
+    summary_path = sta_dir / "analysis" / "qor_summary.json"
+    summary_path.parent.mkdir(parents=True)
+
+    def items(gates):
+        summary_path.write_text(json.dumps({"schema_version": 4, "gates": gates}), encoding="utf-8")
+        return {
+            item["id"]: item
+            for item in _quality_gate_items_from_summary(
+                workspace,
+                StepEnum.STA.value,
+                sta_dir,
+                summary_path,
+                gate_ids=("qor.sta.drv_clean",),
+            )
+        }
+
+    failed = items(
+        [
+            {
+                "id": "qor.sta.drv_clean",
+                "title": "STA DRV",
+                "state": "failed",
+                "blocking": False,
+                "metrics": [
+                    {
+                        "id": "sta_max_transition_violation_count",
+                        "actual": 8,
+                        "operator": "==",
+                        "expected": 0,
+                    }
+                ],
+            }
+        ]
+    )["quality.sta.drv_clean"]
+    assert failed["policy"] == "warn"
+    assert failed["blocked"] is False
+    assert failed["owner"] == "qor"
+
+    missing = items([])["quality.sta.drv_clean"]
+    assert missing["policy"] == "warn"
+    assert missing["blocked"] is False
+    assert missing["state"] != "pass"
 
 
 def test_harden_mpc_area_gates_use_the_last_pre_route_success_db(tmp_path):
@@ -1206,3 +1295,81 @@ def test_macro_placement_checklist_has_no_gate_item_without_manual_placement(tmp
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
 
     assert _step_artifact_items(workspace, EccStep(name=StepEnum.MACRO_PLACEMENT.value)) == []
+
+
+def _antenna_checklist_item(tmp_path, records):
+    from chipcompiler.tools.ecc.signoff_checklist import _quality_gate_items_from_summary
+
+    step_dir = tmp_path / "antennaCheck_ecc"
+    step = WorkspaceStep(name=StepEnum.ANTENNA_CHECK.value, directory=step_dir)
+    gates = _quality_gates(step, records)
+    assert [gate["id"] for gate in gates] == ["qor.antenna.clean"]
+    summary = step_dir / "analysis" / "qor_summary.json"
+    summary.parent.mkdir(parents=True)
+    summary.write_text(json.dumps({"schema_version": 4, "gates": gates}), encoding="utf-8")
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd"))
+    (item,) = _quality_gate_items_from_summary(
+        workspace, step.name, step_dir, summary, ("qor.antenna.clean",)
+    )
+    return gates[0], item
+
+
+def test_antenna_violations_block_the_checklist(tmp_path):
+    records = [
+        _record("antenna_violation_count", 3),
+        _record("antenna_signal_net_count", 4213),
+        _record("antenna_gate_pin_count", 9781),
+    ]
+    gate, item = _antenna_checklist_item(tmp_path, records)
+    assert gate["state"] == "failed"
+    assert item["policy"] == "block"
+    assert item["blocked"] is True
+
+
+def test_antenna_violations_block_even_when_coverage_is_zero(tmp_path):
+    records = [
+        _record("antenna_violation_count", 2),
+        _record("antenna_signal_net_count", 0),
+        _record("antenna_gate_pin_count", 0),
+    ]
+    gate, item = _antenna_checklist_item(tmp_path, records)
+    assert gate["state"] == "failed"
+    assert item["policy"] == "block"
+    assert item["blocked"] is True
+
+
+def test_clean_analysed_antenna_check_passes_the_checklist(tmp_path):
+    records = [
+        _record("antenna_violation_count", 0),
+        _record("antenna_signal_net_count", 4213),
+        _record("antenna_gate_pin_count", 9781),
+    ]
+    gate, item = _antenna_checklist_item(tmp_path, records)
+    assert gate["state"] == "pass"
+    assert item["blocked"] is False
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        [
+            _record("antenna_violation_count", 0),
+            _record("antenna_signal_net_count", 0),
+            _record("antenna_gate_pin_count", 9781),
+        ],
+        [
+            _record("antenna_violation_count", 0),
+            _record("antenna_signal_net_count", 4213),
+            _record("antenna_gate_pin_count", 0),
+        ],
+        [
+            _record("antenna_violation_count", 0),
+            _record("antenna_signal_net_count", 4213),
+        ],
+    ],
+)
+def test_vacuous_antenna_gate_is_unavailable_and_only_warns(tmp_path, records):
+    gate, item = _antenna_checklist_item(tmp_path, records)
+    assert gate["state"] == "unavailable"
+    assert item["policy"] == "warn"
+    assert item["blocked"] is False

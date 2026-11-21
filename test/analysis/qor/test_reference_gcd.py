@@ -146,6 +146,9 @@ def _make_gcd_workspace(tmp_path):
             _metric("sta_hold_tns", 0.0, "gate", "ns"),
             _metric("sta_setup_violation_count", 0, "gate"),
             _metric("sta_hold_violation_count", 0, "gate"),
+            _metric("sta_max_transition_violation_count", 0, "gate"),
+            _metric("sta_max_capacitance_violation_count", 0, "gate"),
+            _metric("sta_max_fanout_violation_count", 0, "gate"),
             _metric("sta_expected_corner_count", 2, "trend"),
             _metric("sta_missing_corner_count", 0, "gate"),
         ],
@@ -188,7 +191,7 @@ class TestReferenceGcd:
     def test_feasibility_passes_all_gates(self, analysis):
         assert analysis.feasibility.status == "PASS"
         assert all(gate.state == "passed" for gate in analysis.feasibility.gates)
-        assert len(analysis.feasibility.gates) == 7
+        assert len(analysis.feasibility.gates) == 10
 
     def test_evidence_is_high(self, analysis):
         assert analysis.evidence.state == "HIGH"
@@ -244,7 +247,7 @@ class TestReferenceGcd:
         analysis = build_qor_analysis(workspace)
         text = render_qor_analysis(analysis, load_workspace_qor_inputs(workspace))
         assert "ECC QoR ANALYSIS REPORT" in text
-        assert "FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]" in text
+        assert "FEASIBILITY STATUS : PASS [All 10 Physical Signoff Gates Clean]" in text
         assert "EVIDENCE STATE     : HIGH" in text
         assert "Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%" in text
         assert "Q_T" in text

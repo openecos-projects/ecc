@@ -1,3 +1,5 @@
+import pytest
+
 from chipcompiler.analysis.qor.feasibility import evaluate_feasibility
 from chipcompiler.analysis.qor.loader import CornerSlack
 from test.analysis.qor.helpers import gcd_metrics, make_inputs
@@ -81,6 +83,42 @@ class TestFeasibilityReduction:
         states = dict(ALL_SUCCESS)
         states["sta"] = "Ongoing"
         assert _status(make_inputs(gcd_metrics(), states)) == "NOT_VERIFIED"
+
+
+@pytest.mark.parametrize(
+    ("metric_id", "gate_id"),
+    [
+        ("sta_max_transition_violation_count", "GATE_MAX_TRANSITION"),
+        ("sta_max_capacitance_violation_count", "GATE_MAX_CAPACITANCE"),
+        ("sta_max_fanout_violation_count", "GATE_MAX_FANOUT"),
+    ],
+)
+class TestDrvGates:
+    def test_violations_fail_the_gate(self, metric_id, gate_id):
+        metrics = gcd_metrics()
+        metrics[metric_id].value = 3
+        feasibility = evaluate_feasibility(make_inputs(metrics, ALL_SUCCESS))
+        assert feasibility.status == "PHYSICAL_FAIL"
+        assert [gate.id for gate in feasibility.gates if gate.state == "failed"] == [gate_id]
+
+    def test_missing_evidence_is_unknown_never_pass(self, metric_id, gate_id):
+        metrics = gcd_metrics()
+        del metrics[metric_id]
+        feasibility = evaluate_feasibility(make_inputs(metrics, ALL_SUCCESS))
+        assert feasibility.status == "UNKNOWN"
+        gate = next(gate for gate in feasibility.gates if gate.id == gate_id)
+        assert gate.state == "unavailable"
+        assert gate.availability == "corrupt"
+
+    def test_unfinished_sta_is_not_verified(self, metric_id, gate_id):
+        states = dict(ALL_SUCCESS)
+        states["sta"] = "Unstart"
+        gate = next(
+            gate
+            for gate in evaluate_feasibility(make_inputs(gcd_metrics(), states)).gates
+            if gate.id == gate_id
+        )
+        assert gate.availability == "not_verified"
 
 
 def _gate(inputs, gate_id):

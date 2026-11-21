@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace
 from chipcompiler.utility import json_read
+from chipcompiler.utility.json import finite_number
 
 # ecc-tools splits each corner's setup report by path type
 # (in2out/in2reg/reg2out/reg2reg); hold (timing_min_*) reports stay optional.
@@ -35,6 +36,12 @@ class StaQorSummary:
     hold_wns: float | None
     hold_tns: float | None
     hold_nvp: int | None
+    # Design-rule violation counts (max_transition / max_capacitance /
+    # max_fanout) from ``design_statistics``; None when the corner does not
+    # report them, which must never be read as "no violations".
+    max_transition_violations: int | None = None
+    max_capacitance_violations: int | None = None
+    max_fanout_violations: int | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +76,9 @@ def _safe_dir_name(name: str) -> str:
         character if character.isalnum() or character in ("-", "_", ".") else "_"
         for character in name.strip()
     )
+    if value and set(value) == {"."}:
+        # "." and ".." would resolve to the artifact root or its parent.
+        value = value.replace(".", "_")
     return value or "unknown"
 
 
@@ -151,17 +161,14 @@ def sta_timing_paths_paths(workspace: Workspace, feature_root) -> list[tuple[str
     return _artifact_paths(workspace, feature_root, STA_TIMING_PATHS_FILENAME)
 
 
-def _finite_number(value) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    return number if isfinite(number) else None
-
-
 def _nonnegative_int(value) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    number = finite_number(value)
+    if number is None or number < 0:
         return None
-    return value
+    # JSON writers may emit counts as 3.0; only integral values are counts.
+    if isinstance(number, float) and not number.is_integer():
+        return None
+    return int(number)
 
 
 def read_sta_qor_summary(
@@ -182,13 +189,16 @@ def read_sta_qor_summary(
     if not isinstance(setup, dict):
         return None
 
-    setup_wns = _finite_number(setup.get("wns"))
-    setup_tns = _finite_number(setup.get("tns"))
+    setup_wns = finite_number(setup.get("wns"))
+    setup_tns = finite_number(setup.get("tns"))
     setup_nvp = _nonnegative_int(setup.get("nvp"))
-    frequency_mhz = _finite_number(setup.get("frequency_mhz"))
-    hold_wns = _finite_number(hold.get("wns")) if isinstance(hold, dict) else None
-    hold_tns = _finite_number(hold.get("tns")) if isinstance(hold, dict) else None
+    frequency_mhz = finite_number(setup.get("frequency_mhz"))
+    hold_wns = finite_number(hold.get("wns")) if isinstance(hold, dict) else None
+    hold_tns = finite_number(hold.get("tns")) if isinstance(hold, dict) else None
     hold_nvp = _nonnegative_int(hold.get("nvp")) if isinstance(hold, dict) else None
+    design_statistics = data.get("design_statistics")
+    if not isinstance(design_statistics, dict):
+        design_statistics = {}
     if (
         setup_wns is None
         or setup_tns is None
@@ -208,11 +218,14 @@ def read_sta_qor_summary(
         hold_wns=hold_wns,
         hold_tns=hold_tns,
         hold_nvp=hold_nvp,
+        max_transition_violations=_nonnegative_int(design_statistics.get("tran")),
+        max_capacitance_violations=_nonnegative_int(design_statistics.get("cap")),
+        max_fanout_violations=_nonnegative_int(design_statistics.get("fanout")),
     )
 
 
 def _is_valid_timing_path_number(value) -> bool:
-    return value is None or _finite_number(value) is not None
+    return value is None or finite_number(value) is not None
 
 
 def read_sta_timing_paths(corner: str, path: Path) -> StaTimingPaths | None:
@@ -268,7 +281,7 @@ def read_sta_timing_paths(corner: str, path: Path) -> StaTimingPaths | None:
             )
         ):
             return None
-        if _finite_number(timing_path.get("slack_ns")) is None:
+        if finite_number(timing_path.get("slack_ns")) is None:
             return None
         stages = timing_path.get("stages")
         if not isinstance(stages, list):
@@ -381,7 +394,7 @@ def _power_summary_from_payload(data: dict, path: Path) -> StaPowerSummary | Non
 
     values = {}
     for field in _STA_POWER_SUMMARY_FIELDS:
-        value = _finite_number(data.get(field))
+        value = finite_number(data.get(field))
         if value is None or value < 0:
             return None
         values[field] = value

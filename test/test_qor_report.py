@@ -150,6 +150,9 @@ def _make_workspace(tmp_path, *, with_metrics=True, with_checklist=True):
                     _metric("sta_hold_tns", 0.0, "gate", unit="ns"),
                     _metric("sta_setup_violation_count", 0, "gate"),
                     _metric("sta_hold_violation_count", 0, "gate"),
+                    _metric("sta_max_transition_violation_count", 0, "gate"),
+                    _metric("sta_max_capacitance_violation_count", 0, "gate"),
+                    _metric("sta_max_fanout_violation_count", 0, "gate"),
                     _metric("sta_expected_corner_count", 1, "trend"),
                     _metric("sta_missing_corner_count", 0, "gate"),
                 ]
