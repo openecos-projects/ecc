@@ -322,7 +322,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/` 骨架（workspace 由首个 `ecc run` 创建）：
+在 `NAME/` 下生成 `ecc.toml`、`project.json` 和 `timing_constraints_template.tcl`。不再创建空的 RTL 或 SDC 目录；workspace 由首个 `ecc run` 创建：
 
 ```console
 $ ecc init gcd
@@ -340,12 +340,12 @@ $ ecc init gcd
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # 一个或多个 Verilog 源文件，也可指向一个 filelist（如 rtl/filelist.f）
+rtl = []                # 运行前指定源文件或 filelist
+sdc = "timing_constraints_template.tcl"
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
 
 [pdk]
@@ -372,6 +372,10 @@ clock_list = '''
 clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
 '''
 ```
+
+通过 `ecc project set design.rtl /path/to/filelist.f --project gcd` 指定 RTL。
+在时序模板的五组输入中填写时钟与约束，默认主时钟是 `clk`、100 MHz；
+`project.json` 由 ECC 自动维护。
 
 ## 4. check — 校验项目配置
 
@@ -887,12 +891,10 @@ ecc project reconcile                 # 修复可证明的项目中间状态（�
 ecc project doctor [--fix]            # 交叉核对 project.json 与 workspace 目录；--fix 显式修复
 ```
 
-声明了 `[params.sdc] clock_list` 的项目（`ecc init` 生成的项目都是如此），时钟端口和
-时钟频率取自该列表的第一行，而不是 `[design]` 的 `clock_port` / `frequency_mhz`。
-`project set` 和 `project apply` 仍会写入这两个键，同时输出
-`warning=clock_list_overrides_design`，因为这两个值不会被使用。修改时钟请用
-`ecc param set sdc.clock_list '<端口> <corner>:<MHz> ...'`；`ecc param set
-design.frequency_mhz`（§9）修改第一行时钟的频率，综合和生成的约束都按它执行。
+当 `design.sdc` 指向五组时序输入文件时，第一条 `primary_clocks` 命令提供时钟对象和频率。
+`project set` 和 `project apply` 仍会写入 `[design]` 的 `clock_port` / `frequency_mhz`，
+同时输出 `warning=timing_inputs_override_design`，说明这些声明不能覆盖时序文件。
+修改时钟请编辑该文件中的 `create_clock` 命令，再创建新的 workspace。
 
 `project set`/`unset`/`add`/`remove` 对 manifest 项目也走同一条原子更新路径，立即同步
 `project.json.base_design`；`project apply` 可把多项修改打包成一次原子 manifest 更新

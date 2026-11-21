@@ -1,7 +1,7 @@
 """Generate pre/post-CTS golden timing-constraint Tcl.
 
 The two scenario sets share golden rules; only post-CTS propagates clocks.
-Custom files retain their design constraints; the flow sets clock propagation.
+User files supply the five structured timing inputs, never a complete SDC.
 """
 
 import re
@@ -45,6 +45,7 @@ def _design_constraints(
     clocks: tuple[PrimaryClock, ...] | None,
     *,
     has_io_cells: bool | None,
+    primary_commands: str,
 ) -> list[str]:
     lines = [
         _GENERATED_MARKER,
@@ -52,6 +53,24 @@ def _design_constraints(
         f"set top {_tcl_word(workspace.design.top_module or workspace.design.name)}",
         *_section("2. Primary clock - user design input resolved by ECC"),
     ]
+    if primary_commands and clocks is not None:
+        lines.append(primary_commands)
+        if has_io_cells is False:
+            names = {clock.name for clock in clocks}
+            for clock in clocks:
+                if clock.source_kind != "port":
+                    continue
+                virtual_name = "V" + clock.name
+                if virtual_name in names:
+                    raise ValueError(
+                        f"Primary clock name collides with interface clock {virtual_name!r}"
+                    )
+                command = f"create_clock -name {_tcl_word(virtual_name)} -period {clock.period}"
+                if clock.waveform is not None:
+                    rise, fall = clock.waveform
+                    command += f" -waveform {{{rise} {fall}}}"
+                lines.append(command)
+        return lines
     if clocks is not None:
         for clock in clocks:
             lines.extend(_clock_variables(clock))
@@ -98,20 +117,14 @@ def is_generated_sdc(path: Path | None) -> bool:
         return stream.readline().strip() == _GENERATED_MARKER.encode("ascii")
 
 
-def custom_step_sdc_path(source: Path, directory: Path, *, post_cts: bool) -> Path:
-    """Source user Tcl unchanged, then apply the flow's final clock state."""
-    phase = "post_CTS" if post_cts else "pre_CTS"
-    target = directory / "origin" / phase / f"{source.name}.ecc.tcl"
-    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
-    text = (
-        f"# ECC {phase} entry for user timing constraints\n"
-        f"source {_tcl_word(str(source.absolute()))}\n"
-        f"{command} [all_clocks]\n"
-    )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists() or target.read_text(encoding="utf-8") != text:
-        write_text_atomic(target, text)
-    return target
+def load_timing_inputs(workspace: "Workspace") -> None:
+    """Resolve a user input file before deriving tool configs and scenario scripts."""
+    source = workspace.pdk.sdc
+    if source is None or is_generated_sdc(source):
+        return
+    inputs = SdcInputs.from_file(source)
+    workspace.parameters.data.update(inputs.parameters())
+    workspace.pdk.sdc = None
 
 
 def signoff_sdc_path(
@@ -124,13 +137,15 @@ def signoff_sdc_path(
     has_io_cells: bool | None = None,
 ) -> Path:
     """Write a standalone scenario with IO rules selected from the loaded design."""
-    source = workspace.pdk.sdc
-    if source is not None and not is_generated_sdc(source):
-        return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
-
+    load_timing_inputs(workspace)
     inputs = SdcInputs.from_parameters(workspace.parameters.data)
     clocks = inputs.clocks(workspace.parameters.data, corner) if inputs.has_clock_inputs else None
-    lines = _design_constraints(workspace, clocks, has_io_cells=has_io_cells)
+    lines = _design_constraints(
+        workspace,
+        clocks,
+        has_io_cells=has_io_cells,
+        primary_commands=inputs.primary_clocks if inputs.has_primary_clocks else "",
+    )
     lines.extend(
         [
             *_section("3. Signoff scenario - selected by ECC"),
@@ -223,9 +238,9 @@ def _clock_limits(
     else:
         lines.append("set timing_clock_periods {}")
         for clock in clocks:
-            period = 1000.0 / clock.frequency_mhz
+            period = clock.period
             lines.append(f"lappend timing_clock_periods {_tcl_word(clock.name)} {period}")
-            if has_io_cells is False:
+            if has_io_cells is False and clock.source_kind != "pin":
                 lines.extend(
                     [
                         f"if {{[llength [get_ports -quiet {_tcl_word(clock.target)}]]}} {{",
@@ -275,8 +290,12 @@ def _io_constraints(
         lines.append(f"set_load {load} [all_outputs]")
     else:
         if clocks is not None:
-            targets = " ".join(_tcl_word(item.target) for item in clocks)
+            targets = " ".join(
+                _tcl_word(item.target) for item in clocks if item.source_kind != "pin"
+            )
             for primary in clocks:
+                if primary.source_kind == "pin":
+                    continue
                 lines.extend(_clock_variables(primary))
                 lines.append(f"set virtual_clk_name {_tcl_word('V' + primary.name)}")
                 lines.append("if {[llength [get_ports -quiet $clk_port_name]]} {")

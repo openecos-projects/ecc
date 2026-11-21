@@ -451,6 +451,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
     _reload_workspace_parameters(workspace)
 
+    from .sdc import load_timing_inputs
+
+    load_timing_inputs(workspace)
+
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
@@ -757,7 +761,7 @@ def create_workspace(
         origin_verilog: Original verilog file path (RTL or synthesized netlist)
         pdk: PDK information (LEF, Liberty, SDC, etc.)
         parameters: Design parameters (clock, frequency, etc.)
-        sdc: Optional timing constraints file copied into workspace/origin/
+        sdc: Optional five-field timing-input file copied into workspace/origin/
         spef: Optional extracted parasitics copied into workspace/origin/
         golden_verilog: Optional comparison netlist copied for an LEC entry step
         input_filelist: Optional filelist for synthesis (SystemVerilog sources)

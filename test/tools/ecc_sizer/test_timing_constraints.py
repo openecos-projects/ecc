@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import SkippableStepEnum, StepEnum
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -31,8 +32,7 @@ def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
     filename = "TYP_25_TYPICAL.tcl"
     if custom:
         workspace.pdk.sdc = origin / "user.sdc"
-        workspace.pdk.sdc.write_text("create_clock -period 10 [get_ports clk]\n")
-        filename = "user.sdc.ecc.tcl"
+        workspace.pdk.sdc.write_text(SDC_INPUT_TEMPLATE)
     generate_timing_scripts(workspace)
     template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
     config = json.loads(template.read_text())

@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import (
     EccData,
     EccStep,
@@ -316,17 +318,26 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path):
     workspace.pdk.tech = pdk_root / "tech.lef"
     workspace.pdk.lefs = [pdk_root / "cells.lef"]
     workspace.pdk.libs = [pdk_root / "cells.lib"]
-    workspace.pdk.sdc = tmp_path / "gcd.sdc"
+    timing_input = tmp_path / "gcd.sdc"
+    timing_input.write_text(SDC_INPUT_TEMPLATE)
+    workspace.pdk.sdc = timing_input
     result_dir = tmp_path / "data" / "pl"
     step = EccStep(
         directory=tmp_path / "step",
         name=StepEnum.PLACEMENT.value,
         data=EccData(dir=tmp_path / "data", steps={StepEnum.PLACEMENT.value: result_dir}),
     )
+    native = Mock()
+
+    def export(json_path):
+        json_write(json_path, {"Instances": {"iopads": {"num": 0}}})
+        return True
+
+    native.feature_sammry.side_effect = export
     module = DreamplaceModule(
         workspace=workspace,
         step=step,
-        ecc_module=None,
+        ecc_module=native,
         input_def=tmp_path / "input.def",
         input_verilog=tmp_path / "input.v",
         output_def=tmp_path / "output.def",
@@ -346,7 +357,7 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path):
         "lib": [pdk_root / "cells.lib"],
         "def": tmp_path / "input.def",
         "verilog": tmp_path / "input.v",
-        "sdc": workspace.directory / "origin/pre_CTS/gcd.sdc.ecc.tcl",
+        "sdc": workspace.directory / "origin/pre_CTS/TYP_25_TYPICAL.tcl",
         "rc_tcl": rc_tcl,
     }
 

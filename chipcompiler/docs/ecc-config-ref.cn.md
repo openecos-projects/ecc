@@ -256,57 +256,65 @@ target_density = 0.7
 
 ### 1.6 自动生成的 SDC
 
-未声明 `[design].sdc` 时，workspace 创建过程会在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的完整约束，不再单独生成 `origin/<design>.sdc`。默认时序入口指向 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤选择 pre-CTS 约束，后续步骤选择 post-CTS 约束，最终 STA 按配置的各 corner 读取。用户提供的完整 SDC 或 Tcl 保持原始字节，不自动生成设计约束；ECC 在两个阶段目录中生成 `<文件名>.ecc.tcl` 入口，先 `source` 复制的原文件，再于 CTS 及之前执行 `remove_propagated_clock [all_clocks]`，于 CTS 之后执行 `set_propagated_clock [all_clocks]`。ECC 通过首行 `# ECC-generated SDC file` 标记识别自己生成的 corner 约束，参数变化时刷新这些文件。
+创建 workspace 时，ECC 读取 `[design].sdc` 指定的五组输入文件，在 `origin/pre_CTS/` 和 `origin/post_CTS/` 生成各 corner 的约束。默认入口为 pre-CTS 的 TYP/TYPICAL Tcl；CTS 及之前的步骤读取 pre-CTS，之后读取 post-CTS，最终 STA 按配置的各 corner 读取。不再接受完整 SDC/Tcl 直通输入，须先将其中的设计约束转换为下述五组。生成脚本的首行标记为 `# ECC-generated SDC file`。
 
-生成的 Tcl 按 `params.sdc.clock_list` 定义主时钟，并包含对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。未声明时钟时不凭空创建时钟。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
+生成的 Tcl 包含输入文件的 `primary_clocks` 命令，以及对应 corner 的 IO 约束、OCV derate、setup/hold uncertainty、transition 和 fanout 约束。读入设计后，Python 根据实际 iDB 中是否存在 IO cell，直接生成对应的 IO 约束，不再通过配套的 `timing_io.tcl` 或 Tcl 条件分支选择。尚未读入设计时，初始文件包含明确的未准备错误；时序工具执行前会用完整约束替换。同一 corner 的 pre-CTS 与 post-CTS 规则一致，只有 post-CTS 增加 `set_propagated_clock [all_clocks]`。
 
 ### 1.7 用户填写的五组时序输入
 
-`ecc init` 生成的 `ecc.toml` 已包含 `[params.sdc]`：默认生效的 `clk`/100 MHz 时钟行，以及另外四组可选输入的注释示例。把内容写入三单引号之间，**不要额外包一层 `set clock_list {...}` 等 Tcl 变量赋值**。三单引号保留 Tcl 的反斜杠、换行及 `$变量`，示例中的端口、引脚、时钟名和延迟需按设计修改。
+`ecc init gcd` 会在项目根目录生成 `timing_constraints_template.tcl`，含默认生效的 `clk`/100 MHz 时钟，以及另外四组的注释示例。`ecc.toml` 和 `project.json` 都指向这个文件。虽然后缀是 `.tcl`，输入内容是 **五个 TOML 字符串**，不能直接 `source`；ECC 生成的 pre/post-CTS 文件才是可执行 Tcl。
+
+直接修改 `timing_constraints_template.tcl`，或通过 CLI 指定其他五组输入文件：
+
+```bash
+ecc project set design.sdc /path/to/gcd.tcl --project /path/to/project
+```
+
+文件根部必须保留五个键，不加 `[params.sdc]` 表头。把内容写入三单引号之间，不用的可选部分留空。三单引号保留 Tcl 的反斜杠、换行及 `$变量`，示例中的对象名和数值须按设计修改。
 
 ```toml
-[params.sdc]
-# 1. 主时钟：每行一个端口或内部引脚，以及各 corner 的 MHz。
-# 新项目必填：取消注释并修改至少一行，覆盖所有 PVT corner；支持小数 MHz。
-# 第一行的 TYP 频率也用于流程中只接受单个主时钟的内部参数。
-clock_list = '''
-clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
-clk_aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25
+# 1. 主时钟：周期单位 ns；10 ns = 100 MHz，所有 corner 共用。
+# 每行一条 create_clock；第一条也提供流程的主时钟参数。
+primary_clocks = '''
+create_clock -name CLK_clk -period 10 [get_ports clk]
+# create_clock -name CLK_clk_aux -period 40 [get_ports clk_aux]
 '''
 
 # 2. 派生时钟：取消下面示例的注释前，先确认源和目标引脚存在。
-generated_clock_txt = '''
+generated_clocks = '''
 # create_generated_clock -name CLK_div2 -divide_by 2 \
 #     -source [get_ports clk] [get_pins u_div/clk_reg/Q]
 '''
 
 # 3. 时钟分组：只对真正异步的时钟域设置，并包含各自派生时钟。
-# 无 IO cell 时，还应把 VCLK_<端口> 放入对应组。
-clk_group_txt = '''
+# 无 IO cell 时，还应把 V<时钟名> 放入对应组。
+clock_groups = '''
 # set_clock_groups -asynchronous \
 #     -group {CLK_clk VCLK_clk} -group {CLK_clk_aux VCLK_clk_aux}
 '''
 
 # 4. 用户 IO 约束：在自动 IO 约束之后执行。下面的 ns 数值仅为示例。
-io_constraint_txt = '''
+io_constraints = '''
 # set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]
 # set_output_delay 0.0625 -max -clock CLK_clk [get_ports data_out*]
 '''
 
 # 5. 时序例外：需有设计依据，不要机械地把所有复位路径设为 false path。
-timing_exception_txt = '''
+timing_exceptions = '''
 # set_false_path -from [get_ports reset_n]
 # set_multicycle_path -setup 3 -end -to [get_ports data_out*]
 # set_multicycle_path -hold 2 -end -to [get_ports data_out*]
 '''
 ```
 
-- 生成位置仍为 `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` 与 `origin/post_CTS/...`。两套都写入上述输入，主时钟频率按文件对应的 corner 选择；只有 post-CTS 额外开启传播时钟。
-- 主时钟先查端口，再查内部引脚。端口时钟名是 `CLK_<端口>`；含 `/` 的内部引脚名会将 `/`、`.`、`[` 替换为 `_`，去掉 `]`，例如 `u_pll/Q` → `CLK_u_pll_Q`。完整层次名保留，避免截断后重名。
-- 执行顺序：主时钟（无 IO cell 时为端口主时钟建立虚拟时钟）→ 派生时钟 → 分组 → 自动 IO 约束 → 用户 IO 约束 → 时序例外 → golden 电气/时序约束 → post-CTS 传播时钟。四段 Tcl 原样执行，可使用 `$corner`、`$rc_para`；是否覆盖或叠加已有 IO 延迟取决于命令选项。
-- 新项目模板不再包含 `design.clock_port` / `frequency_mhz`，只需填写 `clock_list`。第一行及其 TYP 频率提供流程所需的单主时钟元数据；生成的约束仍按各行、各 corner 选择频率。显式设置的 `design.frequency_mhz`（`[params]`、`--set` 或 `ecc param set`，项目级或 workspace 级）决定第一行时钟的频率：综合和所有 corner 的生成约束都使用该值，其余各行不变。声明了时钟列表时，`[design]` 的 `clock_port` / `frequency_mhz` 不起作用；用 `ecc project set` 设置它们时会给出 `clock_list_overrides_design` 警告。留空或仅注释会在新运行开始前报错，不会暗中使用初始化 manifest 的默认时钟。旧项目显式填写的时钟元数据和完整 `design.sdc` 输入仍兼容，完整文件仍优先于这五项；这不代表每个原生工具都已支持多时钟优化。
+- 生成位置仍为 `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` 与 `origin/post_CTS/...`。各 corner 使用相同的主时钟命令及周期，corner 对应的 golden 规则仍保留；只有 post-CTS 额外开启传播时钟。
+- 主时钟使用 `create_clock -name NAME -period NS [get_ports PORT]`；内部引脚改用 `get_pins PIN`。支持小数周期、引号/花括号名称、反斜杠续行、查询的 `-quiet`，以及可选的 `-waveform {上升沿 下降沿}`。每个逻辑行一条命令、一个确定的端口/引脚，时钟名不可重复。主时钟部分不接受变量、表达式、通配符、无源虚拟时钟、`-add` 或 Tcl 控制流；不支持的输入会明确报错。
+- 保留用户指定的时钟名及端口/引脚类型。无 IO cell 时，只为端口时钟创建 `V<时钟名>` 虚拟接口时钟，并保持周期和波形一致；主时钟名应避免与其重名。例如 `CLK_clk` 对应 `VCLK_clk`。
+- 执行顺序：主时钟 → 无 IO cell 时的端口虚拟时钟 → 派生时钟 → 分组 → 自动 IO 约束 → 用户 IO 约束 → 时序例外 → golden 电气/时序约束 → post-CTS 传播时钟。五段命令保留原文，后四段还可使用 `$corner`、`$rc_para`；是否覆盖或叠加已有 IO 延迟取决于命令选项。
+- 填写 `primary_clocks`，不再填写 `design.clock_port` / `frequency_mhz`。第一条命令的对象和 `1000 / 周期(ns)` MHz 用作流程所需的单主时钟参数。留空或仅注释会在新运行开始前报错。这不代表每个原生工具都已支持多时钟优化。
 - 仅主时钟的周期可由 ECC 直接计算；有派生时钟 Tcl 时，脚本用 `get_attribute` 和 `foreach_in_collection` 查询各时钟实际周期。**当前测试的 iSTA 不提供这两个命令，派生时钟模式尚不能据此宣称原生全流程通过**；不要用主时钟周期代替派生时钟周期。用户 Tcl 使用的其他命令也须由具体工具支持。
-- 修改项目 `ecc.toml` 后，使用新 workspace 读取新配置；已有 workspace 使用自己的 `home/params.toml`。可以用 `ecc param set sdc.io_constraint_txt 'set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]' --project "$PROJECT_DIR" --workspace "$WORKSPACE"` 修改已有 workspace 并刷新配置。单纯 `--resume` 不会重新导入项目 TOML 的五项输入。
+- 创建时，原输入文件按原字节复制到 `origin/`，解析出的五组值保存在 workspace 的 `home/params.toml`。修改项目输入文件后，使用新 workspace 读取新约束；单纯 `--resume` 不会重新导入。复制的原文件只是输入数据，不是交给时序工具的入口。
+- 迁移旧 `[params.sdc]` 配置：把 `clock_list` 的行转换成 `create_clock` 命令，并把其余四个键改成上面的名称；删除 `ecc.toml` 中该表，让 `design.sdc` 指向新文件。不再通过 `ecc param set sdc.*` 填写约束。已有 workspace 恢复运行时，仍按原规则读取其旧格式快照。
 
 ## 2. 公共配置：db_ecc.json
 
@@ -319,7 +327,7 @@ timing_exception_txt = '''
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | 每步重写 | 输入 DEF（上一步版图） |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | 每步重写 | 输入门级网表 |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS 库 | PDK | 公共时序库；Yosys 综合阶段排除 H7CH |
-| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认时序入口（生成的 Tcl 或用户提供的完整约束） |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | 默认生成的时序入口；各步骤选择相应阶段和场景 |
 | `INPUT.spef` | `""` | PDK/workspace | 预置寄生文件（RCX 前一般为空） |
 | `OUTPUT.output_dir_path` | `harden_ecc/output` | 每步重写 | 本步骤产物输出目录 |
 | `LayerSettings.routing_layer_1st` | `MET2` | 参数 `route.bottom_layer` | 首个可用绕线层（影响数据库层设置） |

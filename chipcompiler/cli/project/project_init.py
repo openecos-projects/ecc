@@ -14,6 +14,8 @@ from chipcompiler.cli.core.inputs import InitInput
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
 from chipcompiler.project.manifest_write import build_project_document
 
+from .timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
+
 _AT_FDCWD = -100
 _RENAME_NOREPLACE = 1
 _RENAME_EXCHANGE = 2
@@ -48,6 +50,10 @@ def create_project(command_input: InitInput) -> Path:
     default_name = target.name or "project"
     project_name = _nonempty(command_input.project_name, default_name, "Project name")
     design_name = _nonempty(command_input.design_name, default_name, "Design name")
+    if Path(design_name).name != design_name or design_name in {".", ".."}:
+        raise ProjectInitError(
+            "invalid_project", "Design name must be a single filename component", target
+        )
     mpc = _load_mpc(command_input)
 
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=parent))
@@ -165,18 +171,16 @@ def _populate(
     design_name: str,
     mpc: dict | None,
 ) -> None:
-    rtl = staging / "rtl"
-    constraints = staging / "constraints"
-    rtl.mkdir()
-    constraints.mkdir()
+    _write_file(staging / SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE)
     config = _default_toml(design_name)
     _write_file(staging / CONFIG_FILENAME, config)
     base_design = {
         "pdk": "ics55",
         "top_module": design_name,
         "clock": "clk",
-        "rtl_list": [f"rtl/{design_name}.v"],
-        "origin_verilog": f"rtl/{design_name}.v",
+        "rtl_list": [],
+        "origin_verilog": "",
+        "sdc": SDC_INPUT_FILENAME,
         "frequency_mhz": 100.0,
     }
     document = build_project_document(
@@ -190,23 +194,20 @@ def _populate(
         staging / MANIFEST_FILENAME,
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
     )
-    _fsync_directory(rtl)
-    _fsync_directory(constraints)
     _fsync_directory(staging)
 
 
 def _default_toml(design_name: str) -> str:
     from chipcompiler.data import DEFAULT_LEC_ENGINE, DEFAULT_SKIP_STEPS
 
-    from .timing_template import SDC_INPUT_TEMPLATE
-
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
     lec_engine = json.dumps(DEFAULT_LEC_ENGINE.value)
-    return (
-        f'''[design]
+    return f'''[design]
 name = "{design_name}"
 top = "{design_name}"
-rtl = ["rtl/{design_name}.v"]
+# Set your RTL sources or filelist, e.g. rtl = ["/path/to/filelist.f"].
+rtl = []
+sdc = "{SDC_INPUT_FILENAME}"
 
 [pdk]
 name = "ics55"
@@ -221,8 +222,6 @@ lec_engine = {lec_engine}
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = {skip_steps}
 '''
-        + SDC_INPUT_TEMPLATE
-    )
 
 
 def _load_mpc(command_input: InitInput) -> dict | None:

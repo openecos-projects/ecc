@@ -7,6 +7,7 @@ import pytest
 
 import chipcompiler.data as data_api
 import chipcompiler.data.workspace as workspace_data
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import (
     ChecklistItem,
     CheckOwner,
@@ -482,7 +483,7 @@ def test_create_workspace_from_step_output_copies_only_origin_inputs_and_rebuild
     netlist_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
     sdc_path = source_workspace / "origin" / "gcd.sdc"
     sdc_path.parent.mkdir()
-    sdc_path.write_text("create_clock -name clk -period 10 [get_ports clk]\n")
+    sdc_path.write_text(SDC_INPUT_TEMPLATE)
 
     workspace_dir = tmp_path / "ws_0008"
     workspace = create_workspace(
@@ -916,7 +917,7 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
     lef = next(pdk_root.rglob("ics55_LLSC_H7CR_ecos.lef"))
     lib = next(pdk_root.rglob("*.lib"))
     sdc_source = tmp_path / "source.sdc"
-    sdc_source.write_text("# sdc\n")
+    sdc_source.write_text(SDC_INPUT_TEMPLATE)
     spef_source = tmp_path / "source.spef"
     spef_source.write_text("# spef\n")
     pdk_json = tmp_path / "pdk.json"
@@ -958,7 +959,8 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
     assert loaded is not None
 
     assert loaded is not None
-    assert loaded.pdk.sdc == origin_sdc
+    assert loaded.pdk.sdc == workspace_dir / "origin/pre_CTS/TYP_25_TYPICAL.tcl"
+    assert origin_sdc.read_text() == SDC_INPUT_TEMPLATE
     assert loaded.pdk.spef == origin_spef
 
 
@@ -1127,27 +1129,6 @@ def test_refresh_workspace_config_updates_generated_sdc_frequency(
     refresh_workspace_config(workspace)
 
     assert "set clk_freq_mhz 250.0" in workspace.pdk.sdc.read_text(encoding="utf-8")
-
-
-def test_refresh_workspace_config_preserves_external_sdc(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    workspace_dir, workspace = _create_loaded_ics55_workspace(
-        tmp_path,
-        "workspace_external_sdc",
-        minimal_ics55_pdk_factory,
-        default_ics55_parameters,
-    )
-    external_sdc = workspace.pdk.sdc
-    external_content = "create_clock -period 1 [get_ports clk]\n"
-    external_sdc.write_text(external_content, encoding="utf-8")
-    params = _read_parameters(workspace_dir / "home" / "params.toml")
-    params["frequency_max"] = 250.0
-    _write_parameters(workspace_dir / "home" / "params.toml", params)
-
-    refresh_workspace_config(workspace)
-
-    assert external_sdc.read_text(encoding="utf-8") == external_content
 
 
 def test_refresh_workspace_config_preserves_nested_dreamplace_override_precedence(
