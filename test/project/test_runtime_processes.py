@@ -85,6 +85,9 @@ def test_registration_does_not_replace_another_run(tmp_path):
         register_runtime_process(project, "baseline", _entry(project, workspace))
 
     assert caught.value.code == "workspace_running"
+    assert f"ecc process reconcile --workspace baseline --run-id {first['run_id']}" in str(
+        caught.value
+    )
     assert read_runtime_process(project, "baseline") == first
 
 
@@ -180,3 +183,73 @@ def test_container_identity_changes_with_namespace_and_rejects_missing_boot(monk
     monkeypatch.setattr(runtime_processes, "boot_id", unavailable)
     with pytest.raises(RuntimeProcessError, match="boot ID unavailable"):
         runtime_processes.host_id()
+
+
+def _local_entry(project: Path, workspace: Path, pid: int, start_id: str) -> dict:
+    from chipcompiler.project.runtime_processes import boot_id, host_id
+
+    run_id = str(uuid.uuid4())
+    return build_runtime_entry(
+        project,
+        workspace,
+        run_id=run_id,
+        runtime_id="ecc-test",
+        log_path=default_log_path(run_id),
+        identity=ProcessIdentity(pid, pid, start_id, boot_id(), host_id()),
+        started_at=1.0,
+    )
+
+
+def test_registration_replaces_dead_local_entry(tmp_path):
+    project, workspace = _project(tmp_path)
+    # Same host and boot, but the recorded start id cannot match a live process.
+    dead = _local_entry(project, workspace, os.getpid(), "0")
+    assert register_runtime_process(project, "baseline", dead) is None
+    assert identity_is_live(dead) is False
+
+    fresh = _entry(project, workspace)
+    assert register_runtime_process(project, "baseline", fresh) == dead["run_id"]
+
+    assert read_runtime_process(project, "baseline") == fresh
+
+
+def test_registration_keeps_live_local_entry_and_names_cancel(tmp_path):
+    import subprocess
+    import sys
+
+    from chipcompiler.project.runtime_processes import _process_start_id
+
+    project, workspace = _project(tmp_path)
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(30)"],
+        start_new_session=True,
+    )
+    try:
+        live = _local_entry(project, workspace, proc.pid, _process_start_id(proc.pid))
+        register_runtime_process(project, "baseline", live)
+        assert identity_is_live(live) is True
+
+        with pytest.raises(RuntimeProcessError) as caught:
+            register_runtime_process(project, "baseline", _entry(project, workspace))
+
+        assert caught.value.code == "workspace_running"
+        assert f"ecc process cancel --workspace baseline --run-id {live['run_id']}" in str(
+            caught.value
+        )
+        assert read_runtime_process(project, "baseline") == live
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def test_registration_rejects_corrupt_existing_entry_as_invalid(tmp_path):
+    project, workspace = _project(tmp_path)
+    manifest_path = project / "project.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["runtime_processes"] = {"baseline": {"run_id": "broken"}}
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.raises(RuntimeProcessError) as caught:
+        register_runtime_process(project, "baseline", _entry(project, workspace))
+
+    assert caught.value.code == "invalid_runtime_process"
