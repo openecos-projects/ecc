@@ -6,6 +6,8 @@ otherwise the first workspace load, even from a query, rewrites flow.json.
 """
 
 import json
+import os
+import signal
 
 import pytest
 
@@ -184,3 +186,47 @@ def test_failed_draft_publication_rolls_back_project_config_and_rtl(
     assert manifest.read_bytes() == original_manifest
     assert not new_rtl.exists()
     assert not (fresh_project / "rejected").exists()
+
+
+@pytest.mark.parametrize("registered", [False, True])
+def test_killed_draft_publication_is_recovered(fresh_project, monkeypatch, tmp_path, registered):
+    from chipcompiler.cli.project import draft
+
+    rtl = tmp_path / "new.v"
+    rtl.write_text("module gcd(input clk); endmodule\n")
+    config = fresh_project / "ecc.toml"
+    original_config = config.read_bytes()
+    update = draft.update_manifest_locked
+
+    def kill_publication(project, mutate):
+        if registered:
+            assert update(project, mutate)
+        os.kill(os.getpid(), signal.SIGKILL)
+
+    with monkeypatch.context() as child:
+        child.setattr(draft, "update_manifest_locked", kill_publication)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                cli_main.run(
+                    [
+                        "workspace",
+                        "create",
+                        "interrupted",
+                        "--project",
+                        str(fresh_project),
+                        "--draft",
+                        json.dumps({"rtl": [str(rtl)], "maxParallelSteps": 2}),
+                    ]
+                )
+            finally:
+                os._exit(1)
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+
+    assert config.read_bytes() != original_config
+    for _ in range(2):
+        assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    manifest = json.loads((fresh_project / "project.json").read_text())
+    assert [item["workspace_id"] for item in manifest["workspaces"]] == ["interrupted"]
+    assert (fresh_project / "rtl" / "new.v").read_bytes() == rtl.read_bytes()

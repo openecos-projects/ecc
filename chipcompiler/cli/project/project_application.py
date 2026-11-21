@@ -112,10 +112,14 @@ def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> boo
 
 def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> ProjectReconcileReport:
     """Repair provable Project and Workspace intermediate states."""
+    from chipcompiler.cli.project.draft import reconcile_creation_draft
+
     project = Path(project_dir).expanduser().resolve()
     repairs: list[str] = []
     busy: list[str] = []
     errors: list[str] = []
+    if draft_workspace := reconcile_creation_draft(project, blocking=blocking):
+        repairs.append(f"workspace_draft:{draft_workspace}")
     try:
         if reconcile_project_summary(project, blocking=blocking):
             repairs.append("base_design")

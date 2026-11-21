@@ -1,7 +1,8 @@
 """Validate one Workspace creation draft and publish its Project changes."""
 
 import json
-from contextlib import ExitStack
+import shutil
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -30,6 +31,9 @@ from chipcompiler.project.manifest_write import (
 )
 from chipcompiler.utility.file import write_text_atomic
 
+_JOURNAL = ".workspace-draft-publish.json"
+_STAGING = ".workspace-draft-rtl"
+
 
 @dataclass(frozen=True)
 class CreationDraft:
@@ -41,49 +45,173 @@ class CreationDraft:
 
     def publish(self, cfg, flow_config, run_name: str, run_dir: str, *, blocking: bool) -> None:
         path = self.project / CONFIG_FILENAME
-        with manifest_lock(self.project, blocking=blocking), ExitStack() as rollback:
-            manifest = load_manifest(self.project)
+        with manifest_lock(self.project, blocking=blocking):
+            manifest = load_manifest(str(self.project))
             if manifest.project_id != self.project_id or path.read_text() != self.original:
                 raise ValueError(
                     "Project configuration changed during Workspace creation. "
                     "Retry with the current settings."
                 )
-            if self.rtl:
-                self.rtl.copy(rollback=rollback)
+            journal = self.project / _JOURNAL
+            if journal.exists() or journal.is_symlink():
+                raise ValueError("An unfinished Workspace draft requires project reconcile.")
+            workspace = Path(run_dir)
+            if workspace != self.project / run_name or workspace.resolve() != workspace:
+                raise ValueError("Draft Workspace is outside the Project.")
+            staging = workspace / "home" / _STAGING
+            targets: list[str] = []
+            if self.rtl is not None:
+                targets = [str(target.relative_to(self.project)) for _, target in self.rtl.copied]
+                if any((self.project / target).exists() for target in targets):
+                    raise ValueError("An RTL target already exists.")
+                replace(
+                    self.rtl,
+                    copied=[
+                        (source, staging / target)
+                        for (source, _), target in zip(self.rtl.copied, targets, strict=True)
+                    ],
+                ).copy()
                 cfg = replace(cfg, design_rtl=self.rtl.configured_paths)
             start, end = manifest_range_for_flow(cfg, flow_config)
-            register = project_manifest_mutator(
-                self.project,
-                {
-                    "type": "register_workspace",
-                    "workspace_id": run_name,
-                    "name": cfg.design_name,
-                    "workspace_path": run_dir,
-                    "start_step": start,
-                    "end_step": end,
-                },
-            )
-            base_design = base_design_from_config(cfg, resolve_pdk_root(cfg))
+            identity = workspace.stat()
+            record = {
+                "version": 1,
+                "project_id": self.project_id,
+                "workspace": run_name,
+                "device": identity.st_dev,
+                "inode": identity.st_ino,
+                "original": self.original,
+                "updated": self.updated,
+                "rtl": targets,
+                "start_step": start,
+                "end_step": end,
+                "skip_steps": (flow_config or {}).get("skip_steps"),
+            }
+            write_text_atomic(journal, json.dumps(record))
+            try:
+                with ExitStack() as rollback:
+                    _publish_locked(self.project, record, rollback)
+                    rollback.pop_all()
+            except Exception:
+                journal.unlink()
+                raise
+            # Registration is already committed. Reconcile can retry cleanup.
+            with suppress(OSError):
+                _clear_journal(journal, staging)
 
-            def mutate(document: dict) -> None:
-                if document.get("project_id") != self.project_id:
-                    raise ManifestError("Project identity changed during Workspace creation")
-                register(document)
-                document["design_name"] = cfg.design_name
-                document["base_design"] = base_design
-                if flow_config and "skip_steps" in flow_config:
-                    next(
-                        entry
-                        for entry in document["workspaces"]
-                        if entry["workspace_id"] == run_name
-                    )["skip_steps"] = flow_config["skip_steps"]
 
-            if self.updated != self.original:
-                write_text_atomic(path, self.updated)
-                rollback.callback(write_text_atomic, path, self.original)
-            if not update_manifest_locked(self.project, mutate):
-                raise OSError("Project Manifest update failed")
-            rollback.pop_all()
+def reconcile_creation_draft(project: Path, *, blocking: bool) -> str | None:
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    journal = project / _JOURNAL
+    if not journal.exists() and not journal.is_symlink():
+        return None
+    with manifest_lock(project, blocking=blocking):
+        if journal.is_symlink():
+            raise OSError("Workspace draft journal must be a regular file")
+        if not journal.exists():
+            return None
+        raw = journal.read_text(encoding="utf-8")
+        try:
+            record = json.loads(raw)
+        except ValueError as exc:
+            raise OSError("Invalid Workspace draft journal") from exc
+        workspace = _journal_workspace(project, record)
+    with workspace_lock(workspace, blocking=blocking), manifest_lock(project, blocking=blocking):
+        if not journal.exists() or journal.read_text(encoding="utf-8") != raw:
+            return None
+        _publish_locked(project, record)
+        _clear_journal(journal, workspace / "home" / _STAGING)
+        return workspace.name
+
+
+def _journal_workspace(project: Path, record: dict) -> Path:
+    if not isinstance(record, dict) or record.get("version") != 1:
+        raise OSError("Invalid Workspace draft journal")
+    name = record.get("workspace")
+    if not isinstance(name, str) or Path(name).name != name or name in ("", ".", ".."):
+        raise OSError("Invalid Workspace draft target")
+    workspace = project / name
+    if workspace.resolve() != workspace or not workspace.is_dir():
+        raise OSError("Workspace draft target is unavailable")
+    identity = workspace.stat()
+    if (identity.st_dev, identity.st_ino) != (record.get("device"), record.get("inode")):
+        raise OSError("Workspace draft target changed")
+    return workspace
+
+
+def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = None) -> None:
+    workspace = _journal_workspace(project, record)
+    manifest = load_manifest(str(project))
+    if manifest.project_id != record["project_id"]:
+        raise ManifestError("Project identity changed during Workspace creation")
+    entry = manifest.find_workspace(workspace.name)
+    if entry is not None:
+        if Path(entry.workspace_path).resolve() != workspace:
+            raise ManifestError("Draft Workspace identity conflicts with the Project Manifest")
+        return
+
+    path = project / CONFIG_FILENAME
+    original, updated = record["original"], record["updated"]
+    current = path.read_text(encoding="utf-8")
+    if current not in (original, updated):
+        raise OSError("Project configuration changed after an interrupted Workspace draft")
+    cfg = parse_project_config(updated, str(path))
+    staging = workspace / "home" / _STAGING
+    for target in record["rtl"]:
+        relative = Path(target)
+        source, destination = staging / relative, project / relative
+        if (
+            relative.is_absolute()
+            or len(relative.parts) < 2
+            or relative.parts[0] != "rtl"
+            or ".." in relative.parts
+            or source.resolve() != source
+            or destination.resolve() != destination
+        ):
+            raise OSError("Invalid RTL path in Workspace draft")
+        if destination.exists() and destination.samefile(source):
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.hardlink_to(source)
+        if rollback is not None:
+            rollback.callback(destination.unlink, missing_ok=True)
+    register = project_manifest_mutator(
+        project,
+        {
+            "type": "register_workspace",
+            "workspace_id": workspace.name,
+            "name": cfg.design_name,
+            "workspace_path": str(workspace),
+            "start_step": record["start_step"],
+            "end_step": record["end_step"],
+        },
+    )
+    base_design = base_design_from_config(cfg, resolve_pdk_root(cfg))
+
+    def mutate(document: dict) -> None:
+        register(document)
+        document["design_name"] = cfg.design_name
+        document["base_design"] = base_design
+        if record["skip_steps"] is not None:
+            next(
+                entry for entry in document["workspaces"] if entry["workspace_id"] == workspace.name
+            )["skip_steps"] = record["skip_steps"]
+
+    if current != updated:
+        write_text_atomic(path, updated)
+        if rollback is not None:
+            rollback.callback(write_text_atomic, path, original)
+    if not update_manifest_locked(project, mutate):
+        raise OSError("Project Manifest update failed")
+
+
+def _clear_journal(journal: Path, staging: Path) -> None:
+    if staging.resolve() != staging:
+        raise OSError("Invalid RTL staging directory in Workspace draft")
+    if staging.is_dir():
+        shutil.rmtree(staging)
+    journal.unlink()
 
 
 def prepare_creation_draft(ctx, raw: str):
@@ -113,7 +241,7 @@ def prepare_creation_draft(ctx, raw: str):
                 raise ValueError(f"{key} must be a list of nonempty strings")
             return tuple(value)
 
-        manifest = load_manifest(project)
+        manifest = load_manifest(str(project))
         original = path.read_text(encoding="utf-8")
         updated = apply_settings_text(original, strings("settings"))
         cfg = parse_project_config(updated, str(path))
