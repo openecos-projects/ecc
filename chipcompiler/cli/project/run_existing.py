@@ -101,6 +101,63 @@ def rejected_run_overrides(run_name: str, run_dir: str) -> CommandResult:
     )
 
 
+def half_range_error(from_step: str, *, fresh_target: bool) -> CommandResult:
+    """Error for ``--from`` without ``--to`` on a fresh run or ``workspace create``."""
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
+
+    if fresh_target:
+        chain = rtl2gds_step_names()
+        if from_step not in chain:
+            available = ", ".join(chain)
+            return CommandResult.err(
+                [
+                    {
+                        "kind": "error",
+                        "error": "unknown_step",
+                        "step": from_step,
+                        "reason": f"unknown step '{from_step}'; available steps: {available}",
+                    }
+                ]
+            )
+    return CommandResult.err([{"kind": "error", "error": "flow_range_requires_pair"}])
+
+
+def selector_error(command_input) -> CommandResult | None:
+    """Validate mutually exclusive CLI run selectors and range-pair rules."""
+    range_requested = command_input.from_step is not None or command_input.to_step is not None
+    if command_input.to_step is not None and command_input.from_step is None:
+        return CommandResult.err([{"kind": "error", "error": "flow_range_requires_pair"}])
+    if (
+        range_requested
+        and command_input.from_step is not None
+        and command_input.to_step is not None
+    ):
+        if any(
+            (
+                command_input.resume,
+                command_input.only is not None,
+                command_input.force,
+                command_input.preset,
+                command_input.overwrite,
+            )
+        ):
+            return CommandResult.err([{"kind": "error", "error": "selector_conflict"}])
+    elif (
+        sum(
+            (
+                command_input.resume,
+                command_input.from_step is not None,
+                command_input.only is not None,
+            )
+        )
+        > 1
+    ):
+        return CommandResult.err([{"kind": "error", "error": "selector_conflict"}])
+    if command_input.force and command_input.only is None:
+        return CommandResult.err([{"kind": "error", "error": "force_requires_only"}])
+    return None
+
+
 def run_existing_workspace(
     command_input,
     ctx,

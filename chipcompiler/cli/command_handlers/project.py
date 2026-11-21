@@ -763,40 +763,11 @@ def _run_project(
     if ctx.manifest_error:
         return error(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)
 
-    range_requested = command_input.from_step is not None or command_input.to_step is not None
-    if command_input.to_step is not None and command_input.from_step is None:
-        return error("flow_range_requires_pair")
-    if (
-        range_requested
-        and command_input.from_step is not None
-        and command_input.to_step is not None
-    ):
-        if any(
-            (
-                command_input.resume,
-                command_input.only is not None,
-                command_input.force,
-                command_input.preset,
-                command_input.overwrite,
-            )
-        ):
-            return error("selector_conflict")
-    elif (
-        sum(
-            (
-                command_input.resume,
-                command_input.from_step is not None,
-                command_input.only is not None,
-            )
-        )
-        > 1
-    ):
-        return error("selector_conflict")
-    if command_input.force and command_input.only is None:
-        return error("force_requires_only")
-
     from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.project import run_dispatch, run_prepare
+    from chipcompiler.cli.project import run_dispatch, run_existing, run_prepare
+
+    if (selector_err := run_existing.selector_error(command_input)) is not None:
+        return selector_err
 
     project = ctx.project
     project_dir = ctx.project_dir
@@ -955,7 +926,7 @@ def _run_project(
         and command_input.from_step is not None
         and command_input.to_step is None
     ):
-        return error("flow_range_requires_pair")
+        return run_existing.half_range_error(command_input.from_step, fresh_target=fresh_target)
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
     if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
@@ -1048,6 +1019,8 @@ def _run_project(
             or command_input.only is not None
         )
     ):
+        if cli_overrides:
+            return run_existing.rejected_run_overrides(run_name, run_dir)
         return _run_workspace(command_input, ctx)
 
     return run_dispatch.dispatch_project_run(

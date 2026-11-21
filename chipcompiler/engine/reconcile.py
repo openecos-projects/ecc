@@ -275,7 +275,25 @@ def resolve_target_section(project_flow: dict | None, workspace_flow: dict | Non
     return {}
 
 
-def _probe_workspace(workspace_dir: Path, target_section: dict | None):
+def _extended_flow_target(flow_section: dict, extend_to: str | None) -> dict | None:
+    """Extend a bounded ``[flow]`` start/end target up to a later non-skipped step."""
+    if extend_to is None or "start" not in flow_section or "end" not in flow_section:
+        return None
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
+
+    chain = rtl2gds_step_names()
+    if flow_section["end"] not in chain or extend_to not in chain:
+        return None
+    if extend_to in _resolved_skip_steps(flow_section):
+        return None
+    if chain.index(extend_to) <= chain.index(flow_section["end"]):
+        return None
+    return {**flow_section, "end": extend_to}
+
+
+def _probe_workspace(
+    workspace_dir: Path, target_section: dict | None, *, extend_to: str | None = None
+):
     """Pure-read classification plus the loaded inputs a mutation would need.
 
     Returns (ReconcileResult, context) — the context dict is populated
@@ -322,7 +340,9 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
     workspace_flow = config["_flow"]
 
     if target_section is None:
-        target_section = workspace_flow or _derive_section_from_persisted(persisted)
+        target_section = _extended_flow_target(workspace_flow, extend_to) or (
+            workspace_flow or _derive_section_from_persisted(persisted)
+        )
     try:
         target = _target_entries(target_section)
     except WorkspaceFlowTargetError as exc:
@@ -421,7 +441,10 @@ def _probe_workspace(workspace_dir: Path, target_section: dict | None):
 
 
 def classify_workspace(
-    workspace_dir: str | Path, target_section: dict[str, object] | None = None
+    workspace_dir: str | Path,
+    target_section: dict[str, object] | None = None,
+    *,
+    extend_to: str | None = None,
 ) -> ReconcileResult:
     """Pure-read classification of the workspace against the target range.
 
@@ -431,12 +454,17 @@ def classify_workspace(
     is due — load the workspace and call :func:`reconcile_workspace`,
     which re-classifies under the lock before writing.
     """
-    probe, _context = _probe_workspace(Path(workspace_dir).resolve(), target_section)
+    probe, _context = _probe_workspace(
+        Path(workspace_dir).resolve(), target_section, extend_to=extend_to
+    )
     return probe
 
 
 def reconcile_workspace_locked(
-    workspace_dir: str | Path, target_section: dict | None = None
+    workspace_dir: str | Path,
+    target_section: dict | None = None,
+    *,
+    extend_to: str | None = None,
 ) -> ReconcileResult:
     """Reconcile assuming the caller already holds the workspace lock.
 
@@ -446,7 +474,7 @@ def reconcile_workspace_locked(
     """
     workspace_dir = Path(workspace_dir).resolve()
 
-    probe, context = _probe_workspace(workspace_dir, target_section)
+    probe, context = _probe_workspace(workspace_dir, target_section, extend_to=extend_to)
     if probe.outcome != "pending_mutation":
         return probe
     return _apply_mutation(workspace_dir, probe, context)

@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler.cli import main as cli_main
 
 
@@ -204,5 +206,31 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
     assert rc == 1
     assert record["error"] == "set_requires_fresh_run"
 
+    assert len(flow_mocks.flow.instances) == 0
+    assert flow_json.read_text() == before
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [["--only", "post_floorplan", "--force"], ["--only", "post_floorplan"], ["--resume"]],
+)
+def test_run_rejects_set_with_a_selector_on_an_existing_workspace(
+    capsys, create_cli_project, manifest_stubs, plain_records, flow_mocks, selector
+):
+    """--set must be rejected on --only/--force and --resume re-runs rather than dropped."""
+    project_dir, flow_json = _existing_workspace(
+        capsys, create_cli_project, manifest_stubs, flow_mocks
+    )
+    before = flow_json.read_text()
+
+    rc = cli_main.run(
+        ["run", "--workspace", "test-ws", "--set", "placement:place.target_density=0.6"]
+        + selector
+        + ["--project", project_dir, "--plain"]
+    )
+
+    records = plain_records(capsys.readouterr().out)
+    assert rc == 1
+    assert records[-1]["error"] == "set_requires_fresh_run"
     assert len(flow_mocks.flow.instances) == 0
     assert flow_json.read_text() == before

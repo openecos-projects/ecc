@@ -121,9 +121,11 @@ def _execute_workspace_run(
             reason="the workspace flow target diverges from the persisted flow",
         )
 
+    extend_to = command_input.to_step if command_input.only is None else None
+
     # Pure-read preflight: reject a divergent flow before loading the workspace,
     # creating checklist state, or taking the lock.
-    probe = classify_workspace(workspace_path)
+    probe = classify_workspace(workspace_path, extend_to=extend_to)
     if probe.outcome == "mismatch":
         return mismatch_error(probe.error or "")
 
@@ -148,7 +150,7 @@ def _execute_workspace_run(
             return conflict
         # Re-probe under the lock: a concurrent reconcile may have changed
         # the classification since the preflight read.
-        probe = classify_workspace(workspace_path)
+        probe = classify_workspace(workspace_path, extend_to=extend_to)
         if probe.outcome == "mismatch":
             return mismatch_error(probe.error or "")
 
@@ -166,7 +168,7 @@ def _execute_workspace_run(
 
         # Extend/resume against the workspace's own persisted flow target
         # before building the engine flow, so appended steps are visible.
-        reconcile_result = reconcile_workspace_locked(workspace_path)
+        reconcile_result = reconcile_workspace_locked(workspace_path, extend_to=extend_to)
         if not reconcile_result.ok:
             return mismatch_error(reconcile_result.error or "")
         if (
