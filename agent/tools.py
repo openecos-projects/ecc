@@ -26,6 +26,10 @@ def run_step(workspace: Workspace, step: WorkspaceStep, ecc_module=None) -> bool
         with isolated_sizer_loader_environment():
             return eda_module.run_step(workspace=workspace, step=step, ecc_module=ecc_module)
 
+    if step.name == "routing" and materialization is not None:
+        from .data.routing_parameter_observer import run_with_routing_observation
+
+        return run_with_routing_observation(workspace, step, materialization["patch"][0], run_tool)
     return run_with_parameter_observation(
         workspace,
         step,

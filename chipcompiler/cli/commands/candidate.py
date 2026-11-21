@@ -13,13 +13,11 @@ candidate_app = create_app(help="Inspect and execute isolated optimization candi
 WorkspaceArgument = Annotated[str, typer.Argument(help="Managed source Workspace ID")]
 
 
-def _invoke(action: str, workspace: str, project: str | None, candidate: str | None = None) -> None:
+def _invoke(action: str, workspace: str, project: str | None, **fields) -> None:
     from agent.cli import CandidateCommand, run_command
 
     try:
-        data = {}
-        if candidate is not None:
-            data["candidate_id"] = candidate
+        data = fields
         if action in ("rerun", "resume"):
             raw = sys.stdin.buffer.read(64 * 1024 + 1)
             if len(raw) > 64 * 1024:
@@ -62,7 +60,19 @@ def status(
     project: ProjectOption = None,
 ) -> None:
     """Read the durable operation ledger of an isolated candidate."""
-    _invoke("status", workspace, project, candidate)
+    _invoke("status", workspace, project, candidate_id=candidate)
+
+
+@candidate_app.command("operation")
+def operation(
+    workspace: WorkspaceArgument,
+    operation_id: Annotated[str, typer.Option("--id")],
+    *,
+    cancel: Annotated[bool, typer.Option("--cancel")] = False,
+    project: ProjectOption = None,
+) -> None:
+    """Find or cancel a candidate operation in this source Workspace."""
+    _invoke("operation", workspace, project, operation_id=operation_id, cancel=cancel)
 
 
 @candidate_app.command("rerun")

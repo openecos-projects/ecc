@@ -1,10 +1,12 @@
 """Adapt a single manifest-managed Workspace to the candidate executor."""
 
 import json
+import re
 import signal
 import threading
 from contextlib import ExitStack
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +16,7 @@ from chipcompiler.data import load_workspace
 from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.runtime_processes import identity_is_live, validate_runtime_entry
+from chipcompiler.utility.file import write_text_atomic
 from chipcompiler.utility.workspace_lock import workspace_lock
 
 from .candidate_resume import _validate_candidate_resume_request
@@ -41,13 +44,13 @@ class ManagedWorkspace:
         location = resolve_current_location(project, workspace, workspace_supported=True)
         self.project = Path(location.project or ".").resolve()
         self.workspace_id = workspace
-        self.project_id = load_manifest(self.project).project_id
+        self.project_id = load_manifest(str(self.project)).project_id
         self.directory = self._registered_directory()
         self.operations = operations
-        self.expected_revision = None
+        self.expected_revision: int | None = None
 
     def _registered_directory(self) -> Path:
-        manifest = load_manifest(self.project)
+        manifest = load_manifest(str(self.project))
         if manifest.project_id != self.project_id:
             raise AgentApplicationError("revision_conflict", "Project identity changed")
         entry = manifest.find_workspace(self.workspace_id)
@@ -103,7 +106,7 @@ class ManagedWorkspace:
             return operation(session)
 
     def require_source_idle(self) -> None:
-        processes = load_manifest(self.project).raw.get("runtime_processes", {})
+        processes = load_manifest(str(self.project)).raw.get("runtime_processes", {})
         if self.workspace_id in processes and identity_is_live(
             validate_runtime_entry(processes[self.workspace_id])
         ):
@@ -133,26 +136,23 @@ def run_command(command: CandidateCommand) -> None:
         if command.action == "status":
             candidate = validate_candidate_id(command.request["candidate_id"])
             directory = source.directory / ".agent" / "operations"
-            with _candidate_lock(directory, candidate):
-                ledger = directory / f"{candidate}.json"
-                if not ledger.is_file():
-                    raise AgentApplicationError(
-                        "candidate_unavailable", "Candidate ledger is unavailable"
-                    )
-                key = candidate_operation_workspace_id(command.workspace, candidate)
-                operations.load_workspace_ledger(key, ledger)
-                _record("candidate_status", **operations.workspace_snapshot(key))
+            _record("candidate_status", **_candidate_snapshot(source, directory, candidate))
+            return
+        if command.action == "operation":
+            _candidate_operation(
+                source, command.request["operation_id"], cancel=command.request["cancel"]
+            )
             return
         if command.action == "rerun":
             request = CandidateRerunRequest(command.workspace, **command.request)
             _validate_candidate_rerun_request(request)
             parent_ref = request.parent_candidate_root_ref
-            start = api.candidate_rerun
+            start = partial(api.candidate_rerun, request)
         else:
             request = CandidateResumeRequest(command.workspace, **command.request)
             _validate_candidate_resume_request(request)
             parent_ref = None
-            start = api.candidate_resume
+            start = partial(api.candidate_resume, request)
         source.expected_revision = request.expected_workspace_revision
         if source.expected_revision is None:
             raise AgentApplicationError("invalid_request", "Workspace Revision is required")
@@ -183,7 +183,7 @@ def run_command(command: CandidateCommand) -> None:
                 session = source._get_session(command.workspace)
                 source._validate_workspace_revision(session, source.expected_revision)
                 source.require_source_idle()
-            _execute(operations, lambda: start(request), terminal)
+            _execute(operations, start, terminal, directory)
     except BlockingIOError as exc:
         raise AgentApplicationError(
             "workspace_busy", "Workspace already has an active operation"
@@ -202,7 +202,45 @@ def _candidate_lock(directory: Path, candidate: str):
     return workspace_lock(directory / candidate, blocking=False)
 
 
-def _execute(operations, start, terminal: threading.Event) -> None:
+def _candidate_snapshot(source: ManagedWorkspace, directory: Path, candidate: str) -> dict:
+    ledger = directory / f"{candidate}.json"
+    key = candidate_operation_workspace_id(source.workspace_id, candidate)
+    lock = _candidate_lock(directory, candidate)
+    if not ledger.is_file():
+        raise AgentApplicationError("candidate_unavailable", "Candidate ledger is unavailable")
+    reader = RuntimeOperationManager(lambda _event: None)
+    try:
+        with lock:
+            reader.load_workspace_ledger(key, ledger)
+    except BlockingIOError:
+        reader.load_workspace_ledger(key, ledger, recover=False)
+    return reader.workspace_snapshot(key)
+
+
+def _candidate_operation(source: ManagedWorkspace, operation_id: str, *, cancel: bool) -> None:
+    if re.fullmatch(r"operation-[0-9a-f]{32}", operation_id) is None:
+        raise ValueError("Invalid candidate operation ID")
+    directory = source.directory / ".agent" / "operations"
+    if directory.resolve() != directory:
+        raise ValueError("Candidate directory is a symbolic link")
+    for ledger in sorted(directory.glob("*.json")):
+        candidate = validate_candidate_id(ledger.stem)
+        snapshot = _candidate_snapshot(source, directory, candidate)
+        operation = next(
+            (entry for entry in snapshot["operations"] if entry["operationId"] == operation_id),
+            None,
+        )
+        if operation is None:
+            continue
+        accepted = cancel and operation["state"] in ("queued", "running")
+        if accepted:
+            write_text_atomic(directory / f"{operation_id}.cancel", "")
+        _record("candidate_operation", operation=operation, accepted=accepted)
+        return
+    raise AgentApplicationError("candidate_unavailable", "Candidate operation is unavailable")
+
+
+def _execute(operations, start, terminal: threading.Event, directory: Path) -> None:
     cancel = threading.Event()
 
     def cancel_handler(_signum, _frame):
@@ -216,12 +254,14 @@ def _execute(operations, start, terminal: threading.Event) -> None:
             operation = {**operation, "state": "failed"}
         _record("candidate_accepted", operation=operation)
         cancelled = False
+        cancel_path = directory / f"{operation_id}.cancel"
         while operation["state"] not in {"succeeded", "failed", "cancelled", "interrupted"}:
-            if cancel.is_set() and not cancelled:
+            if not cancelled and (cancel.is_set() or cancel_path.is_file()):
                 operations.request_cancel(operation_id)
                 cancelled = True
             terminal.wait(0.1)
             operation = operations.operation_status(operation_id)
         _record("candidate_terminal", operation=operation)
+        cancel_path.unlink(missing_ok=True)
     finally:
         signal.signal(signal.SIGTERM, previous)

@@ -71,6 +71,10 @@ def candidate_operation_workspace_id(workspace_id: str, candidate_id: str) -> st
 
 
 def _parameter_unit(knob_id: str) -> str:
+    if knob_id.startswith("route."):
+        return {"thread_number": "thread", "enable_timing": "boolean"}.get(
+            knob_id.split(".")[1], "layer"
+        )
     if knob_id.endswith("routability_opt"):
         return "boolean"
     if knob_id.endswith("cell_padding_x"):
@@ -803,7 +807,12 @@ def _candidate_parameter_receipt(
     snapshot = materialization["snapshots"][0]
     knob_id = patch["knob_id"]
     unit = _parameter_unit(knob_id)
-    tool_name = "ECC-Floorplan" if knob_id.startswith("floorplan.") else "DREAMPlace"
+    if knob_id.startswith("route."):
+        from .data.routing_parameter_observer import ROUTING_TOOL
+
+        tool_name = ROUTING_TOOL
+    else:
+        tool_name = "ECC-Floorplan" if knob_id.startswith("floorplan.") else "DREAMPlace"
     runtime_report_path = (
         Path(workspace.directory) / "analysis" / "parameter_runtime_report.v2.json"
     )
