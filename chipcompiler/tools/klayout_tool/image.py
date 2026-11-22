@@ -2,8 +2,6 @@
 import os
 from pathlib import Path
 
-from klayout import lay
-
 from chipcompiler.utility.path import path_text
 
 
@@ -18,6 +16,8 @@ def save_snapshot_image(
     """
     if not gds_file or not img_file or not os.path.exists(gds_file):
         return False
+
+    from klayout import lay
 
     img_dir = os.path.dirname(path_text(img_file))
     if img_dir:
