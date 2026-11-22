@@ -235,14 +235,19 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
 
 
 def _validate_candidate_resume_manifest(
-    workspace_root: Path, candidate_root: Path, candidate_root_ref: str, manifest: object
+    workspace_root: Path,
+    candidate_root: Path,
+    candidate_root_ref: str,
+    manifest: object,
+    *,
+    terminal_state: str = "failed",
 ) -> None:
     expected = {
         "schema": _CANDIDATE_WORKSPACE_SCHEMA,
         "schema_version": 1,
         "candidate_id": Path(candidate_root_ref).name,
         "candidate_root_ref": candidate_root_ref,
-        "terminal_state": "failed",
+        "terminal_state": terminal_state,
         "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
         "candidate_flow_sha256": _required_file_sha256(
@@ -253,7 +258,7 @@ def _validate_candidate_resume_manifest(
     if not isinstance(manifest, dict) or any(
         manifest.get(key) != value for key, value in expected.items()
     ):
-        raise RuntimeApiError("command_failed", "candidate resume manifest binding is invalid")
+        raise RuntimeApiError("command_failed", "candidate manifest binding is invalid")
     if not isinstance(manifest.get("target_step"), str) or not manifest["target_step"]:
         raise RuntimeApiError("command_failed", "candidate resume target step is invalid")
     _validate_candidate_resume_artifacts(candidate_root, manifest.get("artifacts"))

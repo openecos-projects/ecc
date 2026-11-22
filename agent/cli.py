@@ -143,6 +143,20 @@ def run_command(command: CandidateCommand) -> None:
             removed = _cleanup_candidates(source, command.request["prefix"])
             _record("candidate_cleanup", removed=removed)
             return
+        if command.action == "retain":
+            from .delivery import retain_candidate
+
+            _record(
+                "candidate_retained",
+                **retain_candidate(
+                    project=source.project,
+                    project_id=source.project_id,
+                    source=source.directory,
+                    workspace_id=source.workspace_id,
+                    **command.request,
+                ),
+            )
+            return
         if command.action == "operation":
             _candidate_operation(
                 source, command.request["operation_id"], cancel=command.request["cancel"]

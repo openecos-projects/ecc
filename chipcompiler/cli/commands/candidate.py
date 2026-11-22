@@ -73,6 +73,25 @@ def cleanup(
     _invoke("cleanup", workspace, project, prefix=prefix)
 
 
+@candidate_app.command("retain")
+def retain(
+    workspace: WorkspaceArgument,
+    candidate: Annotated[str, typer.Option("--candidate")],
+    manifest_sha256: Annotated[str, typer.Option("--manifest-sha256")],
+    target: Annotated[str, typer.Option("--target")],
+    project: ProjectOption = None,
+) -> None:
+    """Keep a verified completed candidate as a new managed Workspace."""
+    _invoke(
+        "retain",
+        workspace,
+        project,
+        candidate_id=candidate,
+        digest=manifest_sha256,
+        target_id=target,
+    )
+
+
 @candidate_app.command("operation")
 def operation(
     workspace: WorkspaceArgument,

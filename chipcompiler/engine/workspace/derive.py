@@ -37,6 +37,8 @@ def derive_workspace(
     project_id: str = "",
     source_workspace_id: str = "",
     target_workspace_id: str = "",
+    retained_candidate_sha256: str = "",
+    parent_workspace_directory: Path | None = None,
 ) -> Any:
     """Copy ``source_directory`` to ``target_directory`` under a new identity.
 
@@ -50,6 +52,10 @@ def derive_workspace(
     With ``through_step``, the ledger contains only the inclusive requested
     range, with the first step's inherited inputs frozen into ``origin/``.
 
+    A verified candidate with a retention digest keeps its completed flow.
+    Its command receipt binds the copied evidence to the registered parent
+    so Project reconciliation can finish an interrupted publication.
+
     Returns the loaded derived workspace.
     """
     from chipcompiler.data import load_workspace
@@ -58,17 +64,22 @@ def derive_workspace(
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
     command_spec = {
-        "directory": str(source),
+        "directory": str(parent_workspace_directory or source),
         "targetDirectory": str(target),
         "resetFromStep": reset_from_step,
         **({"throughStep": through_step} if through_step else {}),
     }
+    if retained_candidate_sha256:
+        command_spec.update(
+            retainedCandidateSha256=retained_candidate_sha256,
+            candidateDirectory=str(source),
+        )
     fingerprint = workspace_command_fingerprint("derive", command_spec, None)
     if path_is_within(target, source):
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Target directory is inside the source Workspace: {target}"
         )
-    if not (source / "home" / SNAPSHOT_FILENAME).is_file():
+    if not retained_candidate_sha256 and not (source / "home" / SNAPSHOT_FILENAME).is_file():
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
         )
@@ -77,7 +88,12 @@ def derive_workspace(
     # deadlock. A non-blocking acquisition never waits, so it cannot deadlock
     # either; it takes the source lock first so a busy source fails before the
     # target's sibling lock file is created (#400).
-    locks = sorted((source, target), key=str) if blocking else (source, target)
+    source_lock = (
+        parent_workspace_directory / ".agent" / "operations" / source.name
+        if retained_candidate_sha256 and parent_workspace_directory is not None
+        else source
+    )
+    locks = sorted((source_lock, target), key=str) if blocking else (source_lock, target)
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         _sweep_stale_staging(target)
         if target.exists():
@@ -102,33 +118,21 @@ def derive_workspace(
             ):
                 (home / name).unlink(missing_ok=True)
 
+            if retained_candidate_sha256:
+                replacements = ((str(source), str(staging)),)
+                _rewrite_staged_paths(staging, replacements)
+                _rebase_candidate_params(staging, source, staging)
             workspace = load_workspace(staging)
             if workspace is None:
                 raise WorkspaceLifecycleError(
                     "workspace_invalid", f"Workspace cannot be opened: {source}"
                 )
 
-            from chipcompiler.engine.workspace.reset import (
-                build_flow_for_workspace,
-                prepare_steps_for_rerun,
-            )
-
-            engine_flow = build_flow_for_workspace(workspace)
-            if through_step:
-                from chipcompiler.engine.workspace.derive_range import bound_derived_flow
-
-                bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
-                _prune_derived_checklist(workspace, engine_flow.workspace_steps)
-            elif reset_from_step:
-                reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
-                prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
-                _prune_derived_checklist(workspace, reset_steps)
+            if retained_candidate_sha256:
+                for result in (staging / "log").glob("*.run.json"):
+                    result.unlink()
             else:
-                import chipcompiler.data as data_api
-
-                data_api.prepare_workspace_for_rerun(
-                    workspace, engine_flow, preserve_user_inputs=True
-                )
+                _prepare_derived_flow(workspace, reset_from_step, through_step)
 
             snapshot = create_engineering_snapshot(
                 workspace, workspace_id=target_workspace_id or None, cause=cause
@@ -137,6 +141,8 @@ def derive_workspace(
                 staging,
                 ((str(source), str(target)), (str(staging), str(target))),
             )
+            if retained_candidate_sha256:
+                _rebase_candidate_params(staging, staging, target)
             if command_id:
                 write_workspace_command(
                     staging,
@@ -167,6 +173,42 @@ def derive_workspace(
             return derived
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+
+def _prepare_derived_flow(workspace, reset_from_step: str, through_step: str) -> None:
+    from chipcompiler.engine.workspace.reset import (
+        build_flow_for_workspace,
+        prepare_steps_for_rerun,
+    )
+
+    engine_flow = build_flow_for_workspace(workspace)
+    if through_step:
+        from chipcompiler.engine.workspace.derive_range import bound_derived_flow
+
+        bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
+        _prune_derived_checklist(workspace, engine_flow.workspace_steps)
+    elif reset_from_step:
+        reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
+        prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
+        _prune_derived_checklist(workspace, reset_steps)
+    else:
+        from chipcompiler.data import prepare_workspace_for_rerun
+
+        prepare_workspace_for_rerun(workspace, engine_flow, preserve_user_inputs=True)
+
+
+def _rebase_candidate_params(staging: Path, source: Path, target: Path) -> None:
+    import tomllib
+
+    import tomli_w
+
+    from chipcompiler.utility.file import write_text_atomic
+
+    path = staging / "home" / "params.toml"
+    params = tomllib.loads(path.read_text(encoding="utf-8"))
+    rewritten = _replace_string_prefix(params, str(source), str(target))
+    if params != rewritten:
+        write_text_atomic(path, tomli_w.dumps(rewritten))
 
 
 def _sweep_stale_staging(target: Path) -> None:
