@@ -63,6 +63,16 @@ def status(
     _invoke("status", workspace, project, candidate_id=candidate)
 
 
+@candidate_app.command("cleanup")
+def cleanup(
+    workspace: WorkspaceArgument,
+    prefix: Annotated[str, typer.Option("--prefix", help="Candidate group ID prefix")],
+    project: ProjectOption = None,
+) -> None:
+    """Remove candidate directories in a group and keep their operation ledgers."""
+    _invoke("cleanup", workspace, project, prefix=prefix)
+
+
 @candidate_app.command("operation")
 def operation(
     workspace: WorkspaceArgument,
