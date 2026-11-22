@@ -47,6 +47,21 @@ def published(step):
     ]
 
 
+@pytest.mark.parametrize("failure", ["begin", "publish"])
+def test_display_failure_does_not_fail_step_with_replay_off(tmp_path, monkeypatch, failure):
+    from chipcompiler.tools import eda, geometry_display
+
+    workspace = SimpleNamespace(parameters=SimpleNamespace(data={"replay": {"enabled": False}}))
+    step = step_at(tmp_path)
+    monkeypatch.setattr(eda, "_run_step", lambda *_: True)
+
+    def fail(*_):
+        raise OSError("display write failed")
+
+    monkeypatch.setattr(geometry_display, failure, fail)
+    assert eda.run_step(workspace, step) is True
+
+
 def test_publication_is_immutable_and_replay_fingerprints_assets(tmp_path):
     step = step_at(tmp_path)
     source = tmp_path / "data/power.gdisplay"

@@ -38,7 +38,7 @@ Additional producers and completion views (2026-11-16):
 
 | Steps | Captured data / capability boundary |
 | --- | --- |
-| preplace / Timing optimization | Sizer/OpenROAD repair boundaries, committed ECO and journal restoration; full stable instance/pin snapshots, not every CELL candidate |
+| preplace / Timing optimization | ECC input/final geometry; OpenDB instance and pin changes at Sizer repair, legalization, ECO commit and rollback boundaries; CELL candidates annotate the process without replacing committed geometry |
 | diff_opt / diff_buffering / diff_sizing / legalization | working coordinates, evaluated scalar decisions, native commits/refreshes and final database; candidates do not mutate physical history |
 | CTS | physical instantiation/commit boundaries plus frozen completed hierarchical clock graph |
 | route | PA iteration/completion access points, GR guides/phases, TA, DR iteration/best restoration/final metal; signal routing preserves PG geometry |

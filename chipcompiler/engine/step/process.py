@@ -51,7 +51,7 @@ _ENABLED_ENV = "ECC_STEP_SUBPROCESS"
 
 
 def execution_mode(workspace: Workspace | None = None) -> tuple[bool, str]:
-    """Resolve a temporary environment override before the workspace choice."""
+    """Resolve analysis parallelism; individual steps always run in workers."""
     from chipcompiler.data.workspace.execution import declared_step_subprocess
 
     if _ENABLED_ENV in os.environ:
@@ -63,7 +63,7 @@ def execution_mode(workspace: Workspace | None = None) -> tuple[bool, str]:
 
 
 def is_enabled(workspace: Workspace | None = None) -> bool:
-    """Return whether isolated step execution is enabled for this workspace."""
+    """Return whether independent analysis steps may run concurrently."""
     return execution_mode(workspace)[0]
 
 

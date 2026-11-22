@@ -106,7 +106,7 @@ graph LR
 | emir | ✓ | `emir_ecc.json` | iEMIR 工艺文件；advisory 步骤，见 §13.5 |
 | harden | — | 无专属配置 | 工具内部复用 `db_ecc.json` 定位输入输出，但未在 `STEP_CONFIG_READS` 中声明；`ecc config harden` 会明确显示该步骤没有配置 |
 
-### 0.4 Workspace 执行模式
+### 0.4 Workspace 分析调度
 
 执行模式归属于单个 workspace，保存在 `home/flow.json` 的
 `options.execution.step_subprocess`，不写入项目的 `ecc.toml` 或 `home/params.toml`。
@@ -114,9 +114,9 @@ graph LR
 ```bash
 # 查看保存值、实际生效值及覆盖来源。
 ecc workspace execution baseline --project /path/to/project
-# 在 ECC 进程内执行步骤，flow 步骤串行运行。
+# 串行运行独立的检查步骤。
 ecc workspace execution baseline --project /path/to/project --no-step-subprocess
-# 使用独立 worker，允许无依赖关系的 checker 并行运行。
+# 允许无依赖关系的检查步骤并行运行。
 ecc workspace execution baseline --project /path/to/project --step-subprocess
 # 创建时指定；derive 和 refresh 也支持这两个选项。
 ecc workspace create experiment --project /path/to/project --no-step-subprocess
@@ -125,11 +125,10 @@ ecc workspace create experiment --project /path/to/project --no-step-subprocess
 修改执行模式保留已完成的步骤和结果。写入时使用 workspace 锁；`--no-wait`
 在 workspace 忙时直接返回错误。`--expected-revision` 和 `--command-id`
 分别支持版本检查和幂等重试。派生或刷新 workspace 时，未指定执行模式就保留原值。
-旧 workspace 缺少此字段时默认启用独立 worker。checker 并行仍遵循依赖关系和内存
+旧 workspace 缺少此字段时默认允许并行检查。每个步骤仍在独立 worker 中运行。并行检查仍遵循依赖关系和内存
 限制；两种模式下，具体 EDA 工具都可能使用自己的线程。
 
-显式设置的 `ECC_STEP_SUBPROCESS` 临时覆盖保存值（`0` 关闭，其他值开启），不会
-回写配置。步骤日志会注明最终使用的模式和来源。
+显式设置的 `ECC_STEP_SUBPROCESS` 临时覆盖保存值（`0` 串行检查，其他值允许并行检查），不会回写配置。
 
 ## 1. 参数传递链（用户可调参数）
 

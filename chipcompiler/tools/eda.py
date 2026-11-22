@@ -1,9 +1,12 @@
 #!/usr/bin/env python
+import logging
 import os
 from pathlib import Path
 
 from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
 from chipcompiler.tools.registry import checks_dependency, load_tool, tool_spec
+
+logger = logging.getLogger(__name__)
 
 # Compatibility name for callers of the former loader entry point.
 load_eda_module = load_tool
@@ -129,19 +132,22 @@ def run_step(
     from . import geometry_display
     from .replay import capture_step
 
-    display_started_ns = geometry_display.begin(step)
+    try:
+        display_started_ns = geometry_display.begin(step)
+    except (OSError, ValueError):
+        logger.warning("Cannot prepare display data for %s", step.name, exc_info=True)
+        display_started_ns = None
     with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
         outcome["ok"] = _run_step(workspace, step, ecc_module)
         if outcome["ok"] and step.name == "postRouteLec":
             from .lec_layout import save_checked_layout
 
             save_checked_layout(workspace, step, ecc_module)
-        if outcome["ok"]:
+        if outcome["ok"] and display_started_ns is not None:
             try:
                 geometry_display.publish(step, display_started_ns)
-            except Exception:
-                outcome["ok"] = False
-                raise
+            except (OSError, ValueError):
+                logger.warning("Cannot publish display data for %s", step.name, exc_info=True)
         return outcome["ok"]
 
 

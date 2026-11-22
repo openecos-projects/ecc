@@ -18,6 +18,6 @@ StepSubprocessOption = Annotated[
     bool | None,
     typer.Option(
         "--step-subprocess/--no-step-subprocess",
-        help="Use isolated workers and allow parallel checks; saved in this workspace",
+        help="Allow independent checks to run in parallel; saved in this workspace",
     ),
 ]
