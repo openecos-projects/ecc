@@ -7,7 +7,6 @@ from typing import Any
 import pytest
 from rosettakit.errors import ValidationError
 
-from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import SkippableStepEnum, StepEnum
 
 from ._sizer_helpers import _sizer_runtime, _workspace
@@ -395,7 +394,7 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     workspace.pdk.libs = [tmp_path / "lib_dir" / "slow_corner.lib"]
     timing_input = tmp_path / "constraints" / "main_clock.sdc"
     timing_input.parent.mkdir()
-    timing_input.write_text(SDC_INPUT_TEMPLATE)
+    timing_input.write_text("create_clock -period 10 [get_ports clk]\n")
     workspace.pdk.sdc = timing_input
     workspace.pdk.spef = tmp_path / "rcx" / "route_parasitic.spef"
 
@@ -428,7 +427,7 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
         "-top gcd",
         f"-def {step.input.def_}",
         f"-v {step.input.verilog}",
-        f"-sdc {workspace.directory / 'origin/post_CTS/TYP_25_TYPICAL.tcl'}",
+        f"-sdc {workspace.directory / 'origin/post_CTS/main_clock.sdc.ecc.tcl'}",
         "-outputPath .",
         f"-def_out_path {expected_def_out}",
         f"-verilog_out_path {expected_verilog_out}",

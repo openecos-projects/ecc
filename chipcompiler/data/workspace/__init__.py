@@ -451,10 +451,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
 
     _reload_workspace_parameters(workspace)
 
-    from .sdc import load_timing_inputs
-
-    load_timing_inputs(workspace)
-
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 

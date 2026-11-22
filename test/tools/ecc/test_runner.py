@@ -24,6 +24,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.types import AnalysisData
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.tools.ecc import runner as ecc_runner
@@ -704,13 +705,15 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(tech=techlef, lefs=[lef], libs=[liberty], sdc=sdc),
+        pdk=PDK(tech=techlef, lefs=[lef], libs=[liberty]),
         config={
             "db": tmp_path / "config" / "db.json",
             StepEnum.STA.value: tmp_path / "config" / "sta_ecc.json",
         },
         logger=logger,
     )
+    workspace.parameters.data.update(SdcInputs.from_file(sdc).parameters())
+    generate_timing_scripts(workspace)
     step = EccStep(
         output=EccOutput(verilog=netlist),
         name=StepEnum.SYNTHESIS.value,
@@ -943,7 +946,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
-    sdc.write_text(SDC_INPUT_TEMPLATE)
+    sdc.write_text("create_clock -name CORE -period 7.5 [get_ports clk]\n")
     sta_config = config_dir / "sta_ecc.json"
     sta_config.write_text(
         json.dumps(
@@ -1018,7 +1021,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
-            "sdc_path": workspace.directory / "origin/post_CTS/MAX_125_RCworst.tcl",
+            "sdc_path": workspace.directory
+            / "origin/post_CTS"
+            / ("MAX_125_RCworst.tcl" if generated_sdc else "gcd.sdc.ecc.tcl"),
             "spef_path": str(spef_root / "gcd_RCworst_125C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,
@@ -1030,7 +1035,9 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
-            "sdc_path": workspace.directory / "origin/post_CTS/MIN_m40_Cbest.tcl",
+            "sdc_path": workspace.directory
+            / "origin/post_CTS"
+            / ("MIN_m40_Cbest.tcl" if generated_sdc else "gcd.sdc.ecc.tcl"),
             "spef_path": str(spef_root / "gcd_Cbest_m40C.spef"),
             "output_modes": ("report", "structured"),
             "max_paths": 500,

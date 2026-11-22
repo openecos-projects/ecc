@@ -5,7 +5,6 @@ from unittest.mock import Mock, call
 
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import (
-    PDK,
     EccAnalysis,
     EccData,
     EccFeature,
@@ -16,6 +15,8 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.step import STEP_DIRECTORIES
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_qor import (
@@ -105,16 +106,13 @@ def _power_workspace(tmp_path, monkeypatch):
             }
         ],
     )
-    return (
-        Workspace(
-            directory=tmp_path,
-            design=OriginDesign(name="gcd", top_module="gcd"),
-            pdk=PDK(sdc=sdc),
-        ),
-        liberty,
-        sdc,
-        spef,
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd", top_module="gcd"),
     )
+    workspace.parameters.data.update(SdcInputs.from_file(sdc).parameters())
+    generate_timing_scripts(workspace)
+    return workspace, liberty, sdc, spef
 
 
 def test_power_analysis_uses_its_own_data_directory_and_native_lifecycle(tmp_path, monkeypatch):

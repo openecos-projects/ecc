@@ -15,6 +15,8 @@ from types import SimpleNamespace
 
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import PDK, EccStep, OriginDesign, Parameters, Workspace
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 
 
 def _workspace(tmp_path):
@@ -29,11 +31,12 @@ def _workspace(tmp_path):
             tech=Path("tech.lef"),
             lefs=[Path("std.lef")],
             libs=[Path("slow.lib")],
-            sdc=timing_input,
             spef=Path("routing.spef"),
         ),
         parameters=Parameters(data={"pdk": "ics55"}),
     )
+    workspace.parameters.data.update(SdcInputs.from_file(timing_input).parameters())
+    generate_timing_scripts(workspace)
     route_config = tmp_path / "routing_ecc.json"
     route_config.write_text(
         json.dumps({"RT": {"-bottom_routing_layer": "M2", "-top_routing_layer": "M7"}}),

@@ -20,6 +20,7 @@ from chipcompiler.data.handshake import (
     write_response,
 )
 from chipcompiler.data.types import AnalysisData, DesignState
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -156,7 +157,7 @@ def test_external_timing_inputs_select_phase_after_native_probe(
     values["primary_clocks"] = "create_clock -name FAST -period 10 [get_ports fast_clk]\n"
     contents = tomli_w.dumps(values)
     custom.write_text(contents)
-    workspace.pdk.sdc = custom
+    workspace.parameters.data.update(SdcInputs.from_file(custom).parameters())
     workspace.config.clear()
     step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
     build_step_space(step)
@@ -178,6 +179,33 @@ def test_final_sta_selects_each_actual_corner(timing_workspace):
         assert path.parent == timing_workspace.directory / "origin/post_CTS"
         assert f'set corner "{scenario.corner}"' in path.read_text()
         assert f'set rc_para "{scenario.rc}"' in path.read_text()
+
+
+@pytest.mark.parametrize(
+    ("step_name", "phase"),
+    [(StepEnum.CTS, "pre_CTS"), (StepEnum.STA, "post_CTS"), (StepEnum.POWER_ANALYSIS, "post_CTS")],
+)
+def test_legacy_full_sdc_uses_phase_wrapper_without_native_io_probe(
+    timing_workspace, native_module, step_name, phase
+):
+    workspace = timing_workspace
+    source = workspace.directory / "origin" / "legacy.sdc"
+    contents = "create_clock -name USER -period 8 [get_ports clk]\n"
+    source.write_text(contents)
+    workspace.pdk.sdc = source
+    step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
+    build_step_space(step)
+
+    prepare_timing_context(workspace, step, native_module)
+
+    assert native_module.mock_calls == []
+    paths = {
+        step_tcl_path(workspace, step, corner=scenario.corner, rc=scenario.rc)
+        for scenario in timing_scenarios(workspace)
+    }
+    assert paths == {workspace.directory / "origin" / phase / "legacy.sdc.ecc.tcl"}
+    assert source.read_text() == contents
+    assert workspace.pdk.sdc == source
 
 
 def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(timing_workspace):
@@ -281,8 +309,9 @@ def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monke
     if custom:
         from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 
-        workspace.pdk.sdc = workspace.directory / "user.tcl"
-        workspace.pdk.sdc.write_text(SDC_INPUT_TEMPLATE)
+        source = workspace.directory / "user.tcl"
+        source.write_text(SDC_INPUT_TEMPLATE)
+        workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
     step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False
