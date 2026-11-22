@@ -134,7 +134,7 @@ def run_step(
 
     try:
         display_started_ns = geometry_display.begin(step)
-    except (OSError, ValueError):
+    except Exception:
         logger.warning("Cannot prepare display data for %s", step.name, exc_info=True)
         display_started_ns = None
     with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
@@ -146,7 +146,7 @@ def run_step(
         if outcome["ok"] and display_started_ns is not None:
             try:
                 geometry_display.publish(step, display_started_ns)
-            except (OSError, ValueError):
+            except Exception:
                 logger.warning("Cannot publish display data for %s", step.name, exc_info=True)
         return outcome["ok"]
 

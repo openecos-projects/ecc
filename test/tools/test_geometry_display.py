@@ -49,7 +49,8 @@ def published(step):
 
 
 @pytest.mark.parametrize("failure", ["begin", "publish"])
-def test_display_failure_does_not_fail_step_with_replay_off(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize("error", [OSError, RuntimeError])
+def test_display_failure_does_not_fail_step_with_replay_off(tmp_path, monkeypatch, failure, error):
     from chipcompiler.tools import eda, geometry_display
 
     workspace = Workspace(directory=tmp_path)
@@ -61,7 +62,7 @@ def test_display_failure_does_not_fail_step_with_replay_off(tmp_path, monkeypatc
     monkeypatch.setattr(eda, "_run_step", lambda *_: True)
 
     def fail(*_):
-        raise OSError("display write failed")
+        raise error("display write failed")
 
     monkeypatch.setattr(geometry_display, failure, fail)
     assert eda.run_step(workspace, step) is True
