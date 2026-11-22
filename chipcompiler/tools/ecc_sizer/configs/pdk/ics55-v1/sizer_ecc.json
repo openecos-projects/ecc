@@ -1,4 +1,5 @@
 {
+  "vt_suffixes": ["H7H", "H7R", "H7L"],
   "hold_stage": {
     "global_routing_rc": {
       "corner": "MIN_m40/Cbest",

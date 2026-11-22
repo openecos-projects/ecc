@@ -362,12 +362,8 @@ def min_corner_libs(workspace: Workspace) -> list[Path]:
     """
     config_path = workspace.config.get(StepEnum.STA.value)
     sta_config = json_read(config_path) if config_path else {}
-    description = getattr(workspace.pdk, "description", {})
-    hold_view = (
-        description.get("tools", {}).get("sizer", {}).get("hold_view", "") if description else "MIN"
-    )
     for liberty in sta_config.get("liberty", []):
-        if hold_view and str(liberty.get("corner", "")) == hold_view:
+        if str(liberty.get("corner", "")).upper() == "MIN":
             return [Path(raw_path) for raw_path in liberty.get("path", [])]
     return []
 
@@ -465,6 +461,27 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
     return command.build()
 
 
+def _vt_environment(workspace: Workspace) -> str:
+    """Explicit process VT groups, read from the merged sizer_ecc.json."""
+    config_path = workspace.config.get("sizer")
+    config = json_read(config_path) if config_path else {}
+    suffixes = config.get("vt_suffixes", [])
+    if not suffixes:
+        return "-num_vt 1\n"
+    # The current native ABI has three ordered slots. Package authors supply
+    # groups from slow/high-threshold to fast/low-threshold.
+    if len(suffixes) > 3:
+        raise ValueError("Sizer backend supports at most three ordered VT groups")
+    if len(suffixes) != len(set(suffixes)):
+        raise ValueError("duplicate Sizer VT suffix")
+    lines = [f"-num_vt {len(suffixes)}"]
+    for slot, suffix in zip(("hvt", "nvt", "lvt"), suffixes, strict=False):
+        if not suffix or any(character.isspace() for character in suffix):
+            raise ValueError("Sizer VT suffix must be a nonempty token")
+        lines.append(f"-suffix_{slot} {suffix}")
+    return "\n".join(lines) + "\n"
+
+
 def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path]) -> None:
     """Write the FF/MIN hold-only Sizer scripts for *step*."""
     env_path = step.script.sizer_hold_env
@@ -472,11 +489,9 @@ def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path])
     if env_path is None or cmd_path is None:
         raise ValueError("sizer step is missing script env/cmd paths")
 
-    from .pdk_config import vt_environment
-
     env_template = _sizer_env_template()
     _copy_or_seed_template(env_template, Path(env_path), "-num_vt 1\n")
-    _append_text(Path(env_path), vt_environment(workspace.pdk))
+    _append_text(Path(env_path), _vt_environment(workspace))
     _append_text(Path(env_path), _tech_text(workspace, libs=libs))
     Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)
     rc_path = sizer_hold_rc(step)
@@ -498,8 +513,6 @@ def clear_hold_config(step: EccStep) -> None:
 
 
 def build_step_config(workspace: Workspace, step: EccStep) -> None:
-    from .pdk_config import vt_environment
-
     env_template = _sizer_env_template()
     env_path = step.script.sizer_env
     cmd_path = step.script.sizer_cmd
@@ -511,7 +524,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     with Path(cmd_path).open("w", encoding="utf-8"):
         pass
 
-    _append_text(env_path, vt_environment(workspace.pdk))
+    _append_text(env_path, _vt_environment(workspace))
     _append_text(env_path, _tech_text(workspace))
     _append_text(cmd_path, _cmd_text(workspace, step))
 

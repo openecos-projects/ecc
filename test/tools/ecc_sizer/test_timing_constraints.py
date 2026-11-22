@@ -7,6 +7,8 @@ from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import SkippableStepEnum, StepEnum
 from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
+from chipcompiler.data.workspace.tool_configs import tool_config
+from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_sizer import builder
 
 from ._sizer_helpers import _sizer_runtime, _workspace
@@ -38,11 +40,11 @@ def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
         workspace.pdk.sdc = origin / "user.sdc"
         workspace.pdk.sdc.write_text("create_clock -period 10 [get_ports clk]\n")
         filename = "user.sdc.ecc.tcl"
-    template = Path(__file__).resolve().parents[2] / "pdk/fixtures/tool_defaults.json"
-    config = json.loads(template.read_text())["sta"]
-    workspace.pdk.description = {
-        "tools": {"configs": {"sta": config}, "sizer": {"hold_view": "MIN"}}
-    }
+    workspace.pdk.name = "ics55"
+    workspace.pdk.version = "v1"
+    config = tool_config(
+        Path(ecc_runner.__file__).parent / "configs", "sta_ecc.json", workspace.pdk
+    )
     generate_timing_scripts(workspace)
     config_path = workspace.directory / "config" / "sta_ecc.json"
     config_path.parent.mkdir()

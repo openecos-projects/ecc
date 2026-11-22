@@ -22,31 +22,20 @@ def step_tcl_path(
     workspace: Workspace,
     step: WorkspaceStep,
     *,
-    corner: str | None = None,
-    rc: str | None = None,
+    corner: str = "TYP",
+    rc: str = "TYPICAL",
 ) -> Path | None:
-    """Select an explicit scenario, or the workspace default constraint view."""
+    """Final STA selects its scenario; all other consumers use TYP/TYPICAL."""
     source = workspace.pdk.sdc
     if source is None:
         return None
     post_cts = _reads_clock_tree(step)
     if not is_generated_sdc(source):
         return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
-    scenarios = timing_scenarios(workspace)
-    if corner is None and rc is None:
-        scenario = next(
-            (
-                item
-                for item in scenarios
-                if scenario_tcl_path(workspace.directory, item, post_cts=False) == source
-            ),
-            None,
-        )
-    else:
-        scenario = next(
-            (item for item in scenarios if (item.corner, item.rc) == (corner, rc)),
-            None,
-        )
+    scenario = next(
+        (item for item in timing_scenarios(workspace) if (item.corner, item.rc) == (corner, rc)),
+        None,
+    )
     if scenario is None:
         raise ValueError(f"No configured timing scenario for {corner}/{rc}")
     return scenario_tcl_path(workspace.directory, scenario, post_cts=post_cts)

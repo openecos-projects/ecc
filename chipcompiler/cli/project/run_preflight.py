@@ -32,7 +32,8 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
             _issue(
                 "pdk",
                 f"pdk.name={cfg.pdk_name}",
-                "Set pdk.root in ecc.toml or ECC_PDK_ROOT to an imported PDK directory.",
+                "Set pdk.root in ecc.toml, or export CHIPCOMPILER_ICS55_PDK_ROOT / "
+                "ICS55_PDK_ROOT pointing at the icsprout55-pdk checkout.",
             )
         ]
     try:
@@ -41,18 +42,10 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
         return [_issue("pdk", root, str(exc))]
     # SDC is generated during workspace creation, so only the PDK contents
     # and target-specific mapping requirement can be checked here.
-    from chipcompiler.data.parameter_schema import build_config_overrides, resolve_parameters
-    from chipcompiler.tools.ecc.emir_model import model_config
-
-    resolved, _ = resolve_parameters(toml_overrides=cfg.params_overrides)
-    emir_config = model_config(pdk, cfg.params_overrides)
-    emir_config.update(build_config_overrides(resolved).get("emir", {}))
-    return pdk_issues(pdk, step_names, check_sdc=False, emir_config=emir_config)
+    return pdk_issues(pdk, step_names, check_sdc=False)
 
 
-def pdk_issues(
-    pdk, step_names, *, check_sdc: bool = True, emir_config: dict | None = None
-) -> list[dict]:
+def pdk_issues(pdk, step_names, *, check_sdc: bool = True) -> list[dict]:
     """Validate PDK files and step-specific PDK resources without mutating state."""
     if pdk is None:
         return [_issue("pdk", "", "The workspace has no loaded PDK.")]
@@ -63,22 +56,6 @@ def pdk_issues(
         pdk.validate()
     except (OSError, ValueError) as exc:
         issues.append(_issue("pdk", root, str(exc)))
-
-    from chipcompiler.pdk.capabilities import stage_diagnostics
-    from chipcompiler.pdk.compatibility import runtime_issues
-
-    for message in runtime_issues(pdk.description.get("tools", {}), step_names):
-        issues.append(_issue("pdk-tool-compatibility", root, message))
-
-    for diagnostic in stage_diagnostics(pdk, step_names, emir_config=emir_config):
-        issues.append(
-            _issue(
-                "pdk-capability",
-                diagnostic["stage"],
-                diagnostic["message"],
-                required=not (diagnostic["stage"] == "emir" and len(set(step_names)) > 1),
-            )
-        )
 
     selected = set(step_names)
     mapping_steps = sorted(selected & _PDK_MAPPING_STEPS)
@@ -174,8 +151,7 @@ def config_issues(workspace, selected_steps) -> list[dict]:
                 _issue(
                     "config-emir",
                     str(emir_path or "emir_ecc.json"),
-                    "Select an EM resource with ecc pdk configure; for ICS55 flow testing "
-                    "only, set emir.synthetic_model to ics55 with ecc param set.",
+                    "Set technology_file_path in config/emir_ecc.json.",
                 )
             )
         elif not Path(technology_file).is_file():
@@ -183,15 +159,8 @@ def config_issues(workspace, selected_steps) -> list[dict]:
                 _issue(
                     "config-emir",
                     str(technology_file),
-                    "Restore the EMIR technology file or update the ECC-managed PDK configuration.",
+                    "Restore the EMIR technology file or update config/emir_ecc.json.",
                 )
-            )
-        elif emir.get("model_kind") == "synthetic":
-            from chipcompiler.tools.ecc.emir_model import SYNTHETIC_NOTICE
-
-            issues.append(
-                _issue("config-emir", str(technology_file), SYNTHETIC_NOTICE, required=False)
-                | {"status": "warn"}
             )
     return issues
 
@@ -205,7 +174,7 @@ def preflight_failure(preflight: dict) -> dict | None:
             "reason": str(missing),
             "missing_inputs": missing,
         }
-    issues = [issue for issue in preflight.get("issues", []) if issue.get("required", True)]
+    issues = preflight.get("issues", [])
     if not issues:
         return None
     reason = "; ".join(
@@ -243,15 +212,9 @@ def build_run_preflight(flow, selected: list[str], *, only: str | None, force: b
 
     selected_steps = [steps_by_name[name] for name in selected if name in steps_by_name]
     workspace = getattr(flow, "workspace", None)
-    from chipcompiler.utility import json_read
-
-    emir_path = getattr(workspace, "config", {}).get("emir")
-    emir_config = json_read(emir_path) if emir_path else None
     tool_problems = tool_issues(selected_steps)
     pdk_problems = (
-        pdk_issues(getattr(workspace, "pdk", None), selected, emir_config=emir_config)
-        if workspace is not None
-        else []
+        pdk_issues(getattr(workspace, "pdk", None), selected) if workspace is not None else []
     )
     config_problems = config_issues(workspace, selected_steps) if workspace is not None else []
     issues = [*tool_problems, *pdk_problems, *config_problems]
@@ -263,7 +226,7 @@ def build_run_preflight(flow, selected: list[str], *, only: str | None, force: b
         "pdk_issues": pdk_problems,
         "config_issues": config_problems,
         "issues": issues,
-        "ready": not missing and not any(issue.get("required", True) for issue in issues),
+        "ready": not missing and not issues,
     }
 
 

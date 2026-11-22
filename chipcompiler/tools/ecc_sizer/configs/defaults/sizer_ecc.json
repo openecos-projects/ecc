@@ -1,4 +1,5 @@
 {
+    "vt_suffixes": [],
     "hold_stage": {
         "hold_margin": 0.04,
         "rc_mode": "global_routing",

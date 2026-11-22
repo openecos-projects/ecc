@@ -51,16 +51,13 @@ def create_project(command_input: InitInput) -> Path:
     project_name = _nonempty(command_input.project_name, default_name, "Project name")
     design_name = _nonempty(command_input.design_name, default_name, "Design name")
     mpc = _load_mpc(command_input)
-    from chipcompiler.pdk.project_defaults import selected_pdk
-
-    selected = selected_pdk(command_input.pdk_root, command_input.pdk_default_client)
 
     staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=parent))
     published = False
     try:
         if existing is not None:
             os.chmod(staging, stat.S_IMODE(existing.st_mode))
-        _populate(staging, target, project_name, design_name, mpc, selected)
+        _populate(staging, target, project_name, design_name, mpc)
         try:
             if existing is None:
                 _renameat2(staging, target, _RENAME_NOREPLACE)
@@ -169,18 +166,16 @@ def _populate(
     project_name: str,
     design_name: str,
     mpc: dict | None,
-    selected: tuple[str, str] = ("", ""),
 ) -> None:
     _write_file(staging / SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE)
     rtl = staging / "rtl"
     constraints = staging / "constraints"
     rtl.mkdir()
     constraints.mkdir()
-    config = _default_toml(design_name, *selected)
+    config = _default_toml(design_name)
     _write_file(staging / CONFIG_FILENAME, config)
     base_design = {
-        "pdk": selected[0],
-        "pdk_root": selected[1],
+        "pdk": "ics55",
         "top_module": design_name,
         "clock": "clk",
         "rtl_list": [f"rtl/{design_name}.v"],
@@ -204,42 +199,23 @@ def _populate(
     _fsync_directory(staging)
 
 
-def _default_toml(design_name: str, family: str = "", root: str = "") -> str:
+def _default_toml(design_name: str) -> str:
     from chipcompiler.data import DEFAULT_LEC_ENGINE, DEFAULT_SKIP_STEPS
 
     from .timing_template import SDC_INPUT_TEMPLATE
 
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
     lec_engine = json.dumps(DEFAULT_LEC_ENGINE.value)
-    timing_template = SDC_INPUT_TEMPLATE
-    if root:
-        from chipcompiler.pdk.manifest import load_descriptor
-
-        descriptor = load_descriptor(Path(root))
-        corners = [
-            entry["corner"]
-            for entry in descriptor.tools.get("configs", {}).get("sta", {}).get("liberty", [])
-        ]
-        clock_row = "clk " + " ".join(f"{corner}:100" for corner in dict.fromkeys(corners))
-        timing_template = timing_template.replace(
-            "clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100",
-            clock_row if corners else "# Supply explicit SDC or configure timing views.",
-        ).replace(
-            "# The first row's TYP value also drives flow metadata.",
-            "# The first clock's TYP value (or first declared corner) drives flow metadata.",
-        )
     return (
         f'''[design]
 name = "{design_name}"
 top = "{design_name}"
-clock_port = "clk"
-frequency_mhz = 100
 rtl = ["rtl/{design_name}.v"]
 sdc = "{SDC_INPUT_FILENAME}"
 
 [pdk]
-name = {json.dumps(family)}
-root = {json.dumps(root)}
+name = "ics55"
+root = ""
 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
@@ -250,7 +226,7 @@ lec_engine = {lec_engine}
 # `ecc flow edit` picks them in a checkbox list and rewrites this section.
 skip_steps = {skip_steps}
 '''
-        + timing_template
+        + SDC_INPUT_TEMPLATE
     )
 
 

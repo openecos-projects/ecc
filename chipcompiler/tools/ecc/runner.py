@@ -15,7 +15,6 @@ from chipcompiler.data import (
 )
 from chipcompiler.data.handshake import ParasiticsSource, load_request, parasitics_source
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
-from chipcompiler.pdk.backends import extraction_backend
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
     capture_filler_clock_tree,
@@ -179,23 +178,14 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
     return items
 
 
-def typical_signoff_item(
-    signoff_items: list[dict], workspace: Workspace | None = None
-) -> dict | None:
-    default_view = (
-        workspace.pdk.description.get("tools", {}).get("timing", {}).get("signoff_view")
-        if workspace is not None
-        else None
-    )
-    if default_view:
-        return next((item for item in signoff_items if item.get("corner") == default_view), None)
+def typical_signoff_item(signoff_items: list[dict]) -> dict | None:
     return next(
         (
             item
             for item in signoff_items
             if item.get("corner") == "TYP" and item.get("rcx_corner") == "TYPICAL"
         ),
-        next(iter(signoff_items), None),
+        None,
     )
 
 
@@ -946,9 +936,9 @@ def run_harden(
         if not signoff_items:
             workspace.logger.error("No signoff STA items found")
             return False
-        signoff_item = typical_signoff_item(signoff_items, workspace)
+        signoff_item = typical_signoff_item(signoff_items)
         if signoff_item is None:
-            workspace.logger.error("No selected default-view signoff STA item found for harden")
+            workspace.logger.error("No TYP/TYPICAL signoff STA item found for harden")
             return False
         sta_config = _workspace_sta_config_path(workspace)
         if sta_config is None:
@@ -1004,8 +994,7 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         try:
             if not ecc_module.init_rcx(
-                config=workspace.config.get(StepEnum.RCX.value, ""),
-                pdk=extraction_backend(workspace.pdk),
+                config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
             ):
                 workspace.logger.error("Failed to initialize RCX extraction")
                 sub_flow.update_step(
@@ -1070,9 +1059,9 @@ def run_power_analysis(
         return False
 
     # iPW produces one report, so use the same TYP/TYPICAL scenario as the SDC.
-    power_item = typical_signoff_item(signoff_items, workspace)
+    power_item = typical_signoff_item(signoff_items)
     if power_item is None:
-        workspace.logger.error("No selected default-view signoff STA item found for power analysis")
+        workspace.logger.error("No TYP/TYPICAL signoff STA item found for power analysis")
         sub_flow.update_step(
             step_name=EccSubFlowEnum.run_power_analysis.value,
             state=StateEnum.Imcomplete,

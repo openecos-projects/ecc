@@ -240,7 +240,6 @@ def test_parameter_patch_survives_native_refresh_in_selected_mode(
 
     root = tmp_path / ".agent/candidates/candidate-1"
     workspace: Any = parameter_workspace(root)
-    workspace.pdk.description = {}
     workspace.pdk.tap_cell = ""
     workspace.pdk.end_cap = ""
     workspace.parameters = load_parameter(workspace.parameters.path)

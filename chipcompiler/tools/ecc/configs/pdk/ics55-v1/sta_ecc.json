@@ -3,46 +3,46 @@
     {
       "corner": "MAX",
       "temperature": 125,
-      "libraries": [
-        "liberty-8",
-        "liberty-9",
-        "liberty-10"
+      "path": [
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_ss_rcworst_1p08_125_nldm.lib"
       ]
     },
     {
       "corner": "WCL",
       "temperature": -40,
-      "libraries": [
-        "liberty-11",
-        "liberty-12",
-        "liberty-13"
+      "path": [
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_cworst_1p08_m40_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ss_cworst_1p08_m40_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_ss_cworst_1p08_m40_nldm.lib"
       ]
     },
     {
       "corner": "TYP",
       "temperature": 25,
-      "libraries": [
-        "liberty-14",
-        "liberty-15",
-        "liberty-16"
+      "path": [
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_typ_tt_1p2_25_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_typ_tt_1p2_25_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_typ_tt_1p2_25_nldm.lib"
       ]
     },
     {
       "corner": "MIN",
       "temperature": -40,
-      "libraries": [
-        "liberty-17",
-        "liberty-18",
-        "liberty-19"
+      "path": [
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ff_rcbest_1p32_m40_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ff_rcbest_1p32_m40_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_ff_rcbest_1p32_m40_nldm.lib"
       ]
     },
     {
       "corner": "ML",
       "temperature": 125,
-      "libraries": [
-        "liberty-20",
-        "liberty-21",
-        "liberty-22"
+      "path": [
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ff_cbest_1p32_125_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/liberty/ics55_LLSC_H7CL_ff_cbest_1p32_125_nldm.lib",
+        "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_ff_cbest_1p32_125_nldm.lib"
       ]
     }
   ]

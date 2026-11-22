@@ -141,6 +141,15 @@ def test_init_rcx_passes_pdk_when_configured():
     assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
 
 
+def test_init_rcx_defaults_to_ics55_pdk():
+    module = ECCToolsModule.__new__(ECCToolsModule)
+    module.ecc = FakeEcc()
+
+    assert module.init_rcx(config="/tmp/rcx_ecc.json") is True
+
+    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
+
+
 def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
@@ -416,9 +425,7 @@ def test_ecc_runtime_wrappers_forward_path_arguments(tmp_path):
     module.destroy_drc()
     module.feature_placement_map(Path("/ws/feature/placement.map.json"))
     module.init_mj(Path("/ws/data/mj"))
-    filler_config = tmp_path / "filler.json"
-    filler_config.write_text('{"MJ": {"-filler": "FILL1"}}')
-    module.run_filler(filler_config)
+    module.run_filler(Path("/ws/config/filler.json"))
     module.destroy_mj()
     module.run_routing(Path("/ws/config/route.json"))
     module.feature_route_read(Path("/ws/feature/route_read.json"))
@@ -469,15 +476,6 @@ def test_gds_save_requires_layer_map():
         module.gds_save(Path("/ws/output/gcd.gds.gz"), "")
 
     assert module.ecc.calls == []
-
-
-def test_gds_save_propagates_native_export_failure(monkeypatch):
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-    monkeypatch.setattr(module.ecc, "gds_save", lambda **_kwargs: False)
-
-    with pytest.raises(RuntimeError, match="GDS export failed"):
-        module.gds_save(Path("/ws/output/gcd.gds"), Path("/pdk/layers.map"))
 
 
 def test_ecc_metrics_qor_summary_marks_blocking_lvs_violations(tmp_path):

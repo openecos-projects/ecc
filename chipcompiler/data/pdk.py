@@ -58,15 +58,23 @@ class PDK:
     buffers: list[str] = field(default_factory=list[str])  # buffers
     fillers: list[str] = field(default_factory=list[str])  # fillers
     tie_high_cell: str = ""
-    tie_high_port: str = ""
     tie_low_cell: str = ""
-    tie_low_port: str = ""
     dont_use: list[str] = field(default_factory=list[str])  # don't use cell list
     abc_driver_cell: str = ""  # ABC driving cell
     abc_load: float = DEFAULT_ABC_LOAD  # ABC output load (fF)
     sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
-
-    description: dict = field(default_factory=dict)  # resolved portable description
+    # Masters for Yosys's $_DLATCH_*_ primitives, keyed by primitive name
+    # (e.g. "$_DLATCH_N_"); empty for PDKs without a dedicated latch mapping.
+    # Output pins (Q, tie/inverter/tbuf outputs) are resolved from the loaded
+    # Liberty cells in Tcl; a cell's data/enable/reset input role cannot be
+    # told apart by direction alone, so those pin names are PDK-level facts.
+    latch_cells: dict[str, str] = field(default_factory=dict)
+    # Roles: "data", "enable_neg" ($_DLATCH_N_/_NN0_/_NN1_), "enable_pos"
+    # ($_DLATCH_P_/_PN0_/_PN1_), "reset" (_NN0_/_PN0_), "set" (_NN1_/_PN1_).
+    latch_pins: dict[str, str] = field(default_factory=dict)
+    inverter_cell: str = ""  # inverter master used by latch/tie techmaps
+    tbuf_cell: str = ""  # tri-state buffer master for $_TBUF_
+    tbuf_pins: dict[str, str] = field(default_factory=dict)  # roles: "data", "enable"
 
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
@@ -77,27 +85,13 @@ class PDK:
         self.sdc = optional_path(self.sdc)
         self.spef = optional_path(self.spef)
 
-    def require_root(self) -> Path:
-        if self.root is None:
-            raise ValueError("PDK resources require an explicit root")
-        return self.root
+    @property
+    def config_variant(self) -> str:
+        """Key for `configs/pdk/<config_variant>/` overrides; empty when unversioned."""
+        return f"{self.name}-{self.version}" if self.name and self.version else ""
 
     def validate(self) -> None:
         """Check that critical PDK paths exist. Raises ValueError if not."""
-        if self.description:
-            from chipcompiler.pdk.manifest import Descriptor
-            from chipcompiler.pdk.validation import validate_resources
-
-            result = validate_resources(
-                self.require_root(), Descriptor.model_validate(self.description)
-            )
-            _raise_pdk_validation_error([item["message"] for item in result["diagnostics"]])
-            # Missing resource roles are checked for the requested stage, not
-            # globally: a synthesis-only description need not contain a LEF.
-            for path in [self.tech, *self.lefs, *self.libs]:
-                if path and not path.is_file():
-                    _raise_pdk_validation_error([f"PDK resource not found: {path}"])
-            return
         errors = []
         if self.root and not self.root.is_dir():
             errors.append(f"PDK root directory not found: {self.root}")
@@ -129,7 +123,7 @@ def _raise_pdk_validation_error(errors: list) -> None:
 
 
 _DEFAULT_PDK = PDK()
-_PROTECTED_FIELDS = {"name", "version", "description"}
+_PROTECTED_FIELDS = {"name", "version"}
 
 # Fields whose values are filesystem paths, derived from the dataclass
 # annotations so CLI path resolution and override validation stay in sync
@@ -200,6 +194,8 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
         default = getattr(_DEFAULT_PDK, key)
         if isinstance(default, list):
             ok, kind = isinstance(value, list), "a list"
+        elif isinstance(default, dict):
+            ok, kind = isinstance(value, dict), "a dict"
         elif isinstance(default, float):
             ok = isinstance(value, (int, float)) and not isinstance(value, bool)
             kind = "a number"
@@ -218,9 +214,6 @@ def apply_pdk_overrides(pdk: PDK, overrides: dict) -> PDK:
                         f"PDK override '{key}' elements must be strings, "
                         f"got {type(element).__name__} at index {index}"
                     )
-
-    if pdk.description and set(overrides) - {"sdc", "spef"}:
-        raise ValueError("project PDK is immutable; create a new description profile and project")
 
     return replace(pdk, **overrides)
 
@@ -265,13 +258,16 @@ def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
         buffers=data.get("buffers", []),
         fillers=data.get("fillers", []),
         tie_high_cell=str(data.get("tie_high_cell", "")),
-        tie_high_port=str(data.get("tie_high_port", "")),
         tie_low_cell=str(data.get("tie_low_cell", "")),
-        tie_low_port=str(data.get("tie_low_port", "")),
         dont_use=data.get("dont_use", []),
         abc_driver_cell=str(data.get("abc_driver_cell", "")),
         abc_load=float(data.get("abc_load", DEFAULT_ABC_LOAD)),
         sdc_load=float(data.get("sdc_load", 0.0)),
+        latch_cells=data.get("latch_cells", {}),
+        latch_pins=data.get("latch_pins", {}),
+        inverter_cell=str(data.get("inverter_cell", "")),
+        tbuf_cell=str(data.get("tbuf_cell", "")),
+        tbuf_pins=data.get("tbuf_pins", {}),
     )
 
 
@@ -306,26 +302,6 @@ def get_pdk(
     Return the PDK instance based on the given pdk name.
     """
     pdk_name_normalized = (pdk_name or "").strip().lower()
-    from chipcompiler.pdk.resolver import resolve_pdk
-
-    root_selection = str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip()
-    descriptor_root = Path(root_selection).expanduser() if root_selection else None
-    if pdk_config and "schema_version" in _read_external_pdk_config(pdk_config):
-        if descriptor_root is None:
-            raise ValueError("a portable PDK description requires an explicit resource root")
-        pdk = resolve_pdk(
-            descriptor_root, name=pdk_name_normalized, descriptor_path=Path(pdk_config)
-        )
-        pdk = apply_pdk_overrides(pdk, overrides or {})
-        if validate:
-            _validate_resolved_pdk(pdk, overrides or {})
-        return pdk
-    if descriptor_root is not None and not pdk_config:
-        pdk = resolve_pdk(descriptor_root, name=pdk_name_normalized)
-        pdk = apply_pdk_overrides(pdk, overrides or {})
-        if validate:
-            _validate_resolved_pdk(pdk, overrides or {})
-        return pdk
     if pdk_config:
         external_data = _read_external_pdk_config(pdk_config)
         external_pdk = _pdk_from_external_config(
@@ -342,36 +318,153 @@ def get_pdk(
             else external_pdk
         )
     else:
-        raise ValueError("PDK root is required; set pdk.root or ECC_PDK_ROOT")
+        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
     if validate:
-        _validate_resolved_pdk(pdk, overrides)
-    return pdk
-
-
-def _validate_resolved_pdk(pdk: PDK, overrides: dict) -> None:
-    pdk.validate()
-    errors = []
-    for key, label in _OPTIONAL_PATH_LABELS.items():
-        if key in overrides:
+        pdk.validate()
+        errors = []
+        for key, label in _OPTIONAL_PATH_LABELS.items():
+            if key not in overrides:
+                continue
             path = getattr(pdk, key)
             if path and not path.is_file():
                 errors.append(f"{label}: {path}")
-    _raise_pdk_validation_error(errors)
+        _raise_pdk_validation_error(errors)
+    return pdk
+
+
+def _ics55_release(resolved_root: Path) -> str:
+    """Read the ICS55 data-format release from `<root>/VERSION`; absent means v1."""
+    version_path = resolved_root / "VERSION"
+    if not version_path.is_file():
+        return "v1"
+    marker = version_path.read_text(encoding="utf-8").strip()
+    if marker in ("ics55-v1", "ics55-v2"):
+        return marker.removeprefix("ics55-")
+    raise ValueError(f"unrecognized ICS55 VERSION marker: {marker!r} ({version_path})")
 
 
 def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
     root = Path(__file__).resolve().parents[2]
     default_pdk_root = root.parent / "pdk" / "icsprout55-pdk"
 
-    # Resolve: explicit arg > env vars > default
+    # Resolve: explicit arg > env var > default
     root_text = (
         str(pdk_root).strip() or os.environ.get("ECC_PDK_ROOT", "").strip() or str(default_pdk_root)
     )
     resolved_root = Path(root_text).expanduser().resolve()
+    release = _ics55_release(resolved_root)
+    return _PDK_ICS55_V1(resolved_root) if release == "v1" else _PDK_ICS55_V2(resolved_root)
+
+
+def _PDK_ICS55_V1(resolved_root: Path) -> PDK:
+    stdcell_dir = resolved_root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
+
+    tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
+    lef_paths = [
+        stdcell_dir / "ics55_LLSC_H7CR" / "lef" / "ics55_LLSC_H7CR_ecos.lef",
+        stdcell_dir / "ics55_LLSC_H7CL" / "lef" / "ics55_LLSC_H7CL_ecos.lef",
+        stdcell_dir / "ics55_LLSC_H7CH" / "lef" / "ics55_LLSC_H7CH_ecos.lef",
+    ]
+    lib_paths = [
+        (
+            stdcell_dir
+            / "ics55_LLSC_H7CR"
+            / "liberty"
+            / "ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+        ),
+        (
+            stdcell_dir
+            / "ics55_LLSC_H7CL"
+            / "liberty"
+            / "ics55_LLSC_H7CL_ss_rcworst_1p08_125_nldm.lib"
+        ),
+        (
+            stdcell_dir
+            / "ics55_LLSC_H7CH"
+            / "liberty"
+            / "ics55_LLSC_H7CH_ss_rcworst_1p08_125_nldm.lib"
+        ),
+    ]
+    mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
+    mapping_file = mapping_path if mapping_path.is_file() else None
+    corners = [
+        {"name": "TYPICAL", "temperature": [25], "spef_file": "./TYP.spef"},
+        {"name": "RCbest", "temperature": [-40, 125], "spef_file": "./RCbest.spef"},
+        {"name": "RCworst", "temperature": [-40, 125], "spef_file": "./RCworst.spef"},
+        {"name": "Cbest", "temperature": [-40, 125], "spef_file": "./Cbest.spef"},
+        {"name": "Cworst", "temperature": [-40, 125], "spef_file": "./Cworst.spef"},
+    ]
+
+    return PDK(
+        name="ics55",
+        version="v1",
+        root=resolved_root,
+        tech=tech_path if tech_path.is_file() else None,
+        lefs=[path for path in lef_paths if path.is_file()],
+        libs=[path for path in lib_paths if path.is_file()],
+        mapping_file=mapping_file,
+        corners=corners,
+        site_core="core7",
+        site_io="core7",
+        site_corner="core7",
+        tap_cell="FILLTAPH7R",
+        end_cap="FILLTAPH7R",
+        buffers=["BUFX8H7L", "BUFX12H7L", "BUFX16H7L", "BUFX20H7L"],
+        fillers=[
+            "FILLER64H7R",
+            "FILLER32H7R",
+            "FILLER16H7R",
+            "FILLER8H7R",
+            "FILLER4H7R",
+            "FILLER2H7R",
+            "FILLER1H7R",
+        ],
+        tie_high_cell="TIEHIH7R",
+        tie_low_cell="TIELOH7R",
+        abc_driver_cell="BUFX0P5H7R",
+        # ABC uses fF; SDC uses pF. Values are passed through without unit conversion.
+        abc_load=200.0,  # 200 fF = 0.2 pF, matching sdc_load below.
+        sdc_load=0.2,
+        dont_use=[
+            "DFFSRQX*",
+            "DFFSRX*",
+            "*AO222*",
+            "*2BB2*",
+            "*AOI222*",
+            "*AOI33*",
+            "*OA222*",
+            "*OAI222*",
+            "*OAI33*",
+            "*NOR4*",
+            "ICG*",
+        ],
+        latch_cells={
+            "$_DLATCH_N_": "LATLX1H7L",
+            "$_DLATCH_P_": "LATHX1H7L",
+            "$_DLATCH_NN0_": "LATLRX1H7L",
+            "$_DLATCH_NN1_": "LATLSX1H7L",
+            "$_DLATCH_PN0_": "LATHRX1H7L",
+            "$_DLATCH_PN1_": "LATHSX1H7L",
+        },
+        latch_pins={
+            "data": "D",
+            "enable_neg": "GN",
+            "enable_pos": "G",
+            "reset": "RN",
+            "set": "SN",
+        },
+        inverter_cell="INVX1H7L",
+        tbuf_cell="TBUFX1H7L",
+        tbuf_pins={"data": "A", "enable": "OE"},
+    )
+
+
+def _PDK_ICS55_V2(resolved_root: Path) -> PDK:
     stdcell_dir = resolved_root / "IP" / "STD_cell"
     variants = ("SVT", "LVT", "HVT")
+
     tech_path = resolved_root / "prtech" / "techLEF" / "N551P6M_ecos.lef"
     lef_paths = [
         stdcell_dir / f"ICsprout55_SC9T_BASIC_{vt}" / "lef" / f"ICsprout55_9T{vt}_basic.lef"
@@ -394,13 +487,13 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
         {"name": "Cworst", "temperature": [-40, 125], "spef_file": "./Cworst.spef"},
     ]
 
-    pdk = PDK(
+    return PDK(
         name="ics55",
-        version="v2-2026.10.28",
+        version="v2",
         root=resolved_root,
-        tech=tech_path,
-        lefs=lef_paths,
-        libs=lib_paths,
+        tech=tech_path if tech_path.is_file() else None,
+        lefs=[path for path in lef_paths if path.is_file()],
+        libs=[path for path in lib_paths if path.is_file()],
         mapping_file=mapping_file,
         corners=corners,
         site_core="SC9T_site",
@@ -419,9 +512,7 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             "FILL1_9TSVT",
         ],
         tie_high_cell="TIEHIX1_9TSVT",
-        tie_high_port="Y",
         tie_low_cell="TIELOX1_9TSVT",
-        tie_low_port="Y",
         abc_driver_cell="BUFX0P5_9TSVT",
         # ABC uses fF; SDC uses pF. Values are passed through without unit conversion.
         abc_load=200.0,  # 200 fF = 0.2 pF, matching sdc_load below.
@@ -441,9 +532,25 @@ def PDK_ICS55(pdk_root: str | Path = "") -> PDK:
             "*NOR4*",
             "ICG*",
         ],
+        latch_cells={
+            "$_DLATCH_N_": "LATNQX1_9TLVT",
+            "$_DLATCH_P_": "LATQX1_9TLVT",
+            "$_DLATCH_NN0_": "LATNRNQX1_9TLVT",
+            "$_DLATCH_NN1_": "LATNSNQX1_9TLVT",
+            "$_DLATCH_PN0_": "LATRNQX1_9TLVT",
+            "$_DLATCH_PN1_": "LATSNQX1_9TLVT",
+        },
+        latch_pins={
+            "data": "D",
+            "enable_neg": "CKN",
+            "enable_pos": "CK",
+            "reset": "RN",
+            "set": "SN",
+        },
+        inverter_cell="INVX1_9TLVT",
+        tbuf_cell="TBUFX1_9TLVT",
+        tbuf_pins={"data": "A", "enable": "OE"},
     )
-
-    return pdk
 
 
 def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
@@ -467,9 +574,7 @@ def PDK_SG13G2(pdk_root: str | Path = "") -> PDK:
         buffers=["sg13g2_buf_1", "sg13g2_buf_2", "sg13g2_buf_4", "sg13g2_buf_8", "sg13g2_buf_16"],
         fillers=["sg13g2_fill_1", "sg13g2_fill_2", "sg13g2_decap_4", "sg13g2_decap_8"],
         tie_high_cell="sg13g2_tiehi",
-        tie_high_port="L_HI",
         tie_low_cell="sg13g2_tielo",
-        tie_low_port="L_LO",
         dont_use=["sg13g2_lgcp_1", "sg13g2_sighold", "sg13g2_slgcp_1", "sg13g2_dfrbp_2"],
     )
 

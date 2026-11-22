@@ -34,14 +34,11 @@ def _config_scenarios(config: dict) -> list[TimingScenario]:
 def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
     """Keep the complete default script set, with configured scenarios taking precedence."""
     from . import workspace_config_key_path
+    from .tool_configs import tool_config
 
-    template = Path(__file__).resolve().parents[2] / "tools/ecc/configs/defaults/sta_ecc.json"
+    configs_dir = Path(__file__).resolve().parents[2] / "tools/ecc/configs"
     path = workspace_config_key_path(workspace.directory, "sta")
-    baseline = (
-        workspace.pdk.description.get("tools", {}).get("configs", {}).get("sta", {})
-        if workspace.pdk.description
-        else json_read(template)
-    )
+    baseline = tool_config(configs_dir, "sta_ecc.json", workspace.pdk)
     configs = (baseline, json_read(path) if path else {})
     scenarios = {
         (scenario.corner, scenario.rc): scenario
@@ -79,12 +76,5 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
                 rc_para=scenario.rc,
                 has_io_cells=has_io_cells,
             )
-    default_view = workspace.pdk.description.get("tools", {}).get("timing", {}).get("signoff_view")
-    typical = next(
-        (item for item in scenarios if item.corner == default_view),
-        next(
-            (item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL")),
-            scenarios[0],
-        ),
-    )
+    typical = next(item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL"))
     workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)

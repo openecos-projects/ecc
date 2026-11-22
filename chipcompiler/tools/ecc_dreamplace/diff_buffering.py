@@ -81,9 +81,6 @@ def prepare_drive_table(workspace: Workspace, step: WorkspaceStep, params: dict)
         workspace.pdk.name,
         workspace.pdk.buffers,
         Path(workspace.directory) / "home/engineering-snapshot.json",
-        drive_strengths=workspace.pdk.description.get("tools", {})
-        .get("buffering", {})
-        .get("drive_strengths", []),
     )
     directory.mkdir(parents=True, exist_ok=True)
     json_write(table_path, table)

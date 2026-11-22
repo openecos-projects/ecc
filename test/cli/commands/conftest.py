@@ -55,11 +55,6 @@ def flow_mocks(monkeypatch):
     """
     from chipcompiler.data.flow import options as flow_options
 
-    monkeypatch.setattr(
-        "chipcompiler.pdk.managed.adopt_configuration",
-        lambda root: root / "ecc-pdk.json",
-    )
-
     capture: dict[str, Any] = {"create_kwargs": None, "options_projections": []}
     workspace_obj = SimpleNamespace(
         name="workspace", flow=SimpleNamespace(data={"schema_version": 3, "steps": []})

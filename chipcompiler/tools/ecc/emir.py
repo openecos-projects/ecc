@@ -7,11 +7,10 @@ from chipcompiler.data.handshake import load_request, power_source
 from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import DesignState
 from chipcompiler.tools.ecc.emir_artifacts import publish_emir_reports
-from chipcompiler.tools.ecc.emir_model import SYNTHETIC_NOTICE, inspect_model
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.power_artifacts import instance_power_path
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
-from chipcompiler.utility import json_read, json_write
+from chipcompiler.utility import json_read
 
 
 def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
@@ -24,31 +23,11 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
     technology_file = config["technology_file_path"]
     if not technology_file:
         workspace.logger.error(
-            "EMIR model is missing; select an EM resource with ecc pdk configure "
-            "or set emir.synthetic_model=ics55 for non-signoff flow testing. Config: %s",
+            "EMIR technology_file_path is a placeholder; configure it in %s before running",
             workspace.config[StepEnum.EMIR.value],
         )
         sub_flow.update_step(EccSubFlowEnum.run_emir.value, StateEnum.Imcomplete)
         return False
-
-    model = inspect_model(technology_file)
-    if model.synthetic:
-        workspace.logger.warning(SYNTHETIC_NOTICE)
-    if step.report.dir is not None:
-        from chipcompiler.pdk.manifest import file_digest
-
-        json_write(
-            step.report.dir / "model.json",
-            {
-                "technology_file_path": model.path,
-                "sha256": file_digest(Path(model.path)),
-                "model_kind": "synthetic" if model.synthetic else "provided",
-                "qualification": "not_for_signoff" if model.synthetic else "not_assessed",
-                "notice": SYNTHETIC_NOTICE
-                if model.synthetic
-                else "Model qualification not assessed.",
-            },
-        )
 
     ecc_module = runner.get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
     if ecc_module is None:

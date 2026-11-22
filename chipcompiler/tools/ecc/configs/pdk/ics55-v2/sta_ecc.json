@@ -3,46 +3,46 @@
     {
       "corner": "MAX",
       "temperature": 125,
-      "libraries": [
-        "liberty-6",
-        "liberty-5",
-        "liberty-4"
+      "path": [
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_HVT/liberty/ICsprout55_9THVT_ss_v1p08_125c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/liberty/ICsprout55_9TLVT_ss_v1p08_125c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"
       ]
     },
     {
       "corner": "WCL",
       "temperature": -40,
-      "libraries": [
-        "liberty-8",
-        "liberty-9",
-        "liberty-10"
+      "path": [
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_HVT/liberty/ICsprout55_9THVT_ss_v1p08_-40c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/liberty/ICsprout55_9TLVT_ss_v1p08_-40c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_-40c_basic_nldm.lib"
       ]
     },
     {
       "corner": "TYP",
       "temperature": 25,
-      "libraries": [
-        "liberty-11",
-        "liberty-12",
-        "liberty-13"
+      "path": [
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_HVT/liberty/ICsprout55_9THVT_tt_v1p2_25c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/liberty/ICsprout55_9TLVT_tt_v1p2_25c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_tt_v1p2_25c_basic_nldm.lib"
       ]
     },
     {
       "corner": "MIN",
       "temperature": -40,
-      "libraries": [
-        "liberty-14",
-        "liberty-15",
-        "liberty-16"
+      "path": [
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_HVT/liberty/ICsprout55_9THVT_ff_v1p32_-40c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/liberty/ICsprout55_9TLVT_ff_v1p32_-40c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ff_v1p32_-40c_basic_nldm.lib"
       ]
     },
     {
       "corner": "ML",
       "temperature": 125,
-      "libraries": [
-        "liberty-17",
-        "liberty-18",
-        "liberty-19"
+      "path": [
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_HVT/liberty/ICsprout55_9THVT_ff_v1p32_125c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/liberty/ICsprout55_9TLVT_ff_v1p32_125c_basic_nldm.lib",
+        "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ff_v1p32_125c_basic_nldm.lib"
       ]
     }
   ]

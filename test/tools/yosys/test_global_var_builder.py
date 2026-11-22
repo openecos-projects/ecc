@@ -22,6 +22,7 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.data.pdk import get_pdk
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.yosys import builder as yosys_builder
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 
@@ -57,9 +58,7 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
             libs=[lib_a, lib_b],
             dont_use=["DFF*", "CELL WITH SPACE"],
             tie_low_cell="TIELO",
-            tie_low_port="Z",
             tie_high_cell="TIEHI",
-            tie_high_port="Z",
             abc_driver_cell="BUFX4",
             abc_load=0.02,
         ),
@@ -184,7 +183,7 @@ def test_lists_are_emitted_as_tcl_lists_without_split(tmp_path):
 
 
 @pytest.mark.parametrize("library_source", ["pdk", "db", "both"])
-def test_hvt_is_excluded_from_synthesis_but_preserved_for_backend(
+def test_h7ch_is_excluded_from_synthesis_but_preserved_for_backend(
     tmp_path, minimal_ics55_pdk_factory, library_source
 ):
     workspace, step, _ = _build_workspace_and_step(tmp_path)
@@ -192,21 +191,21 @@ def test_hvt_is_excluded_from_synthesis_but_preserved_for_backend(
     workspace.pdk = get_pdk("ics55", pdk_root=pdk_root)
     baseline = yosys_builder.generate_global_var_tcl(workspace, step)
 
-    sta_template = Path(__file__).resolve().parents[2] / "pdk/fixtures/tool_defaults.json"
-    sta = json.loads(sta_template.read_text())["sta"]
-    hvt_libs = [
+    configs_dir = Path(yosys_builder.__file__).resolve().parents[1] / "ecc/configs"
+    sta = tool_config(configs_dir, "sta_ecc.json", workspace.pdk)
+    h7ch_libs = [
         _write_file(pdk_root / path.lstrip("/"))
         for corner in sta["liberty"]
         for path in corner["path"]
-        if "_9THVT_" in Path(path).name
+        if Path(path).name.startswith("ics55_LLSC_H7CH_")
     ]
-    assert hvt_libs
+    assert h7ch_libs
     if library_source in ("pdk", "both"):
-        workspace.pdk.libs.extend(hvt_libs)
+        workspace.pdk.libs.extend(h7ch_libs)
     db_path = Path(workspace.config["db"])
     db = json.loads(db_path.read_text())
     if library_source in ("db", "both"):
-        db["INPUT"]["lib_path"].extend(str(path) for path in hvt_libs)
+        db["INPUT"]["lib_path"].extend(str(path) for path in h7ch_libs)
         db_path.write_text(json.dumps(db))
     backend_pdk = deepcopy(workspace.pdk)
 

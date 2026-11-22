@@ -1,14 +1,14 @@
 import logging
 import os
 import tomllib
-from contextlib import suppress
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
 
 from .timing_inputs import resolve_timing_input_metadata
+
+SUPPORTED_PDK_NAMES = {"ics55"}
 
 
 def _unsupported_flow_run_problem(value: object) -> str:
@@ -171,13 +171,6 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         if param_errors:
             cfg._param_errors = param_errors
 
-    if not cfg.pdk_name and cfg.pdk_root:
-        from chipcompiler.pdk.manifest import DescriptorError, load_descriptor
-
-        with suppress(DescriptorError, OSError):
-            cfg.pdk_name = load_descriptor(
-                Path(_resolve_path(cfg.project_dir, cfg.pdk_root))
-            ).family_id
     resolve_clock_list_metadata(cfg)
     resolve_timing_input_metadata(cfg)
     return cfg
@@ -294,6 +287,10 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
                 errors.append("design.clock_port is required")
             if cfg.design_frequency_mhz <= 0:
                 errors.append("design.frequency_mhz must be greater than 0")
+    if not cfg.pdk_name:
+        errors.append("pdk.name is required")
+    elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
+        errors.append(f"unsupported pdk.name: {cfg.pdk_name}")
 
     pdk_root = _resolve_pdk_root(cfg)
     if pdk_root:

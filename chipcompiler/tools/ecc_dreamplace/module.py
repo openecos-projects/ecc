@@ -10,7 +10,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.data import SkippableStepEnum, StepEnum, Workspace, WorkspaceStep
-from chipcompiler.pdk.backends import extraction_backend
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from chipcompiler.utility.path import optional_path
@@ -88,48 +87,6 @@ class DreamplaceModule:
         # above must not override the stages this mode runs.
         for name, value in MODE_FLAGS.get(mode, {}).items():
             setattr(params, name, value)
-        if mode is DreamplaceRunMode.MACRO_PLACEMENT:
-            params.macro_only = 1
-            params.detailed_place_flag = 0
-            params.global_place_flag = 1
-            params.macro_place_flag = 1
-            params.legalize_flag = 1
-            params.two_stage_flag = 0
-            from chipcompiler.pdk.context import database_units
-            from chipcompiler.pdk.manifest import Descriptor
-
-            description = self.workspace.pdk.description
-            halo = config.get("macro_halo_microns", 0.0)
-            if (
-                not isinstance(halo, (float, int))
-                or isinstance(halo, bool)
-                or not math.isfinite(halo)
-                or halo < 0
-            ):
-                raise ValueError("macro_halo_microns must be finite and nonnegative")
-            units = (
-                database_units(
-                    self.workspace.pdk.require_root(), Descriptor.model_validate(description)
-                )
-                if description
-                else None
-            )
-            if halo and not units:
-                raise ValueError("macro halo requires unambiguous LEF database units")
-            params.macro_halo_x = round(halo * (units or 1))
-            params.macro_halo_y = round(halo * (units or 1))
-            params.routability_opt_flag = 0
-            params.get_congestion_map = 0
-            params.egr_padding_flag = 0
-        elif mode is DreamplaceRunMode.LEGALIZATION:
-            params.global_place_flag = 0
-            params.legalize_flag = 1
-            # Geometry-only legalization preserves the repaired hold timing.
-            params.detailed_place_flag = 0
-            params.enable_fillers = 0
-            params.random_center_init_flag = 0
-            params.auto_adjust_bins = 1
-            params.post_legalization_adaptive_padding_flag = 0
 
         if mode in (
             DreamplaceRunMode.DIFF_OPT,
@@ -217,7 +174,7 @@ class DreamplaceModule:
             "spef": ("" if gr_timing else (getattr(self.workspace.pdk, "spef", None) or "")),
             "sta_config": sta_config or "",
             "rcx_config": rcx_config or "",
-            "rcx_pdk": extraction_backend(self.workspace.pdk) if rcx_config else "",
+            "rcx_pdk": str(getattr(self.workspace.pdk, "name", "") or ""),
             "work_dir": Path(self.result_dir) / "native_sta",
             "thread_number": int(getattr(params, "num_threads", 2) or 2),
             "max_paths": 20,

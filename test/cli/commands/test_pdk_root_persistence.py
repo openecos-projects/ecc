@@ -1,17 +1,17 @@
-"""PDK root resolution-source disclosure on the CLI run paths.
+"""PDK root persistence requirement on the CLI run paths.
 
 A fresh run persists the resolved absolute PDK root in the workspace's
 home/params.toml, so the workspace is reproducible across machines. An
-existing workspace without a persisted root silently resolves the root from
-the ECC_PDK_ROOT environment variables; the
-run paths must surface that fallback as a pdk_root_env_fallback warning.
+existing workspace without a persisted root would otherwise resolve the
+root from ECC_PDK_ROOT or the repository default; the run paths block that
+case with a pdk_root_not_persisted error instead of resolving it silently.
 """
 
 import json
 import os
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+from chipcompiler.cli.project.pdk_root_persistence import missing_pdk_root_reason
 from chipcompiler.data.workspace.config import save_workspace_config
 from test.flow_fixture import step_fields
 
@@ -27,50 +27,27 @@ def _base_parameters(**extra):
     return parameters
 
 
-class TestEnvFallbackWarning:
-    def test_warns_when_root_missing_and_env_resolves(self, tmp_path, monkeypatch):
-        env_root = tmp_path / "env-pdk"
-        env_root.mkdir()
-        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
+class TestMissingPdkRootReason:
+    def test_reason_when_root_missing(self, tmp_path):
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters())
 
-        warning = pdk_root_env_fallback_warning(run_dir)
+        assert missing_pdk_root_reason(run_dir) is not None
 
-        assert warning is not None
-        assert warning["warning"] == "pdk_root_env_fallback"
-        assert warning["source"] == "ECC_PDK_ROOT"
-        assert warning["resolved_root"] == str(env_root)
-
-    def test_no_warning_when_root_is_persisted(self, tmp_path, monkeypatch):
-        env_root = tmp_path / "env-pdk"
-        env_root.mkdir()
-        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
+    def test_no_reason_when_root_is_persisted(self, tmp_path):
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters(pdk_root=str(tmp_path / "pinned")))
 
-        assert pdk_root_env_fallback_warning(run_dir) is None
+        assert missing_pdk_root_reason(run_dir) is None
 
-    def test_no_warning_without_a_resolving_env_var(self, tmp_path, monkeypatch):
-        monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
-        run_dir = str(tmp_path / "ws")
-        _write_workspace(run_dir, _base_parameters())
-
-        assert pdk_root_env_fallback_warning(run_dir) is None
-
-    def test_generic_root_for_another_pdk(self, tmp_path, monkeypatch):
-        env_root = tmp_path / "env-pdk"
-        env_root.mkdir()
-        monkeypatch.setenv("ECC_PDK_ROOT", str(env_root))
+    def test_no_reason_for_a_non_ics55_pdk(self, tmp_path):
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters(pdk="sg13g2"))
 
-        warning = pdk_root_env_fallback_warning(run_dir)
-        assert warning is not None
-        assert warning["resolved_root"] == str(env_root)
+        assert missing_pdk_root_reason(run_dir) is None
 
 
-class TestRunWarnsOnEnvFallbackRoot:
+class TestRunBlocksOnMissingPersistedRoot:
     def _write_existing_workspace(self, run_dir, step_names, states=None, parameters=None):
         from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
 
@@ -99,7 +76,7 @@ class TestRunWarnsOnEnvFallbackRoot:
             run_dir, parameters or _base_parameters(), {"preset": "rtl2gds"}
         )
 
-    def test_run_warns_when_existing_workspace_resolves_root_from_env(
+    def test_run_errors_when_existing_workspace_has_no_persisted_root(
         self,
         tmp_path,
         capsys,
@@ -124,24 +101,14 @@ class TestRunWarnsOnEnvFallbackRoot:
         run_dir = os.path.join(project_dir, "default")
         self._write_existing_workspace(run_dir, step_names)
 
-        class Flow:
-            def __init__(self, workspace):
-                self.workspace = workspace
-
-            def create_step_workspaces(self, *, executable_steps=None):
-                raise AssertionError("no-op run must not rebuild step workspaces")
-
-        monkeypatch.setattr("chipcompiler.engine.EngineFlow", Flow)
-
         rc = cli_main.run(["run", "--project", project_dir, "--plain"])
 
-        assert rc == 0
+        assert rc != 0
         records = plain_records(capsys.readouterr().out)
-        warning = [r for r in records if r.get("warning") == "pdk_root_env_fallback"]
-        assert len(warning) == 1
-        assert warning[0]["source"] == "ECC_PDK_ROOT"
+        errors = [r for r in records if r.get("error") == "pdk_root_not_persisted"]
+        assert len(errors) == 1
 
-    def test_run_stays_quiet_when_root_is_persisted(
+    def test_run_proceeds_when_root_is_persisted(
         self,
         tmp_path,
         capsys,
@@ -181,7 +148,7 @@ class TestRunWarnsOnEnvFallbackRoot:
 
         assert rc == 0
         records = plain_records(capsys.readouterr().out)
-        assert [r for r in records if r.get("warning") == "pdk_root_env_fallback"] == []
+        assert [r for r in records if r.get("error") == "pdk_root_not_persisted"] == []
 
 
 class TestFreshRunPersistsResolvedRoot:

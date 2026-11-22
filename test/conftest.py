@@ -55,23 +55,16 @@ def create_minimal_ics55_pdk(root):
     tech_path.parent.mkdir(parents=True, exist_ok=True)
     tech_path.write_text("VERSION 5.8 ;\n")
 
-    stdcell_root = root / "IP" / "STD_cell"
-    for vt in ("SVT", "LVT", "HVT"):
-        directory = stdcell_root / f"ICsprout55_SC9T_BASIC_{vt}"
-        lef_path = directory / "lef" / f"ICsprout55_9T{vt}_basic.lef"
+    stdcell_root = root / "IP" / "STD_cell" / "ics55_LLSC_H7C_V1p10C100"
+    for flavor in ("ics55_LLSC_H7CR", "ics55_LLSC_H7CL"):
+        lef_path = stdcell_root / flavor / "lef" / f"{flavor}_ecos.lef"
         lef_path.parent.mkdir(parents=True, exist_ok=True)
         lef_path.write_text("VERSION 5.8 ;\n")
-        lib_path = directory / "liberty" / f"ICsprout55_9T{vt}_ss_v1p08_125c_basic_nldm.lib"
+
+        lib_path = stdcell_root / flavor / "liberty" / f"{flavor}_ss_rcworst_1p08_125_nldm.lib"
         lib_path.parent.mkdir(parents=True, exist_ok=True)
         lib_path.write_text("library(test) { }\n")
 
-    fixture_spec = importlib.util.spec_from_file_location(
-        "fixture_description", TEST_DIR / "pdk" / "fixture_description.py"
-    )
-    assert fixture_spec is not None and fixture_spec.loader is not None
-    module = importlib.util.module_from_spec(fixture_spec)
-    fixture_spec.loader.exec_module(module)
-    module.write_fixture_description(root)
     return root
 
 

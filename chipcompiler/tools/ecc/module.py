@@ -486,9 +486,7 @@ class ECCToolsModule:
             raise ValueError(
                 "PDK layer mapping file is required for GDS export; set pdk.mapping_file"
             )
-        if not self.ecc.gds_save(gds_name=output_path, layer_map_path=layer_map_path):
-            raise RuntimeError(f"GDS export failed: {output_path}")
-        return True
+        return self.ecc.gds_save(gds_name=output_path, layer_map_path=layer_map_path)
 
     def tcl_save(self, output_path: PathArg) -> bool:
         """Save hard-macro placement commands in Tcl format."""
@@ -756,10 +754,6 @@ class ECCToolsModule:
         return self.ecc.init_mj(config_dict={"-temp_directory_path": os.fspath(output_dir)})
 
     def run_filler(self, config: PathArg) -> bool:
-        from chipcompiler.utility import json_read
-
-        if not json_read(os.fspath(config)).get("MJ", {}).get("-filler", "").strip():
-            raise ValueError("Select PDK filler roles or set filler.-filler before insertion")
         return self.ecc.insert_filler(config=config)
 
     def check_antenna(self, step_json: PathArg | None = None) -> bool:
@@ -798,7 +792,7 @@ class ECCToolsModule:
     ########################################################################
     # RCX api
     ########################################################################
-    def init_rcx(self, config: PathArg, pdk: str):
+    def init_rcx(self, config: PathArg, pdk: str = "ics55"):
         if pdk:
             return self.ecc.init_rcx(config=config, pdk=pdk)
         return self.ecc.init_rcx(config=config)

@@ -20,6 +20,9 @@ def yosys_runtime():
     return command, env
 
 
+TIE_PORT = "Z"
+
+
 @pytest.fixture(params=["ics55", "sg13g2"])
 def tie_pdk(request, tmp_path):
     pdk = (PDK_ICS55 if request.param == "ics55" else PDK_SG13G2)(pdk_root=tmp_path)
@@ -28,11 +31,11 @@ def tie_pdk(request, tmp_path):
         f"""library(test) {{
   cell({pdk.tie_high_cell}) {{
     area : 1;
-    pin({pdk.tie_high_port}) {{ direction : output; function : "1"; }}
+    pin({TIE_PORT}) {{ direction : output; function : "1"; }}
   }}
   cell({pdk.tie_low_cell}) {{
     area : 1;
-    pin({pdk.tie_low_port}) {{ direction : output; function : "0"; }}
+    pin({TIE_PORT}) {{ direction : output; function : "0"; }}
   }}
   cell(BUF) {{
     area : 1;
@@ -45,6 +48,11 @@ def tie_pdk(request, tmp_path):
     pdk.libs = [liberty]
     pdk.dont_use = []
     pdk.abc_driver_cell = "BUF"
+    # This fixture's Liberty declares only tie and buffer cells; skip the
+    # latch/tbuf techmap, which this test does not exercise.
+    pdk.latch_cells = {}
+    pdk.inverter_cell = ""
+    pdk.tbuf_cell = ""
     return pdk
 
 
@@ -82,8 +90,8 @@ def _synthesize(directory, source, pdk, yosys_runtime):
 
 def _assert_tie_connections(module, pdk):
     polarities = {
-        pdk.tie_high_cell: (pdk.tie_high_port, "1"),
-        pdk.tie_low_cell: (pdk.tie_low_port, "0"),
+        pdk.tie_high_cell: (TIE_PORT, "1"),
+        pdk.tie_low_cell: (TIE_PORT, "0"),
     }
     drivers = {}
     loads = Counter()
@@ -143,8 +151,8 @@ def _assert_tie_connections(module, pdk):
 @pytest.mark.parametrize("import_ties", [False, True], ids=["rtl", "mapped_netlist"])
 def test_synthesis_tie_fanout_one(tmp_path, tie_pdk, yosys_runtime, import_ties):
     ties = (
-        f"{tie_pdk.tie_high_cell} old_hi (.{tie_pdk.tie_high_port}(hi));\n"
-        f"{tie_pdk.tie_low_cell} old_lo (.{tie_pdk.tie_low_port}(lo));"
+        f"{tie_pdk.tie_high_cell} old_hi (.{TIE_PORT}(hi));\n"
+        f"{tie_pdk.tie_low_cell} old_lo (.{TIE_PORT}(lo));"
         if import_ties
         else "assign hi = 1'b1; assign lo = 1'b0;"
     )

@@ -1,4 +1,5 @@
 {
+  "vt_suffixes": ["_9THVT", "_9TSVT", "_9TLVT"],
   "hold_stage": {
     "global_routing_rc": {
       "corner": "MIN_m40/Cbest",

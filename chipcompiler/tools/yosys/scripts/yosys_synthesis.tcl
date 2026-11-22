@@ -477,9 +477,92 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
-# Mappings are generated from the selected PDK's validated declarative config.
-if {[info exists primitive_mapping_file] && $primitive_mapping_file ne ""} {
-  techmap -map $primitive_mapping_file
+# Latch and tri-state masters are PDK facts; their pins are resolved from
+# the loaded Liberty (output) or are PDK-level role names (input roles
+# cannot be told apart from Liberty direction alone).
+if {$latch_cell_n ne "" || $latch_cell_p ne "" || $latch_cell_nn0 ne "" || $latch_cell_nn1 ne ""
+    || $latch_cell_pn0 ne "" || $latch_cell_pn1 ne "" || $tbuf_cell ne ""} {
+  set primitive_map_path "${tmp_dir}/primitive_map.v"
+  set primitive_map_file [open $primitive_map_path "w"]
+
+  if {$latch_cell_n ne ""} {
+    puts $primitive_map_file [format {
+module \$_DLATCH_N_ (E, D, Q);
+  input E, D;
+  output Q;
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
+endmodule
+} $latch_cell_n $latch_pin_data $latch_pin_enable_neg [liberty_output_pin $latch_cell_n]]
+  }
+  if {$latch_cell_p ne ""} {
+    puts $primitive_map_file [format {
+module \$_DLATCH_P_ (E, D, Q);
+  input E, D;
+  output Q;
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
+endmodule
+} $latch_cell_p $latch_pin_data $latch_pin_enable_pos [liberty_output_pin $latch_cell_p]]
+  }
+
+  # NN0/NN1/PN0/PN1 drive the reset/set pin directly. NP0/NP1/PP0/PP1 are the
+  # same master with the top-level active-high control inverted first.
+  foreach {negative_primitive positive_primitive master enable_pin role_pin} {
+    NN0 NP0 $latch_cell_nn0 $latch_pin_enable_neg $latch_pin_reset
+    NN1 NP1 $latch_cell_nn1 $latch_pin_enable_neg $latch_pin_set
+    PN0 PP0 $latch_cell_pn0 $latch_pin_enable_pos $latch_pin_reset
+    PN1 PP1 $latch_cell_pn1 $latch_pin_enable_pos $latch_pin_set
+  } {
+    set master [subst $master]
+    set enable_pin [subst $enable_pin]
+    set role_pin [subst $role_pin]
+    if {$master eq ""} {
+      continue
+    }
+    set q [liberty_output_pin $master]
+    puts $primitive_map_file [format {
+module \$_DLATCH_%s_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(R), .%s(Q));
+endmodule
+} $negative_primitive $master $latch_pin_data $enable_pin $role_pin $q]
+
+    if {$inverter_cell ne ""} {
+      set inverter_in [liberty_input_pin $inverter_cell]
+      set inverter_out [liberty_output_pin $inverter_cell]
+      puts $primitive_map_file [format {
+module \$_DLATCH_%s_ (E, R, D, Q);
+  input E, R, D;
+  output Q;
+  wire rn;
+  %s inv_control (.%s(R), .%s(rn));
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(rn), .%s(Q));
+endmodule
+} $positive_primitive $inverter_cell $inverter_in $inverter_out \
+        $master $latch_pin_data $enable_pin $role_pin $q]
+    }
+  }
+
+  if {$tbuf_cell ne ""} {
+    puts $primitive_map_file [format {
+(* techmap_celltype = "\$_TBUF_" *)
+module _ecc_tbuf_disabled (input A, E, output Y);
+  parameter _TECHMAP_CONSTMSK_E_ = 1'b0;
+  parameter _TECHMAP_CONSTVAL_E_ = 1'bx;
+  wire _TECHMAP_FAIL_ = !(_TECHMAP_CONSTMSK_E_ && !_TECHMAP_CONSTVAL_E_);
+  wire [1023:0] _TECHMAP_DO_ = "connect -unset Y";
+endmodule
+
+module \$_TBUF_ (A, E, Y);
+  input A, E;
+  output Y;
+  %s _TECHMAP_REPLACE_ (.%s(A), .%s(E), .%s(Y));
+endmodule
+} $tbuf_cell $tbuf_pin_data $tbuf_pin_enable [liberty_output_pin $tbuf_cell]]
+  }
+
+  close $primitive_map_file
+  techmap -map $primitive_map_path
   opt -fast -purge
 }
 
@@ -499,10 +582,12 @@ abc -D "$abc_delay_target" \
 # both tie roles explicitly; never synthesize an empty module or infer masters.
 setundef -zero
 opt_clean -purge
-if {$tie_high_cell ne "" && $tie_high_port ne "" && $tie_low_cell ne "" && $tie_low_port ne ""} {
+if {$tech_cell_tiehi ne "" && $tech_cell_tielo ne ""} {
   set tie_map "${tmp_dir}/tie_cells.v"
   set tie_map_file [open $tie_map "w"]
-  foreach {cell port value} [list $tie_high_cell $tie_high_port 1 $tie_low_cell $tie_low_port 0] {
+  foreach {cell port value} [list \
+      [lindex $tech_cell_tiehi 0] [lindex $tech_cell_tiehi 1] 1 \
+      [lindex $tech_cell_tielo 0] [lindex $tech_cell_tielo 1] 0] {
     puts $tie_map_file [format {
 module \%s (output \%s );
   assign \%s = 1'b%s;
