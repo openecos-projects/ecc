@@ -972,7 +972,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(libs=[max_lib, min_lib], sdc=sdc),
+        pdk=PDK(name="ics55", version="v1", libs=[max_lib, min_lib], sdc=sdc),
         parameters=Parameters(data={"sta_max_paths": 500, "clock": "clk", "frequency_max": 100}),
         config={StepEnum.STA.value: incorrect_sta_config, StepEnum.RCX.value: rcx_config},
         logger=logger,

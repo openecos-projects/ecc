@@ -53,7 +53,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(
             {
                 "dreamplace": placement_weights,
@@ -320,7 +320,7 @@ def test_public_lut_action_mode_survives_step_resolution(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters({"step_params": step_params}),
     )
     step = builder.build_step(

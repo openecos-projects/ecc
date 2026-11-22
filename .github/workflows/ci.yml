@@ -183,15 +183,14 @@ jobs:
       - name: Setup PDK
         uses: actions/download-artifact@v4
         with:
-          name: ics55-v2-ci-inputs
+          name: icsprout55-pdk
           path: ../pdk
 
-      - name: Extract verified public PDK
+      - name: Extract PDK
         run: |
-          mkdir ../pdk/icsprout55-pdk
-          tar -xf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
+          mkdir -p ../pdk/icsprout55-pdk
+          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
-          echo "ECC_PDK_ROOT=$PWD/../pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
       - name: Setup OSS CAD Suite
         uses: ./.github/actions/setup-oss-cad-suite-cached
@@ -326,49 +325,37 @@ jobs:
       PDK_RELEASE: ${{ needs.list-versions.outputs.pdk_release }}
       PDK_GIT_COMMIT: ${{ needs.list-versions.outputs.pdk_git_commit }}
     outputs:
-      revision: ${{ needs.list-versions.outputs.pdk_git_commit }}
-      release: ${{ needs.list-versions.outputs.pdk_release }}
+      revision: ${{ steps.checkout.outputs.revision }}
+      release: ${{ steps.unpack.outputs.release }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Write PDK source manifest
+      - name: Checkout PDK
+        id: checkout
         run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          source = {key: os.environ['PDK_' + key.upper()] for key in ('repo', 'git_commit', 'release')}
-          Path('pdk-source.json').write_text(json.dumps(source, indent=2) + '\n')
-          PY
+          git init pdk
+          git -C pdk remote add origin "https://github.com/${PDK_REPO}.git"
+          git -C pdk fetch --depth 1 origin "$PDK_GIT_COMMIT"
+          git -C pdk checkout --detach FETCH_HEAD
+          test "$(git -C pdk rev-parse HEAD)" = "$PDK_GIT_COMMIT"
+          echo "revision=$PDK_GIT_COMMIT" >> "$GITHUB_OUTPUT"
 
-      - name: Validate public PDK
+      - name: Unpack PDK
+        id: unpack
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          bash .github/actions/setup-pdk/fetch-pdk.sh pdk-source.json "$RUNNER_TEMP/pdk"
+          cd pdk
+          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
+          make unzip
+          echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
 
-      - name: Archive verified public PDK inputs
-        run: |
-          tar --exclude='./.git' -C "$RUNNER_TEMP/pdk" -cf - . | gzip -1 > "$RUNNER_TEMP/icsprout55-pdk.tar.gz"
+      - name: Package PDK
+        run: tar -czf icsprout55-pdk.tar.gz -C pdk .
 
-      - name: Share PDK inputs with this run's test jobs
-        uses: actions/upload-artifact@v4
-        with:
-          name: ics55-v2-ci-inputs
-          path: ${{ runner.temp }}/icsprout55-pdk.tar.gz
-          compression-level: 0
-          retention-days: 7
-          if-no-files-found: error
-
-      - name: Stage PDK provenance and downloader
-        run: |
-          mkdir pdk-provenance
-          cp pdk-source.json .github/actions/setup-pdk/fetch-pdk.sh chipcompiler/pdk/profiles/ics55-v2-description.json pdk-provenance/
-
-      - name: Upload PDK provenance and downloader
+      - name: Upload PDK
         uses: actions/upload-artifact@v4
         with:
           name: icsprout55-pdk
-          path: pdk-provenance/
+          path: icsprout55-pdk.tar.gz
 
   sizer:
     name: Fetch Sizer
@@ -568,7 +555,7 @@ jobs:
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
         uses: actions/download-artifact@v4
         with:
-          name: ics55-v2-ci-inputs
+          name: icsprout55-pdk
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download Sizer artifact

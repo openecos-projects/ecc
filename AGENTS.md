@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This codebase is yours: its purpose and how it is built are up to you, and you will continue to build upon it.
+This codebase is yours: its purpose and how it is built are up to you, and you will continue to build upon it. Please feel free to do breaking changes.
 
 # Workflow
 

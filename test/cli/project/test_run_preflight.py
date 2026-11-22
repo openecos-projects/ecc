@@ -200,8 +200,7 @@ def test_config_preflight_reports_missing_emir_technology_file(tmp_path):
             "status": "fail",
             "required": True,
             "detail": str(emir_config),
-            "remediation": "Select an EM resource with ecc pdk configure; for ICS55 flow testing "
-            "only, set emir.synthetic_model to ics55 with ecc param set.",
+            "remediation": "Set technology_file_path in config/emir_ecc.json.",
         }
     ]
 

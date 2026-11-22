@@ -45,5 +45,18 @@
         "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CH/liberty/ics55_LLSC_H7CH_ff_cbest_1p32_125_nldm.lib"
       ]
     }
+  ],
+  "signoff": [
+    {
+      "TYP": [
+        "TYPICAL"
+      ],
+      "MIN": [
+        "Cworst",
+        "RCworst",
+        "Cbest",
+        "RCbest"
+      ]
+    }
   ]
 }

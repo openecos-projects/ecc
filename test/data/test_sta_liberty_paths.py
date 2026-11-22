@@ -1,6 +1,5 @@
 """STA library paths survive workspace and per-step override replay."""
 
-import json
 from copy import deepcopy
 
 from chipcompiler.data import StepEnum, create_workspace
@@ -40,16 +39,6 @@ def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
         path = type(tmp_path)(value)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("library(fixture) {}")
-    description_path = pdk_root / "ecc-pdk.json"
-    description = json.loads(description_path.read_text())
-    for index, value in enumerate(expected[0]["path"]):
-        description["resources"][f"extra_{index}"] = {
-            "path": str(type(tmp_path)(value).relative_to(pdk_root)),
-            "role": "liberty",
-        }
-    description["tools"]["configs"]["sta"]["liberty"] = liberty
-    description["tools"]["configs"]["sta"]["signoff"] = [{"MAX": ["Cworst"]}]
-    description_path.write_text(json.dumps(description))
     workspace = create_workspace(
         directory=str(tmp_path / "workspace"),
         origin_def="",

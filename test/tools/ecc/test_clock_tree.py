@@ -72,9 +72,7 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
     sdc.write_text("create_clock -period 10 clk\n", encoding="utf-8")
     workspace = Workspace(
         directory=tmp_path,
-        pdk=PDK(
-            name="fixture", sdc=sdc, description={"tools": {"extraction": {"backend_id": "ics55"}}}
-        ),
+        pdk=PDK(name="fixture", sdc=sdc),
         parameters=Parameters(
             path=tmp_path / "home" / "params.toml",
             data={"geometry": {"clock_tree": True}},
@@ -148,7 +146,11 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
     graph = capture_filler_clock_tree(workspace, step, module)
 
     assert module.calls == [
-        ("init_rcx", tmp_path / "filler_ecc" / "data" / "clock_tree" / "rcx_config.json", "ics55"),
+        (
+            "init_rcx",
+            tmp_path / "filler_ecc" / "data" / "clock_tree" / "rcx_config.json",
+            "fixture",
+        ),
         ("run_rcx",),
         ("destroy_rcx",),
     ]

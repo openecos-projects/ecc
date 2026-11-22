@@ -811,13 +811,6 @@ def test_workspace_spec_update_reresolves_declared_sta_paths_against_the_new_pdk
         path = root / "liberty" / "cell.lib"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("library(cell) {}\n")
-        descriptor_path = root / "ecc-pdk.json"
-        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
-        descriptor["resources"]["workspace-test-lib"] = {
-            "path": "liberty/cell.lib",
-            "role": "liberty",
-        }
-        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
 
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
@@ -855,13 +848,6 @@ def test_workspace_spec_update_rebinds_an_unset_liberty_baseline_to_the_new_pdk(
         path = root / "liberty" / "cell.lib"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("library(cell) {}\n")
-        descriptor_path = root / "ecc-pdk.json"
-        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
-        descriptor["resources"]["workspace-test-lib"] = {
-            "path": "liberty/cell.lib",
-            "role": "liberty",
-        }
-        descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
 
     from chipcompiler.data import load_workspace
     from chipcompiler.engine import (

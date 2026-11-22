@@ -45,5 +45,18 @@
         "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ff_v1p32_125c_basic_nldm.lib"
       ]
     }
+  ],
+  "signoff": [
+    {
+      "TYP": [
+        "TYPICAL"
+      ],
+      "MIN": [
+        "Cworst",
+        "RCworst",
+        "Cbest",
+        "RCbest"
+      ]
+    }
   ]
 }

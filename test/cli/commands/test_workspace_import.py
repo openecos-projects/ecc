@@ -12,6 +12,7 @@ def _existing_workspace(
     design: str = "gcd",
     pdk: str = "ics55",
     state: str = "Success",
+    pdk_root: str = "",
 ) -> None:
     home = path / "home"
     home.mkdir(parents=True)
@@ -35,6 +36,7 @@ def _existing_workspace(
             path=home / "params.toml",
             data={
                 "pdk": pdk,
+                **({"pdk_root": pdk_root} if pdk_root else {}),
                 "design": design,
                 "top_module": design,
                 "clock": "clk",
@@ -292,7 +294,7 @@ def test_run_path_selector_registers_and_resumes_existing_external_workspace(
 ):
     project_dir = create_cli_project()
     workspace = tmp_path / "external" / "resume"
-    _existing_workspace(workspace, state="Unstart")
+    _existing_workspace(workspace, state="Unstart", pdk_root=str(tmp_path / "ics55"))
     seen = {"ran": False, "created": False}
 
     from chipcompiler.engine.rerun import StepRunResult

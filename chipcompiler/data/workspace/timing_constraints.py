@@ -76,5 +76,12 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
                 rc_para=scenario.rc,
                 has_io_cells=has_io_cells,
             )
-    typical = next(item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL"))
+    typical = next(
+        (item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL")), None
+    )
+    if typical is None:
+        raise ValueError(
+            "Generated timing constraints require a TYP/TYPICAL signoff scenario; "
+            "configure one in config_overrides.sta.signoff"
+        )
     workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)

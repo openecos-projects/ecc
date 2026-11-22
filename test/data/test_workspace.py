@@ -914,7 +914,7 @@ def test_load_workspace_external_pdk_recovers_origin_sdc_spef(
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
     tech = next((pdk_root / "prtech").rglob("*.lef"))
-    lef = next(pdk_root.rglob("ICsprout55_9TSVT_basic.lef"))
+    lef = next(pdk_root.rglob("ics55_LLSC_H7CR_ecos.lef"))
     lib = next(pdk_root.rglob("*.lib"))
     sdc_source = tmp_path / "source.sdc"
     sdc_source.write_text(SDC_INPUT_TEMPLATE)
@@ -986,7 +986,7 @@ def test_workspace_config_refresh_uses_updated_parameters(
     init_workspace_config(workspace)
 
     filler = json_read(workspace.config["filler"])
-    assert filler == {"MJ": {"-filler": " ".join(workspace.pdk.fillers)}, "-min_filler_width": 1}
+    assert filler == {"-min_filler_width": 1}
 
 
 def test_refresh_workspace_config_updates_all_parameter_derived_fields(
@@ -1051,7 +1051,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert cts["skew_bound"] == "0.13"
-    assert filler == {"MJ": {"-filler": " ".join(workspace.pdk.fillers)}, "-min_filler_width": 1}
+    assert filler == {"-min_filler_width": 1}
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
     assert routing["RT"]["-top_routing_layer"] == "MET6"
@@ -1059,7 +1059,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert workspace.parameters.data["step_params"] == {"placement": placement_edits}
     assert floorplan["die_builder"] == {
         "mode": "die_util",
-        "site_name": "SC9T_site",
+        "site_name": "core7",
         "margin": {
             "left_micron": 2,
             "right_micron": 2,
@@ -1233,11 +1233,6 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
             ],
         }
     ]
-    description_path = pdk_root / "ecc-pdk.json"
-    description = json.loads(description_path.read_text())
-    description["tools"]["configs"]["sta"]["liberty"] = deepcopy(relative_liberty)
-    description["tools"]["configs"]["sta"]["signoff"] = [{"MAX": ["Cworst"]}]
-    description_path.write_text(json.dumps(description))
     workspace_dir = tmp_path / "workspace"
     workspace = create_workspace(
         directory=str(workspace_dir),
@@ -1330,7 +1325,8 @@ def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
             },
             pdk_root=str(pdk_root),
         )
-    assert "not a declared PDK resource" in str(exc_info.value)
+    assert "ICS55 IO liberty has invalid rise timing tables" in str(exc_info.value)
+    assert invalid_io_liberty in str(exc_info.value)
 
 
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
@@ -1596,32 +1592,6 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
-def test_create_workspace_with_configured_description_cells(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    descriptor_path = pdk_root / "ecc-pdk.json"
-    description = json.loads(descriptor_path.read_text())
-    description["cells"]["dont_use"] = ["ICG*"]
-    descriptor_path.write_text(json.dumps(description))
-    workspace_dir = tmp_path / "workspace"
-    workspace = create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-    )
-    assert workspace is not None
-
-    assert workspace is not None
-    assert workspace.pdk.dont_use == ["ICG*"]
-
-
 def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1646,38 +1616,6 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
 
     assert workspace is not None
     assert workspace.pdk.dont_use == original_dont_use
-
-
-def test_workspace_description_profile_persisted_on_reload(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-    layer_map = pdk_root / "layers.map"
-    layer_map.write_text("MET1 1 0\n")
-
-    descriptor_path = pdk_root / "ecc-pdk.json"
-    description = json.loads(descriptor_path.read_text())
-    description["cells"]["dont_use"] = ["ICG*"]
-    description["resources"]["map"] = {"role": "mapping", "path": layer_map.name}
-    descriptor_path.write_text(json.dumps(description))
-    workspace_dir = tmp_path / "workspace"
-    workspace = create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-    )
-    assert workspace is not None
-    assert workspace.pdk.dont_use == ["ICG*"]
-
-    loaded = load_workspace(str(workspace_dir))
-    assert loaded is not None
-
-    assert loaded.pdk == workspace.pdk
 
 
 def test_create_workspace_pdk_overrides_typo_propagates(

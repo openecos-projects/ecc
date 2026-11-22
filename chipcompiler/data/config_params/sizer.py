@@ -4,6 +4,14 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "timing_opt.vt_suffixes",
+        "sizer",
+        ("vt_suffixes",),
+        [],
+        applies="timing_optimization",
+        description="Ordered VT cell-name suffixes, slow to fast, for the Sizer hold-only pass.",
+    ),
+    config_param(
         "timing_opt.hold_margin",
         "sizer",
         ("hold_stage", "hold_margin"),

@@ -32,14 +32,12 @@ SCHEMAS = (
         "sta.signoff",
         "sta",
         ("signoff",),
-        [
-            {
-                "TYP": ["TYPICAL"],
-                "MIN": ["Cworst", "RCworst", "Cbest", "RCbest"],
-            }
-        ],
+        [],
         applies="sta",
-        description="Liberty-corner to RC-corner combinations analyzed for timing signoff.",
+        description=(
+            "Liberty-corner to RC-corner combinations analyzed for timing signoff. "
+            "Corner names are PDK-defined strings; ICS55 supplies TYP/MIN by default."
+        ),
         type="json",
     ),
 )

@@ -298,7 +298,7 @@ class TestMissingConfigErrorRecord:
         with open(toml_path, "a") as f:
             f.write('\n[pdk.overrides]\ndont_use = ["ICG*"]\n')
         rc = cli_main.run(["check", "--project", project_dir])
-        assert rc == 1
+        assert rc == 0
 
     def test_check_pdk_overrides_unknown_key(
         self, tmp_path, monkeypatch, create_cli_project, capsys
@@ -346,12 +346,13 @@ class TestMissingConfigErrorRecord:
         rc = cli_main.run(["check", "--project", project_dir])
         assert rc == 1
         out = capsys.readouterr().out
-        assert "immutable" in out
+        assert "PDK tech LEF not found" in out
+        assert "/no/such.lef" in out
 
     @pytest.mark.parametrize(
         ("field", "message"),
         [
-            ("mapping_file", "immutable"),
+            ("mapping_file", "PDK mapping file not found"),
             ("sdc", "PDK SDC file not found"),
             ("spef", "PDK SPEF file not found"),
         ],
@@ -368,8 +369,7 @@ class TestMissingConfigErrorRecord:
         assert rc == 1
         out = capsys.readouterr().out
         assert message in out
-        if message != "immutable":
-            assert "/no/such.file" in out
+        assert "/no/such.file" in out
 
     def test_check_pdk_overrides_relative_sdc_resolves_against_project_dir(
         self, tmp_path, monkeypatch, create_cli_project, minimal_ics55_pdk_factory
@@ -438,7 +438,8 @@ class TestMissingConfigErrorRecord:
 
         assert rc == 1
         out = capsys.readouterr().out
-        assert "immutable" in out
+        assert "PDK LEF not found" in out
+        assert os.path.join(str(pdk_root), "IP", "STD_cell", "missing.lef") in out
 
     def test_check_pdk_overrides_root_rejected(self, tmp_path, create_cli_project, capsys):
         project_dir = create_cli_project()

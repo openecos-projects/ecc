@@ -327,7 +327,13 @@ class TestWorkspaceRun:
             json.dump({"schema_version": 3, "steps": steps}, f)
         assert save_workspace_config(
             run_dir,
-            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {
+                "pdk": "ics55",
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "pdk_root": str(tmp_path / "ics55"),
+            },
             {"preset": "rtl2gds"},
         )
         seen = SimpleNamespace(

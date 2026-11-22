@@ -218,7 +218,7 @@ class TestEffectiveConfigValidation:
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert "design.top is required" in reasons
         assert "design.clock_port is required" in reasons
-        assert "PDK description is missing" in reasons
+        assert "PDK tech LEF is missing" in reasons
 
     def test_manifest_only_check_validates_every_rtl_source(
         self, tmp_path, capsys, minimal_ics55_pdk_factory, manifest_stubs
