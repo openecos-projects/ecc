@@ -312,6 +312,7 @@ timing_exceptions = '''
 - 保留用户指定的时钟名及端口/引脚类型。无 IO cell 时，只为端口时钟创建 `V<时钟名>` 虚拟接口时钟，并保持周期和波形一致；主时钟名应避免与其重名。例如 `CLK_clk` 对应 `VCLK_clk`。
 - 执行顺序：主时钟 → 无 IO cell 时的端口虚拟时钟 → 派生时钟 → 分组 → 自动 IO 约束 → 用户 IO 约束 → 时序例外 → golden 电气/时序约束 → post-CTS 传播时钟。五段命令保留原文，后四段还可使用 `$corner`、`$rc_para`；是否覆盖或叠加已有 IO 延迟取决于命令选项。
 - 填写 `primary_clocks`，不再填写 `design.clock_port` / `frequency_mhz`。第一条命令的对象和 `1000 / 周期(ns)` MHz 用作流程所需的单主时钟参数。留空或仅注释会在新运行开始前报错。这不代表每个原生工具都已支持多时钟优化。
+- 对这类 workspace，`ecc param set design.frequency_mhz VALUE --workspace NAME` 和批量调参会拒绝与第一条主时钟不同的频率。要调频，请修改项目时序输入文件中的 `-period` 并创建新 workspace；旧 `clock_list` 格式的 workspace 仍支持频率覆盖。
 - 仅主时钟的周期可由 ECC 直接计算；有派生时钟 Tcl 时，脚本用 `get_attribute` 和 `foreach_in_collection` 查询各时钟实际周期。**当前测试的 iSTA 不提供这两个命令，派生时钟模式尚不能据此宣称原生全流程通过**；不要用主时钟周期代替派生时钟周期。用户 Tcl 使用的其他命令也须由具体工具支持。
 - 创建时，原输入文件按原字节复制到 `origin/`，解析出的五组值保存在 workspace 的 `home/params.toml`。修改项目输入文件后，使用新 workspace 读取新约束；单纯 `--resume` 不会重新导入。复制的原文件只是输入数据，不是交给时序工具的入口。
 - 迁移旧 `[params.sdc]` 配置：把 `clock_list` 的行转换成 `create_clock` 命令，并把其余四个键改成上面的名称；删除 `ecc.toml` 中该表，让 `design.sdc` 指向新文件。不再通过 `ecc param set sdc.*` 填写约束。已有 workspace 恢复运行时，仍按原规则读取其旧格式快照。

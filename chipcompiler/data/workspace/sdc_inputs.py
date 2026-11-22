@@ -131,6 +131,22 @@ class SdcInputs:
         return tuple(clocks)
 
 
+def validate_frequency_edit(parameters: dict, param: str, value: object) -> None:
+    """Reject metadata edits that contradict frozen literal clock commands."""
+    if param != _FREQUENCY_PARAM:
+        return
+    inputs = SdcInputs.from_parameters(parameters)
+    if not inputs.has_primary_clocks:
+        return
+    frequency = inputs.primary_clock().frequency_mhz
+    if clock_frequency(value) != frequency:
+        raise ValueError(
+            f"{param} is fixed at {frequency:g} MHz by primary_clocks; "
+            "edit -period in the project's timing input file (design.sdc) "
+            "and create a new workspace."
+        )
+
+
 def frequency_is_explicit(parameters: dict) -> bool:
     """True when ``design.frequency_mhz`` was set on top of the clock list.
 
