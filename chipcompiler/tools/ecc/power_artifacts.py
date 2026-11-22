@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 
 from chipcompiler.data import StepEnum
-from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.tools.ecc.sta_qor import (
     STA_POWER_REPORT_FILENAME,
     STA_POWER_SUMMARY_FILENAME,

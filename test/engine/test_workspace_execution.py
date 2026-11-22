@@ -63,14 +63,23 @@ def test_serial_workspace_disables_checker_batch(tmp_path, monkeypatch):
     monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
     workspace = Workspace(directory=tmp_path)
     flow = EngineFlow(workspace)
+    options = {"execution": {"step_subprocess": False}}
     workspace.flow.data = {
-        "steps": [{"name": "lvs", "tool": "ecc", "state": "Unstart", "category": "CHECKER"}],
-        "options": {"execution": {"step_subprocess": False}},
+        "steps": [
+            {
+                "name": "lvs",
+                "tool": "ecc",
+                "state": "Unstart",
+                "category": "CHECKER",
+                "directory": "lvs_ecc",
+            }
+        ],
+        "options": options,
     }
     step = SimpleNamespace(name="lvs", tool="ecc")
     flow.workspace_steps = [SimpleNamespace(name="filler"), step]
     assert not flow._can_parallelize_checker_batch(step, 1, None)
-    workspace.flow.data["options"]["execution"]["step_subprocess"] = True
+    options["execution"]["step_subprocess"] = True
     assert flow._can_parallelize_checker_batch(step, 1, None)
 
 

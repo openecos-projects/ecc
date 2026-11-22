@@ -911,6 +911,7 @@ class EngineFlow:
 
         state = StateEnum.Imcomplete
         terminal_persisted = False
+        checklist_current = False
         completed = False
         interrupted_stages: list[dict] = []
         placement_only = self._is_placement_only_step(workspace_step)
@@ -988,7 +989,6 @@ class EngineFlow:
                         ) from exc
                     terminal_persisted = True
                 finally:
-                    checklist_current = False
                     if terminal_persisted:
                         checklist_current = _refresh_signoff_checklist(
                             self.workspace, workspace_step
@@ -1001,7 +1001,7 @@ class EngineFlow:
                     workspace_step,
                     replay_attempt,
                     state.value,
-                    checklist_current=checklist_current if terminal_persisted else False,
+                    checklist_current=checklist_current,
                 )
                 try:
                     self.clear_db_engine_after_step(workspace_step, state)

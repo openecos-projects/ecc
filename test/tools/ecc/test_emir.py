@@ -336,6 +336,7 @@ def test_emir_reads_the_power_analysis_a_derived_workspace_inherited(emir_case, 
         inherited,
     )
 
+
 def test_emir_publishes_spatial_result_only_after_new_geometry_is_saved(emir_case):
     workspace, step, module, save_data = emir_case
     payload = {

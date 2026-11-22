@@ -91,7 +91,7 @@ def fork(
             project_id=project_manifest.project_id,
             source_workspace_id=source_id,
             target_workspace_id=target_id,
-            **({"step_subprocess": step_subprocess} if step_subprocess is not None else {}),
+            step_subprocess=step_subprocess,
         )
         with manifest_lock(project, blocking=not no_wait):
             load_manifest(str(project))

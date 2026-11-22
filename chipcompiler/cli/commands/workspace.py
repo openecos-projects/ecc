@@ -12,12 +12,12 @@ from chipcompiler.cli.core.inputs import (
     WorkspaceArchiveInput,
     WorkspaceCreateInput,
     WorkspaceDeleteInput,
+    WorkspaceExecutionInput,
     WorkspaceForkInput,
     WorkspaceImportInput,
     WorkspaceReconcileDeletesInput,
     WorkspaceRefreshInput,
     WorkspaceResetFlowInput,
-    WorkspaceExecutionInput,
     output_options,
     project_options,
 )

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from chipcompiler.data import EccOutput, EccStep, Workspace
 from chipcompiler.tools.geometry_display import HEADER, begin, invalidate, metadata, publish
 from chipcompiler.tools.replay_artifacts import reference_geometry
 
@@ -51,8 +52,12 @@ def published(step):
 def test_display_failure_does_not_fail_step_with_replay_off(tmp_path, monkeypatch, failure):
     from chipcompiler.tools import eda, geometry_display
 
-    workspace = SimpleNamespace(parameters=SimpleNamespace(data={"replay": {"enabled": False}}))
-    step = step_at(tmp_path)
+    workspace = Workspace(directory=tmp_path)
+    workspace.parameters.data["replay"] = {"enabled": False}
+    manifest = Path(step_at(tmp_path).output.geometry_manifest)
+    step = EccStep(
+        name="powerAnalysis", directory=tmp_path, output=EccOutput(geometry_manifest=manifest)
+    )
     monkeypatch.setattr(eda, "_run_step", lambda *_: True)
 
     def fail(*_):

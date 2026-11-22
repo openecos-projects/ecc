@@ -4,7 +4,7 @@ from pathlib import Path
 
 from chipcompiler.data import EccStep, StateEnum, StepEnum, Workspace
 from chipcompiler.data.handshake import load_request, power_source
-from chipcompiler.data.step import STEP_DIRECTORIES, StepDirectories
+from chipcompiler.data.step import StepDirectories
 from chipcompiler.data.types import DesignState
 from chipcompiler.tools.ecc.emir_artifacts import (
     discard_ir_snapshot,

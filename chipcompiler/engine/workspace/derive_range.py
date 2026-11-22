@@ -1,6 +1,7 @@
 """Freeze inherited entry inputs and bound a staged derived workspace's flow."""
 
 import shutil
+from contextlib import suppress
 from pathlib import Path
 
 from chipcompiler.data import (
@@ -64,11 +65,9 @@ def bound_derived_flow(
     workspace.parameters.data["_flow"] = flow_section_from_flow_config(config)
     if not save_parameter(workspace.parameters) or not flow.save():
         raise OSError("Failed to persist derived flow range")
-    try:
+    # Minimal staged workspaces may intentionally omit generated configs.
+    with suppress(FileNotFoundError):
         refresh_workspace_config(workspace)
-    except FileNotFoundError:
-        # Minimal staged workspaces may intentionally omit generated configs.
-        pass
     flow.create_step_workspaces(executable_steps=set())
 
 

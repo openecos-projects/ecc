@@ -388,12 +388,15 @@ def run_step_worker(
                 or any(c not in "0123456789abcdef" for c in replay_attempt)
             ):
                 raise ValueError("Invalid Replay attempt token")
-            ok = tool_runner(
-                workspace=workspace,
-                step=step,
-                ecc_module=engine,
-                **({"replay_attempt": replay_attempt} if replay_attempt else {}),
-            ) is True
+            ok = (
+                tool_runner(
+                    workspace=workspace,
+                    step=step,
+                    ecc_module=engine,
+                    **({"replay_attempt": replay_attempt} if replay_attempt else {}),
+                )
+                is True
+            )
         outputs_complete = ok and flow.check_step_result(workspace_step=step)
     except (Exception, SystemExit):
         # Downstream steps must see this attempt failed, not a missing answer.
