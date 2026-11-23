@@ -409,7 +409,10 @@ def render_param_diff_text(records, file=None):
         print("  No overrides.", file=target)
         return
     for r in records:
-        print(f"  {r['param']:30s} {r['value']} (was {r['default']}, {r['source']})", file=target)
+        # A project override is compared with the default, a workspace override
+        # with the value the workspace had before it (its baseline).
+        previous = r["default"] if "default" in r else r.get("baseline")
+        print(f"  {r['param']:30s} {r['value']} (was {previous}, {r['source']})", file=target)
 
 
 def render_signoff_inspect_text(records, file=None):
