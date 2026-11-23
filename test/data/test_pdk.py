@@ -116,16 +116,10 @@ def test_pdk_ics55_version_absent_resolves_to_v1(tmp_path, minimal_ics55_pdk_fac
             "$_DLATCH_PN0_": "LATHRX1H7L",
             "$_DLATCH_PN1_": "LATHSX1H7L",
         },
-        latch_pins={
-            "data": "D",
-            "enable_neg": "GN",
-            "enable_pos": "G",
-            "reset": "RN",
-            "set": "SN",
-        },
+        latch_pins={"data": "D", "reset": "RN", "set": "SN"},
         inverter_cell="INVX1H7L",
         tbuf_cell="TBUFX1H7L",
-        tbuf_pins={"data": "A", "enable": "OE"},
+        tbuf_pins={"data": "A"},
     )
 
     assert pdk == expected
@@ -212,16 +206,10 @@ def test_pdk_ics55_version_v2_marker_resolves_to_v2(tmp_path, minimal_ics55_pdk_
             "$_DLATCH_PN0_": "LATRNQX1_9TLVT",
             "$_DLATCH_PN1_": "LATSNQX1_9TLVT",
         },
-        latch_pins={
-            "data": "D",
-            "enable_neg": "CKN",
-            "enable_pos": "CK",
-            "reset": "RN",
-            "set": "SN",
-        },
+        latch_pins={"data": "D", "reset": "RN", "set": "SN"},
         inverter_cell="INVX1_9TLVT",
         tbuf_cell="TBUFX1_9TLVT",
-        tbuf_pins={"data": "A", "enable": "OE"},
+        tbuf_pins={"data": "A"},
     )
 
     assert pdk == expected

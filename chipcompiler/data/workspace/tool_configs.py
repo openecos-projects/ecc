@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from chipcompiler.data.parameter import update_parameters
-from chipcompiler.utility import json_read, json_read_strict
+from chipcompiler.utility import JsonReadError, json_read_strict
 
 if TYPE_CHECKING:
     from chipcompiler.data.pdk import PDK
@@ -23,16 +23,16 @@ def tool_config(tool_configs_dir: Path, name: str, pdk: "PDK") -> dict:
     default_path = tool_configs_dir / "defaults" / name
     config = json_read_strict(default_path)
     if not isinstance(config, dict):
-        raise FileNotFoundError(f"default config missing or corrupt: {default_path}")
+        raise JsonReadError(f"default config must be an object: {default_path}")
     variant = pdk.config_variant
     if not variant:
         return config
     override_path = tool_configs_dir / "pdk" / variant / name
     if not override_path.is_file():
         return config
-    override = json_read(override_path)
+    override = json_read_strict(override_path)
     if not isinstance(override, dict):
-        raise FileNotFoundError(f"PDK override config is corrupt: {override_path}")
+        raise JsonReadError(f"PDK override config must be an object: {override_path}")
     return update_parameters(override, config)
 
 

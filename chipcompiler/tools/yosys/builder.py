@@ -252,9 +252,9 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     script.set_list("lib_list", lib_files)
     script.blank_line()
 
-    # Output pins (tie, latch Q, inverter/tbuf Y) are resolved from the
-    # loaded Liberty in Tcl. Input roles (data/enable/reset/set) cannot be
-    # told apart by direction alone; those pin names are PDK-level facts.
+    # Pins are resolved from the loaded Liberty in Tcl: outputs (tie, latch Q,
+    # inverter/tbuf Y) by direction, and each enable as the leftover input.
+    # Only the data/reset/set role names are PDK-level facts.
     script.comment("Latch and tri-state cell configurations")
     latch_cells = pdk.latch_cells
     latch_pins = pdk.latch_pins
@@ -266,14 +266,11 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     script.set("latch_cell_pn0", tcl.word(latch_cells.get("$_DLATCH_PN0_", "")))
     script.set("latch_cell_pn1", tcl.word(latch_cells.get("$_DLATCH_PN1_", "")))
     script.set("latch_pin_data", tcl.word(latch_pins.get("data", "")))
-    script.set("latch_pin_enable_neg", tcl.word(latch_pins.get("enable_neg", "")))
-    script.set("latch_pin_enable_pos", tcl.word(latch_pins.get("enable_pos", "")))
     script.set("latch_pin_reset", tcl.word(latch_pins.get("reset", "")))
     script.set("latch_pin_set", tcl.word(latch_pins.get("set", "")))
     script.set("inverter_cell", tcl.word(pdk.inverter_cell))
     script.set("tbuf_cell", tcl.word(pdk.tbuf_cell))
     script.set("tbuf_pin_data", tcl.word(tbuf_pins.get("data", "")))
-    script.set("tbuf_pin_enable", tcl.word(tbuf_pins.get("enable", "")))
     script.blank_line()
 
     script.comment("Working directories")

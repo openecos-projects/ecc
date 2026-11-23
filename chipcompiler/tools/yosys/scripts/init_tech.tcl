@@ -81,6 +81,35 @@ proc liberty_input_pin {cell} {
 	return [lindex $pins 0]
 }
 
+# A cell's input pins minus the roles the PDK names (data/reset/set). Every
+# named role must really exist in the Liberty, so a master whose pins were
+# renamed fails loudly instead of producing a techmap wired to a missing pin.
+proc liberty_unnamed_input_pins {cell named} {
+	set inputs [liberty_cell_pins $cell "i"]
+	foreach pin $named {
+		if {[lsearch -exact $inputs $pin] < 0} {
+			return -code error "cell $cell: Liberty has no input pin $pin; inputs are: $inputs"
+		}
+	}
+	set rest {}
+	foreach pin $inputs {
+		if {[lsearch -exact $named $pin] < 0} {
+			lappend rest $pin
+		}
+	}
+	return $rest
+}
+
+# The one input left over once the named roles are accounted for: a latch's
+# enable, or a tri-state buffer's output enable. Ambiguity is an error.
+proc liberty_enable_pin {cell named} {
+	set rest [liberty_unnamed_input_pins $cell $named]
+	if {[llength $rest] != 1} {
+		return -code error "cell $cell: expected one enable input besides $named, got: $rest"
+	}
+	return [lindex $rest 0]
+}
+
 # for hilomap
 set tech_cell_tiehi ""
 set tech_cell_tielo ""

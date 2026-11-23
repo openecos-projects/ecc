@@ -37,7 +37,7 @@ SCHEMAS = (
         description=(
             "Per-layer and via RC written to the hold-stage setRCFile. Values "
             "use ohm/um, pF/um and ohm. Supply characterized data "
-            "from the selected PDK profile."
+            "from the PDK release in use."
         ),
         type="json",
     ),
@@ -49,7 +49,7 @@ SCHEMAS = (
         applies="timing_optimization",
         description=(
             "Source corner label for the configured placement unit wire RC; "
-            "must match the selected PDK profile."
+            "must match the PDK release in use."
         ),
     ),
     config_param(

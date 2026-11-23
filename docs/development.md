@@ -801,10 +801,12 @@ after a successful save, every file under `data/emir/emir_reporter/` is publishe
 to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
 is logged without changing the save result.
 
-CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
-and EM limits are invented test data, **not foundry data**. A successful CI run
-with this fixture verifies execution and data handoff only; its IR/EM numbers
-must not be used for signoff. Normal projects do not select it automatically.
+Every workspace gets `config/ics55_synthetic.tech`, copied from the packaged
+`chipcompiler/tools/ecc/configs/defaults/`, and EMIR falls back to it whenever
+`technology_file_path` is empty. Its resistance and EM limits are invented test
+data, **not foundry data**: a successful run on it verifies execution and data
+handoff only, and its IR/EM numbers must not be used for signoff. Point
+`emir.technology_file_path` at real foundry data before trusting any number.
 
 Any step of the rtl2gds chain can be excluded from a workspace at creation
 time, not only the three optional steps — placement-parasitic optimization

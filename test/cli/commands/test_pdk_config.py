@@ -157,7 +157,9 @@ class TestPdkShow:
             {
                 "kind": "error",
                 "error": "pdk_root_unavailable",
-                "reason": "no PDK root is configured; select a PDK description",
+                "reason": (
+                    "no PDK root is configured; set [pdk] root in ecc.toml or export ECC_PDK_ROOT"
+                ),
                 "set_root": "ecc pdk set-root <path>",
             }
         ]

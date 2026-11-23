@@ -477,9 +477,9 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
-# Latch and tri-state masters are PDK facts; their pins are resolved from
-# the loaded Liberty (output) or are PDK-level role names (input roles
-# cannot be told apart from Liberty direction alone).
+# Latch and tri-state masters are PDK facts; their pins come from the loaded
+# Liberty: the output via liberty_output_pin, and the enable as the input left
+# over once the PDK-named data/reset/set roles are accounted for.
 if {$latch_cell_n ne "" || $latch_cell_p ne "" || $latch_cell_nn0 ne "" || $latch_cell_nn1 ne ""
     || $latch_cell_pn0 ne "" || $latch_cell_pn1 ne "" || $tbuf_cell ne ""} {
   set primitive_map_path "${tmp_dir}/primitive_map.v"
@@ -492,7 +492,9 @@ module \$_DLATCH_N_ (E, D, Q);
   output Q;
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
-} $latch_cell_n $latch_pin_data $latch_pin_enable_neg [liberty_output_pin $latch_cell_n]]
+} $latch_cell_n $latch_pin_data \
+        [liberty_enable_pin $latch_cell_n [list $latch_pin_data]] \
+        [liberty_output_pin $latch_cell_n]]
   }
   if {$latch_cell_p ne ""} {
     puts $primitive_map_file [format {
@@ -501,23 +503,25 @@ module \$_DLATCH_P_ (E, D, Q);
   output Q;
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
-} $latch_cell_p $latch_pin_data $latch_pin_enable_pos [liberty_output_pin $latch_cell_p]]
+} $latch_cell_p $latch_pin_data \
+        [liberty_enable_pin $latch_cell_p [list $latch_pin_data]] \
+        [liberty_output_pin $latch_cell_p]]
   }
 
   # NN0/NN1/PN0/PN1 drive the reset/set pin directly. NP0/NP1/PP0/PP1 are the
   # same master with the top-level active-high control inverted first.
-  foreach {negative_primitive positive_primitive master enable_pin role_pin} {
-    NN0 NP0 $latch_cell_nn0 $latch_pin_enable_neg $latch_pin_reset
-    NN1 NP1 $latch_cell_nn1 $latch_pin_enable_neg $latch_pin_set
-    PN0 PP0 $latch_cell_pn0 $latch_pin_enable_pos $latch_pin_reset
-    PN1 PP1 $latch_cell_pn1 $latch_pin_enable_pos $latch_pin_set
+  foreach {negative_primitive positive_primitive master role_pin} {
+    NN0 NP0 $latch_cell_nn0 $latch_pin_reset
+    NN1 NP1 $latch_cell_nn1 $latch_pin_set
+    PN0 PP0 $latch_cell_pn0 $latch_pin_reset
+    PN1 PP1 $latch_cell_pn1 $latch_pin_set
   } {
     set master [subst $master]
-    set enable_pin [subst $enable_pin]
     set role_pin [subst $role_pin]
     if {$master eq ""} {
       continue
     }
+    set enable_pin [liberty_enable_pin $master [list $latch_pin_data $role_pin]]
     set q [liberty_output_pin $master]
     puts $primitive_map_file [format {
 module \$_DLATCH_%s_ (E, R, D, Q);
@@ -558,7 +562,9 @@ module \$_TBUF_ (A, E, Y);
   output Y;
   %s _TECHMAP_REPLACE_ (.%s(A), .%s(E), .%s(Y));
 endmodule
-} $tbuf_cell $tbuf_pin_data $tbuf_pin_enable [liberty_output_pin $tbuf_cell]]
+} $tbuf_cell $tbuf_pin_data \
+        [liberty_enable_pin $tbuf_cell [list $tbuf_pin_data]] \
+        [liberty_output_pin $tbuf_cell]]
   }
 
   close $primitive_map_file

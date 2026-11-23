@@ -16,6 +16,7 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StepEnum,
     create_workspace,
+    get_design_parameters,
     load_workspace,
 )
 from chipcompiler.data.flow.document import FlowStepEntry
@@ -1638,3 +1639,37 @@ def test_create_workspace_pdk_overrides_typo_propagates(
             pdk_root=str(pdk_root),
             pdk_overrides={"dontuse": ["ICG*"]},
         )
+
+
+@pytest.mark.parametrize("as_parameters_object", [False, True])
+def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, as_parameters_object
+):
+    """Both accepted ``parameters`` forms must pick up the v2 release baseline."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    parameters = (
+        get_design_parameters("ics55", "gcd")
+        if as_parameters_object
+        else deepcopy(default_ics55_parameters)
+    )
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=parameters,
+        pdk_root=pdk_root,
+    )
+    assert workspace is not None
+    assert workspace.pdk.config_variant == "ics55-v2"
+    assert workspace.parameters.data["bottom_layer"] == "MET1"
+
+    routing = json_read(workspace.config["routing"])
+    db = json_read(workspace.config["db"])
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert routing["RT"]["-bottom_routing_layer"] == "MET1"
+    assert db["LayerSettings"]["routing_layer_1st"] == "MET1"
+    assert dreamplace["gpugr_bottom_routing_layer"] == "MET1"

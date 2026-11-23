@@ -65,16 +65,15 @@ class PDK:
     sdc_load: float = 0.0  # output load (pF) for generated SDC; 0 omits set_load
     # Masters for Yosys's $_DLATCH_*_ primitives, keyed by primitive name
     # (e.g. "$_DLATCH_N_"); empty for PDKs without a dedicated latch mapping.
-    # Output pins (Q, tie/inverter/tbuf outputs) are resolved from the loaded
-    # Liberty cells in Tcl; a cell's data/enable/reset input role cannot be
-    # told apart by direction alone, so those pin names are PDK-level facts.
+    # Output pins and each cell's enable input are resolved from the loaded
+    # Liberty in Tcl (the enable is the input left over once the roles below
+    # are accounted for); only those roles are PDK-level facts.
     latch_cells: dict[str, str] = field(default_factory=dict)
-    # Roles: "data", "enable_neg" ($_DLATCH_N_/_NN0_/_NN1_), "enable_pos"
-    # ($_DLATCH_P_/_PN0_/_PN1_), "reset" (_NN0_/_PN0_), "set" (_NN1_/_PN1_).
+    # Roles: "data", "reset" (_NN0_/_PN0_), "set" (_NN1_/_PN1_).
     latch_pins: dict[str, str] = field(default_factory=dict)
     inverter_cell: str = ""  # inverter master used by latch/tie techmaps
     tbuf_cell: str = ""  # tri-state buffer master for $_TBUF_
-    tbuf_pins: dict[str, str] = field(default_factory=dict)  # roles: "data", "enable"
+    tbuf_pins: dict[str, str] = field(default_factory=dict)  # role: "data"
 
     def __post_init__(self) -> None:
         self.root = optional_path(self.root)
@@ -448,16 +447,10 @@ def _PDK_ICS55_V1(resolved_root: Path) -> PDK:
             "$_DLATCH_PN0_": "LATHRX1H7L",
             "$_DLATCH_PN1_": "LATHSX1H7L",
         },
-        latch_pins={
-            "data": "D",
-            "enable_neg": "GN",
-            "enable_pos": "G",
-            "reset": "RN",
-            "set": "SN",
-        },
+        latch_pins={"data": "D", "reset": "RN", "set": "SN"},
         inverter_cell="INVX1H7L",
         tbuf_cell="TBUFX1H7L",
-        tbuf_pins={"data": "A", "enable": "OE"},
+        tbuf_pins={"data": "A"},
     )
 
 
@@ -540,16 +533,10 @@ def _PDK_ICS55_V2(resolved_root: Path) -> PDK:
             "$_DLATCH_PN0_": "LATRNQX1_9TLVT",
             "$_DLATCH_PN1_": "LATSNQX1_9TLVT",
         },
-        latch_pins={
-            "data": "D",
-            "enable_neg": "CKN",
-            "enable_pos": "CK",
-            "reset": "RN",
-            "set": "SN",
-        },
+        latch_pins={"data": "D", "reset": "RN", "set": "SN"},
         inverter_cell="INVX1_9TLVT",
         tbuf_cell="TBUFX1_9TLVT",
-        tbuf_pins={"data": "A", "enable": "OE"},
+        tbuf_pins={"data": "A"},
     )
 
 

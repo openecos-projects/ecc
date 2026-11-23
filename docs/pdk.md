@@ -32,10 +32,22 @@ merges the two: dict values merge recursively, lists and scalars in the
 override replace the default outright. A PDK with no matching `pdk/<variant>/`
 directory (or no override for a given file) just gets the defaults.
 
-To add a new PDK, point `ECC_PDK_ROOT` at its tree (with a `VERSION` file for
-ICS55-shaped releases), and add any `configs/pdk/<variant>/<name>.json`
-overrides a tool needs — corner names, routing layers, cell lists, and VT
-suffixes are all PDK-specific and belong there, not in `defaults/`.
+To add overrides for a PDK ECC already knows, drop
+`configs/pdk/<variant>/<name>.json` next to the tool's `defaults/` — corner
+names, routing layers, cell lists, and VT suffixes are all PDK-specific and
+belong there, not in `defaults/`.
+
+Adding a *new ICS55 release* needs three edits in `chipcompiler/data/pdk.py`
+as well, because the marker allowlist is closed by design:
+
+1. accept the new marker in `_ics55_release()`;
+2. add a `_PDK_ICS55_V<n>()` factory with that release's paths and cell names,
+   and dispatch to it from `PDK_ICS55()`;
+3. if its parameter baseline differs, add an entry to `RELEASE_PARAMETERS` in
+   `chipcompiler/data/parameter.py`.
+
+A PDK that is not ICS55-shaped comes in through `get_pdk()`/`[pdk] name`
+instead, and only needs the `configs/pdk/<variant>/` overrides above.
 
 ## Cell-name overrides
 

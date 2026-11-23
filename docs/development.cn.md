@@ -548,9 +548,11 @@ EMIR 使用 `power_analysis_ecc/data/pw/power_reporter/instance_power.tsv` 和 `
 保存成功后，`data/emir/emir_reporter/` 下的全部报告会发布到 `emir_ecc/report/`，
 GUI 从该目录读取并展示步骤报告；发布失败只记录告警，不改变保存结果。
 
-CI 显式使用 `test/fixtures/emir/ics55_synthetic.tech`；其中电阻和 EM 限值均为
-模拟测试数据，不是工艺厂数据。运行成功只验证流程与数据交接，IR/EM 数值不能
-用于签核。普通项目不会自动使用这个文件。
+每个 workspace 都会从打包的 `chipcompiler/tools/ecc/configs/defaults/` 复制出
+`config/ics55_synthetic.tech`；当 `technology_file_path` 为空时，EMIR 回退使用
+它。其中电阻和 EM 限值均为模拟测试数据，不是工艺厂数据：运行成功只验证流程与
+数据交接，IR/EM 数值不能用于签核。要得到可信数值，必须把
+`emir.technology_file_path` 指向真实的工艺厂数据。
 
 rtl2gds 链中的任一 step 都可在创建 workspace 时按配置排除，不限于三个可选 step：placement 寄生优化（`diff_opt`）、布线后 LEC（`post_route_lec`）、时序优化（`timing_optimization`）。被跳过的 step 不会进入 workspace 的执行 ledger——其输入自然落到前一个保留 step，也不会为其创建 step 目录。状态机与 resume/rerun 语义零改动；已创建的 ledger 永远不会按新配置重过滤——事后修改策略不会向已有 workspace 插入或删除 step。
 

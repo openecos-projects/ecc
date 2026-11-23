@@ -88,9 +88,9 @@ SG13G2_PARAMETERS_TEMPLATE = {
     },
 }
 
-#: Parameter baseline that differs between ICS55 release profiles, layered in
-#: before the caller's own parameters when workspace.pdk.config_variant == "ics55-v2".
-ICS55_V2_PARAMETERS = {"bottom_layer": "MET1"}
+#: Parameter baseline that differs between ICS55 releases, keyed by
+#: ``PDK.config_variant``. Releases absent from this map add nothing.
+RELEASE_PARAMETERS: dict[str, dict[str, object]] = {"ics55-v2": {"bottom_layer": "MET1"}}
 
 ICS55_DESIGN_PARAMETERS = {
     "gcd": {
@@ -199,6 +199,18 @@ def get_design_parameters(pdk_name: str, design: str = "", path: Path | None = N
 
     parameters.data.update(design_info)
     return parameters
+
+
+def apply_release_parameters(parameters: Parameters, config_variant: str) -> None:
+    """Fill in a PDK release's parameter baseline for keys the caller left unset.
+
+    ``create_workspace`` accepts either a plain dict of overrides or a ready
+    ``Parameters`` object from ``get_design_parameters``; both forms must see the
+    release baseline, and in neither may it displace a value the caller chose.
+    """
+    for key, value in RELEASE_PARAMETERS.get(config_variant, {}).items():
+        if not parameters.data.get(key):
+            parameters.data[key] = value
 
 
 def update_parameters(parameters_src: dict, parameters_target: dict) -> dict:

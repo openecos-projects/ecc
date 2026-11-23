@@ -21,8 +21,8 @@ from ..flow.build import (
 )
 from ..flow.document import FlowDocument, FlowStepEntry, load_flow_document
 from ..parameter import (
-    ICS55_V2_PARAMETERS,
     Parameters,
+    apply_release_parameters,
     get_parameters,
     reload_parameter,
     save_parameter,
@@ -808,14 +808,12 @@ def create_workspace(
         # format parameters
         pdk_name = workspace.pdk.name or (pdk if isinstance(pdk, str) else "")
         workspace.parameters = get_parameters(pdk_name)
-        if workspace.pdk.config_variant == "ics55-v2":
-            update_parameters(
-                parameters_src=ICS55_V2_PARAMETERS, parameters_target=workspace.parameters.data
-            )
         update_parameters(parameters_src=parameters, parameters_target=workspace.parameters.data)
 
         workspace.design.name = workspace.parameters.data["design"]
         workspace.design.top_module = workspace.parameters.data["top_module"]
+
+    apply_release_parameters(workspace.parameters, workspace.pdk.config_variant)
 
     # update path
     workspace.config = build_workspace_config_paths(workspace)
