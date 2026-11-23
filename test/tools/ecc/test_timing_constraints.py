@@ -259,11 +259,13 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     ]
     assert all(path is not None and path.is_file() for path in paths)
 
+    # The workspace no longer declares TYP, so default consumers follow its
+    # own first scenario rather than a corner name its config dropped.
     for name, phase in ((StepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
         step = build_step(workspace, name.value, input_def=None, input_verilog=None)
-        typical = step_tcl_path(workspace, step)
-        assert typical == workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
-        assert typical is not None and typical.is_file()
+        default = step_tcl_path(workspace, step)
+        assert default == workspace.directory / "origin" / phase / "MAX_85_Cworst.tcl"
+        assert default is not None and default.is_file()
     assert config_path.read_bytes() == config_before
 
 

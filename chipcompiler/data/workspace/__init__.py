@@ -458,7 +458,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     min_filler_width = filler.get("-min_filler_width")
     if min_filler_width is None:
         raise ValueError(f"filler config requires -min_filler_width: {filler_path}")
-    json_write(filler_path, {"-min_filler_width": min_filler_width})
+    # Validate only: the merged config also carries the PDK's filler-master
+    # selection under MJ, which must survive refresh.
+    if not filler_path.is_file():
+        raise FileNotFoundError(f"Filler config missing: {filler_path}")
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     if not cts:

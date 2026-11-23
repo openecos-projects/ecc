@@ -204,22 +204,6 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
         },
     )
     assert workspace is not None
-    temperatures = {item["corner"]: str(item["temperature"]) for item in template["liberty"]}
-    expected_scripts = {
-        workspace.directory
-        / "origin"
-        / phase
-        / f"{corner}_{temperatures[corner].replace('-', 'm').replace('.', 'p')}_{rc}.tcl"
-        for phase in ("pre_CTS", "post_CTS")
-        for group in template["signoff"]
-        for corner, rc_corners in group.items()
-        for rc in rc_corners
-    }
-    if "signoff" in overrides:
-        expected_scripts.update(
-            workspace.directory / "origin" / phase / f"MAX_{temperatures['MAX']}_Cworst.tcl"
-            for phase in ("pre_CTS", "post_CTS")
-        )
     expected_sta = deepcopy(template)
     for library in expected_sta["liberty"]:
         library["path"] = [
@@ -227,6 +211,20 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
             for path in library["path"]
         ]
     expected_sta.update(overrides)
+    # Scripts belong to the persisted workspace config alone: overriding
+    # signoff replaces the scenario set instead of adding to the defaults.
+    temperatures = {item["corner"]: str(item["temperature"]) for item in expected_sta["liberty"]}
+    expected_scripts = {
+        workspace.directory
+        / "origin"
+        / phase
+        / f"{corner}_{temperatures[corner].replace('-', 'm').replace('.', 'p')}_{rc}.tcl"
+        for phase in ("pre_CTS", "post_CTS")
+        for group in expected_sta["signoff"]
+        for corner, rc_corners in group.items()
+        if corner in temperatures
+        for rc in rc_corners
+    }
     assert set((workspace.directory / "origin").rglob("*.tcl")) == expected_scripts
     assert json.loads(workspace.config["sta"].read_text()) == expected_sta
 

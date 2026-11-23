@@ -32,20 +32,23 @@ def _config_scenarios(config: dict) -> list[TimingScenario]:
 
 
 def timing_scenarios(workspace: "Workspace") -> list[TimingScenario]:
-    """Keep the complete default script set, with configured scenarios taking precedence."""
+    """The scenarios the workspace's own STA configuration declares.
+
+    An existing workspace reads only its persisted config: re-reading the
+    installation's defaults or the PDK's `ecc-configs/` here would drag corners
+    an installation update introduced into a workspace that never asked for
+    them. The merged baseline is used only when no config exists yet, which is
+    how a workspace being created (or one built directly in a test) gets its
+    initial scenario set.
+    """
     from . import workspace_config_key_path
     from .tool_configs import tool_config
 
-    configs_dir = Path(__file__).resolve().parents[2] / "tools/ecc/configs"
     path = workspace_config_key_path(workspace.directory, "sta")
-    baseline = tool_config(configs_dir, "sta_ecc.json", workspace.pdk)
-    configs = (baseline, json_read(path) if path else {})
-    scenarios = {
-        (scenario.corner, scenario.rc): scenario
-        for config in configs
-        for scenario in _config_scenarios(config)
-    }
-    return list(scenarios.values())
+    if path is not None and path.is_file():
+        return _config_scenarios(json_read(path))
+    configs_dir = Path(__file__).resolve().parents[2] / "tools/ecc/configs"
+    return _config_scenarios(tool_config(configs_dir, "sta_ecc.json", workspace.pdk))
 
 
 def scenario_tcl_path(directory: Path, scenario: TimingScenario, *, post_cts: bool) -> Path:
@@ -76,12 +79,12 @@ def generate_timing_scripts(workspace: "Workspace", *, has_io_cells: bool | None
                 rc_para=scenario.rc,
                 has_io_cells=has_io_cells,
             )
-    typical = next(
-        (item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL")), None
+    # TYP/TYPICAL when the workspace declares it, otherwise its own first
+    # scenario. Corner names are PDK-defined, so the default entry point is
+    # whatever this workspace's config actually generates, never a hard-coded
+    # corner that may not exist in it.
+    default = next(
+        (item for item in scenarios if (item.corner, item.rc) == ("TYP", "TYPICAL")),
+        scenarios[0],
     )
-    if typical is None:
-        raise ValueError(
-            "Generated timing constraints require a TYP/TYPICAL signoff scenario; "
-            "configure one in config_overrides.sta.signoff"
-        )
-    workspace.pdk.sdc = scenario_tcl_path(workspace.directory, typical, post_cts=False)
+    workspace.pdk.sdc = scenario_tcl_path(workspace.directory, default, post_cts=False)
