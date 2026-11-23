@@ -494,9 +494,9 @@ module \$_DLATCH_N_ (E, D, Q);
   output Q;
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
-} $latch_cell_n $latch_pin_data \
-        [liberty_enable_pin $latch_cell_n [list $latch_pin_data]] \
-        [liberty_latch_output_pin $latch_cell_n]]
+} [verilog_id $latch_cell_n] [verilog_id $latch_pin_data] \
+        [verilog_id [liberty_enable_pin $latch_cell_n [list $latch_pin_data]]] \
+        [verilog_id [liberty_latch_output_pin $latch_cell_n]]]
   }
   if {$latch_cell_p ne ""} {
     puts $primitive_map_file [format {
@@ -505,9 +505,9 @@ module \$_DLATCH_P_ (E, D, Q);
   output Q;
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
-} $latch_cell_p $latch_pin_data \
-        [liberty_enable_pin $latch_cell_p [list $latch_pin_data]] \
-        [liberty_latch_output_pin $latch_cell_p]]
+} [verilog_id $latch_cell_p] [verilog_id $latch_pin_data] \
+        [verilog_id [liberty_enable_pin $latch_cell_p [list $latch_pin_data]]] \
+        [verilog_id [liberty_latch_output_pin $latch_cell_p]]]
   }
 
   # NN0/NN1/PN0/PN1 drive the reset/set pin directly. NP0/NP1/PP0/PP1 are the
@@ -531,7 +531,8 @@ module \$_DLATCH_%s_ (E, R, D, Q);
   output Q;
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(R), .%s(Q));
 endmodule
-} $negative_primitive $master $latch_pin_data $enable_pin $role_pin $q]
+} $negative_primitive [verilog_id $master] [verilog_id $latch_pin_data] \
+        [verilog_id $enable_pin] [verilog_id $role_pin] [verilog_id $q]]
 
     if {$inverter_cell ne ""} {
       set inverter_in [liberty_input_pin $inverter_cell]
@@ -544,8 +545,9 @@ module \$_DLATCH_%s_ (E, R, D, Q);
   %s inv_control (.%s(R), .%s(rn));
   %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(rn), .%s(Q));
 endmodule
-} $positive_primitive $inverter_cell $inverter_in $inverter_out \
-        $master $latch_pin_data $enable_pin $role_pin $q]
+} $positive_primitive [verilog_id $inverter_cell] [verilog_id $inverter_in] \
+        [verilog_id $inverter_out] [verilog_id $master] [verilog_id $latch_pin_data] \
+        [verilog_id $enable_pin] [verilog_id $role_pin] [verilog_id $q]]
     }
   }
 
@@ -564,9 +566,9 @@ module \$_TBUF_ (A, E, Y);
   output Y;
   %s _TECHMAP_REPLACE_ (.%s(A), .%s(E), .%s(Y));
 endmodule
-} $tbuf_cell $tbuf_pin_data \
-        [liberty_enable_pin $tbuf_cell [list $tbuf_pin_data]] \
-        [liberty_single_output_pin $tbuf_cell]]
+} [verilog_id $tbuf_cell] [verilog_id $tbuf_pin_data] \
+        [verilog_id [liberty_enable_pin $tbuf_cell [list $tbuf_pin_data]]] \
+        [verilog_id [liberty_single_output_pin $tbuf_cell]]]
   }
 
   close $primitive_map_file

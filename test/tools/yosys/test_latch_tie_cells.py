@@ -135,7 +135,8 @@ endmodule
     assert step.data.tmp is not None
     primitive_map = (step.data.tmp / "primitive_map.v").read_text(encoding="utf-8")
     assert r"module \$_TBUF_ (A, E, Y);" in primitive_map
-    assert "TBUF _TECHMAP_REPLACE_ (.A(A), .OE(E), .Y(Y));" in primitive_map
+    # Liberty-derived names are emitted as escaped Verilog identifiers.
+    assert r"\TBUF  _TECHMAP_REPLACE_ (.\A (A), .\OE (E), .\Y (Y));" in primitive_map
 
 
 def test_synthesis_follows_a_renamed_liberty_enable_pin(tmp_path, yosys_runtime):
@@ -211,3 +212,79 @@ endmodule
     )
     with pytest.raises(AssertionError, match="expected exactly one output pin"):
         _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+
+def test_synthesis_rejects_a_latch_master_without_a_non_inverting_output(tmp_path, yosys_runtime):
+    """$_DLATCH_*_ needs the non-inverting output; a complement is not it.
+
+    Direction and output count cannot establish polarity, so a master that
+    exposes only the complementary output must be refused rather than wired
+    straight through, which would silently invert the design.
+    """
+    liberty = tmp_path / "complement_only.lib"
+    liberty.write_text(
+        """library(test) {
+  cell(LATN) {
+    area : 1;
+    latch(IQ, IQN) {
+      enable : "GN'";
+      data_in : "D";
+    }
+    pin(D) { direction : input; }
+    pin(GN) { direction : input; }
+    pin(QN) { direction : output; function : "IQN"; }
+  }
+}
+"""
+    )
+    pdk = _latch_pdk(tmp_path)
+    pdk.libs = [liberty]
+    pdk.tbuf_cell = ""
+    pdk.tbuf_pins = {}
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input en, d, output q);
+  always @* if (!en) q = d;
+endmodule
+"""
+    )
+    with pytest.raises(AssertionError, match="non-inverting output"):
+        _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+
+def test_synthesis_maps_a_master_whose_name_needs_verilog_escaping(tmp_path, yosys_runtime):
+    """Liberty names are not necessarily bare Verilog identifiers."""
+    liberty = tmp_path / "odd_names.lib"
+    liberty.write_text(
+        """library(test) {
+  cell("LAT-N") {
+    area : 1;
+    latch(IQ, IQN) {
+      enable : "GN'";
+      data_in : "D";
+    }
+    pin(D) { direction : input; }
+    pin(GN) { direction : input; }
+    pin(Q) { direction : output; function : "IQ"; }
+  }
+}
+"""
+    )
+    pdk = _latch_pdk(tmp_path)
+    pdk.libs = [liberty]
+    pdk.latch_cells = {"$_DLATCH_N_": "LAT-N"}
+    pdk.tbuf_cell = ""
+    pdk.tbuf_pins = {}
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input en, d, output q);
+  always @* if (!en) q = d;
+endmodule
+"""
+    )
+    module, _step = _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+    (latch,) = [cell for cell in module["cells"].values() if cell["type"] == "LAT-N"]
+    assert latch["port_directions"] == {"D": "input", "GN": "input", "Q": "output"}

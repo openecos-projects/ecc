@@ -7,7 +7,7 @@ from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc.timing_constraints import step_tcl_path
-from chipcompiler.utility import json_read
+from chipcompiler.utility import JsonReadError, json_read, json_read_strict
 
 from .utility import find_sizer_root
 
@@ -464,8 +464,18 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
 def _vt_environment(workspace: Workspace) -> str:
     """Explicit process VT groups, read from the merged sizer_ecc.json."""
     config_path = workspace.config.get("sizer")
-    config = json_read(config_path) if config_path else {}
+    if not config_path:
+        return "-num_vt 1\n"
+    # Strict: a malformed or non-object config must not read as "one VT group",
+    # which would silently substitute different process settings.
+    config = json_read_strict(config_path)
+    if not isinstance(config, dict):
+        raise JsonReadError(f"Sizer config must be an object: {config_path}")
     suffixes = config.get("vt_suffixes", [])
+    # Validate the shape before measuring it: a bare string has a length and
+    # iterates into characters, so it would otherwise pass as VT groups.
+    if not isinstance(suffixes, list) or not all(isinstance(item, str) for item in suffixes):
+        raise ValueError("Sizer vt_suffixes must be a list of strings")
     if not suffixes:
         return "-num_vt 1\n"
     # The current native ABI has three ordered slots. Package authors supply

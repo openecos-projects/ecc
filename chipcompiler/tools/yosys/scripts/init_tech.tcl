@@ -75,19 +75,27 @@ proc liberty_single_output_pin {cell} {
 	return [lindex $pins 0]
 }
 
-# A latch master's data output. Latch libraries commonly declare a
-# complementary QN alongside Q, and Q is the conventional non-inverted output;
-# that naming convention holds for latches only, so it lives here and not in
+# A latch master's non-inverted data output, which $_DLATCH_*_ requires.
+# Direction and output count cannot establish polarity -- a master exposing
+# only the complement looks identical -- so this relies on the Q naming
+# convention latch libraries follow, and refuses anything else rather than
+# wiring a complement straight through and inverting the design. The
+# convention holds for latches only, hence a separate proc from
 # liberty_single_output_pin.
 proc liberty_latch_output_pin {cell} {
 	set pins [liberty_cell_pins $cell "o"]
-	if {[llength $pins] == 1} {
-		return [lindex $pins 0]
-	}
 	if {[lsearch -exact $pins "Q"] >= 0} {
 		return "Q"
 	}
-	return -code error "latch cell $cell: expected one output pin or a Q pin, got: $pins"
+	return -code error "latch cell $cell: no non-inverting output pin Q; outputs are: $pins"
+}
+
+# A Liberty name as a Verilog identifier, for the generated techmap. Liberty
+# permits characters a bare identifier may not contain, so every name taken
+# from a library is escaped: a backslash, the name, and the whitespace that
+# terminates the escape.
+proc verilog_id {name} {
+	return "\\${name} "
 }
 
 # A cell's single input pin; only valid for single-input cells (inverters).
