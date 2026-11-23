@@ -80,6 +80,8 @@ def managed_run_process(
     cancel_event = threading.Event()
     outcome = RunOutcome()
     interrupted = False
+    returned = False
+    result_write_error = None
     old_handler = None
     registered_entry = None
     old_run_id = getattr(workspace, "_ecc_run_id", None)
@@ -121,6 +123,7 @@ def managed_run_process(
         ):
             try:
                 yield outcome
+                returned = True
             except KeyboardInterrupt:
                 interrupted = True
                 raise
@@ -140,13 +143,15 @@ def managed_run_process(
                     error = {"code": "step_worker_failed", "message": outcome.step_error}
                 write_run_result(workspace_path, workspace_id, registered_entry, state, error)
             except OSError as exc:
+                result_write_error = exc
                 with suppress(OSError):
                     os.write(
                         log_descriptor, f"WARNING: failed to save run result: {exc}\n".encode()
                     )
-            try:
+            with suppress(OSError):
                 os.write(log_descriptor, f"ECC run {run_id} finished\n".encode())
                 os.fsync(log_descriptor)
+            try:
                 unregister_runtime_process(project_dir, workspace_id, run_id)
             except Exception as exc:  # Final flow state remains authoritative.
                 with suppress(OSError):
@@ -171,6 +176,11 @@ def managed_run_process(
             signal.signal(signal.SIGUSR1, old_handler)
         if close_log:
             os.close(log_descriptor)
+        if returned and outcome.succeeded and result_write_error is not None:
+            raise RuntimeProcessError(
+                "run_result_write_failed",
+                f"Run {run_id} finished, but ECC could not save its result: {result_write_error}",
+            ) from result_write_error
 
 
 @contextmanager

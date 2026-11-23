@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 from textwrap import dedent
 
 import pytest
@@ -86,3 +87,93 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
             if child.poll() is None:
                 child.kill()
             child.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("failed_write", ["result", "log"])
+def test_run_unregisters_after_a_write_failure(tmp_path, monkeypatch, failed_write):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, RunInput
+    from chipcompiler.cli.project import run_process
+    from chipcompiler.project.runtime_processes import RuntimeProcessError
+
+    workspace = tmp_path / "baseline"
+    workspace.mkdir()
+    manifest = build_manifest_document(
+        str(tmp_path),
+        design_name="gcd",
+        base_design={},
+        workspace_id="baseline",
+        workspace_path="baseline",
+        start_step="synthesis",
+        end_step="harden",
+    )
+    manifest_path = tmp_path / "project.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_id = str(uuid4())
+    request = RunInput(
+        output=OutputOptions(),
+        project=ProjectOptions(project=str(tmp_path)),
+        run_id=run_id,
+        only="synthesis",
+    )
+    monkeypatch.setattr(run_process, "_ensure_process_group_leader", lambda: None)
+
+    def fail(*_args):
+        raise OSError("injected write failure")
+
+    # Use a real process group identity for the test fixture without changing the test runner.
+    from chipcompiler.project import runtime_processes
+
+    identity = runtime_processes.current_process_identity()
+    monkeypatch.setattr(
+        runtime_processes,
+        "current_process_identity",
+        lambda: runtime_processes.ProcessIdentity(
+            identity.pid,
+            identity.pid,
+            identity.process_start_id,
+            identity.boot_id,
+            identity.host_id,
+        ),
+    )
+
+    def run():
+        with run_process.managed_run_process(
+            request,
+            tmp_path,
+            "baseline",
+            SimpleNamespace(),
+            workspace_path=str(workspace),
+        ) as outcome:
+            outcome.succeeded = True
+            assert (
+                json.loads(manifest_path.read_text())["runtime_processes"]["baseline"]["run_id"]
+                == run_id
+            )
+
+    if failed_write == "result":
+        monkeypatch.setattr(run_process, "write_run_result", fail)
+        with pytest.raises(RuntimeProcessError, match="injected write failure") as exc:
+            run()
+        assert exc.value.code == "run_result_write_failed"
+        assert not (workspace / "log" / f"{run_id}.run.json").exists()
+    else:
+        # Preserve the real fsync for result and manifest writes. Fail only the run log.
+        original_fsync = run_process.os.fsync
+        log_path = workspace / "log" / f"{run_id}.log"
+
+        def fail_log_fsync(fd):
+            if Path(f"/proc/self/fd/{fd}").resolve() == log_path:
+                fail()
+            original_fsync(fd)
+
+        monkeypatch.setattr(run_process.os, "fsync", fail_log_fsync)
+        run()
+        assert (
+            json.loads((workspace / "log" / f"{run_id}.run.json").read_text())["state"]
+            == "succeeded"
+        )
+
+    assert json.loads(manifest_path.read_text()).get("runtime_processes", {}) == {}
