@@ -216,6 +216,25 @@ For one-off overrides use `ecc run --set KEY=VALUE`: it applies only when the wo
 
 For full command output examples, see [ECC CLI User Guide §9](ecc-user-guide.en.md) (`ecc doc ug`).
 
+#### Automatic geometry snapshots
+
+`geometry.snapshot` defaults to `true`. To skip automatic Chip Viewer snapshots
+and layout thumbnails for an existing workspace:
+
+```bash
+ecc param set geometry.snapshot false --project /path/to/project --workspace default
+ecc run --project /path/to/project --workspace default --resume
+```
+
+For a new workspace, use `ecc run --workspace fast --set geometry.snapshot=false`,
+or omit `--workspace` from `ecc param set` to save the project default. Set it to
+`true` to enable capture again. The option does not invalidate successful steps
+or delete existing snapshots; it affects steps that run afterwards. DEF, netlist,
+GDS, reports and analysis remain enabled. Clock-tree visualization capture is
+also skipped while snapshots are disabled, even if `geometry.clock_tree=true`.
+Explicit `ecc defview` still exports geometry. DreamPlace's own iteration plots
+are controlled separately by its per-step plotting parameters.
+
 ### 1.6 Per-step DreamPlace parameters
 
 Every parameter whose primary target is the DreamPlace config (`place.*`, `legalization.*`, the diff_opt and diff_sizing parameters) holds **one value per flow step**: macro_placement, placement, diff_opt, diff_sizing, legalization and timing_optimization's inner legalization each resolve their own `<step dir>/config/dreamplace_ecc.json` from the workspace baseline `config/dreamplace_ecc.json` plus that step's values, and no step rewrites another's file. A parameter can be set only on the steps its `applies` declares (`ecc param show KEY`); legalization takes only the `legalization.*` parameters, and a step-scoped parameter set without a step fails with `parameter_step_required`.

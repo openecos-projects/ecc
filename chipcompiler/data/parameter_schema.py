@@ -175,6 +175,18 @@ _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
         example="false",
     ),
     ParamSchema(
+        param="geometry.snapshot",
+        group="geometry",
+        name="snapshot",
+        type="bool",
+        default=True,
+        applies="all",
+        description="Save automatic geometry snapshots and layout thumbnails after physical steps",
+        maps_to={"geometry": "snapshot"},
+        example="false",
+        output_only=True,
+    ),
+    ParamSchema(
         param="geometry.clock_tree",
         group="geometry",
         name="clock_tree",
