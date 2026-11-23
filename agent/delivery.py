@@ -64,7 +64,9 @@ def retain_candidate(
         existing = current.find_workspace(target_id)
         if existing is not None and Path(existing.workspace_path).resolve() != target:
             raise ValueError("Target Workspace name is already registered")
-        _verify_completed_candidate(candidate, ref, digest, ledgers, workspace_id, candidate_id)
+        evidence = _verify_completed_candidate(
+            candidate, ref, digest, ledgers, workspace_id, candidate_id
+        )
         derive_workspace(
             candidate,
             target,
@@ -75,6 +77,7 @@ def retain_candidate(
             target_workspace_id=target_id,
             retained_candidate_sha256=digest,
             parent_workspace_directory=source,
+            original_evidence=evidence,
             cause="workspace.candidate_retained",
         )
         mutation = {
@@ -99,7 +102,7 @@ def _verify_completed_candidate(
     ledgers: Path,
     workspace_id: str,
     candidate_id: str,
-) -> None:
+) -> frozenset[Path]:
     if not candidate.is_dir() or candidate.resolve() != candidate:
         raise ValueError("Candidate artifacts are unavailable")
     for path in candidate.rglob("*"):
@@ -127,3 +130,14 @@ def _verify_completed_candidate(
         for operation in operations
     ):
         raise ValueError("ECC did not record a successful run for this candidate manifest")
+
+    # Published evidence is historical and its checksums describe the original
+    # candidate. Relocate active inputs and configs, preserving these bytes.
+    return frozenset(
+        {
+            manifest_path.relative_to(candidate),
+            Path("analysis/candidate_execution_receipt.v1.json"),
+            Path("analysis/candidate_config_snapshots.v1"),
+            *(Path(item["ref"]) for item in manifest["artifacts"].values()),
+        }
+    )

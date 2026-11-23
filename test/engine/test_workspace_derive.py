@@ -82,3 +82,88 @@ def test_derive_sweeps_stale_staging_siblings(tmp_path, minimal_ics55_pdk_factor
     assert target.is_dir()
     assert not stale.exists()
     assert not Path(f"{stale}.lock").exists()
+
+
+def test_retained_workspace_rebases_inherited_paths(tmp_path, minimal_ics55_pdk_factory):
+    from chipcompiler.data.handshake import (
+        load_request,
+        load_response,
+        write_request,
+        write_response,
+    )
+    from chipcompiler.data.handshake.messages import (
+        DesignFiles,
+        ResponseStatus,
+        StepInputs,
+        StepRequest,
+        StepResponse,
+    )
+
+    fixture = Path(__file__).parents[1] / "fixtures" / "workspace_spec" / "valid.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    bindings = payload["workspaceBindings"]
+    bindings["inputs"] = {
+        key: str(fixture.parent / value) for key, value in bindings["inputs"].items()
+    }
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    parent = tmp_path / "baseline"
+    group = parent / ".agent" / "candidates"
+    earlier = group / "earlier"
+    candidate = group / "current"
+    create_workspace_from_spec(candidate, payload["workspaceSpec"], bindings)
+    step = candidate / "01_synthesis_yosys"
+    step.mkdir(exist_ok=True)
+    netlist = step / "result.v"
+    netlist.write_text("module gcd; endmodule\n")
+    old_netlist = netlist.relative_to(candidate)
+    request_path = write_request(
+        StepRequest(
+            workspace_directory=earlier,
+            step="synthesis",
+            tool="yosys",
+            step_directory=step.name,
+            attempt_id="step-attempt-derived",
+            inputs=StepInputs(
+                design=DesignFiles(verilog=parent / old_netlist),
+                spef=(tmp_path / "baseline-other" / "external.spef",),
+            ),
+            design_source=None,
+            upstream={},
+            final_step=False,
+            layout_image=False,
+        )
+    )
+    request_path.rename(step / request_path.name)
+    write_response(
+        step,
+        StepResponse(
+            step="synthesis",
+            tool="yosys",
+            attempt_id="step-attempt-derived",
+            status=ResponseStatus.SUCCESS,
+            design=DesignFiles(verilog=earlier / old_netlist),
+            design_states=frozenset(),
+            outputs={},
+            design_source=None,
+            upstream={},
+            warnings=frozenset(),
+        ),
+    )
+
+    target = tmp_path / "retained"
+    derive_workspace(
+        candidate,
+        target,
+        parent_workspace_directory=parent,
+        retained_candidate_sha256="sha256:" + "a" * 64,
+    )
+    parent.rename(tmp_path / "moved-baseline")
+
+    request = load_request(target / step.name)
+    response = load_response(target / step.name)
+    assert request.workspace_directory == target
+    assert request.inputs.design.verilog == target / old_netlist
+    assert request.inputs.spef == (tmp_path / "baseline-other" / "external.spef",)
+    assert response is not None
+    assert response.design.verilog == target / old_netlist
+    assert response.design.verilog.read_bytes() == b"module gcd; endmodule\n"

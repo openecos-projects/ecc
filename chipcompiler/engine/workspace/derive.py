@@ -4,6 +4,7 @@
 import json
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ def derive_workspace(
     target_workspace_id: str = "",
     retained_candidate_sha256: str = "",
     parent_workspace_directory: Path | None = None,
+    original_evidence: frozenset[Path] = frozenset(),
 ) -> Any:
     """Copy ``source_directory`` to ``target_directory`` under a new identity.
 
@@ -119,9 +121,14 @@ def derive_workspace(
                 (home / name).unlink(missing_ok=True)
 
             if retained_candidate_sha256:
-                replacements = ((str(source), str(staging)),)
-                _rewrite_staged_paths(staging, replacements)
-                _rebase_candidate_params(staging, source, staging)
+
+                def relocate(value: str) -> str:
+                    return _relocate_candidate_path(
+                        value, source, parent_workspace_directory, staging
+                    )
+
+                _rewrite_staged_paths(staging, relocate, original_evidence)
+                _rebase_candidate_params(staging, relocate)
             workspace = load_workspace(staging)
             if workspace is None:
                 raise WorkspaceLifecycleError(
@@ -137,12 +144,19 @@ def derive_workspace(
             snapshot = create_engineering_snapshot(
                 workspace, workspace_id=target_workspace_id or None, cause=cause
             )
-            _rewrite_staged_paths(
-                staging,
-                ((str(source), str(target)), (str(staging), str(target))),
-            )
+
+            def publish_path(value: str) -> str:
+                if retained_candidate_sha256:
+                    return _relocate_candidate_path(value, staging, None, target)
+                return _replace_string_prefix(
+                    _replace_string_prefix(value, str(source), str(target)),
+                    str(staging),
+                    str(target),
+                )
+
+            _rewrite_staged_paths(staging, publish_path, original_evidence)
             if retained_candidate_sha256:
-                _rebase_candidate_params(staging, staging, target)
+                _rebase_candidate_params(staging, publish_path)
             if command_id:
                 write_workspace_command(
                     staging,
@@ -197,7 +211,25 @@ def _prepare_derived_flow(workspace, reset_from_step: str, through_step: str) ->
         prepare_workspace_for_rerun(workspace, engine_flow, preserve_user_inputs=True)
 
 
-def _rebase_candidate_params(staging: Path, source: Path, target: Path) -> None:
+def _relocate_candidate_path(
+    value: str, candidate: Path, parent: Path | None, staging: Path
+) -> str:
+    if not value.startswith("/"):
+        return value
+    path = Path(value)
+    if path.is_relative_to(candidate):
+        return str(staging / path.relative_to(candidate))
+    # An inherited request can name a previous candidate as its workspace.
+    if parent is not None and path.is_relative_to(candidate.parent):
+        parts = path.relative_to(candidate.parent).parts
+        if parts:
+            return str(staging.joinpath(*parts[1:]))
+    if parent is not None and path.is_relative_to(parent):
+        return str(staging / path.relative_to(parent))
+    return value
+
+
+def _rebase_candidate_params(staging: Path, relocate: Callable[[str], str]) -> None:
     import tomllib
 
     import tomli_w
@@ -206,7 +238,7 @@ def _rebase_candidate_params(staging: Path, source: Path, target: Path) -> None:
 
     path = staging / "home" / "params.toml"
     params = tomllib.loads(path.read_text(encoding="utf-8"))
-    rewritten = _replace_string_prefix(params, str(source), str(target))
+    rewritten = _rewrite_paths(params, relocate)
     if params != rewritten:
         write_text_atomic(path, tomli_w.dumps(rewritten))
 
@@ -256,16 +288,31 @@ def _prune_derived_checklist(workspace, reset_steps) -> None:
     checklist.replace(kept)
 
 
-def _rewrite_staged_paths(staging: Path, replacements: tuple[tuple[str, str], ...]) -> None:
+def _rewrite_paths(value: Any, relocate: Callable[[str], str]) -> Any:
+    if isinstance(value, str):
+        return relocate(value)
+    if isinstance(value, list):
+        return [_rewrite_paths(item, relocate) for item in value]
+    if isinstance(value, dict):
+        return {key: _rewrite_paths(item, relocate) for key, item in value.items()}
+    return value
+
+
+def _rewrite_staged_paths(
+    staging: Path, relocate: Callable[[str], str], original_evidence: frozenset[Path]
+) -> None:
     from chipcompiler.utility import json_write
 
     for path in staging.rglob("*.json"):
+        relative = path.relative_to(staging)
+        if relative in original_evidence or any(
+            parent in original_evidence for parent in relative.parents
+        ):
+            continue
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        rewritten = value
-        for source, target in replacements:
-            rewritten = _replace_string_prefix(rewritten, source, target)
+        rewritten = _rewrite_paths(value, relocate)
         if rewritten != value and not json_write(path, rewritten):
             raise OSError(f"Failed to rewrite staged Workspace path: {path}")
