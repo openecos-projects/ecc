@@ -176,9 +176,9 @@ This generates the project skeleton:
 
 ```
 gcd/
-├── ecc.toml       # project config (edit as needed in the next step)
-├── rtl/           # put Verilog sources or a filelist here
-└── constraints/   # reserved for constraints (none needed in this tutorial, see §3.3)
+├── ecc.toml                         # project config
+├── project.json                     # project identity and workspace registry
+└── timing_constraints_template.tcl  # five-field timing input template, see §3.3
 
 # the workspace is created by the first `ecc run`: `gcd/default/` by default and
 # registered in `project.json`. Create another managed workspace with
@@ -191,14 +191,17 @@ This tutorial uses the bundled gcd example — a 16/16-bit subtractive GCD unit 
 
 ```bash
 # Download the gcd example shipped in the repository (or use any .v file of your own)
-curl -fL -o rtl/gcd.v \
+curl -fL -o gcd.v \
   https://raw.githubusercontent.com/openecos-projects/ecc/main/docs/examples/gcd/gcd.v
 
 # With a local clone, copying the file works too:
-# cp /path/to/ecc/docs/examples/gcd/gcd.v rtl/
+# cp /path/to/ecc/docs/examples/gcd/gcd.v .
+
+# init leaves the RTL list empty; bind the downloaded file:
+ecc project set design.rtl gcd.v
 ```
 
-For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md).
+Sources may also stay outside the project: `ecc project set design.rtl /path/to/filelist.f` selects an external filelist without copying it into the project root. Workspace creation snapshots its inputs into `origin/`. See [examples/gcd/README.md](https://github.com/openecos-projects/ecc/blob/main/docs/examples/gcd/README.md#using-filelist) and the [filelist grammar](https://github.com/openecos-projects/ecc/blob/main/docs/specification/filelist-grammar.md).
 
 ### 3.3 Understanding ecc.toml
 
@@ -206,15 +209,13 @@ For multi-file designs, switch to a filelist (`rtl = ["rtl/filelist.f"]`); see [
 [design]
 name = "gcd"
 top = "gcd"              # top module name
-rtl = ["rtl/gcd.v"]      # a single Verilog file, or a filelist for multi-source designs
+rtl = ["gcd.v"]          # set in §3.2; init defaults to []
+sdc = "timing_constraints_template.tcl" # edit this file to change clocks
 # Optional entry inputs for a non-RTL range:
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"       # clock port name
-frequency_mhz = 100.0    # target frequency (MHz)
 
 [pdk]
 name = "ics55"           # ics55 is currently the only supported PDK
@@ -225,7 +226,7 @@ root = ""                # empty = fall back to the CHIPCOMPILER_ICS55_PDK_ROOT 
 preset = "rtl2gds"       # the complete RTL-to-Harden flow used in this tutorial
 ```
 
-For the gcd example, the defaults produced by `init` happen to be exactly right (the top module is literally `gcd`, the clock port is `clk`) — **you don't need to change a single character**. For your own design, check the four fields `top`, `rtl`, `clock_port`, and `frequency_mhz`.
+For the gcd example, set the RTL path as shown above; the default top `gcd` and timing template's `clk`/100 MHz clock already match. For your own design, set `top` and `rtl` in `ecc.toml` and edit the template's `primary_clocks` commands.
 
 You can edit `ecc.toml` in an editor, or set the same declarations from the command line with the `ecc project` group (writes `ecc.toml`, comments preserved; see [User Guide §8.5](ecc-user-guide.en.md#85-project--workspace--edit-project-declarations-and-refresh-workspaces) (`ecc doc ug`)):
 
@@ -234,14 +235,14 @@ ecc project set design.top my_chip            # set one declaration
 ecc project set design.rtl rtl/cpu.v rtl/uart.v   # replace the whole RTL list
 ecc project add design.rtl rtl/sram.v         # append one more RTL source
 ecc project remove design.rtl rtl/sram.v      # drop an RTL source
-ecc project set design.clock_port clk_i       # rename the clock port
+ecc project set design.sdc /path/to/timing_inputs.tcl  # select another five-field input
 ecc project set flow.preset syn_sta           # switch preset
 ecc project show                              # list what ecc.toml declares
 ```
 
 Two things worth knowing:
 
-- **No hand-written SDC needed**: the flow generates `origin/gcd.sdc` from `clock_port` and `frequency_mhz`, with zero input/output delay, separate setup/hold uncertainty, transition and maximum-fanout constraints, and the PDK output load when configured. A user-supplied `design.sdc` is copied unchanged instead;
+- **Timing inputs**: `ecc init` writes five TOML string fields into `timing_constraints_template.tcl`, with an active `clk`/100 MHz default. Edit that file, not the project TOML. ECC snapshots it and generates executable Tcl under `origin/pre_CTS/` and `origin/post_CTS/`; complete SDC files must be converted first. See [the timing input format](ecc-config-ref.en.md#17-five-user-written-timing-inputs);
 - **PDK resolution order**: `pdk.root` in `ecc.toml` > env var `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`. `ecc pdk show` also reports a repository-default path for convenience, but `ecc check` and `ecc run` require one of the three explicit sources. If you used the one-shot installer, the env var is already set, so leaving `root` empty is fine.
 
 ### 3.4 Validate
@@ -255,7 +256,7 @@ $ ecc check
   inspect: ecc status
   run: ecc run
   rtl: pass
-    path: rtl/gcd.v
+    path: gcd.v
   inspect: ecc check
 rc=0
 ```
@@ -404,7 +405,7 @@ Each managed workspace is isolated under `gcd/<workspace-name>/`; `project.json`
 ```
 default/
 ├── home/               # flow.json (step states) + params.toml + checklist.json
-├── origin/             # frozen inputs: gcd.v + the auto-generated gcd.sdc
+├── origin/             # frozen RTL + timing inputs; pre_CTS/ and post_CTS/ scripts
 ├── config/             # configs actually in effect per step (view: ecc config <step>)
 ├── synthesis_yosys/    # each step dir is organized into log/ script/ output/ report/ ...
 ├── lec@synthesis_kepler_formal/   # inserted RTL-vs-netlist SEC check

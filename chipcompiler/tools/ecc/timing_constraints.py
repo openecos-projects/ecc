@@ -64,7 +64,7 @@ def prepare_timing_context(
     workspace: Workspace, step: WorkspaceStep, ecc_module: ECCToolsModule | None = None
 ) -> None:
     """Resolve the generated IO rules from fresh iDB data before timing runs."""
-    if not is_generated_sdc(workspace.pdk.sdc):
+    if workspace.pdk.sdc is None or not is_generated_sdc(workspace.pdk.sdc):
         return
     if step.data.dir is None:
         raise ValueError(f"Missing data directory for {step.name} timing context")

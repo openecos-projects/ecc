@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
 
+from .timing_inputs import resolve_timing_input_metadata
+
 SUPPORTED_PDK_NAMES = {"ics55"}
 
 
@@ -169,44 +171,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         if param_errors:
             cfg._param_errors = param_errors
 
-    resolve_clock_list_metadata(cfg)
+    resolve_timing_input_metadata(cfg)
     return cfg
-
-
-def resolve_clock_list_metadata(cfg: ProjectConfig) -> None:
-    """Derive legacy single-clock tool inputs from the first declared TYP clock."""
-    cfg._timing_input_error = None
-    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
-        return
-
-    from chipcompiler.data.workspace.sdc_inputs import SdcInputs
-
-    try:
-        clocks = SdcInputs.from_parameters(
-            {"sdc": {"clock_list": cfg.params_overrides["sdc.clock_list"]}}
-        ).clocks({}, "TYP")
-        if not clocks:
-            if {"design.clock_port", "design.frequency_mhz"} <= cfg._explicit_keys:
-                return
-            raise ValueError("params.sdc.clock_list requires an uncommented primary-clock row")
-    except ValueError as exc:
-        cfg._timing_input_error = str(exc)
-        return
-
-    cfg.design_clock_port = clocks[0].target
-    cfg.design_frequency_mhz = clocks[0].frequency_mhz
-
-
-def clock_list_supplies_clock(cfg: ProjectConfig) -> bool:
-    """True when the first ``sdc.clock_list`` row, not ``[design]``, decides the clock."""
-    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
-        return False
-    from chipcompiler.data.workspace.sdc_inputs import parse_clock_list
-
-    try:
-        return bool(parse_clock_list(str(cfg.params_overrides["sdc.clock_list"])))
-    except ValueError:
-        return False
 
 
 def resolve_project_dir(project: str | None) -> str:
@@ -254,7 +220,7 @@ def _supported_flow_presets() -> set[str]:
     return set(rtl2gds_api.get_flow_builders())
 
 
-def validate_project_config(cfg: ProjectConfig) -> list[str]:
+def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool = True) -> list[str]:
     if cfg._toml_error:
         return [f"malformed ecc.toml: {cfg._toml_error}"]
 
@@ -270,13 +236,14 @@ def validate_project_config(cfg: ProjectConfig) -> list[str]:
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
-    if cfg._timing_input_error:
-        errors.append(cfg._timing_input_error)
-    else:
-        if not cfg.design_clock_port:
-            errors.append("design.clock_port is required")
-        if cfg.design_frequency_mhz <= 0:
-            errors.append("design.frequency_mhz must be greater than 0")
+    if validate_timing_input:
+        if cfg._timing_input_error:
+            errors.append(cfg._timing_input_error)
+        else:
+            if not cfg.design_clock_port:
+                errors.append("design.clock_port is required")
+            if cfg.design_frequency_mhz <= 0:
+                errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:

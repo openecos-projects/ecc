@@ -21,7 +21,7 @@ def _schema(param: str):
 def test_a_flow_wide_parameter_invalidates_from_the_first_flow_step() -> None:
     workspace = _workspace("synthesis", "placement", "routing")
 
-    assert workspace_param_step(_schema("sdc.clk_group_txt"), workspace) == "synthesis"
+    assert workspace_param_step(_schema("flow.run_analysis"), workspace) == "synthesis"
 
 
 def test_a_multi_step_parameter_picks_the_earliest_matching_flow_step() -> None:
@@ -33,7 +33,7 @@ def test_a_multi_step_parameter_picks_the_earliest_matching_flow_step() -> None:
 
 
 def test_a_flow_wide_parameter_is_settable_without_a_workspace() -> None:
-    assert workspace_param_step(_schema("sdc.clk_group_txt")) == "all"
+    assert workspace_param_step(_schema("flow.run_analysis")) == "all"
 
 
 @pytest.mark.parametrize("param", ["pdk.tech", "pdk.libs"])

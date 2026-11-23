@@ -12,8 +12,14 @@ class TestCheckBeforeTheFirstWorkspace:
     def _new_project(tmp_path, monkeypatch, *, with_rtl=True, with_pdk=True):
         project_dir = tmp_path / "project"
         assert cli_main.run(["init", str(project_dir)]) == 0
+        assert (
+            cli_main.run(
+                ["project", "set", "design.rtl", "project.v", "--project", str(project_dir)]
+            )
+            == 0
+        )
         if with_rtl:
-            (project_dir / "rtl" / "project.v").write_text("module project(input clk); endmodule\n")
+            (project_dir / "project.v").write_text("module project(input clk); endmodule\n")
         monkeypatch.delenv("ICS55_PDK_ROOT", raising=False)
         if with_pdk:
             pdk = tmp_path / "pdk"
@@ -70,7 +76,7 @@ class TestCheckBeforeTheFirstWorkspace:
 
         assert rc == 1
         assert [(r.get("check"), r.get("status"), r.get("path")) for r in records] == [
-            ("rtl", "fail", "rtl/project.v")
+            ("rtl", "fail", "project.v")
         ]
 
     def test_check_reports_the_missing_pdk_of_a_new_project(

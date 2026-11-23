@@ -265,7 +265,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
+Creates `ecc.toml`, `project.json`, and `timing_constraints_template.tcl` under `NAME/`. No empty RTL or SDC directories are created; the workspace is created by the first `ecc run`:
 
 ```console
 $ ecc init gcd
@@ -283,12 +283,12 @@ The generated `ecc.toml` (edit `design.*` and `pdk.root` as needed):
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple sources (e.g. rtl/filelist.f)
+rtl = []                # set your source files or filelist before running
+sdc = "timing_constraints_template.tcl"
 # Optional entry inputs for non-RTL ranges:
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
 
 [pdk]
@@ -306,16 +306,11 @@ skip_steps = ["diff_opt"]
 # Run-time only: at most this many independent steps of one stage run at once
 # (default 4; 1 = one at a time). See section 8.6.
 max_parallel_steps = 4
-
-[params.sdc]
-# Primary clocks, one row each: <port-or-pin> <corner>:<MHz> ...
-# The first row's TYP value also supplies the clock port and frequency of the flow.
-# (The generated file continues with four optional timing inputs, all commented out;
-# see section 1.7 of the configuration reference.)
-clock_list = '''
-clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
-'''
 ```
+
+Bind your RTL with `ecc project set design.rtl /path/to/filelist.f --project gcd`.
+Edit the timing template's five fields to set clocks and constraints; its default
+primary clock is `clk` at 100 MHz. `project.json` is maintained by ECC.
 
 ## 4. check — validate the project configuration
 
@@ -821,13 +816,11 @@ ecc project reconcile                 # repair provable project intermediate sta
 ecc project doctor [--fix]            # cross-check project.json against workspace directories; --fix repairs
 ```
 
-In a project that declares `[params.sdc] clock_list` (every `ecc init` project does), the
-clock port and the clock frequency come from the first row of that list, not from
-`[design] clock_port` / `frequency_mhz`. `project set` and `project apply` still write these
-two keys, and print `warning=clock_list_overrides_design` because the values are not used.
-Change the clock with `ecc param set sdc.clock_list '<port> <corner>:<MHz> ...'`;
-`ecc param set design.frequency_mhz` (§9) changes the frequency of that first clock, for
-synthesis and for the generated constraints alike.
+With a five-group timing file in `design.sdc`, the first `primary_clocks` declaration
+supplies the clock target and frequency. `project set` and `project apply` still write
+`[design] clock_port` / `frequency_mhz`, but print `warning=timing_inputs_override_design`
+because these declarations do not override the timing file. Edit its `create_clock`
+command and create a new workspace to change the clock.
 
 For manifest projects, `project set`/`unset`/`add`/`remove` use the same atomic update path
 and immediately sync `project.json.base_design`. `project apply` batches multiple edits so

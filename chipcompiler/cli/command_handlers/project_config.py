@@ -66,31 +66,25 @@ _CLOCK_KEYS = ("design.clock_port", "design.frequency_mhz")
 
 
 def _shadowed_clock_warnings(config_path: str, keys: tuple[str, ...]) -> list[dict]:
-    """Warn when a [design] clock key was set that the clock list overrides.
-
-    A project that declares ``[params.sdc] clock_list`` (every ``ecc init``
-    project) takes its clock port and frequency from the first row of that
-    list; the [design] keys only apply without it. The value is still written,
-    so the user must be told that it does not change the flow.
-    """
+    """Warn when the external primary-clock declaration overrides a design key."""
     shadowed = [key for key in _CLOCK_KEYS if key in keys]
     if not shadowed:
         return []
-    from chipcompiler.cli.project.config import clock_list_supplies_clock, load_project_config
+    from chipcompiler.cli.project.config import load_project_config
 
     try:
         cfg = load_project_config(config_path)
     except (OSError, ValueError):
         return []
-    if not clock_list_supplies_clock(cfg):
+    if not cfg.design_sdc or cfg._timing_input_error is not None:
         return []
     return [
         warning_record(
-            "clock_list_overrides_design",
+            "timing_inputs_override_design",
             keys=shadowed,
-            reason="params.sdc.clock_list is declared: its first row supplies the clock port "
+            reason="design.sdc supplies the primary clock target "
             "and frequency, and [design] clock_port/frequency_mhz are not used",
-            set="ecc param set sdc.clock_list '<port> <corner>:<MHz> ...'",
+            timing_input=cfg.design_sdc,
         )
     ]
 

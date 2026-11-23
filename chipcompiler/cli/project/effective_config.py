@@ -217,6 +217,10 @@ def _manifest_only_config(ctx, assembled, entry):
     cfg.manifest_driven = True
     cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
 
+    from .timing_inputs import resolve_timing_input_metadata
+
+    resolve_timing_input_metadata(cfg)
+
     flow_config = None if entry is None else entry_flow_config(entry)
     return (cfg, flow_config)
 
@@ -293,12 +297,14 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
     # origin_def exists only in the manifest layer (no ecc.toml key), so it
     # always comes from the base — resolved against the project root.
     cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
-    from chipcompiler.cli.project.config import resolve_clock_list_metadata
+    from .timing_inputs import resolve_timing_input_metadata
 
-    resolve_clock_list_metadata(cfg)
+    resolve_timing_input_metadata(cfg)
 
 
-def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None) -> list[str]:
+def validate_effective(
+    ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None, validate_timing_input: bool = True
+) -> list[str]:
     """Validate the effective config for a manifest-backed project.
 
     Relaxations vs legacy projects: [flow] is optional when a target can be
@@ -306,11 +312,14 @@ def validate_effective(ctx, cfg, *, fresh: bool, flow_config, cli_overrides=None
     creation); a multi-entry rtl list is allowed (materialized at
     creation) with every source validated. A fresh run without any
     derivable flow target is an error — before any mutation.
+
+    Existing runs disable project timing-input validation because they use
+    frozen workspace inputs. Inspection and fresh creation still validate it.
     """
     from chipcompiler.cli.project import flow_selection
     from chipcompiler.cli.project.config import validate_project_config
 
-    errors = validate_project_config(cfg)
+    errors = validate_project_config(cfg, validate_timing_input=validate_timing_input)
     # validate_project_config checks the ecc.toml policy on the preset; the
     # run's own flow config (a range or a project.json policy) is checked here.
     if isinstance(flow_config, dict):
@@ -355,7 +364,7 @@ def _manifest_frequency_errors(
 
     The frequency is the one registry-validated value the manifest still
     supplies; an ecc.toml ``[design]``/``[params]`` value, a ``--set`` value
-    or an ``sdc.clock_list`` clock takes over the key and is validated there.
+    or a validated timing-input file takes over the key and is validated there.
     """
     from chipcompiler.params import lookup_schema, validate_value
 
@@ -364,11 +373,7 @@ def _manifest_frequency_errors(
         key in cfg._explicit_keys
         or key in (cfg.params_overrides or {})
         or key in (cli_overrides or {})
-        or (
-            "sdc.clock_list" in (cfg.params_overrides or {})
-            and not cfg.design_sdc
-            and not cfg._timing_input_error
-        )
+        or (cfg.design_sdc and not cfg._timing_input_error)
     )
     schema = lookup_schema(key)
     if overridden or schema is None or not cfg.design_frequency_mhz:

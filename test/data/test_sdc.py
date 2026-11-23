@@ -5,12 +5,14 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data.parameter import Parameters
 from chipcompiler.data.pdk import PDK
 from chipcompiler.data.workspace import OriginDesign, Workspace
 from chipcompiler.data.workspace.sdc import signoff_sdc_path
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 
 
@@ -268,83 +270,6 @@ def test_signoff_evaluates_golden_for_each_configured_pair(
     assert workspace.pdk.sdc.read_bytes() == original
 
 
-@pytest.mark.parametrize(
-    "content",
-    [
-        b"# Auto-generated SDC file\ncreate_clock -period 1.5 [get_ports clk]\n",
-        "# 用户时序约束\ncreate_clock -period 1.5 [get_ports clk]\n".encode("gbk"),
-    ],
-)
-@pytest.mark.parametrize("has_io_cells", [False, True])
-@pytest.mark.parametrize("post_cts", [False, True])
-def test_custom_sdc_is_authoritative_for_refresh_and_signoff(
-    workspace, content, has_io_cells, post_cts
-):
-    workspace.pdk.sdc = workspace.directory / "custom.sdc"
-    workspace.pdk.sdc.write_bytes(content)
-    target = workspace.directory / "sta" / "signoff.tcl"
-
-    generate_timing_scripts(workspace, has_io_cells=has_io_cells)
-    actual = signoff_sdc_path(
-        workspace,
-        target,
-        post_cts=post_cts,
-        corner="MAX",
-        rc_para="Cworst",
-        has_io_cells=has_io_cells,
-    )
-
-    phase = "post_CTS" if post_cts else "pre_CTS"
-    assert actual == workspace.directory / "origin" / phase / "custom.sdc.ecc.tcl"
-    assert workspace.pdk.sdc.read_bytes() == content
-    assert not target.exists()
-
-
-@pytest.mark.parametrize("post_cts", [False, True])
-@pytest.mark.parametrize("propagated_input", [False, True])
-def test_custom_timing_wrappers_apply_phase_after_all_user_commands(
-    workspace, sdc_trace, post_cts, propagated_input
-):
-    custom = workspace.directory / "user [literal] $clock {constraints}.sdc"
-    included = workspace.directory / "extra clocks.tcl"
-    included.write_text(
-        "create_clock -name CLK_aux -period 16 [get_ports aux]\n"
-        "set_false_path -from [get_ports reset]\n"
-    )
-    content = (
-        "create_clock -name CLK_clk -period 8 [get_ports clk]\n"
-        "source [file join [file dirname [info script]] {extra clocks.tcl}]\n"
-        "set_input_delay 0.15 -clock CLK_aux [get_ports data]\n"
-    )
-    if propagated_input:
-        content += "if {1} {set_propagated_clock \\\n    [all_clocks]}\n"
-    custom.write_text(content)
-    workspace.pdk.sdc = custom
-    generate_timing_scripts(workspace)
-    path = signoff_sdc_path(
-        workspace,
-        workspace.directory / "unused.tcl",
-        post_cts=post_cts,
-        corner="TYP",
-        rc_para="TYPICAL",
-    )
-    expected = [
-        ("create_clock", "-name", "CLK_clk", "-period", 8.0, "clk"),
-        ("create_clock", "-name", "CLK_aux", "-period", 16.0, "aux"),
-        ("set_false_path", "-from", "reset"),
-        ("set_input_delay", 0.15, "-clock", "CLK_aux", "data"),
-    ]
-    if propagated_input:
-        expected.append(("set_propagated_clock", "CLK_clk CLK_aux"))
-    command = "set_propagated_clock" if post_cts else "remove_propagated_clock"
-    expected.append((command, "CLK_clk CLK_aux"))
-    assert sdc_trace(path) == expected
-    assert custom.read_text() == content
-    before = (path.read_bytes(), path.stat().st_mtime_ns)
-    generate_timing_scripts(workspace)
-    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
-
-
 def test_generated_names_are_literal_tcl_words(workspace, sdc_trace):
     clock = 'clk[0]$x; [set ::injected 1] " \\ {}'
     workspace.parameters.data["clock"] = clock
@@ -591,35 +516,106 @@ def test_invalid_user_corner_does_not_partially_replace_scenario_files(workspace
     assert {path: path.read_bytes() for path in previous} == previous
 
 
-def test_full_custom_constraints_bypass_user_input_parsing(workspace):
-    custom = workspace.directory / "full.tcl"
-    custom.write_text("# User-owned complete Tcl\nset custom 1\n")
-    workspace.pdk.sdc = custom
-    workspace.parameters.data["sdc"] = {"clock_list": "invalid clock list"}
-    generate_timing_scripts(workspace, has_io_cells=False)
-    assert (
-        signoff_sdc_path(
-            workspace,
-            workspace.directory / "ignored.tcl",
-            post_cts=True,
-            corner="TYP",
-            rc_para="TYPICAL",
-        )
-        == workspace.directory / "origin/post_CTS/full.tcl.ecc.tcl"
-    )
-    assert custom.read_text() == "# User-owned complete Tcl\nset custom 1\n"
-
-
 @pytest.mark.parametrize("has_io_cells", [False, True])
 def test_commented_examples_do_not_change_executed_defaults(workspace, sdc_trace, has_io_cells):
-    workspace.parameters.data.update({"clock": "ref_clk", "frequency_max": 80})
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    source = workspace.directory / "inputs.tcl"
+    source.write_text(tomli_w.dumps(values))
+    workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
     generate_timing_scripts(workspace, has_io_cells=has_io_cells)
     paths = sorted((workspace.directory / "origin").rglob("*.tcl"))
     assert {path.parent.name for path in paths} == {"pre_CTS", "post_CTS"}
     expected = {path: sdc_trace(path) for path in paths}
-    inputs = tomllib.loads(SDC_INPUT_TEMPLATE)["params"]["sdc"]
-    # Only optional fields are commented examples now; the primary clock is active.
-    inputs["clock_list"] = ""
-    workspace.parameters.data["sdc"] = inputs
+    source.write_text(
+        tomli_w.dumps(
+            {name: value if name == "primary_clocks" else "" for name, value in values.items()}
+        )
+    )
+    workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
     generate_timing_scripts(workspace, has_io_cells=has_io_cells)
     assert {path: sdc_trace(path) for path in paths} == expected
+
+
+@pytest.mark.parametrize("has_io_cells", [False, True])
+@pytest.mark.parametrize("post_cts", [False, True])
+@pytest.mark.parametrize("corner,rc", _configured_signoff_pairs())
+def test_command_groups_keep_clock_identity_waveform_and_order(
+    workspace, sdc_trace, has_io_cells, post_cts, corner, rc
+):
+    values = {
+        "primary_clocks": "# Actual primary clocks\n"
+        "create_clock -name REF -period 12.5 [get_ports ref_clk]\n"
+        "create_clock -name AUX -period 20 -waveform {2 9} [get_ports aux]\n"
+        "create_clock -name PLL -period 5 [get_pins u_pll/Q]\n",
+        "generated_clocks": "create_generated_clock -name DIV -divide_by 2 "
+        "-source [get_ports ref_clk] [get_pins u_div/Q]\n",
+        "clock_groups": "set_clock_groups -asynchronous -group {REF DIV} -group AUX\n",
+        "io_constraints": "set_input_delay 0.7 -max -clock REF [get_ports data]\n",
+        "timing_exceptions": "set_false_path -from [get_ports reset_n]\n",
+    }
+    source = workspace.directory / "inputs.tcl"
+    source.write_text(tomli_w.dumps(values))
+    workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
+    target = workspace.directory / "scenario.tcl"
+    signoff_sdc_path(
+        workspace, target, post_cts=post_cts, corner=corner, rc_para=rc, has_io_cells=has_io_cells
+    )
+    assert all(value in target.read_text() for value in values.values())
+    # An explicit pin stays a pin even if get_ports can find the same text.
+    calls = sdc_trace(target, ports=("ref_clk", "aux", "u_pll/Q", "data", "reset_n", "out"))
+    expected_clocks = [
+        ("create_clock", "-name", "REF", "-period", 12.5, "ref_clk"),
+        ("create_clock", "-name", "AUX", "-period", 20.0, "-waveform", "2 9", "aux"),
+        ("create_clock", "-name", "PLL", "-period", 5.0, "u_pll/Q"),
+    ]
+    periods = {"REF": 12.5, "AUX": 20.0, "PLL": 5.0}
+    if not has_io_cells:
+        expected_clocks.extend(
+            [
+                ("create_clock", "-name", "VREF", "-period", 12.5),
+                ("create_clock", "-name", "VAUX", "-period", 20.0, "-waveform", "2.0 9.0"),
+            ]
+        )
+        periods.update(VREF=12.5, VAUX=20.0)
+    periods["DIV"] = 25.0
+    assert [call for call in calls if call[0] == "create_clock"] == expected_clocks
+    assert [call for call in calls if call[0] == "set_max_transition"] == [
+        ("set_max_transition", period * fraction, kind, name)
+        for name, period in periods.items()
+        for fraction, kind in ((0.17, "-clock_path"), (0.34, "-data_path"))
+    ]
+    if not has_io_cells:
+        assert {call[4] for call in calls if call[0] == "set_output_delay"} == {"VREF", "VAUX"}
+    user_io = ("set_input_delay", 0.7, "-max", "-clock", "REF", "data")
+    exception = ("set_false_path", "-from", "reset_n")
+    commands = [call[0] for call in calls]
+    assert (
+        commands.index("create_generated_clock")
+        < commands.index("set_clock_groups")
+        < calls.index(user_io)
+        < calls.index(exception)
+        < commands.index("set_timing_derate")
+    )
+    assert [call for call in calls if call[0] == "set_propagated_clock"] == (
+        [("set_propagated_clock", " ".join(periods))] if post_cts else []
+    )
+
+
+@pytest.mark.parametrize(
+    "primary_commands, message",
+    [
+        ("create_clock -name CLK -period $period [get_ports clk]", "literal values"),
+        (
+            "create_clock -name CLK -period 10 [get_ports clk]\n"
+            "create_clock -name VCLK -period 20 [get_ports aux]",
+            "collides with interface clock",
+        ),
+    ],
+)
+def test_invalid_command_input_does_not_replace_scenarios(workspace, primary_commands, message):
+    generate_timing_scripts(workspace, has_io_cells=False)
+    previous = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
+    workspace.parameters.data["sdc"] = {"primary_clocks": primary_commands}
+    with pytest.raises(ValueError, match=message):
+        generate_timing_scripts(workspace, has_io_cells=False)
+    assert {path: path.read_bytes() for path in previous} == previous
