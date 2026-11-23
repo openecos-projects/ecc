@@ -344,3 +344,49 @@ endmodule
     )
     with pytest.raises(AssertionError, match="NOT_IN_LIBERTY is not in the loaded Liberty"):
         _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+
+def test_synthesis_resolves_a_slash_bearing_pin_against_an_overlapping_cell_name(
+    tmp_path, yosys_runtime
+):
+    """A record like "A/B/Y" is cell "A" pin "B/Y" here, not cell "A/B" pin "Y".
+
+    Both readings are legal Liberty, so the pin lookup must address each master
+    by name rather than decide where the record splits.
+    """
+    liberty = tmp_path / "overlapping_names.lib"
+    liberty.write_text(
+        """library(test) {
+  cell(A) {
+    area : 1;
+    pin(IN) { direction : input; }
+    pin(OE) { direction : input; }
+    pin("B/Y") { direction : output; function : "IN"; three_state : "!OE"; }
+  }
+  cell("A/B") {
+    area : 1;
+    pin(X) { direction : input; }
+    pin(Z) { direction : output; function : "X"; }
+  }
+}
+"""
+    )
+    pdk = _latch_pdk(tmp_path)
+    pdk.libs = [liberty]
+    pdk.latch_cells = {}
+    pdk.latch_pins = {}
+    pdk.tbuf_cell = "A"
+    pdk.tbuf_pins = {"data": "IN"}
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input a, oe, output y);
+  assign y = oe ? a : 1'bz;
+endmodule
+"""
+    )
+    _module, step = _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+    assert step.data.tmp is not None
+    primitive_map = (step.data.tmp / "primitive_map.v").read_text(encoding="utf-8")
+    assert r"\A  _TECHMAP_REPLACE_ (.\IN (A), .\OE (E), .\B/Y (Y));" in primitive_map
