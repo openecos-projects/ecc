@@ -171,51 +171,8 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         if param_errors:
             cfg._param_errors = param_errors
 
-    resolve_clock_list_metadata(cfg)
     resolve_timing_input_metadata(cfg)
     return cfg
-
-
-def resolve_clock_list_metadata(cfg: ProjectConfig) -> None:
-    """Derive single-clock metadata without requiring a process-specific corner name."""
-    cfg._timing_input_error = None
-    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
-        return
-
-    from chipcompiler.data.workspace.sdc_inputs import SdcInputs, parse_clock_list
-
-    try:
-        clock_list = cfg.params_overrides["sdc.clock_list"]
-        if not isinstance(clock_list, str):
-            raise ValueError("sdc.clock_list must be a string")
-        definitions = parse_clock_list(clock_list)
-        first = next(iter(definitions.values()), {})
-        corner = "TYP" if "TYP" in first else next(iter(first), "")
-        clocks = SdcInputs.from_parameters(
-            {"sdc": {"clock_list": cfg.params_overrides["sdc.clock_list"]}}
-        ).clocks({}, corner)
-        if not clocks:
-            if {"design.clock_port", "design.frequency_mhz"} <= cfg._explicit_keys:
-                return
-            raise ValueError("params.sdc.clock_list requires an uncommented primary-clock row")
-    except ValueError as exc:
-        cfg._timing_input_error = str(exc)
-        return
-
-    cfg.design_clock_port = clocks[0].target
-    cfg.design_frequency_mhz = clocks[0].frequency_mhz
-
-
-def clock_list_supplies_clock(cfg: ProjectConfig) -> bool:
-    """True when the first ``sdc.clock_list`` row, not ``[design]``, decides the clock."""
-    if cfg.design_sdc or "sdc.clock_list" not in cfg.params_overrides:
-        return False
-    from chipcompiler.data.workspace.sdc_inputs import parse_clock_list
-
-    try:
-        return bool(parse_clock_list(str(cfg.params_overrides["sdc.clock_list"])))
-    except ValueError:
-        return False
 
 
 def resolve_project_dir(project: str | None) -> str:
@@ -469,13 +426,7 @@ def _validate_pdk_contents(
 
 
 def _pdk_root_from_env() -> str:
-    for key in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-        val = os.environ.get(key, "").strip()
-        if not val:
-            continue
-        # Absolute: the value becomes the join base for serialized override
-        # paths consumed from step working directories.
-        val = os.path.abspath(val)
-        if os.path.isdir(val):
-            return val
+    value = os.environ.get("ECC_PDK_ROOT", "").strip()
+    if value and os.path.isdir(value):
+        return os.path.abspath(value)
     return ""

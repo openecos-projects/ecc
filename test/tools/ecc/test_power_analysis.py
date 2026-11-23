@@ -117,6 +117,7 @@ def _power_workspace(tmp_path, monkeypatch):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(name="ics55", version="v1"),
     )
     workspace.parameters.data.update(SdcInputs.from_file(sdc).parameters())
     generate_timing_scripts(workspace)

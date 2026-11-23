@@ -705,7 +705,7 @@ def test_run_sta_without_spef_reads_netlist_and_writes_to_step_report_and_featur
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(tech=techlef, lefs=[lef], libs=[liberty]),
+        pdk=PDK(name="ics55", version="v1", tech=techlef, lefs=[lef], libs=[liberty]),
         config={
             "db": tmp_path / "config" / "db.json",
             StepEnum.STA.value: tmp_path / "config" / "sta_ecc.json",

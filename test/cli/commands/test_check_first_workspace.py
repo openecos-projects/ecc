@@ -20,7 +20,7 @@ class TestCheckBeforeTheFirstWorkspace:
             == 0
         )
         if with_rtl:
-            (project_dir / "rtl" / "project.v").write_text("module project(input clk); endmodule\n")
+            (project_dir / "project.v").write_text("module project(input clk); endmodule\n")
         if with_pdk:
             pdk = tmp_path / "pdk"
             pdk.mkdir()
