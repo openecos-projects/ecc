@@ -446,6 +446,20 @@ copy this file. Load the matching IO LEFs/Liberty files (§3), configure
 and reserve sufficient core margins for the IO ring. The definition is supplied
 by the user/PDK; ECC does not infer IO cell types or add signal pads to the RTL.
 
+With separate core and IO supplies (e.g. VDD/VSS and VDDIO/VSSIO), also identify
+which declared nets feed the core rails and stripes:
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.pdn_generator.core_power_net=VDD \
+  --set floorplan.pdn_generator.core_ground_net=VSS
+```
+
+Use the actual core net names from your `global_connect` configuration. Both
+parameters default to empty strings, retaining native inference for a single
+power/ground pair; native iFP requires explicit selection for multiple domains.
+Add `--workspace NAME` when changing an existing workspace.
+
 ### phy_placer (physical cell insertion)
 
 | Parameter | Default | Meaning |

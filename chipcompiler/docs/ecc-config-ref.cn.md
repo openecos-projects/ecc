@@ -439,6 +439,19 @@ iFP 按生成的 floorplan 配置所在目录解析相对路径，不是项目�
 并为 IO ring 留出足够的 core margin。定义文件由用户或 PDK 提供；ECC 不推测
 IO 单元类型，也不会自动往 RTL 插入信号 IO cell。
 
+核心与 IO 使用不同电源（如 VDD/VSS、VDDIO/VSSIO）时，还须明确哪组已声明的
+网络供给核心 rail 和 stripe：
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.pdn_generator.core_power_net=VDD \
+  --set floorplan.pdn_generator.core_ground_net=VSS
+```
+
+请填写 `global_connect` 中实际的核心电源网名。两个参数默认均为空字符串，
+保留单组电源时的原生推断行为；多电源域时 iFP 要求显式指定。
+修改已有 workspace 时加 `--workspace NAME`。
+
 ### phy_placer（物理单元插入）
 
 | 参数 | 默认 | 含义 |

@@ -110,6 +110,26 @@ SCHEMAS = (
         description="Routing halo around macros in micrometers where routing is prohibited.",
     ),
     config_param(
+        "floorplan.pdn_generator.core_power_net",
+        "floorplan",
+        ("pdn_generator", "core_power_net"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "Core POWER net for rails and stripes; required when multiple power domains exist."
+        ),
+    ),
+    config_param(
+        "floorplan.pdn_generator.core_ground_net",
+        "floorplan",
+        ("pdn_generator", "core_ground_net"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "Core GROUND net for rails and stripes; required when multiple ground domains exist."
+        ),
+    ),
+    config_param(
         "floorplan.pdn_generator.global_connect",
         "floorplan",
         ("pdn_generator", "global_connect"),

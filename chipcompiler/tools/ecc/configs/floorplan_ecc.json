@@ -91,6 +91,8 @@
         }
     },
     "pdn_generator": {
+        "core_power_net": "",
+        "core_ground_net": "",
         "global_connect": [
             {
                 "net_name": "VDD",

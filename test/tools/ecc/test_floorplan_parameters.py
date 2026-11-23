@@ -152,7 +152,11 @@ def test_io_cell_parameters_reach_both_floorplan_stages(floorplan_workspace, nat
         "floorplan.io_placer.io_cell.definition_file_path": str(definition_path),
         "floorplan.io_placer.io_cell.power.target_group_spacing": 750.0,
         "floorplan.io_placer.io_cell.auto_resize.enable": False,
+        "floorplan.pdn_generator.core_power_net": "VDD_CORE",
+        "floorplan.pdn_generator.core_ground_net": "VSS_CORE",
     }
+    expected_pdn = json_read(workspace.config[StepEnum.FLOORPLAN.value])["pdn_generator"]
+    expected_pdn.update({"core_power_net": "VDD_CORE", "core_ground_net": "VSS_CORE"})
     expected = json_read(workspace.config[StepEnum.FLOORPLAN.value])["io_placer"]
     expected.update(
         {
@@ -182,3 +186,4 @@ def test_io_cell_parameters_reach_both_floorplan_stages(floorplan_workspace, nat
             assert ecc_runner.run_post_floorplan(workspace, step)
         native_config = json_read(module.init_fp.call_args.kwargs["config"])
         assert native_config["io_placer"] == expected
+        assert native_config["pdn_generator"] == expected_pdn

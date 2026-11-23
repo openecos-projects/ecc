@@ -16,6 +16,8 @@ def test_io_cell_parameter_batch_round_trip(ready_project):
         f"{prefix}.io_cell.definition_file_path": str(definition),
         f"{prefix}.io_cell.power.target_group_spacing": "750",
         f"{prefix}.io_cell.auto_resize.enable": "false",
+        "floorplan.pdn_generator.core_power_net": "VDD_CORE",
+        "floorplan.pdn_generator.core_ground_net": "VSS_CORE",
     }
     command = ["param", "apply", "--project", str(ready_project)]
     for key, value in values.items():
@@ -30,6 +32,10 @@ def test_io_cell_parameter_batch_round_trip(ready_project):
             "power": {"target_group_spacing": 750.0},
             "auto_resize": {"enable": False},
         },
+    }
+    assert config["params"]["floorplan"]["pdn_generator"] == {
+        "core_power_net": "VDD_CORE",
+        "core_ground_net": "VSS_CORE",
     }
 
     assert (
