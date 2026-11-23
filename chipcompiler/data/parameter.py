@@ -209,7 +209,10 @@ def apply_release_parameters(parameters: Parameters, config_variant: str) -> Non
     release baseline, and in neither may it displace a value the caller chose.
     """
     for key, value in RELEASE_PARAMETERS.get(config_variant, {}).items():
-        if not parameters.data.get(key):
+        # Key presence, not truthiness: an explicitly configured empty value
+        # means "leave this to the merged tool config", exactly as it does on a
+        # release that has no baseline entry at all.
+        if key not in parameters.data:
             parameters.data[key] = value
 
 

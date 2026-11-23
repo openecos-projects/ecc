@@ -168,3 +168,46 @@ endmodule
 
     with pytest.raises(AssertionError, match="Liberty has no input pin DIN"):
         _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+
+def test_synthesis_rejects_a_tristate_master_with_more_than_one_output(tmp_path, yosys_runtime):
+    """Only a latch may resolve its output by the Q convention.
+
+    A tri-state master declaring both a non-inverting Y and an inverting Q must
+    not silently map the design output onto Q.
+    """
+    liberty = tmp_path / "two_output_tbuf.lib"
+    liberty.write_text(
+        """library(test) {
+  cell(LATN) {
+    area : 1;
+    latch(IQ, IQN) {
+      enable : "GN'";
+      data_in : "D";
+    }
+    pin(D) { direction : input; }
+    pin(GN) { direction : input; }
+    pin(Q) { direction : output; function : "IQ"; }
+  }
+  cell(TBUF) {
+    area : 1;
+    pin(A) { direction : input; }
+    pin(OE) { direction : input; }
+    pin(Y) { direction : output; function : "A"; three_state : "!OE"; }
+    pin(Q) { direction : output; function : "A'"; three_state : "!OE"; }
+  }
+}
+"""
+    )
+    pdk = _latch_pdk(tmp_path)
+    pdk.libs = [liberty]
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input a, oe, output y);
+  assign y = oe ? a : 1'bz;
+endmodule
+"""
+    )
+    with pytest.raises(AssertionError, match="expected exactly one output pin"):
+        _synthesize(tmp_path / "run", source, pdk, yosys_runtime)

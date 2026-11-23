@@ -478,8 +478,10 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
 # Latch and tri-state masters are PDK facts; their pins come from the loaded
-# Liberty: the output via liberty_output_pin, and the enable as the input left
-# over once the PDK-named data/reset/set roles are accounted for.
+# Liberty: the output by direction, and the enable as the input left over once
+# the PDK-named data/reset/set roles are accounted for. Only a latch may
+# resolve its output by the Q convention; every other master must have exactly
+# one output.
 if {$latch_cell_n ne "" || $latch_cell_p ne "" || $latch_cell_nn0 ne "" || $latch_cell_nn1 ne ""
     || $latch_cell_pn0 ne "" || $latch_cell_pn1 ne "" || $tbuf_cell ne ""} {
   set primitive_map_path "${tmp_dir}/primitive_map.v"
@@ -494,7 +496,7 @@ module \$_DLATCH_N_ (E, D, Q);
 endmodule
 } $latch_cell_n $latch_pin_data \
         [liberty_enable_pin $latch_cell_n [list $latch_pin_data]] \
-        [liberty_output_pin $latch_cell_n]]
+        [liberty_latch_output_pin $latch_cell_n]]
   }
   if {$latch_cell_p ne ""} {
     puts $primitive_map_file [format {
@@ -505,7 +507,7 @@ module \$_DLATCH_P_ (E, D, Q);
 endmodule
 } $latch_cell_p $latch_pin_data \
         [liberty_enable_pin $latch_cell_p [list $latch_pin_data]] \
-        [liberty_output_pin $latch_cell_p]]
+        [liberty_latch_output_pin $latch_cell_p]]
   }
 
   # NN0/NN1/PN0/PN1 drive the reset/set pin directly. NP0/NP1/PP0/PP1 are the
@@ -522,7 +524,7 @@ endmodule
       continue
     }
     set enable_pin [liberty_enable_pin $master [list $latch_pin_data $role_pin]]
-    set q [liberty_output_pin $master]
+    set q [liberty_latch_output_pin $master]
     puts $primitive_map_file [format {
 module \$_DLATCH_%s_ (E, R, D, Q);
   input E, R, D;
@@ -533,7 +535,7 @@ endmodule
 
     if {$inverter_cell ne ""} {
       set inverter_in [liberty_input_pin $inverter_cell]
-      set inverter_out [liberty_output_pin $inverter_cell]
+      set inverter_out [liberty_single_output_pin $inverter_cell]
       puts $primitive_map_file [format {
 module \$_DLATCH_%s_ (E, R, D, Q);
   input E, R, D;
@@ -564,7 +566,7 @@ module \$_TBUF_ (A, E, Y);
 endmodule
 } $tbuf_cell $tbuf_pin_data \
         [liberty_enable_pin $tbuf_cell [list $tbuf_pin_data]] \
-        [liberty_output_pin $tbuf_cell]]
+        [liberty_single_output_pin $tbuf_cell]]
   }
 
   close $primitive_map_file

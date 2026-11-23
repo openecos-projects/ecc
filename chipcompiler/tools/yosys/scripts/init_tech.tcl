@@ -63,9 +63,23 @@ proc liberty_cell_pins {cell direction} {
 	return {}
 }
 
-# A cell's single output pin. Latch libraries may declare a complementary
-# QN alongside Q; Q is the conventional non-inverted data output.
-proc liberty_output_pin {cell} {
+# A cell's only output pin. Used wherever one output is the whole contract:
+# tie, inverter and tri-state masters. A multi-output Liberty entry is a hard
+# error rather than a guess -- picking by name would silently wire a design to
+# an inverted output of an otherwise plausible master.
+proc liberty_single_output_pin {cell} {
+	set pins [liberty_cell_pins $cell "o"]
+	if {[llength $pins] != 1} {
+		return -code error "cell $cell: expected exactly one output pin, got: $pins"
+	}
+	return [lindex $pins 0]
+}
+
+# A latch master's data output. Latch libraries commonly declare a
+# complementary QN alongside Q, and Q is the conventional non-inverted output;
+# that naming convention holds for latches only, so it lives here and not in
+# liberty_single_output_pin.
+proc liberty_latch_output_pin {cell} {
 	set pins [liberty_cell_pins $cell "o"]
 	if {[llength $pins] == 1} {
 		return [lindex $pins 0]
@@ -73,18 +87,7 @@ proc liberty_output_pin {cell} {
 	if {[lsearch -exact $pins "Q"] >= 0} {
 		return "Q"
 	}
-	return -code error "cell $cell: expected exactly one output pin or a Q pin, got: $pins"
-}
-
-# A tie cell's output pin: unlike liberty_output_pin, no Q fallback — a tie
-# cell is expected to have exactly one output, so a multi-output Liberty
-# entry (e.g. accidentally pointing at a latch master) is a hard error.
-proc liberty_tie_output_pin {cell} {
-	set pins [liberty_cell_pins $cell "o"]
-	if {[llength $pins] != 1} {
-		return -code error "tie cell $cell: expected exactly one output pin, got: $pins"
-	}
-	return [lindex $pins 0]
+	return -code error "latch cell $cell: expected one output pin or a Q pin, got: $pins"
 }
 
 # A cell's single input pin; only valid for single-input cells (inverters).
@@ -129,6 +132,6 @@ proc liberty_enable_pin {cell named} {
 set tech_cell_tiehi ""
 set tech_cell_tielo ""
 if {$tie_high_cell ne "" && $tie_low_cell ne ""} {
-	set tech_cell_tiehi "$tie_high_cell [liberty_tie_output_pin $tie_high_cell]"
-	set tech_cell_tielo "$tie_low_cell [liberty_tie_output_pin $tie_low_cell]"
+	set tech_cell_tiehi "$tie_high_cell [liberty_single_output_pin $tie_high_cell]"
+	set tech_cell_tielo "$tie_low_cell [liberty_single_output_pin $tie_low_cell]"
 }
