@@ -475,6 +475,16 @@ ecc param apply --project "$PROJECT_DIR" \
 
 ### pdn_generator（电源网络）
 
+CX55（`pdk.name = "ics55"`）设置 `floorplan.io_placer.mode = "io_cell"` 时，
+默认采用拼片顶层和 MPW 的电源层配置：在下表的 MET4/MET5 网格上增加
+T4M2（线宽 6、周期 16、偏移 0.5 µm）和 RDL（线宽 35、周期 90、偏移 50 µm），
+同时增加 MET5–T4M2、T4M2–RDL 连接。IO-pin/MPC-core 和其他 PDK 的默认值不变。
+
+显式设置的 `floorplan.pdn_generator.stripe`、`connect_layers` 列表分别替换对应
+默认值，不会被自动追加。`ecc param show` 显示当前模式的默认配置；新建 workspace、
+刷新及两个 floorplan 步骤使用同一规则。切回 `auto`/`file` 时，未覆盖的字段恢复
+核心默认值。不修改子宏 LEF 或内部电源网，也不关闭原生电源连通性检查。
+
 | 参数 | 默认 | 含义 |
 |---|---|---|
 | `global_connect` | VDD/VSS → 实例电源脚 | 电源/地网络与单元引脚的全局连接声明（`is_power` 区分电源/地） |

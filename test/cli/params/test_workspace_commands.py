@@ -4,8 +4,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.parameter import Parameters
-from chipcompiler.data.workspace import Flow
+from chipcompiler.data.workspace import Flow, _load_default_floorplan_config
 
 
 class _Flow:
@@ -97,6 +98,46 @@ def _write_manifest(project_dir: str) -> None:
             }
         )
     )
+
+
+def test_workspace_lists_mode_dependent_pdn_defaults(
+    create_cli_project, monkeypatch, capsys, plain_records
+):
+    project_dir = create_cli_project()
+    _write_manifest(project_dir)
+    workspace = _workspace(Path(project_dir) / "baseline")
+    floorplan = _load_default_floorplan_config()
+    floorplan["io_placer"]["mode"] = "io_cell"
+    floorplan["pdn_generator"].update(pdn_defaults("ics55", "io_cell"))
+    floorplan["pdn_generator"]["stripe"] = []
+    config_path = Path(workspace.directory) / "floorplan_ecc.json"
+    config_path.write_text(json.dumps(floorplan))
+    workspace.config["floorplan"] = config_path
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _: workspace)
+
+    assert (
+        cli_main.run(
+            [
+                "param",
+                "list",
+                "--all",
+                "--workspace",
+                "baseline",
+                "--project",
+                project_dir,
+                "--plain",
+            ]
+        )
+        == 0
+    )
+
+    records = {item["id"]: item for item in plain_records(capsys.readouterr().out)}
+    for name, default in pdn_defaults("ics55", "io_cell").items():
+        record = records[f"floorplan.pdn_generator.{name}"]
+        assert {key: json.loads(record[key]) for key in ("value_literal", "default_literal")} == {
+            "value_literal": [] if name == "stripe" else default,
+            "default_literal": default,
+        }
 
 
 def test_workspace_sta_parallel_limit_replays_into_config(create_cli_project, monkeypatch):

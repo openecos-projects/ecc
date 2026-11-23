@@ -3,11 +3,13 @@
 from copy import deepcopy
 
 from chipcompiler.data.config_params.common import WORKSPACE_WIDE, ConfigTarget
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.parameter import update_parameters
 from chipcompiler.data.parameter_schema import (
     ResolvedParam,
     build_backend_overrides,
     build_config_overrides,
+    lookup_schema,
 )
 from chipcompiler.data.step_config_reads import step_config_reads
 from chipcompiler.data.step_parameters import (
@@ -76,6 +78,17 @@ def _flow_steps(workspace) -> list[tuple[str, str | None]]:
     ]
 
 
+def workspace_param_default(workspace, schema) -> object:
+    """The default in this workspace's PDK and IO-placement mode."""
+    pdk = str(workspace.parameters.data.get("pdk") or "") or None
+    if schema.param in ("floorplan.pdn_generator.stripe", "floorplan.pdn_generator.connect_layers"):
+        mode_schema = lookup_schema("floorplan.io_placer.mode")
+        assert mode_schema is not None
+        mode = workspace_param_value(workspace, mode_schema)
+        return pdn_defaults(pdk, mode)[schema.name]
+    return schema.default_for(pdk)
+
+
 def workspace_param_value(
     workspace, schema, *, step: str | None = None, strict: bool = False
 ) -> object:
@@ -91,8 +104,7 @@ def workspace_param_value(
         stored = step_value(workspace.parameters.data, step, schema.param, _MISSING)
         if stored is not _MISSING:
             return stored
-    pdk = str(workspace.parameters.data.get("pdk") or "") or None
-    default = schema.default_for(pdk)
+    default = workspace_param_default(workspace, schema)
     if schema.maps_to is not None:
         return _parameter_target_value(workspace.parameters.data, schema.maps_to, default)
     if schema.config_target is not None:

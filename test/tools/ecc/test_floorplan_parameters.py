@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from chipcompiler.data import StepEnum, create_workspace
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.parameter import get_design_parameters, load_parameter, save_parameter
 from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.params import lookup_schema, update_workspace_param_value
@@ -156,6 +157,7 @@ def test_io_cell_parameters_reach_both_floorplan_stages(floorplan_workspace, nat
         "floorplan.pdn_generator.core_ground_net": "VSS_CORE",
     }
     expected_pdn = json_read(workspace.config[StepEnum.FLOORPLAN.value])["pdn_generator"]
+    expected_pdn.update(pdn_defaults("ics55", "io_cell"))
     expected_pdn.update({"core_power_net": "VDD_CORE", "core_ground_net": "VSS_CORE"})
     expected = json_read(workspace.config[StepEnum.FLOORPLAN.value])["io_placer"]
     expected.update(

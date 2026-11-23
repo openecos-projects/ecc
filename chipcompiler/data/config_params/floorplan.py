@@ -1,4 +1,58 @@
+from copy import deepcopy
+
 from .common import config_param
+
+_CORE_PDN: dict[str, list[dict[str, object]]] = {
+    "stripe": [
+        {
+            "routing_layer_name": "MET4",
+            "width_micron": 1.0,
+            "pitch_micron": 16.0,
+            "offset_micron": 0.5,
+        },
+        {
+            "routing_layer_name": "MET5",
+            "width_micron": 1.0,
+            "pitch_micron": 16.0,
+            "offset_micron": 0.5,
+        },
+    ],
+    "connect_layers": [
+        {"bottom_routing_layer_name": "MET1", "top_routing_layer_name": "MET4"},
+        {"bottom_routing_layer_name": "MET4", "top_routing_layer_name": "MET5"},
+    ],
+}
+
+_CX55_CHIP_PDN: dict[str, list[dict[str, object]]] = {
+    "stripe": [
+        {
+            "routing_layer_name": "T4M2",
+            "width_micron": 6.0,
+            "pitch_micron": 16.0,
+            "offset_micron": 0.5,
+        },
+        {
+            "routing_layer_name": "RDL",
+            "width_micron": 35.0,
+            "pitch_micron": 90.0,
+            "offset_micron": 50.0,
+        },
+    ],
+    "connect_layers": [
+        {"bottom_routing_layer_name": "MET5", "top_routing_layer_name": "T4M2"},
+        {"bottom_routing_layer_name": "T4M2", "top_routing_layer_name": "RDL"},
+    ],
+}
+
+
+def pdn_defaults(pdk: str | None, io_mode: object) -> dict[str, list[dict[str, object]]]:
+    """Core mesh defaults, extended for CX55 pad-based chips (MPW or assembled MPC)."""
+    defaults = deepcopy(_CORE_PDN)
+    if pdk and pdk.casefold() == "ics55" and io_mode == "io_cell":
+        for name, extension in _CX55_CHIP_PDN.items():
+            defaults[name].extend(deepcopy(extension))
+    return defaults
+
 
 SCHEMAS = (
     config_param(
@@ -154,34 +208,24 @@ SCHEMAS = (
         "floorplan.pdn_generator.stripe",
         "floorplan",
         ("pdn_generator", "stripe"),
-        [
-            {
-                "routing_layer_name": "MET4",
-                "width_micron": 1.0,
-                "pitch_micron": 16.0,
-                "offset_micron": 0.5,
-            },
-            {
-                "routing_layer_name": "MET5",
-                "width_micron": 1.0,
-                "pitch_micron": 16.0,
-                "offset_micron": 0.5,
-            },
-        ],
+        _CORE_PDN["stripe"],
         applies="pre_floorplan",
-        description="Power-stripe layers, widths, pitches, and offsets in micrometers.",
+        description=(
+            "Power-stripe layers, widths, pitches, and offsets in micrometers. "
+            "ICS55 io_cell mode adds T4M2/RDL by default; an explicit list replaces the default."
+        ),
         type="json",
     ),
     config_param(
         "floorplan.pdn_generator.connect_layers",
         "floorplan",
         ("pdn_generator", "connect_layers"),
-        [
-            {"bottom_routing_layer_name": "MET1", "top_routing_layer_name": "MET4"},
-            {"bottom_routing_layer_name": "MET4", "top_routing_layer_name": "MET5"},
-        ],
+        _CORE_PDN["connect_layers"],
         applies="pre_floorplan",
-        description="Adjacent routing-layer pairs connected by power-distribution vias.",
+        description=(
+            "Routing-layer pairs connected by power-distribution vias. "
+            "ICS55 io_cell mode extends MET5 through T4M2 to RDL by default."
+        ),
         type="json",
     ),
     config_param(

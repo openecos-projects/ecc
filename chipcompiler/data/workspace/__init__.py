@@ -314,6 +314,7 @@ def _refresh_sta_config(workspace: Workspace) -> None:
 
 
 def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None = None) -> None:
+    from chipcompiler.data.workspace.floorplan_pdn import refresh_pdn_defaults
     from chipcompiler.utility import json_read, json_write
 
     config_path = workspace.config.get(StepEnum.FLOORPLAN.value)
@@ -371,6 +372,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get("left_cell_name", "")
     side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
+    refresh_pdn_defaults(floorplan, workspace.parameters.data)
     json_write(config_path, floorplan)
 
     from chipcompiler.params.targets import derive_parameter_configs

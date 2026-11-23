@@ -483,6 +483,19 @@ Add `--workspace NAME` when changing an existing workspace.
 
 ### pdn_generator (power distribution network)
 
+For CX55 (`pdk.name = "ics55"`), `floorplan.io_placer.mode = "io_cell"`
+selects the chip-level PDN defaults used by MPW and assembled MPC tops. In
+addition to the MET4/MET5 mesh below, it adds T4M2 (width 6, pitch 16, offset
+0.5 µm) and RDL (width 35, pitch 90, offset 50 µm), with MET5–T4M2 and
+T4M2–RDL connections. IO-pin/MPC-core and other PDK defaults are unchanged.
+
+Explicit `floorplan.pdn_generator.stripe` or `connect_layers` lists replace
+their respective defaults; ECC does not append to user lists. `ecc param show`
+reports the mode-dependent defaults. The same policy is applied at workspace
+creation, refresh, and both floorplan stages; switching back to `auto`/`file`
+restores the core defaults unless overridden. No sub-macro LEF or internal
+power mesh is changed, and native connectivity checks remain enabled.
+
 | Parameter | Default | Meaning |
 |---|---|---|
 | `global_connect` | VDD/VSS → instance power pins | Global connection declaration between power/ground nets and cell pins (`is_power` distinguishes power from ground) |

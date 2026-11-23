@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
 from chipcompiler.data.config_params.common import ConfigTarget, ParamSchema, PdkVariant
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
 from chipcompiler.data.step_parameters import STEP_TABLE, is_step_scoped, parse_step_key, step_key
 
@@ -393,6 +394,13 @@ def resolve_parameters(
             if found is not None:
                 value, source = found
                 resolved.append(ResolvedParam(schema.param, value, default, source, schema, step))
+    by_param = {item.param: item for item in resolved if item.step is None}
+    io_mode = by_param["floorplan.io_placer.mode"].value
+    for name, default in pdn_defaults(pdk, io_mode).items():
+        item = by_param[f"floorplan.pdn_generator.{name}"]
+        item.default = default
+        if not item.is_explicit:
+            item.value = deepcopy(default)
     return resolved, errors
 
 

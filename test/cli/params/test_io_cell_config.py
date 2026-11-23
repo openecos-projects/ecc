@@ -1,10 +1,13 @@
 """IO cell options use the normal nested parameter CLI and TOML persistence."""
 
+import ast
+import json
 import tomllib
 
 import pytest
 
 from chipcompiler.cli import main as cli_main
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 
 
 def test_io_cell_parameter_batch_round_trip(ready_project):
@@ -68,3 +71,43 @@ def test_invalid_io_cell_parameter_does_not_change_project(ready_project, key, v
     assert cli_main.run(["param", "set", key, value, "--project", str(ready_project)]) == 1
 
     assert manifest.read_bytes() == before
+
+
+def test_io_cell_mode_updates_displayed_pdn_defaults_and_preserves_explicit_mesh(
+    ready_project, capsys, plain_records
+):
+    project = ["--project", str(ready_project)]
+    mode_key = "floorplan.io_placer.mode"
+    for mode in ("io_cell", "auto", "io_cell"):
+        assert cli_main.run(["param", "set", mode_key, mode, *project]) == 0
+        capsys.readouterr()
+        for name, value in pdn_defaults("ics55", mode).items():
+            key = f"floorplan.pdn_generator.{name}"
+            assert cli_main.run(["param", "show", key, *project, "--plain"]) == 0
+            record = plain_records(capsys.readouterr().out)[0]
+            assert {
+                "value": ast.literal_eval(record["value"]),
+                "default": ast.literal_eval(record["default"]),
+                "source": record["source"],
+            } == {"value": value, "default": value, "source": "default"}
+
+    core = pdn_defaults("ics55", "auto")
+    for name, value in core.items():
+        key = f"floorplan.pdn_generator.{name}"
+        assert cli_main.run(["param", "set", key, json.dumps(value), *project]) == 0
+        capsys.readouterr()
+        assert cli_main.run(["param", "show", key, *project, "--plain"]) == 0
+        record = plain_records(capsys.readouterr().out)[0]
+        assert ast.literal_eval(record["value"]) == value
+        assert record["source"] == "ecc.toml"
+
+    assert (
+        cli_main.run(["param", "unset", "floorplan.pdn_generator.stripe", *project, "--plain"]) == 0
+    )
+    record = plain_records(capsys.readouterr().out)[0]
+    assert ast.literal_eval(record["value"]) == pdn_defaults("ics55", "io_cell")["stripe"]
+    assert (
+        cli_main.run(["param", "show", "floorplan.pdn_generator.stripe", *project, "--plain"]) == 0
+    )
+    record = plain_records(capsys.readouterr().out)[0]
+    assert ast.literal_eval(record["value"]) == pdn_defaults("ics55", "io_cell")["stripe"]

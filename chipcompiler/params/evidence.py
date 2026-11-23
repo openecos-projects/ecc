@@ -18,6 +18,7 @@ from chipcompiler.data.workspace.config_overrides import config_path_for_key
 from chipcompiler.data.workspace.parameters import (
     PARAM_SOURCES_KEY,
     WORKSPACE_PARAM_OVERRIDES_KEY,
+    workspace_param_default,
     workspace_param_value,
 )
 from chipcompiler.utility import json_read, json_write
@@ -87,7 +88,6 @@ def build_step_parameter_record(
 ) -> dict[str, Any]:
     """Step-applicable parameters with value, default and source, plus the config they reach."""
     parameters: Mapping[str, object] = workspace.parameters.data
-    pdk = str(parameters.get("pdk") or "") or None
     step = str(step_name)
     schemas = sorted(
         (
@@ -110,7 +110,7 @@ def build_step_parameter_record(
             {
                 "param": schema.param,
                 "value": value,
-                "default": schema.default_for(pdk),
+                "default": workspace_param_default(workspace, schema),
                 "source": _source(parameters, schema, scope),
             }
         )

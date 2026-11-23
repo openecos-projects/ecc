@@ -376,12 +376,17 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
         )
 
     if removed:
+        toml_overrides, _ = _load_toml_overrides(ctx.project_dir)
+        resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+        restored = next(
+            item for item in resolved if item.param == schema.param and item.step is None
+        )
         return CommandResult.ok(
             [
                 {
                     "param": key,
                     "status": "unset",
-                    "value": schema.default_for(_project_pdk(ctx)),
+                    "value": restored.value,
                     "source": "default",
                 }
             ]
