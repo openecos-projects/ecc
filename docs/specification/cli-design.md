@@ -319,8 +319,9 @@ The preferred user entry should be configuration driven:
 
 ```bash
 ecc init gcd
-ecc check
-ecc run
+ecc project set design.rtl /path/to/filelist.f --project gcd
+ecc check --project gcd
+ecc run --project gcd
 ```
 
 The project should contain:
@@ -328,9 +329,8 @@ The project should contain:
 ```text
 gcd/
 ├── ecc.toml
-├── rtl/
-├── constraints/
-├── project.json       # written when the first workspace is registered
+├── project.json       # created by init; records managed workspaces
+├── timing_constraints_template.tcl
 └── default/           # the default managed workspace after `ecc run`
 ```
 

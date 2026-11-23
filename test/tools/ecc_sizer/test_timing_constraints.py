@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import SkippableStepEnum, StepEnum
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc_sizer import builder
@@ -18,18 +20,22 @@ from ._sizer_helpers import _sizer_runtime, _workspace
         (SkippableStepEnum.TIMING_OPT.value, "post_CTS"),
     ],
 )
-@pytest.mark.parametrize("custom", [False, True])
+@pytest.mark.parametrize("timing_format", ["generated", "structured", "legacy"])
 def test_setup_and_hold_commands_share_typical_constraints_for_the_stage(
-    tmp_path, monkeypatch, step_name, phase_dir, custom
+    tmp_path, monkeypatch, step_name, phase_dir, timing_format
 ):
     runtime = _sizer_runtime(tmp_path)
     monkeypatch.setenv("CHIPCOMPILER_ECC_SIZER_ROOT", str(runtime))
     workspace = _workspace(tmp_path)
     origin = workspace.directory / "origin"
-    origin.mkdir(parents=True)
+    origin.mkdir(parents=True, exist_ok=True)
     workspace.pdk.sdc = None
     filename = "TYP_25_TYPICAL.tcl"
-    if custom:
+    if timing_format == "structured":
+        source = origin / "user.sdc"
+        source.write_text(SDC_INPUT_TEMPLATE)
+        workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
+    elif timing_format == "legacy":
         workspace.pdk.sdc = origin / "user.sdc"
         workspace.pdk.sdc.write_text("create_clock -period 10 [get_ports clk]\n")
         filename = "user.sdc.ecc.tcl"

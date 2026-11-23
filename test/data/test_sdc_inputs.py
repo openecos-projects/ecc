@@ -111,17 +111,11 @@ def _primary(workspace, corner):
     return SdcInputs.from_parameters(data).clocks(data, corner)[0]
 
 
-def test_clock_list_replaced_in_a_workspace_supplies_the_primary_clock(tmp_path):
-    """The list of an existing workspace is replaced: its rows decide."""
-    from chipcompiler.data.parameter_schema import lookup_schema
-    from chipcompiler.data.workspace.parameters import update_workspace_param_value
-
+def test_legacy_workspace_clock_list_supplies_the_primary_clock(tmp_path):
     workspace = _workspace(
         tmp_path,
-        {"clock": "clk", "frequency_max": 100.0, "sdc": {"clock_list": "clk MAX:90 TYP:100"}},
+        {"clock": "clk", "frequency_max": 100.0, "sdc": {"clock_list": "clk MAX:180 TYP:200"}},
     )
-
-    update_workspace_param_value(workspace, lookup_schema("sdc.clock_list"), "clk MAX:180 TYP:200")
 
     assert _primary(workspace, "MAX") == PrimaryClock("clk", 180)
     assert _primary(workspace, "TYP") == PrimaryClock("clk", 200)
@@ -144,13 +138,9 @@ def test_workspace_frequency_override_replaces_the_first_clock_until_it_is_unset
     assert _primary(workspace, "MAX") == PrimaryClock("clk", 150)
     assert _primary(workspace, "TYP") == PrimaryClock("clk", 150)
 
-    # The override stays in force when the list is replaced afterwards.
-    update_workspace_param_value(workspace, lookup_schema("sdc.clock_list"), "clk MAX:180 TYP:200")
-    assert _primary(workspace, "MAX") == PrimaryClock("clk", 150)
-
     unset_workspace_param(workspace, schema)
-    assert _primary(workspace, "MAX") == PrimaryClock("clk", 180)
-    assert _primary(workspace, "TYP") == PrimaryClock("clk", 200)
+    assert _primary(workspace, "MAX") == PrimaryClock("clk", 90)
+    assert _primary(workspace, "TYP") == PrimaryClock("clk", 100)
 
 
 def test_workspace_override_equal_to_its_baseline_is_not_an_explicit_frequency():

@@ -99,6 +99,7 @@ def carried_parameters(parameters: Mapping[str, object], pdk_root: str = "") -> 
         PARAM_SOURCES_KEY,
         STEP_PARAMS_KEY,
         EXPLICIT_FREQUENCY_KEY,
+        "sdc",
     ):
         if key in parameters:
             carried[key] = deepcopy(parameters[key])

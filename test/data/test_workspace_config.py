@@ -59,6 +59,18 @@ def test_save_load_round_trip_sg13g2_nested_subtrees(tmp_path):
     assert loaded["_flow"] == {}
 
 
+def test_save_load_round_trip_preserves_timing_inputs(tmp_path):
+    from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+    from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+
+    source = tmp_path / "timing_inputs.tcl"
+    source.write_text(SDC_INPUT_TEMPLATE, encoding="utf-8")
+    payload = {"design": "gcd", **SdcInputs.from_file(source).parameters()}
+
+    assert save_workspace_config(tmp_path, payload)
+    assert load_workspace_config(tmp_path) == {**payload, "_flow": {}}
+
+
 def test_save_load_round_trip_preserves_reserved_payloads(tmp_path):
     payload = {
         "design": "gcd",

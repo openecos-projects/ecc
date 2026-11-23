@@ -44,7 +44,7 @@ def test_sizer_step_config_writes_env_and_cmd_files(tmp_path, monkeypatch):
     assert "-useOpenSTA" in cmd_text
     assert "-def input.def" in cmd_text
     assert "-v input.v" in cmd_text
-    assert f"-sdc {workspace.directory / 'origin/post_CTS/clock.sdc.ecc.tcl'}" in cmd_text
+    assert f"-sdc {workspace.directory / 'origin/post_CTS/TYP_25_TYPICAL.tcl'}" in cmd_text
     assert "-asap7" not in cmd_text
     assert "-prft_only" not in cmd_text
     assert "-outputPath ." in cmd_text
@@ -392,7 +392,10 @@ def test_sizer_config_preserves_runtime_parseable_order(tmp_path, monkeypatch):
     workspace.pdk.tech = tmp_path / "tech_lef" / "tech.lef"
     workspace.pdk.lefs = [tmp_path / "lef_dir" / "std_cell.lef"]
     workspace.pdk.libs = [tmp_path / "lib_dir" / "slow_corner.lib"]
-    workspace.pdk.sdc = tmp_path / "constraints" / "main_clock.sdc"
+    timing_input = tmp_path / "constraints" / "main_clock.sdc"
+    timing_input.parent.mkdir()
+    timing_input.write_text("create_clock -period 10 [get_ports clk]\n")
+    workspace.pdk.sdc = timing_input
     workspace.pdk.spef = tmp_path / "rcx" / "route_parasitic.spef"
 
     step: Any = sizer_builder.build_step(

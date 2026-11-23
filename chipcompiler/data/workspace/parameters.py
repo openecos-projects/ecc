@@ -19,6 +19,7 @@ from chipcompiler.data.step_parameters import (
     unset_step_value,
 )
 from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
+from chipcompiler.data.workspace.sdc_inputs import validate_frequency_edit
 from chipcompiler.utility import json_read
 
 WORKSPACE_PARAM_OVERRIDES_KEY = "workspace_param_overrides"
@@ -150,6 +151,7 @@ def update_workspace_param_value(
     for a missing or inapplicable step.
     """
     scope = _checked_scope(workspace, schema, step)
+    validate_frequency_edit(workspace.parameters.data, schema.param, value)
     records = _override_records(workspace.parameters.data)
     record = _find_record(records, schema.param, scope)
     if record is None:
@@ -178,6 +180,7 @@ def unset_workspace_param(
     record = _find_record(records, schema.param, scope)
     if record is None:
         return None
+    validate_frequency_edit(workspace.parameters.data, schema.param, record["baseline"])
     records.remove(record)
     _set_override_records(workspace.parameters.data, records)
     if scope is not None and not record.get("stored", True):
