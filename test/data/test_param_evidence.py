@@ -83,7 +83,7 @@ def test_record_covers_only_parameters_applicable_to_the_step(
     params = {item["param"] for item in record["parameters"]}
     assert "cts.max_fanout" in params
     assert "place.target_density" not in params
-    assert record["config"]["cts"]["max_fanout"] == 32
+    assert record["config"]["cts"]["max_fanout"] == "32"
 
 
 def test_evidence_file_is_written_beside_the_step_files(
@@ -114,7 +114,7 @@ def test_record_lists_only_configs_the_step_consumes(
     record = build_step_parameter_record(workspace, "routing", "ecc")
 
     assert set(record["config"]) == {"routing", "db"}
-    assert record["config"]["routing"]["RT.-bottom_routing_layer"] == "MET2"
+    assert record["config"]["routing"]["RT.-bottom_routing_layer"] == ""
 
 
 def test_each_step_records_its_own_value_and_source(

@@ -120,7 +120,7 @@ class TestRunWarnsOnSpecDrift:
         plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(pdk_root))
         project_dir = create_cli_project(pdk_root=pdk_root)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",
@@ -156,7 +156,7 @@ class TestRunWarnsOnSpecDrift:
         plain_records,
     ):
         pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(pdk_root))
         project_dir = create_cli_project(pdk_root=pdk_root)
         monkeypatch.setattr(
             "chipcompiler.cli.project.config._validate_pdk_contents",

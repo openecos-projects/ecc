@@ -67,6 +67,10 @@ with tempfile.TemporaryDirectory() as directory:
 
 print("native-import-isolation-ok")
 """
+    script = script.replace(
+        "from chipcompiler.cli.app import app",
+        f"sys.path.insert(0, {str(repository)!r})\nfrom chipcompiler.cli.app import app",
+    )
     completed = subprocess.run(
         [sys.executable, "-I", "-c", script],
         cwd=repository,

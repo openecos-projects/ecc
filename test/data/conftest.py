@@ -17,6 +17,15 @@ def create_minimal_sg13g2_pdk(root: Path) -> Path:
     lib_path.parent.mkdir(parents=True, exist_ok=True)
     lib_path.write_text("library(test) { }\n")
 
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "fixture_description", Path(__file__).resolve().parents[1] / "pdk/fixture_description.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.write_fixture_description(root, "sg13g2")
     return root
 
 

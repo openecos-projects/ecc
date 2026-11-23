@@ -74,12 +74,25 @@ def load_workspace(directory: str | Path, *, read_only: bool = False) -> Any:
     if spef_path:
         pdk.spef = spef_path[0]
 
-    if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
-        pdk.tech = Path(db_json["INPUT"]["tech_lef_path"])
-    if db_json.get("INPUT", {}).get("lef_paths", []) != []:
-        pdk.lefs = [Path(path) for path in db_json["INPUT"]["lef_paths"]]
-    if db_json.get("INPUT", {}).get("lib_path", []) != []:
-        pdk.libs = [Path(path) for path in db_json["INPUT"]["lib_path"]]
+    if pdk.description:
+        expected_inputs = {
+            "tech_lef_path": str(pdk.tech or ""),
+            "lef_paths": [str(path) for path in pdk.lefs],
+            "lib_path": [str(path) for path in pdk.libs],
+        }
+        for key, expected in expected_inputs.items():
+            actual = db_json.get("INPUT", {}).get(key, expected)
+            if actual != expected:
+                raise ValueError(
+                    f"project PDK is immutable: db.INPUT.{key} differs from its description"
+                )
+    else:
+        if db_json.get("INPUT", {}).get("tech_lef_path", "") != "":
+            pdk.tech = Path(db_json["INPUT"]["tech_lef_path"])
+        if db_json.get("INPUT", {}).get("lef_paths", []) != []:
+            pdk.lefs = [Path(path) for path in db_json["INPUT"]["lef_paths"]]
+        if db_json.get("INPUT", {}).get("lib_path", []) != []:
+            pdk.libs = [Path(path) for path in db_json["INPUT"]["lib_path"]]
     workspace.pdk = pdk
 
     workspace.design.name = parameters.data.get("design", "")

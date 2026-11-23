@@ -34,7 +34,12 @@ def _effective_value(schema: ParamSchema, parameters: Mapping[str, object]) -> o
     if schema.maps_to is not None:
         return stored_value(parameters, schema.maps_to)
     if schema.fork:
-        return schema.default_for(str(parameters.get("pdk") or "") or None)
+        configured = parameters.get(schema.name, MISSING)
+        if configured is not MISSING:
+            return configured
+        pdk = str(parameters.get("pdk") or "").lower()
+        if pdk in schema.pdk_variants:
+            return schema.default_for(pdk)
     return MISSING
 
 

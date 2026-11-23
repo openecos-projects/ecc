@@ -31,8 +31,8 @@ from test.flow_fixture import publish_response
 
 @pytest.fixture
 def timing_workspace(tmp_path):
-    template = Path(runner.__file__).parent / "configs" / "sta_ecc.json"
-    config = json.loads(template.read_text())
+    template = Path(__file__).parents[2] / "pdk/fixtures/tool_defaults.json"
+    config = json.loads(template.read_text())["sta"]
     for library in config["liberty"]:
         library["path"] = [str(tmp_path / Path(path).name) for path in library["path"]]
         for path in library["path"]:
@@ -254,7 +254,7 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     for name, phase in ((StepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
         step = build_step(workspace, name.value, input_def=None, input_verilog=None)
         typical = step_tcl_path(workspace, step)
-        assert typical == workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
+        assert typical == workspace.directory / "origin" / phase / "MAX_85_Cworst.tcl"
         assert typical is not None and typical.is_file()
     assert config_path.read_bytes() == config_before
 

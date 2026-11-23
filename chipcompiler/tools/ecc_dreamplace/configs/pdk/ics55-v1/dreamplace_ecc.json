@@ -1,0 +1,11 @@
+{
+  "buffering_fixed_buffer_master": "BUFX1H7L",
+  "openroad_vt_suffixes": [
+    "H7H",
+    "H7R",
+    "H7L"
+  ],
+  "gpugr_bottom_routing_layer": "MET2",
+  "gpugr_top_routing_layer": "MET5",
+  "macro_halo_microns": 2.0
+}

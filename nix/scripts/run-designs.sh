@@ -5,7 +5,7 @@
 # design is a self-contained ECC project: <name>/ecc.toml + rtl/ (+ optional
 # constraints/ and FileCheck .check files consumed by the lit e2e suite).
 # pdk.root stays empty in ecc.toml; the PDK is injected here via
-# CHIPCOMPILER_ICS55_PDK_ROOT.
+# ECC_PDK_ROOT.
 #
 # Usage:
 #   run-designs.sh --ecc BIN --designs-dir DIR [--design NAME ...]
@@ -51,7 +51,7 @@ designs_dir="$(cd "$designs_dir" && pwd)"
 ecc="$(cd "$(dirname "$ecc")" && pwd)/$(basename "$ecc")"
 
 if [[ -z "$pdk_root" ]]; then
-  pdk_root="${CHIPCOMPILER_ICS55_PDK_ROOT:-}"
+  pdk_root="${ECC_PDK_ROOT:-}"
 fi
 if [[ -z "$pdk_root" ]]; then
   for candidate in "$PWD/../pdk/icsprout55-pdk" "${ECC_REPO_ROOT:-$PWD}/../pdk/icsprout55-pdk"; do
@@ -59,7 +59,7 @@ if [[ -z "$pdk_root" ]]; then
   done
 fi
 [[ -n "$pdk_root" && -d "$pdk_root" ]] || {
-  echo "error: PDK root not found; pass --pdk-root or set CHIPCOMPILER_ICS55_PDK_ROOT" >&2
+  echo "error: PDK root not found; pass --pdk-root or set ECC_PDK_ROOT" >&2
   exit 1
 }
 
@@ -90,7 +90,7 @@ run_one() {
   fi
   local archive="$dst/signoff.tar.gz"
 
-  if CHIPCOMPILER_ICS55_PDK_ROOT="$PDK_ROOT" PYTHONUNBUFFERED=1 \
+  if ECC_PDK_ROOT="$PDK_ROOT" PYTHONUNBUFFERED=1 \
     "$ECC" run --project "$dst" --workspace default --plain 2>&1 | tee "$log"; then
     if "$ECC" signoff export --project "$dst" --workspace default \
       --output "$archive" --plain >>"$log" 2>&1 && [[ -s "$archive" ]]; then

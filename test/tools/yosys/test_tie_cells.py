@@ -7,7 +7,7 @@ from collections import Counter
 import pytest
 
 from chipcompiler.data import OriginDesign, Parameters, Workspace
-from chipcompiler.data.pdk import get_pdk
+from chipcompiler.data.pdk import PDK_ICS55, PDK_SG13G2
 from chipcompiler.tools.yosys import builder
 from chipcompiler.tools.yosys.utility import get_yosys_runtime
 
@@ -22,7 +22,7 @@ def yosys_runtime():
 
 @pytest.fixture(params=["ics55", "sg13g2"])
 def tie_pdk(request, tmp_path):
-    pdk = get_pdk(request.param, pdk_root=tmp_path, validate=False)
+    pdk = (PDK_ICS55 if request.param == "ics55" else PDK_SG13G2)(pdk_root=tmp_path)
     liberty = tmp_path / "cells.lib"
     liberty.write_text(
         f"""library(test) {{

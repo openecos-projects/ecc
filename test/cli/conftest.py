@@ -46,8 +46,11 @@ def create_cli_project(tmp_path, name="gcd", pdk_root=None, freq=100.0):
     rtl_file.write_text("module gcd(input clk); endmodule\n")
 
     if pdk_root is None:
+        from chipcompiler.pdk.manifest import Descriptor
+
         pdk_root = tmp_path / "ics55"
         pdk_root.mkdir(exist_ok=True)
+        (pdk_root / "ecc-pdk.json").write_text(Descriptor(family_id="ics55").model_dump_json())
 
     toml = f'''[design]
 name = "{name}"
@@ -187,7 +190,7 @@ def _stub_run_preflight(monkeypatch):
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.run_preflight.pdk_issues",
-        lambda pdk, step_names: [],
+        lambda pdk, step_names, **kwargs: [],
     )
     monkeypatch.setattr(
         "chipcompiler.cli.project.run_preflight.config_issues",

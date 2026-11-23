@@ -8,6 +8,7 @@ from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 
 
 def _ready_project(tmp_path, monkeypatch):
+    monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
     project = tmp_path / "project"
     pdk = tmp_path / "pdk"
     pdk.mkdir()
@@ -87,7 +88,8 @@ def test_project_reconcile_repairs_stale_base_design(tmp_path, monkeypatch):
     assert manifest["base_design"]["pdk_root"] == str(pdk)
 
 
-def test_project_reconcile_accepts_fresh_project_before_pdk_binding(tmp_path):
+def test_project_reconcile_accepts_fresh_project_before_pdk_binding(tmp_path, monkeypatch):
+    monkeypatch.delenv("ECC_PDK_ROOT", raising=False)
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project)]) == 0
 

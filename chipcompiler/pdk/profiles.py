@@ -1,0 +1,224 @@
+"""Bundled adaptations for published data versions and legacy installations."""
+
+import json
+from pathlib import Path
+
+from pydantic import Field
+
+from .compatibility import ecc_compatible
+from .documents import ManagedConfiguration, PdkDescription, document_digest
+from .manifest import (
+    DescriptorError,
+    StrictModel,
+    check_release,
+    content_identity,
+    file_digest,
+    release_version,
+)
+
+PROFILE_DIRECTORY = Path(__file__).parent / "profiles"
+
+
+class CatalogRule(StrictModel):
+    lefs: list[str]
+    master: str
+    vt: dict[str, str]
+    sort_by_master: bool
+    compact_drive: bool
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class Profile(StrictModel):
+    point_tool_configs: bool = False
+    sta_catalog: CatalogRule | None = None
+    id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    description_digests: list[str]
+    description: str
+    adaptation: str
+
+
+def catalog() -> list[Profile]:
+    data = json.loads((PROFILE_DIRECTORY / "index.json").read_text())
+    if data.get("schema_version") != 1:
+        raise DescriptorError("schema_unsupported", "unsupported bundled profile catalog")
+    return [Profile.model_validate(entry) for entry in data["profiles"]]
+
+
+def profile_configuration(profile: Profile) -> ManagedConfiguration:
+    from .documents import EccAdaptation, PdkDescription
+
+    def read(name: str) -> bytes:
+        path = (PROFILE_DIRECTORY / name).resolve()
+        if not path.is_relative_to(PROFILE_DIRECTORY.resolve()):
+            raise DescriptorError("unsafe_path", "profile document escapes catalog")
+        return path.read_bytes()
+
+    description = PdkDescription.model_validate_json(read(profile.description))
+    adaptation = EccAdaptation.model_validate_json(read(profile.adaptation))
+    if profile.point_tool_configs:
+        from .workspace import bundled_tool_configs
+
+        adaptation.tools["configs"] = bundled_tool_configs(profile.id, description)
+    return ManagedConfiguration(description=description, adaptation=adaptation)
+
+
+def find_profile(profile_id: str) -> Profile:
+    for profile in catalog():
+        if profile.id == profile_id:
+            return profile
+    raise DescriptorError("profile_missing", f"unknown default profile: {profile_id}")
+
+
+def matching_profile(configuration: ManagedConfiguration) -> Profile | None:
+    digest = document_digest(configuration.description)
+    matches = [p for p in catalog() if digest in p.description_digests]
+    if len(matches) > 1:
+        raise DescriptorError("profile_ambiguous", "multiple defaults match this description")
+    return matches[0] if matches else None
+
+
+def validated_default(
+    root: Path, profile: Profile, source: PdkDescription | None = None
+) -> ManagedConfiguration:
+    configuration = profile_configuration(profile)
+    version = release_version(root)
+    if version is not None:
+        check_release(root, profile.id)
+        facts = configuration.description.model_copy(
+            update={
+                "release": version,
+                "resources": {
+                    key: item.model_copy(update={"sha256": None})
+                    for key, item in configuration.description.resources.items()
+                },
+            }
+        )
+        configuration = ManagedConfiguration(
+            description=facts,
+            adaptation=configuration.adaptation.model_copy(
+                update={"description_digest": document_digest(facts)}
+            ),
+        )
+    # Preserve the cell order in previously published descriptions.
+    if source is not None and source.cell_catalog and not configuration.description.cell_catalog:
+        facts = configuration.description.model_copy(update={"cell_catalog": source.cell_catalog})
+        configuration = ManagedConfiguration(
+            description=facts,
+            adaptation=configuration.adaptation.model_copy(
+                update={"description_digest": document_digest(facts)}
+            ),
+        )
+    ecc_compatible(configuration.adaptation.tools)
+    # All bundled resource identities must be pinned. Validate contents before
+    # publishing anything in management, including explicitly selected v1 roots.
+    if version is None and not all(
+        resource.sha256 for resource in configuration.description.resources.values()
+    ):
+        raise DescriptorError("profile_invalid", "bundled resources must have content hashes")
+    content_identity(root, configuration.resolved())
+    return configuration
+
+
+def detect_release(root: Path) -> ManagedConfiguration:
+    """Identify an unpacked release from its installed resources, independent of its name."""
+    from .manifest import resource_path
+
+    version = release_version(root)
+    if version is not None:
+        candidates = [profile for profile in catalog() if profile.id == version]
+        if len(candidates) == 1:
+            return validated_default(root, candidates[0])
+        raise DescriptorError(
+            "profile_unresolved", f"Select or import a PDK configuration for VERSION {version}"
+        )
+    matches = []
+    for profile in catalog():
+        facts = profile_configuration(profile).description
+        if not facts.resources or not all(r.sha256 for r in facts.resources.values()):
+            continue
+        if not all(resource_path(root, r).is_file() for r in facts.resources.values()):
+            continue
+        try:
+            matches.append(validated_default(root, profile))
+        except DescriptorError as exc:
+            if exc.code != "content_mismatch":
+                raise
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise DescriptorError("profile_ambiguous", "multiple releases match; select a profile")
+    raise DescriptorError(
+        "pdk_descriptor_missing",
+        "PDK description is missing and no bundled release matches. "
+        "Use ecc pdk configure init or import.",
+    )
+
+
+def default_for(root: Path, configuration: ManagedConfiguration) -> ManagedConfiguration:
+    """First import only: preserve any explicit or legacy adaptation policy."""
+    from .documents import EccAdaptation
+
+    empty = EccAdaptation(description_digest=document_digest(configuration.description))
+    if configuration.adaptation != empty:
+        return configuration
+    profile = matching_profile(configuration)
+    return validated_default(root, profile, configuration.description) if profile else configuration
+
+
+def apply_profile(root: Path, profile_id: str, expected_revision: str | None) -> tuple[Path, str]:
+    """Explicitly initialize missing metadata or update new-project defaults."""
+    from .managed import configuration_path, read_configuration, save_configuration, source_path
+
+    profile = find_profile(profile_id)
+    source = source_path(root)
+    exists = source.exists()
+    source_description = None
+    if exists:
+        current = read_configuration(source)
+        source_description = current.description
+        if release_version(root) is not None:
+            if (
+                current.description.family_id
+                != profile_configuration(profile).description.family_id
+            ):
+                raise DescriptorError("family_mismatch", "profile does not match the PDK family")
+            check_release(root, current.description.release)
+        elif document_digest(current.description) not in profile.description_digests:
+            raise DescriptorError("profile_mismatch", "profile does not match the PDK description")
+        if configuration_path(root).exists() and expected_revision is None:
+            raise DescriptorError(
+                "revision_required", "reload configure show and supply its revision"
+            )
+        # Also pin a vendor source while publishing its first managed configuration.
+        expected_revision = expected_revision or file_digest(source)
+    elif expected_revision is not None:
+        raise DescriptorError("revision_conflict", "configuration no longer exists")
+    configuration = validated_default(root, profile, source_description)
+    from .documents import process_identity
+    from .registry import inventory_transaction
+
+    # A reviewed description may add resources, changing the immutable process
+    # identity. Do not leave a registered installation pointing at different facts.
+    with inventory_transaction() as inventory:
+        registered = next(
+            (r for r in inventory["installations"] if r["root"] == str(root.resolve())), None
+        )
+        if registered:
+            descriptor = configuration.resolved()
+            digest, hashes = content_identity(root, descriptor)
+            current = (
+                process_identity(descriptor, hashes) if registered.get("pdkDigest") else digest
+            )
+            previous = registered.get("pdkDigest") or registered.get("contentDigest")
+            if previous and previous != current:
+                raise DescriptorError(
+                    "content_mismatch",
+                    "profile changes registered process metadata; import a separate PDK root "
+                    "to preserve existing installation bindings",
+                )
+        return save_configuration(
+            root,
+            configuration,
+            expected_revision=expected_revision,
+            create=not exists,
+        )

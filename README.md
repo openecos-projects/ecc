@@ -126,11 +126,10 @@ ecc project set design.rtl /path/to/gcd.v --project gcd  # example: docs/example
 ```
 
 `ecc init` generates `gcd/ecc.toml` and a five-field timing template at
-`gcd/timing_constraints_template.tcl` (default clock: `clk`, 100 MHz). No RTL or
-SDC directories are created; source paths are configured explicitly. Edit the template for your
-design; complete SDC files must first be converted to this input format.
+`gcd/timing_constraints_template.tcl` (default clock: `clk`, 100 MHz). Edit the
+template for your design; complete SDC files must first be converted to this input format.
 `pdk.root` is required
-unless `CHIPCOMPILER_ICS55_PDK_ROOT` is already set (the installer
+unless `ECC_PDK_ROOT` is already set (the installer
 `--with-toolchain` wrapper does this):
 
 ```toml

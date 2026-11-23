@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -18,11 +19,34 @@ from chipcompiler.cli.core.options import (
     ProjectOption,
 )
 
+from .configure import configure_app
+from .library import library_app
+from .profiles import profiles_app
+
 pdk_app = create_app(help="Show and configure the PDK path used by this project")
+pdk_app.add_typer(configure_app, name="configure")
+pdk_app.add_typer(library_app, name="library")
+pdk_app.add_typer(profiles_app, name="profiles")
 
 
 def _finish(subcommand: str, command_input, handler) -> None:
     execute_command("pdk", command_input, handler, render_key=f"pdk:{subcommand}")
+
+
+@pdk_app.command("version")
+def version_cmd(root: Annotated[Path, typer.Option(exists=True, file_okay=False)]) -> None:
+    """Print the installed process release, including before resource extraction."""
+    from chipcompiler.pdk.manifest import DescriptorError, load_descriptor, release_version
+
+    from .configure import _failure
+
+    try:
+        version = release_version(root) or load_descriptor(root).release
+        if not version:
+            raise DescriptorError("version_missing", "PDK release is not configured")
+        typer.echo(version)
+    except (ValueError, OSError) as exc:
+        _failure(exc)
 
 
 @pdk_app.command("set-root")
@@ -30,7 +54,9 @@ def set_root_cmd(
     *,
     path: Annotated[
         str,
-        typer.Argument(help="Path to an icsprout55-pdk checkout (absolute after expansion)"),
+        typer.Argument(
+            help="Local PDK directory. For legacy ICS55, first apply its bundled profile."
+        ),
     ],
     project: ProjectOption = None,
     plain: PlainOption = False,
@@ -80,7 +106,9 @@ def verify_cmd(
     _finish("verify", command_input, pdk_handlers.verify)
 
 
-@pdk_app.command("unset", help="Clear [pdk] root (fall back to env vars / repo default)")
+@pdk_app.command(
+    "unset", help="Clear [pdk] root (fall back to explicit environment or selected library default)"
+)
 def unset_cmd(
     *,
     project: ProjectOption = None,
@@ -91,3 +119,25 @@ def unset_cmd(
         project=project_options(project),
     )
     _finish("unset", command_input, pdk_handlers.unset)
+
+
+@pdk_app.command(
+    "clone-with-pdk",
+    help="Copy a local RTL project and bind the copy to an installed PDK.",
+)
+def clone_with_pdk_cmd(
+    source: Annotated[str, typer.Option(help="Source RTL project")],
+    target: Annotated[str, typer.Option(help="New project directory; must not exist")],
+    root: Annotated[str, typer.Option(help="Selected PDK directory")],
+) -> None:
+    from pathlib import Path
+
+    from chipcompiler.pdk.clone import clone_with_pdk
+
+    from .configure import _failure, _print
+
+    try:
+        created = clone_with_pdk(Path(source), Path(target), Path(root))
+        _print({"project": str(created), "status": "created"})
+    except (ValueError, OSError, RuntimeError) as exc:
+        _failure(exc)

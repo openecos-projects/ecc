@@ -72,6 +72,7 @@ def test_build_run_preflight_checks_tools_pdk_and_config(tmp_path, monkeypatch):
             mapping_file=None,
             sdc=None,
             validate=lambda: None,
+            description={},
         ),
     )
     flow = SimpleNamespace(
@@ -129,6 +130,7 @@ def test_build_run_preflight_accepts_present_pdk_and_config_resources(tmp_path, 
                 mapping_file=mapping_file,
                 sdc=None,
                 validate=lambda: None,
+                description={},
             ),
         ),
         workspace_steps=[
@@ -157,6 +159,7 @@ def test_fresh_target_pdk_preflight_does_not_require_generated_sdc(tmp_path, mon
         mapping_file=tmp_path / "pdk" / "icsprout55.layermap",
         sdc=None,
         validate=lambda: None,
+        description={},
     )
     pdk.mapping_file.parent.mkdir()
     pdk.mapping_file.write_text("layermap")
@@ -170,7 +173,9 @@ def test_fresh_target_pdk_preflight_does_not_require_generated_sdc(tmp_path, mon
     )
     monkeypatch.setattr("chipcompiler.data.pdk.get_pdk", lambda *args, **kwargs: pdk)
 
-    issues = pdk_issues_for_config(SimpleNamespace(pdk_name="ics55"), ["filler", "sta"])
+    from chipcompiler.cli.project.config import ProjectConfig
+
+    issues = pdk_issues_for_config(ProjectConfig(pdk_name="ics55"), ["filler", "sta"])
 
     assert issues == []
 
@@ -195,7 +200,8 @@ def test_config_preflight_reports_missing_emir_technology_file(tmp_path):
             "status": "fail",
             "required": True,
             "detail": str(emir_config),
-            "remediation": "Set technology_file_path in config/emir_ecc.json.",
+            "remediation": "Select an EM resource with ecc pdk configure; for ICS55 flow testing "
+            "only, set emir.synthetic_model to ics55 with ecc param set.",
         }
     ]
 

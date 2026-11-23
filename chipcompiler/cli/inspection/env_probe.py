@@ -245,8 +245,7 @@ def probe_pdk(cfg) -> ProbeResult:
             FAIL,
             detail=f"pdk.name={cfg.pdk_name}",
             remediation=(
-                "Set pdk.root in ecc.toml, or export CHIPCOMPILER_ICS55_PDK_ROOT / "
-                "ICS55_PDK_ROOT pointing at the icsprout55-pdk checkout."
+                "Set pdk.root in ecc.toml, or export ECC_PDK_ROOT pointing at the installed PDK."
             ),
         )
     with contextlib.redirect_stdout(sys.stderr):

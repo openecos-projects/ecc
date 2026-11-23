@@ -433,6 +433,9 @@ def execute_fresh_run(
                 workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
             )
         try:
+            from chipcompiler.pdk.managed import adopt_configuration
+
+            description_path = adopt_configuration(Path(pdk_root))
             workspace = create_workspace(
                 directory=run_dir,
                 origin_def=origin_def,
@@ -441,6 +444,7 @@ def execute_fresh_run(
                 parameters=parameters,
                 input_filelist=input_filelist,
                 pdk_root=pdk_root,
+                pdk_json=description_path,
                 pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
                 flow_config=flow_config,
                 sdc=inputs.sdc,

@@ -1,0 +1,363 @@
+{
+  "schema_version": 1,
+  "description_digest": "6cdd6d50f784bb14b82cb6eecd72d7f0c60c77214d32526549ac02fe20ddae9d",
+  "profile_revision": "ics55-v1-7t-20261118.1",
+  "cells": {
+    "site_core": "core7",
+    "site_io": "core7",
+    "site_corner": "core7",
+    "tap_cell": "FILLTAPH7R",
+    "end_cap": "FILLTAPH7R",
+    "buffers": [
+      "BUFX8H7L",
+      "BUFX12H7L",
+      "BUFX16H7L",
+      "BUFX20H7L"
+    ],
+    "fillers": [
+      "FILLER64H7R",
+      "FILLER32H7R",
+      "FILLER16H7R",
+      "FILLER8H7R",
+      "FILLER4H7R",
+      "FILLER2H7R",
+      "FILLER1H7R"
+    ],
+    "tie_high_cell": "TIEHIH7R",
+    "tie_high_port": "Z",
+    "tie_low_cell": "TIELOH7R",
+    "tie_low_port": "Z",
+    "abc_driver_cell": "BUFX0P5H7R",
+    "abc_load": 200.0,
+    "sdc_load": 0.2,
+    "dont_use": [
+      "DFFSRQX*",
+      "DFFSRX*",
+      "*AO222*",
+      "*2BB2*",
+      "*AOI222*",
+      "*AOI33*",
+      "*OA222*",
+      "*OAI222*",
+      "*OAI33*",
+      "*NOR4*",
+      "ICG*"
+    ]
+  },
+  "synthesis_libraries": [
+    "liberty-8",
+    "liberty-9",
+    "liberty-10"
+  ],
+  "tools": {
+    "timing": {
+      "default_view": "default",
+      "signoff_view": "TYP"
+    },
+    "extraction": {
+      "backend_id": "ics55",
+      "corners": [
+        {
+          "name": "TYPICAL",
+          "temperature": [
+            25
+          ],
+          "spef_file": "./TYP.spef"
+        },
+        {
+          "name": "RCbest",
+          "temperature": [
+            -40,
+            125
+          ],
+          "spef_file": "./RCbest.spef"
+        },
+        {
+          "name": "RCworst",
+          "temperature": [
+            -40,
+            125
+          ],
+          "spef_file": "./RCworst.spef"
+        },
+        {
+          "name": "Cbest",
+          "temperature": [
+            -40,
+            125
+          ],
+          "spef_file": "./Cbest.spef"
+        },
+        {
+          "name": "Cworst",
+          "temperature": [
+            -40,
+            125
+          ],
+          "spef_file": "./Cworst.spef"
+        }
+      ]
+    },
+    "sizer": {
+      "vt_groups": [
+        {
+          "id": "hvt",
+          "suffix": "H7H"
+        },
+        {
+          "id": "svt",
+          "suffix": "H7R"
+        },
+        {
+          "id": "lvt",
+          "suffix": "H7L"
+        }
+      ],
+      "hold_view": "MIN"
+    },
+    "buffering": {
+      "drive_strengths": [
+        {
+          "master": "BUFX8H7L",
+          "strength": 8.0
+        },
+        {
+          "master": "BUFX12H7L",
+          "strength": 12.0
+        },
+        {
+          "master": "BUFX16H7L",
+          "strength": 16.0
+        },
+        {
+          "master": "BUFX20H7L",
+          "strength": 20.0
+        }
+      ]
+    },
+    "synthesis": {
+      "primitive_mappings": [
+        {
+          "primitive": "$_DLATCH_N_",
+          "instances": [
+            {
+              "master": "LATLX1H7L",
+              "pins": {
+                "D": "D",
+                "GN": "E",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_NN0_",
+          "wires": [],
+          "instances": [
+            {
+              "master": "LATLRX1H7L",
+              "pins": {
+                "D": "D",
+                "GN": "E",
+                "RN": "R",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_NN1_",
+          "wires": [],
+          "instances": [
+            {
+              "master": "LATLSX1H7L",
+              "pins": {
+                "D": "D",
+                "GN": "E",
+                "SN": "R",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_NP0_",
+          "wires": [
+            "control_n"
+          ],
+          "instances": [
+            {
+              "master": "INVX1H7L",
+              "pins": {
+                "A": "R",
+                "Y": "control_n"
+              }
+            },
+            {
+              "master": "LATLRX1H7L",
+              "pins": {
+                "D": "D",
+                "GN": "E",
+                "RN": "control_n",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_NP1_",
+          "wires": [
+            "control_n"
+          ],
+          "instances": [
+            {
+              "master": "INVX1H7L",
+              "pins": {
+                "A": "R",
+                "Y": "control_n"
+              }
+            },
+            {
+              "master": "LATLSX1H7L",
+              "pins": {
+                "D": "D",
+                "GN": "E",
+                "SN": "control_n",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_P_",
+          "instances": [
+            {
+              "master": "LATHX1H7L",
+              "pins": {
+                "D": "D",
+                "G": "E",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_PN0_",
+          "wires": [],
+          "instances": [
+            {
+              "master": "LATHRX1H7L",
+              "pins": {
+                "D": "D",
+                "G": "E",
+                "RN": "R",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_PN1_",
+          "wires": [],
+          "instances": [
+            {
+              "master": "LATHSX1H7L",
+              "pins": {
+                "D": "D",
+                "G": "E",
+                "SN": "R",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_PP0_",
+          "wires": [
+            "control_n"
+          ],
+          "instances": [
+            {
+              "master": "INVX1H7L",
+              "pins": {
+                "A": "R",
+                "Y": "control_n"
+              }
+            },
+            {
+              "master": "LATHRX1H7L",
+              "pins": {
+                "D": "D",
+                "G": "E",
+                "RN": "control_n",
+                "Q": "Q"
+              }
+            }
+          ]
+        },
+        {
+          "primitive": "$_DLATCH_PP1_",
+          "wires": [
+            "control_n"
+          ],
+          "instances": [
+            {
+              "master": "INVX1H7L",
+              "pins": {
+                "A": "R",
+                "Y": "control_n"
+              }
+            },
+            {
+              "master": "LATHSX1H7L",
+              "pins": {
+                "D": "D",
+                "G": "E",
+                "SN": "control_n",
+                "Q": "Q"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "compatibility": {
+      "ecc": ">=0.1.0a12,<0.1.0a13",
+      "distributions": {
+        "ecc-tools-bin": "==0.1.0a13",
+        "ecc-dreamplace": "==0.1.0a7"
+      },
+      "sizer_vt_contract": 1
+    }
+  },
+  "parameters": {
+    "die": {
+      "size": [],
+      "area": 0
+    },
+    "core": {
+      "size": [],
+      "area": 0,
+      "bounding_box": "",
+      "utilitization": 0.4,
+      "margin": [
+        2,
+        2
+      ],
+      "aspect_ratio": 1
+    },
+    "max_fanout": 32,
+    "target_density": 0.4,
+    "target_overflow": 0.1,
+    "global_right_padding": 0,
+    "cell_padding_x": 200,
+    "routability_opt_flag": 1,
+    "run_analysis": true,
+    "bottom_layer": "MET2",
+    "top_layer": "MET5",
+    "sta_max_paths": 1000,
+    "dreamplace": {
+      "gpugr_bottom_routing_layer": "MET2"
+    }
+  }
+}
