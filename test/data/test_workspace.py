@@ -1645,7 +1645,11 @@ def test_create_workspace_pdk_overrides_typo_propagates(
 def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, as_parameters_object
 ):
-    """Both accepted ``parameters`` forms must pick up the v2 release baseline."""
+    """v2's routing layer reaches every target from its shipped tool overrides.
+
+    It must not be promoted into parameters: parameters outrank the tool-config
+    layers, so a copy there would override a PDK supplying its own.
+    """
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
@@ -1665,7 +1669,7 @@ def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
     )
     assert workspace is not None
     assert workspace.pdk.config_variant == "ics55-v2"
-    assert workspace.parameters.data["bottom_layer"] == "MET1"
+    assert "bottom_layer" not in workspace.parameters.data
 
     routing = json_read(workspace.config["routing"])
     db = json_read(workspace.config["db"])
@@ -1675,10 +1679,10 @@ def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
     assert dreamplace["gpugr_bottom_routing_layer"] == "MET1"
 
 
-def test_create_workspace_v2_release_baseline_does_not_displace_an_explicit_layer(
+def test_create_workspace_v2_explicit_layer_overrides_the_pdk_configuration(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    """The release baseline fills a gap; it never overrules the caller."""
+    """Parameter fan-out is reserved for what the caller asked for explicitly."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
@@ -1698,11 +1702,14 @@ def test_create_workspace_v2_release_baseline_does_not_displace_an_explicit_laye
     assert json_read(workspace.config["dreamplace"])["gpugr_bottom_routing_layer"] == "MET3"
 
 
-def test_create_workspace_v2_keeps_an_explicitly_empty_layer_out_of_the_parameters(
+def test_create_workspace_keeps_a_routing_override_carried_by_the_pdk_root(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
-    """An explicit empty value defers to the merged tool config, as on v1."""
+    """A PDK's own `ecc-configs/` override survives workspace creation."""
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    override = pdk_root / "ecc-configs" / "ecc" / "routing_ecc.json"
+    override.parent.mkdir(parents=True)
+    assert json_write(override, {"RT": {"-bottom_routing_layer": "MET3"}})
     rtl_path = tmp_path / "gcd.v"
     rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
 
@@ -1711,8 +1718,8 @@ def test_create_workspace_v2_keeps_an_explicitly_empty_layer_out_of_the_paramete
         origin_def="",
         origin_verilog=rtl_path,
         pdk="ics55",
-        parameters={**deepcopy(default_ics55_parameters), "bottom_layer": ""},
+        parameters=deepcopy(default_ics55_parameters),
         pdk_root=pdk_root,
     )
     assert workspace is not None
-    assert workspace.parameters.data["bottom_layer"] == ""
+    assert json_read(workspace.config["routing"])["RT"]["-bottom_routing_layer"] == "MET3"

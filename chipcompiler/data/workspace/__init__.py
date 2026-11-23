@@ -22,7 +22,6 @@ from ..flow.build import (
 from ..flow.document import FlowDocument, FlowStepEntry, load_flow_document
 from ..parameter import (
     Parameters,
-    apply_release_parameters,
     get_parameters,
     reload_parameter,
     save_parameter,
@@ -812,8 +811,6 @@ def create_workspace(
 
         workspace.design.name = workspace.parameters.data["design"]
         workspace.design.top_module = workspace.parameters.data["top_module"]
-
-    apply_release_parameters(workspace.parameters, workspace.pdk.config_variant)
 
     # update path
     workspace.config = build_workspace_config_paths(workspace)

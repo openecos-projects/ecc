@@ -36,14 +36,17 @@ neither override just gets the defaults.
 Corner names, routing layers, cell lists and VT suffixes are all PDK-specific
 and belong in an override, never in `defaults/`.
 
-Adding a *new ICS55 release* needs three edits in `chipcompiler/data/pdk.py`
-as well, because the marker allowlist is closed by design:
+Adding a *new ICS55 release* takes two edits in `chipcompiler/data/pdk.py`,
+because the marker allowlist is closed by design:
 
 1. accept the new marker in `_ics55_release()`;
 2. add a `_PDK_ICS55_V<n>()` factory with that release's paths and cell names,
-   and dispatch to it from `PDK_ICS55()`;
-3. if its parameter baseline differs, add an entry to `RELEASE_PARAMETERS` in
-   `chipcompiler/data/parameter.py`.
+   and dispatch to it from `PDK_ICS55()`.
+
+Everything else that differs belongs in that release's `configs/pdk/<variant>/`
+overrides, and only there: parameters outrank the tool-config layers, so a copy
+kept as a parameter default would override a PDK supplying its own
+`ecc-configs/`.
 
 ## Bringing your own PDK
 
