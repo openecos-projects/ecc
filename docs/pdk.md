@@ -24,18 +24,17 @@ Each point tool owns its own config tree instead of a shared profile:
 ```
 chipcompiler/tools/<tool>/configs/
   defaults/<name>.json          # complete, PDK-neutral
-  pdk/<pdk.config_variant>/<name>.json   # sparse override, only the fields that differ
+  pdk/<pdk.config_variant>/<name>.json   # sparse override, shipped with ECC
+<pdk root>/ecc-configs/<tool>/<name>.json   # sparse override, shipped with the PDK
 ```
 
 `chipcompiler.data.workspace.tool_configs.tool_config(configs_dir, name, pdk)`
-merges the two: dict values merge recursively, lists and scalars in the
-override replace the default outright. A PDK with no matching `pdk/<variant>/`
-directory (or no override for a given file) just gets the defaults.
+layers them in that order: dict values merge recursively, lists and scalars in
+an override replace what is under them. Any layer may be absent; a PDK with
+neither override just gets the defaults.
 
-To add overrides for a PDK ECC already knows, drop
-`configs/pdk/<variant>/<name>.json` next to the tool's `defaults/` — corner
-names, routing layers, cell lists, and VT suffixes are all PDK-specific and
-belong there, not in `defaults/`.
+Corner names, routing layers, cell lists and VT suffixes are all PDK-specific
+and belong in an override, never in `defaults/`.
 
 Adding a *new ICS55 release* needs three edits in `chipcompiler/data/pdk.py`
 as well, because the marker allowlist is closed by design:
@@ -46,8 +45,24 @@ as well, because the marker allowlist is closed by design:
 3. if its parameter baseline differs, add an entry to `RELEASE_PARAMETERS` in
    `chipcompiler/data/parameter.py`.
 
-A PDK that is not ICS55-shaped comes in through `get_pdk()`/`[pdk] name`
-instead, and only needs the `configs/pdk/<variant>/` overrides above.
+## Bringing your own PDK
+
+A PDK ECC has no built-in entry for needs no registration: set `[pdk] name` to
+any string and `[pdk] root` to its tree. `get_pdk()` returns an empty `PDK`
+whose `config_variant` is `""`, so every tool starts from the PDK-neutral
+`defaults/` and inherits nothing from ICS55. Fill it in from two places:
+
+- `[pdk.overrides]` in `ecc.toml` for the `PDK` fields below — which LEFs and
+  Liberty files to read, buffer and tap cell names, `dont_use`, latch masters;
+- `<pdk root>/ecc-configs/<tool>/<name>.json` for point-tool settings, so the
+  PDK carries them instead of every project repeating them. Corner names are
+  arbitrary strings, so a PDK with `SLOW`/`FAST` corners writes exactly that
+  into `ecc-configs/ecc/sta_ecc.json`.
+
+The defaults configure no corners at all, so nothing of ICS55's is assumed
+silently: generated timing constraints need a `TYP`/`TYPICAL` scenario and
+raise an error naming `config_overrides.sta.signoff` when none exists.
+Per-project one-offs still belong in `config_overrides`.
 
 ## Cell-name overrides
 

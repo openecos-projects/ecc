@@ -1,9 +1,16 @@
-"""Merge a tool's PDK-neutral defaults with its sparse PDK-specific override.
+"""Merge a tool's PDK-neutral defaults with its sparse PDK-specific overrides.
 
-Each tool owns `configs/defaults/<name>.json` (complete, PDK-independent) and
-`configs/pdk/<pdk.config_variant>/<name>.json` (sparse, only the fields that
-differ for that PDK release). Objects merge recursively; arrays and scalars
-in the override replace the default.
+Each tool owns `configs/defaults/<name>.json` (complete, PDK-independent).
+Two sparse override layers may sit on top, least specific first:
+
+1. `configs/pdk/<pdk.config_variant>/<name>.json`, shipped with ECC for the
+   releases it knows about;
+2. `<pdk root>/ecc-configs/<tool>/<name>.json`, carried by the PDK tree
+   itself, so a PDK ECC has never heard of can supply its own tool settings
+   instead of every project restating them under `[config_overrides]`.
+
+Objects merge recursively; arrays and scalars in an override replace what is
+under them.
 """
 
 from pathlib import Path
@@ -18,22 +25,37 @@ if TYPE_CHECKING:
     from . import Workspace
 
 
+#: Directory inside a PDK root holding that PDK's own point-tool overrides,
+#: laid out as `<PDK_ROOT_CONFIG_DIR>/<tool package name>/<config name>.json`.
+PDK_ROOT_CONFIG_DIR = "ecc-configs"
+
+
+def _object_from(path: Path, label: str) -> dict:
+    """Read a JSON object, refusing a missing, malformed or non-object file."""
+    data = json_read_strict(path)
+    if not isinstance(data, dict):
+        raise JsonReadError(f"{label} must be an object: {path}")
+    return data
+
+
+def _override_paths(tool_configs_dir: Path, name: str, pdk: "PDK") -> list[Path]:
+    """Candidate override files for *name*, least specific first."""
+    paths: list[Path] = []
+    if pdk.config_variant:
+        paths.append(tool_configs_dir / "pdk" / pdk.config_variant / name)
+    if pdk.root is not None:
+        # tool_configs_dir is `.../tools/<tool>/configs`.
+        paths.append(pdk.root / PDK_ROOT_CONFIG_DIR / tool_configs_dir.parent.name / name)
+    return paths
+
+
 def tool_config(tool_configs_dir: Path, name: str, pdk: "PDK") -> dict:
-    """Return `defaults/<name>` deep-merged with `pdk/<pdk.config_variant>/<name>`."""
-    default_path = tool_configs_dir / "defaults" / name
-    config = json_read_strict(default_path)
-    if not isinstance(config, dict):
-        raise JsonReadError(f"default config must be an object: {default_path}")
-    variant = pdk.config_variant
-    if not variant:
-        return config
-    override_path = tool_configs_dir / "pdk" / variant / name
-    if not override_path.is_file():
-        return config
-    override = json_read_strict(override_path)
-    if not isinstance(override, dict):
-        raise JsonReadError(f"PDK override config must be an object: {override_path}")
-    return update_parameters(override, config)
+    """Return `defaults/<name>` deep-merged with every override that exists."""
+    config = _object_from(tool_configs_dir / "defaults" / name, "default config")
+    for override_path in _override_paths(tool_configs_dir, name, pdk):
+        if override_path.is_file():
+            config = update_parameters(_object_from(override_path, "PDK override config"), config)
+    return config
 
 
 def write_missing_tool_configs(workspace: "Workspace") -> None:

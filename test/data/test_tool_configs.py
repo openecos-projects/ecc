@@ -120,3 +120,53 @@ def test_tool_config_merges_the_real_shipped_defaults_and_overrides(tool_dir, va
             else default
         )
         assert tool_config(configs_dir, default_path.name, pdk) == expected
+
+
+def _tool_tree(tmp_path, defaults):
+    """A realistic `.../tools/<tool>/configs` tree so the tool name is derivable."""
+    configs_dir = tmp_path / "tools" / "mytool" / "configs"
+    _write(configs_dir / "defaults" / "tool.json", defaults)
+    return configs_dir
+
+
+def test_tool_config_applies_an_override_carried_by_the_pdk_root(tmp_path):
+    """A PDK with no shipped variant still gets its own settings from its tree."""
+    configs_dir = _tool_tree(tmp_path, {"a": 1, "b": {"x": 1, "y": 2}})
+    pdk_root = tmp_path / "my-pdk"
+    _write(pdk_root / "ecc-configs" / "mytool" / "tool.json", {"b": {"y": 20}})
+
+    config = tool_config(configs_dir, "tool.json", PDK(name="my-asic", root=pdk_root))
+
+    assert config == {"a": 1, "b": {"x": 1, "y": 20}}
+
+
+def test_pdk_root_override_wins_over_the_shipped_variant_override(tmp_path):
+    configs_dir = _tool_tree(tmp_path, {"a": "default", "b": "default"})
+    _write(configs_dir / "pdk" / "fixture-v1" / "tool.json", {"a": "shipped", "b": "shipped"})
+    pdk_root = tmp_path / "my-pdk"
+    _write(pdk_root / "ecc-configs" / "mytool" / "tool.json", {"b": "from-pdk"})
+
+    config = tool_config(configs_dir, "tool.json", PDK(name="fixture", version="v1", root=pdk_root))
+
+    assert config == {"a": "shipped", "b": "from-pdk"}
+
+
+def test_tool_config_ignores_a_pdk_root_without_an_override_tree(tmp_path):
+    configs_dir = _tool_tree(tmp_path, {"a": 1})
+    pdk_root = tmp_path / "my-pdk"
+    pdk_root.mkdir()
+
+    config = tool_config(configs_dir, "tool.json", PDK(name="my-asic", root=pdk_root))
+
+    assert config == {"a": 1}
+
+
+def test_tool_config_raises_when_a_pdk_root_override_is_corrupt(tmp_path):
+    configs_dir = _tool_tree(tmp_path, {"a": 1})
+    pdk_root = tmp_path / "my-pdk"
+    override = pdk_root / "ecc-configs" / "mytool" / "tool.json"
+    override.parent.mkdir(parents=True)
+    override.write_text('{"a": ', encoding="utf-8")
+
+    with pytest.raises(JsonReadError):
+        tool_config(configs_dir, "tool.json", PDK(name="my-asic", root=pdk_root))

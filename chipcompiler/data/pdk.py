@@ -317,7 +317,15 @@ def get_pdk(
             else external_pdk
         )
     else:
-        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(name=pdk_name_normalized)
+        # A PDK with no built-in entry is still rooted somewhere. Keep that root
+        # so its own `ecc-configs/` tool overrides and PDK-relative content paths
+        # resolve the way a built-in PDK's do. Only the root the caller resolved
+        # is used; ECC_PDK_ROOT is read at the CLI boundary, not here.
+        external_root = str(pdk_root).strip()
+        pdk = _builtin_pdk(pdk_name_normalized, pdk_root=pdk_root) or PDK(
+            name=pdk_name_normalized,
+            root=Path(external_root).expanduser().resolve() if external_root else None,
+        )
     overrides = overrides or {}
     pdk = apply_pdk_overrides(pdk, overrides)
     if validate:

@@ -488,3 +488,17 @@ def test_builtin_pdk_external_config_keeps_explicit_buffer_override(
     pdk = get_pdk("ics55", pdk_config=pdk_config)
 
     assert pdk.buffers == ["CUSTOM_BUFFER"]
+
+
+def test_get_pdk_keeps_the_root_of_a_pdk_it_has_no_built_in_entry_for(tmp_path):
+    """A custom PDK needs its root to find its own `ecc-configs/` overrides."""
+    custom_root = tmp_path / "my-pdk"
+    custom_root.mkdir()
+
+    pdk = get_pdk("my-asic", pdk_root=custom_root, validate=False)
+
+    assert pdk == PDK(name="my-asic", root=custom_root.resolve())
+
+
+def test_get_pdk_leaves_the_root_unset_when_no_root_was_resolved(tmp_path):
+    assert get_pdk("my-asic", validate=False).root is None
