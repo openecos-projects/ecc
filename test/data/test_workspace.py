@@ -1013,6 +1013,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     workspace.flow.data = current_flow_document(
         [{"name": "placement", "tool": "dreamplace", "state": "Unstart"}]
     )
+    expected_io_placer = json_read(workspace.config[StepEnum.FLOORPLAN.value])["io_placer"]
     edits = {
         "cts.max_fanout": 91,
         "route.bottom_layer": "MET3",
@@ -1072,11 +1073,7 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,
     }
-    assert floorplan["io_placer"] == {
-        "mode": "auto",
-        "file_path": "",
-        "io_layer_list": ["MET3", "MET4"],
-    }
+    assert floorplan["io_placer"] == expected_io_placer
 
 
 def test_refresh_workspace_config_restores_missing_floorplan_fields(
@@ -1090,6 +1087,7 @@ def test_refresh_workspace_config_restores_missing_floorplan_fields(
     )
     config_path = workspace.config[StepEnum.FLOORPLAN.value]
     floorplan = json_read(config_path)
+    expected_io_placer = floorplan["io_placer"].copy()
     floorplan["macro_placer"].pop("file_path")
     floorplan["io_placer"].pop("mode")
     floorplan["io_placer"].pop("file_path")
@@ -1103,11 +1101,7 @@ def test_refresh_workspace_config_restores_missing_floorplan_fields(
         "macro_placement_halo": 3.0,
         "macro_routing_halo": 3.0,
     }
-    assert refreshed["io_placer"] == {
-        "mode": "auto",
-        "file_path": "",
-        "io_layer_list": ["MET3", "MET4"],
-    }
+    assert refreshed["io_placer"] == expected_io_placer
 
 
 def test_refresh_workspace_config_updates_generated_sdc_frequency(

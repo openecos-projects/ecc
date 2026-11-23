@@ -393,13 +393,34 @@ PDK 中 `ss_1p08_2p97_m40c`、`ff_1p32_3p63_125c`、`ff_1p32_3p63_m40c` 三个 I
 | `die_util.utilization` | 参数 `floorplan.core_util` → 0.4 | core 利用率（单元面积/核心面积） |
 | `die_size.width/height_micron` | 100.1 / 246.6 | `mode=die_size` 时的 die 尺寸（`die_util` 模式下不生效） |
 
-### io_placer（IO 引脚排布）
+### io_placer（IO 引脚或 IO cell 排布）
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `mode` | `auto` | `auto` 自动摆放 IO 引脚；`file` 从 `file_path` 读取 IO 引脚位置 |
+| `mode` | `auto` | `auto` 自动摆放 IO 引脚；`file` 从 `file_path` 读取 IO 引脚位置；`io_cell` 自动摆放 IO pad 单元 |
 | `file_path` | `""` | `mode=file` 时使用的 IO 引脚位置文件 |
 | `io_layer_list` | `["MET3","MET4"]` | IO 引脚允许的金属层 |
+| `io_cell.definition_file_path` | `""` | `io_cell` 模式必填：定义 corner、信号、电源及 filler 单元的 JSON |
+| `io_cell.power.target_group_spacing` | 1000.0 | IO 电源组的目标间距（µm），必须大于 0 |
+| `io_cell.auto_resize.enable` | `true` | IO ring 放不下时，允许 iFP 扩大 die |
+
+通过 CLI 为项目配置自动 IO-cell 摆放：
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.io_placer.mode=io_cell \
+  --set "floorplan.io_placer.io_cell.definition_file_path=/absolute/path/io_cell_definition.json" \
+  --set floorplan.io_placer.io_cell.power.target_group_spacing=1000 \
+  --set floorplan.io_placer.io_cell.auto_resize.enable=true
+```
+
+这些参数由 `pre_floorplan` 和 `post_floorplan` 共享。修改已有 workspace 时，
+追加 `--workspace <名称>`，再从 `pre_floorplan` 重跑。定义文件请使用绝对路径：
+iFP 按生成的 floorplan 配置所在目录解析相对路径，不是项目目录；ECC 不会复制该文件。
+还需加载对应的 IO LEF/Liberty（§3）、通过
+`floorplan.pdn_generator.global_connect` 配置定义中电源网络与引脚的连接，
+并为 IO ring 留出足够的 core margin。定义文件由用户或 PDK 提供；ECC 不推测
+IO 单元类型，也不会自动往 RTL 插入信号 IO cell。
 
 ### phy_placer（物理单元插入）
 

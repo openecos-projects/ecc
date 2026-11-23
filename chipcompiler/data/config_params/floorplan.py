@@ -46,6 +46,44 @@ SCHEMAS = (
         range=(1, 256),
     ),
     config_param(
+        "floorplan.io_placer.mode",
+        "floorplan",
+        ("io_placer", "mode"),
+        "auto",
+        applies="pre_floorplan",
+        description=(
+            "IO placement mode: auto/file places IO pins; io_cell automatically places pad cells."
+        ),
+        choices=("auto", "file", "io_cell"),
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.definition_file_path",
+        "floorplan",
+        ("io_placer", "io_cell", "definition_file_path"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "IO cell definition JSON required in io_cell mode. Use an absolute path; "
+            "native iFP resolves relative paths against the generated floorplan config directory."
+        ),
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.power.target_group_spacing",
+        "floorplan",
+        ("io_placer", "io_cell", "power", "target_group_spacing"),
+        1000.0,
+        applies="pre_floorplan",
+        description="Target spacing between IO power groups in micrometers; must be positive.",
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.auto_resize.enable",
+        "floorplan",
+        ("io_placer", "io_cell", "auto_resize", "enable"),
+        default=True,
+        applies="pre_floorplan",
+        description="Allow iFP to enlarge the die when the IO cell ring does not fit.",
+    ),
+    config_param(
         "floorplan.io_placer.io_layer_list",
         "floorplan",
         ("io_placer", "io_layer_list"),

@@ -9,6 +9,7 @@ import pytest
 from chipcompiler.data import StepEnum, create_workspace
 from chipcompiler.data.parameter import get_design_parameters, load_parameter, save_parameter
 from chipcompiler.data.workspace import refresh_workspace_config
+from chipcompiler.params import lookup_schema, update_workspace_param_value
 from chipcompiler.tools.ecc import ECCToolsModule
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_config, build_step_space
@@ -139,3 +140,45 @@ def test_floorplan_refresh_preserves_custom_settings(floorplan_workspace, legacy
     refresh_workspace_config(workspace)
 
     assert json_read(config_path) == expected
+
+
+def test_io_cell_parameters_reach_both_floorplan_stages(floorplan_workspace, native_geometry):
+    workspace = floorplan_workspace
+    module, _layout = native_geometry
+    definition_path = workspace.directory.parent / "io cells.json"
+    definition_path.write_text("{}\n")
+    overrides = {
+        "floorplan.io_placer.mode": "io_cell",
+        "floorplan.io_placer.io_cell.definition_file_path": str(definition_path),
+        "floorplan.io_placer.io_cell.power.target_group_spacing": 750.0,
+        "floorplan.io_placer.io_cell.auto_resize.enable": False,
+    }
+    expected = json_read(workspace.config[StepEnum.FLOORPLAN.value])["io_placer"]
+    expected.update(
+        {
+            "mode": "io_cell",
+            "io_cell": {
+                "definition_file_path": str(definition_path),
+                "power": {"target_group_spacing": 750.0},
+                "auto_resize": {"enable": False},
+            },
+        }
+    )
+    for key, value in overrides.items():
+        schema = lookup_schema(key)
+        assert schema is not None
+        update_workspace_param_value(workspace, schema, value)
+    assert save_parameter(workspace.parameters)
+    workspace.parameters = load_parameter(workspace.parameters.path)
+
+    for name in (StepEnum.PRE_FLOORPLAN.value, StepEnum.POST_FLOORPLAN.value):
+        refresh_workspace_config(workspace)
+        step = build_step(workspace, name, None, None)
+        build_step_space(step)
+        build_step_config(workspace, step)
+        if name == StepEnum.PRE_FLOORPLAN.value:
+            assert ecc_runner.run_pre_floorplan(workspace, step)
+        else:
+            assert ecc_runner.run_post_floorplan(workspace, step)
+        native_config = json_read(module.init_fp.call_args.kwargs["config"])
+        assert native_config["io_placer"] == expected

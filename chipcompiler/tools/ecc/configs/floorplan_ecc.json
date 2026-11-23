@@ -32,7 +32,16 @@
         "io_layer_list": [
             "MET3",
             "MET4"
-        ]
+        ],
+        "io_cell": {
+            "definition_file_path": "",
+            "power": {
+                "target_group_spacing": 1000.0
+            },
+            "auto_resize": {
+                "enable": true
+            }
+        }
     },
     "phy_placer": {
         "well_tap": {
