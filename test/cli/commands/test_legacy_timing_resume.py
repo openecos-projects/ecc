@@ -1,4 +1,4 @@
-"""Project format migration must not block a workspace's frozen timing inputs."""
+"""Retired project parameters are rejected even when resuming a frozen workspace."""
 
 import tomllib
 
@@ -65,23 +65,14 @@ def legacy_timing_project(request, tmp_path, minimal_ics55_pdk_factory, monkeypa
     return project, frozen, resumed
 
 
-def test_resume_uses_frozen_timing_despite_obsolete_project_keys(legacy_timing_project):
-    project, frozen, resumed = legacy_timing_project
+@pytest.mark.parametrize(
+    "command", [["run", "--workspace", "fresh"], ["check"], ["run", "--resume"]]
+)
+def test_project_timing_validation_rejects_obsolete_keys(legacy_timing_project, command, capsys):
+    project, _, resumed = legacy_timing_project
     origin = project / "default" / "origin"
     before = {path.relative_to(origin): path.read_bytes() for path in origin.glob("*CTS/*.tcl")}
     assert before
-
-    assert cli_main.run(["run", "--project", str(project), "--resume"]) == 0
-
-    assert resumed == [frozen]
-    assert {
-        path.relative_to(origin): path.read_bytes() for path in origin.glob("*CTS/*.tcl")
-    } == before
-
-
-@pytest.mark.parametrize("command", [["run", "--workspace", "fresh"], ["check"]])
-def test_project_timing_validation_remains_strict(legacy_timing_project, command, capsys):
-    project, _, resumed = legacy_timing_project
     capsys.readouterr()
 
     assert cli_main.run([*command, "--project", str(project)]) == 1
@@ -89,6 +80,9 @@ def test_project_timing_validation_remains_strict(legacy_timing_project, command
     assert "unknown parameter in ecc.toml: 'sdc.clock_list'" in capsys.readouterr().out
     assert resumed == []
     assert not (project / "fresh").exists()
+    assert {
+        path.relative_to(origin): path.read_bytes() for path in origin.glob("*CTS/*.tcl")
+    } == before
 
 
 @pytest.mark.parametrize(

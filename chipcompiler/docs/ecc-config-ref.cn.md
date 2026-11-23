@@ -315,7 +315,7 @@ timing_exceptions = '''
 - 对这类 workspace，`ecc param set design.frequency_mhz VALUE --workspace NAME` 和批量调参会拒绝与第一条主时钟不同的频率。要调频，请修改项目时序输入文件中的 `-period` 并创建新 workspace；旧 `clock_list` 格式的 workspace 仍支持频率覆盖。
 - 仅主时钟的周期可由 ECC 直接计算；有派生时钟 Tcl 时，脚本用 `get_attribute` 和 `foreach_in_collection` 查询各时钟实际周期。**当前测试的 iSTA 不提供这两个命令，派生时钟模式尚不能据此宣称原生全流程通过**；不要用主时钟周期代替派生时钟周期。用户 Tcl 使用的其他命令也须由具体工具支持。
 - 创建时，原输入文件按原字节复制到 `origin/`，解析出的五组值保存在 workspace 的 `home/params.toml`。修改项目输入文件后，使用新 workspace 读取新约束；单纯 `--resume` 不会重新导入。复制的原文件只是输入数据，不是交给时序工具的入口。
-- 迁移旧 `[params.sdc]` 配置：把 `clock_list` 的行转换成 `create_clock` 命令，并把其余四个键改成上面的名称；删除 `ecc.toml` 中该表，让 `design.sdc` 指向新文件。不再通过 `ecc param set sdc.*` 填写约束。已有 workspace 恢复运行时，仍按原规则读取其旧格式快照。
+- 迁移旧 `[params.sdc]` 配置：把 `clock_list` 的行转换成 `create_clock` 命令，并把其余四个键改成上面的名称；删除 `ecc.toml` 中该表，让 `design.sdc` 指向新文件。不再通过 `ecc param set sdc.*` 填写约束。创建 workspace、`ecc check` 和 `--resume` 都会拒绝项目中的废弃参数；这不改变 workspace 已冻结的时序输入。
 - 使用完整 SDC/Tcl 创建的旧 workspace 仍保留该冻结文件。阶段入口原样 `source` 它，再于 CTS 之前及 CTS 本身关闭传播时钟、CTS 之后开启传播时钟。这项兼容不允许新项目或新 workspace 输入完整 SDC。
 
 ## 2. 公共配置：db_ecc.json

@@ -66,7 +66,6 @@ class ProjectConfig:
     _skip_steps_source: str | None = field(default=None, init=False, repr=False)
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
-    _legacy_timing_param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _timing_input_error: str | None = field(default=None, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _flow_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
@@ -167,24 +166,6 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     if isinstance(params_raw, dict):
         from chipcompiler.params import parse_toml_params
 
-        # Retired project inputs are unused when resuming a frozen workspace.
-        # Keep their diagnostics separate; new creation/check still reject them.
-        if isinstance(params_raw.get("sdc"), dict):
-            params_raw = {**params_raw, "sdc": dict(params_raw["sdc"])}
-            legacy = {
-                key: params_raw["sdc"].pop(key)
-                for key in (
-                    "clock_list",
-                    "generated_clock_txt",
-                    "clk_group_txt",
-                    "io_constraint_txt",
-                    "timing_exception_txt",
-                )
-                if isinstance(params_raw["sdc"].get(key), str)
-            }
-            _, cfg._legacy_timing_param_errors = parse_toml_params(
-                {"sdc": legacy}, cfg.pdk_name or None
-            )
         flat, param_errors = parse_toml_params(params_raw, cfg.pdk_name or None)
         cfg.params_overrides = flat
         if param_errors:
@@ -256,7 +237,6 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
     if not cfg.design_top:
         errors.append("design.top is required")
     if validate_timing_input:
-        errors.extend(f"invalid params: {pe}" for pe in cfg._legacy_timing_param_errors)
         if cfg._timing_input_error:
             errors.append(cfg._timing_input_error)
         else:

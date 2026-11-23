@@ -147,8 +147,9 @@ def test_invalid_timing_file_fails_before_workspace_creation(
     assert flow_mocks.capture["create_kwargs"] is None
 
 
-def test_existing_workspace_can_resume_after_project_timing_source_is_removed(
-    tmp_path, minimal_ics55_pdk_factory, monkeypatch
+@pytest.mark.parametrize("remove_source", [False, True], ids=["changed", "removed"])
+def test_existing_workspace_can_resume_without_valid_project_timing_source(
+    tmp_path, minimal_ics55_pdk_factory, monkeypatch, remove_source
 ):
     from chipcompiler.cli.command_handlers import project as project_commands
     from chipcompiler.cli.core.types import CommandResult
@@ -162,7 +163,11 @@ def test_existing_workspace_can_resume_after_project_timing_source_is_removed(
     config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
     assert cli_main.run(["workspace", "create", "default", "--project", str(project)]) == 0
     before = load_workspace(project / "default").parameters.data["sdc"]
-    (project / SDC_INPUT_FILENAME).unlink()
+    source = project / SDC_INPUT_FILENAME
+    if remove_source:
+        source.unlink()
+    else:
+        source.write_text("not a valid timing file anymore\n")
     resumed = []
 
     def run_existing(command_input, ctx):
