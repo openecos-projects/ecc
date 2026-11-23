@@ -68,8 +68,8 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
     def in_flow_order(names) -> tuple[str, ...]:
         return tuple(sorted(names, key=lambda name: rank.get(name, len(rank))))
 
-    executed_steps = in_flow_order(getattr(observer, "executed_steps", ()))
-    failed_steps = () if succeeded else in_flow_order(getattr(observer, "failed_steps", ()))
+    executed_steps = in_flow_order(observer.executed_steps)
+    failed_steps = () if succeeded else in_flow_order(observer.failed_steps)
     failed_step = failed_steps[0] if failed_steps else None
     state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
     result = ExecutionResult(
@@ -79,7 +79,11 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
         executed_steps=executed_steps,
         failed_step=failed_step,
     )
-    _notify_execution(event_sink, "on_execution_finished", result.state, None)
+    error = None
+    if failed_step is not None:
+        detail = observer.failed_steps[failed_step]
+        error = f"{failed_step}: {detail}" if detail else f"{failed_step} did not complete."
+    _notify_execution(event_sink, "on_execution_finished", result.state, error)
     return result
 
 

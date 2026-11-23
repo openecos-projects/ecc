@@ -97,13 +97,8 @@ class ExecutionObserver:
         self.delegate = delegate
         self.fatal_observer = bool(getattr(delegate, "fatal_observer", False))
         self.executed_steps: list[str] = []
-        #: Blocking failures in completion order; steps of a parallel wave
-        #: complete in any order, so ``execute`` reports them in flow order.
-        self.failed_steps: list[str] = []
-
-    @property
-    def failed_step(self) -> str | None:
-        return self.failed_steps[0] if self.failed_steps else None
+        #: Details of blocking failures. Execution selects one in flow order.
+        self.failed_steps: dict[str, str | None] = {}
 
     def on_step_completed(self, step: Any, state: Any, error: str | None = None) -> None:
         name = getattr(step, "name", None)
@@ -114,7 +109,7 @@ class ExecutionObserver:
             elif not is_finished_step_state(state_value) and not (
                 name in ADVISORY_FLOW_STEPS and state_value == StateEnum.Imcomplete.value
             ):
-                self.failed_steps.append(name)
+                self.failed_steps[name] = error
         self._delegate_call("on_step_completed", step, state, error)
 
     @property
@@ -175,9 +170,10 @@ class _EngineeringCommitSink:
                 cause=f"flow_step.{getattr(state, 'value', str(state)).lower()}",
             )
 
+    def on_execution_finished(self, state: str, error: str | None) -> None:
         report_error = getattr(self.workspace, "_ecc_report_step_error", None)
-        if error and callable(report_error):
-            report_error(step.name, error)
+        if state == StateEnum.Imcomplete.value and error and callable(report_error):
+            report_error(error)
 
     @property
     def execution(self) -> dict[str, Any] | None:

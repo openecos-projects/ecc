@@ -28,9 +28,8 @@ class RunOutcome:
     error: dict[str, str] | None = None
     step_error: str | None = None
 
-    def report_step_error(self, step: str, error: str) -> None:
-        if self.step_error is None:
-            self.step_error = f"{step}: {error}"[:500]
+    def report_step_error(self, error: str) -> None:
+        self.step_error = error
 
 
 @contextmanager
