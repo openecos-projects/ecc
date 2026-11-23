@@ -1673,3 +1673,26 @@ def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
     assert routing["RT"]["-bottom_routing_layer"] == "MET1"
     assert db["LayerSettings"]["routing_layer_1st"] == "MET1"
     assert dreamplace["gpugr_bottom_routing_layer"] == "MET1"
+
+
+def test_create_workspace_v2_release_baseline_does_not_displace_an_explicit_layer(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    """The release baseline fills a gap; it never overrules the caller."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters={**deepcopy(default_ics55_parameters), "bottom_layer": "MET3"},
+        pdk_root=pdk_root,
+    )
+    assert workspace is not None
+    assert workspace.parameters.data["bottom_layer"] == "MET3"
+    assert json_read(workspace.config["routing"])["RT"]["-bottom_routing_layer"] == "MET3"
+    assert json_read(workspace.config["db"])["LayerSettings"]["routing_layer_1st"] == "MET3"
+    assert json_read(workspace.config["dreamplace"])["gpugr_bottom_routing_layer"] == "MET3"

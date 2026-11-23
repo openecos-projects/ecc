@@ -20,32 +20,47 @@ foreach file $lib_list {
 	yosys read_liberty -lib "$file"
 }
 
-# A cell's pin names on a given direction, read from the loaded Liberty in
-# an isolated scratch design so the blackbox modules used by dfflibmap/abc
-# above are left untouched.
-proc liberty_cell_pins {cell direction} {
-	global lib_list tmp_dir
+# Every Liberty cell's pin names, keyed "<cell>/<direction>", read in an
+# isolated scratch design so the blackbox modules used by dfflibmap/abc above
+# are left untouched. Built once per run: a full PDK's Liberty set is hundreds
+# of megabytes, and the mapping below asks about a dozen masters.
+proc liberty_pin_index {} {
+	global lib_list tmp_dir liberty_pins
+	if {[info exists liberty_pins]} {
+		return
+	}
 	file mkdir $tmp_dir
+	set liberty_pins [dict create]
 	yosys design -push
 	foreach file $lib_list {
 		yosys read_liberty -ignore_miss_func -ignore_miss_dir -ignore_buses "$file"
 	}
-	set out_file "${tmp_dir}/liberty_pins.txt"
-	yosys tee -q -o $out_file select -list "\\${cell}/${direction}:*"
-	yosys design -pop
-	set fh [open $out_file "r"]
-	set text [string trim [read $fh]]
-	close $fh
-	file delete $out_file
-	set pins {}
-	if {$text ne ""} {
+	foreach direction {i o} {
+		set out_file "${tmp_dir}/liberty_pins_${direction}.txt"
+		yosys tee -q -o $out_file select -list "*/${direction}:*"
+		set fh [open $out_file "r"]
+		set text [string trim [read $fh]]
+		close $fh
+		file delete $out_file
 		foreach line [split $text "\n"] {
-			if {[string first "/" $line] >= 0} {
-				lappend pins [lindex [split $line "/"] 1]
+			set parts [split [string trim $line] "/"]
+			if {[llength $parts] == 2} {
+				dict lappend liberty_pins "[lindex $parts 0]/$direction" [lindex $parts 1]
 			}
 		}
 	}
-	return $pins
+	yosys design -pop
+}
+
+# A cell's pin names on a given direction; empty if the cell has none.
+proc liberty_cell_pins {cell direction} {
+	global liberty_pins
+	liberty_pin_index
+	set key "${cell}/${direction}"
+	if {[dict exists $liberty_pins $key]} {
+		return [dict get $liberty_pins $key]
+	}
+	return {}
 }
 
 # A cell's single output pin. Latch libraries may declare a complementary
