@@ -363,14 +363,6 @@ skip_steps = ["diff_opt"]
 # 仅在运行时生效：同一阶段内互相独立的步骤，同时最多运行这么多个
 # （默认 4；1 表示逐个运行）。见 8.6 节。
 max_parallel_steps = 4
-
-[params.sdc]
-# 主时钟，每行一个：<端口或引脚> <corner>:<MHz> ...
-# 第一行的 TYP 频率同时提供流程使用的时钟端口和频率。
-# （生成的文件后面还有四项可选的时序输入，默认都是注释；见配置参考 1.7 节。）
-clock_list = '''
-clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
-'''
 ```
 
 通过 `ecc project set design.rtl /path/to/filelist.f --project gcd` 指定 RTL。

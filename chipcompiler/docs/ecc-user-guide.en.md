@@ -306,15 +306,6 @@ skip_steps = ["diff_opt"]
 # Run-time only: at most this many independent steps of one stage run at once
 # (default 4; 1 = one at a time). See section 8.6.
 max_parallel_steps = 4
-
-[params.sdc]
-# Primary clocks, one row each: <port-or-pin> <corner>:<MHz> ...
-# The first row's TYP value also supplies the clock port and frequency of the flow.
-# (The generated file continues with four optional timing inputs, all commented out;
-# see section 1.7 of the configuration reference.)
-clock_list = '''
-clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
-'''
 ```
 
 Bind your RTL with `ecc project set design.rtl /path/to/filelist.f --project gcd`.
