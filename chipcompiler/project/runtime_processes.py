@@ -74,6 +74,27 @@ def normalize_log_path(value: str | None, run_id: str) -> str:
     return result
 
 
+def require_unused_run_id(workspace: str | Path, run_id: str) -> None:
+    """Check for a previous run while holding the Workspace lock."""
+    directory = Path(workspace).resolve() / "log"
+    if directory.is_symlink():
+        raise RuntimeProcessError("invalid_log_path", "The Workspace log directory is a symlink.")
+    for path in (directory / f"{run_id}.run.json", directory / f"{run_id}.log"):
+        try:
+            info = path.lstat()
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as exc:
+            raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
+        # Studio opens an empty log for the detached process before launching ECC.
+        if path.suffix == ".log" and stat.S_ISREG(info.st_mode) and info.st_size == 0:
+            continue
+        raise RuntimeProcessError(
+            "run_id_already_used",
+            f"Run ID {run_id} has already been used in this Workspace. Choose a new ID.",
+        )
+
+
 def create_run_log(workspace: str | Path, log_path: str) -> int:
     root = Path(workspace).resolve()
     target = root.joinpath(*PurePosixPath(log_path).parts)
@@ -124,6 +145,7 @@ def write_run_result(
             raise OSError("The ECC run result must be a regular file.")
         if state == "interrupted":
             return
+        raise FileExistsError(f"Run result already exists: {path.name}")
     directory.mkdir(mode=0o700, exist_ok=True)
     record = {
         "schema_version": 1,

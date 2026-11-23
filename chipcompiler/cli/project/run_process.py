@@ -6,6 +6,7 @@ import sys
 import threading
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 
 from chipcompiler.project.runtime_processes import (
     RuntimeProcessError,
@@ -15,6 +16,7 @@ from chipcompiler.project.runtime_processes import (
     normalize_run_id,
     normalize_runtime_id,
     register_runtime_process,
+    require_unused_run_id,
     unregister_runtime_process,
     write_run_result,
 )
@@ -33,27 +35,35 @@ class RunOutcome:
 
 @contextmanager
 def run_log_stdio(command_input, workspace_path):
-    """Open the explicit ``--log-file`` run log and redirect stdio to it.
+    """Check supplied run IDs before preflight and open explicit run logs.
 
-    §13.1 step 2: with an explicit ``--log-file`` the run log (opened with
-    O_NOFOLLOW and a restricted mode by ``create_run_log``) must exist and own
-    stdout/stderr before any preflight, and a log-open failure aborts the
-    command without running the flow. Without ``--log-file`` stdio is left on
-    the TTY and the default run log is opened later by
-    ``managed_run_process``; GUI-spawned runs already inherit the log as
-    their spawn stdio, so nothing redirects there either.
+    Keep the Workspace lock through execution so another process cannot
+    claim the same ID between the check and registration. An explicit
+    ``--log-file`` captures stdout/stderr before preflight (§13.1 step 2).
+    Otherwise ``managed_run_process`` opens the default run log at registration.
     """
-    if not command_input.log_file:
+    if not (command_input.run_id or command_input.log_file):
         yield None
         return
     run_id = normalize_run_id(command_input.run_id)
     log_path = normalize_log_path(command_input.log_file, run_id)
-    log_descriptor = create_run_log(workspace_path, log_path)
-    try:
-        with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
-            yield log_descriptor
-    finally:
-        os.close(log_descriptor)
+    path = Path(workspace_path)
+    if not path.is_dir():
+        yield None
+        return
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    with workspace_lock(path, blocking=not command_input.no_wait):
+        require_unused_run_id(path, run_id)
+        if not command_input.log_file or not path.is_dir():
+            yield None
+            return
+        log_descriptor = create_run_log(path, log_path)
+        try:
+            with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
+                yield log_descriptor
+        finally:
+            os.close(log_descriptor)
 
 
 @contextmanager
@@ -70,6 +80,7 @@ def managed_run_process(
     )
     log_path = normalize_log_path(command_input.log_file, run_id)
     if run_log is None:
+        require_unused_run_id(workspace_path, run_id)
         log_descriptor = create_run_log(workspace_path, log_path)
         close_log = True
     else:

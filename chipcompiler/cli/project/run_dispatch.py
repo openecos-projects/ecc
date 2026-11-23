@@ -134,6 +134,17 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         )
         if conflict is not None:
             return conflict
+        if command_input.run_id:
+            from chipcompiler.cli.project.run_process import runtime_process_error_result
+            from chipcompiler.project.runtime_processes import (
+                RuntimeProcessError,
+                require_unused_run_id,
+            )
+
+            try:
+                require_unused_run_id(run_dir, command_input.run_id)
+            except RuntimeProcessError as exc:
+                return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
         backup_path = f"{run_dir}.overwritten-{os.getpid()}"
         # An atomic rename, not a delete: until the replacement is fully
         # constructed the old tree stays on disk and recoverable.
