@@ -56,6 +56,10 @@ class PDK:
     tap_cell: str = ""  # tap cell
     end_cap: str = ""  # end cap
     buffers: list[str] = field(default_factory=list[str])  # buffers
+    # Relative drive strength per buffer master, for DreamPlace's candidate
+    # buffering table. Empty means the PDK declares none, and the backend
+    # refuses candidate buffering rather than guessing from cell names.
+    buffer_drive_strengths: dict[str, float] = field(default_factory=dict[str, float])
     fillers: list[str] = field(default_factory=list[str])  # fillers
     tie_high_cell: str = ""
     tie_low_cell: str = ""
@@ -262,6 +266,10 @@ def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
         abc_driver_cell=str(data.get("abc_driver_cell", "")),
         abc_load=float(data.get("abc_load", DEFAULT_ABC_LOAD)),
         sdc_load=float(data.get("sdc_load", 0.0)),
+        buffer_drive_strengths={
+            str(master): float(strength)
+            for master, strength in dict(data.get("buffer_drive_strengths", {})).items()
+        },
         latch_cells=data.get("latch_cells", {}),
         latch_pins=data.get("latch_pins", {}),
         inverter_cell=str(data.get("inverter_cell", "")),
@@ -419,6 +427,12 @@ def _PDK_ICS55_V1(resolved_root: Path) -> PDK:
         tap_cell="FILLTAPH7R",
         end_cap="FILLTAPH7R",
         buffers=["BUFX8H7L", "BUFX12H7L", "BUFX16H7L", "BUFX20H7L"],
+        buffer_drive_strengths={
+            "BUFX8H7L": 8.0,
+            "BUFX12H7L": 12.0,
+            "BUFX16H7L": 16.0,
+            "BUFX20H7L": 20.0,
+        },
         fillers=[
             "FILLER64H7R",
             "FILLER32H7R",
@@ -504,6 +518,12 @@ def _PDK_ICS55_V2(resolved_root: Path) -> PDK:
         # Preserve the row-edge tap placement policy; this is not a dedicated endcap.
         end_cap="TAPX1_9TSVT",
         buffers=["BUFX8_9TLVT", "BUFX12_9TLVT", "BUFX16_9TLVT", "BUFX24_9TLVT"],
+        buffer_drive_strengths={
+            "BUFX8_9TLVT": 8.0,
+            "BUFX12_9TLVT": 12.0,
+            "BUFX16_9TLVT": 16.0,
+            "BUFX24_9TLVT": 24.0,
+        },
         fillers=[
             "FILL32_9TSVT",
             "FILL16_9TSVT",

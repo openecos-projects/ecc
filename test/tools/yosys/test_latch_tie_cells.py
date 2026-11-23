@@ -288,3 +288,59 @@ endmodule
 
     (latch,) = [cell for cell in module["cells"].values() if cell["type"] == "LAT-N"]
     assert latch["port_directions"] == {"D": "input", "GN": "input", "Q": "output"}
+
+
+def test_synthesis_maps_a_master_whose_name_contains_a_slash(tmp_path, yosys_runtime):
+    """ "/" separates a cell from its pin in a selection record, and is also
+    legal inside a Liberty cell name, so pin discovery must not split on it."""
+    liberty = tmp_path / "slash_name.lib"
+    liberty.write_text(
+        """library(test) {
+  cell("LAT/N") {
+    area : 1;
+    latch(IQ, IQN) {
+      enable : "GN'";
+      data_in : "D";
+    }
+    pin(D) { direction : input; }
+    pin(GN) { direction : input; }
+    pin(Q) { direction : output; function : "IQ"; }
+  }
+}
+"""
+    )
+    pdk = _latch_pdk(tmp_path)
+    pdk.libs = [liberty]
+    pdk.latch_cells = {"$_DLATCH_N_": "LAT/N"}
+    pdk.tbuf_cell = ""
+    pdk.tbuf_pins = {}
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input en, d, output q);
+  always @* if (!en) q = d;
+endmodule
+"""
+    )
+    module, _step = _synthesize(tmp_path / "run", source, pdk, yosys_runtime)
+
+    (latch,) = [cell for cell in module["cells"].values() if cell["type"] == "LAT/N"]
+    assert latch["port_directions"] == {"D": "input", "GN": "input", "Q": "output"}
+
+
+def test_synthesis_reports_a_master_that_is_absent_from_the_liberty(tmp_path, yosys_runtime):
+    """A misnamed master is named as missing, not blamed on a missing pin."""
+    pdk = _latch_pdk(tmp_path)
+    pdk.latch_cells = {"$_DLATCH_N_": "NOT_IN_LIBERTY"}
+    pdk.tbuf_cell = ""
+    pdk.tbuf_pins = {}
+
+    source = tmp_path / "top.v"
+    source.write_text(
+        """module top(input en, d, output q);
+  always @* if (!en) q = d;
+endmodule
+"""
+    )
+    with pytest.raises(AssertionError, match="NOT_IN_LIBERTY is not in the loaded Liberty"):
+        _synthesize(tmp_path / "run", source, pdk, yosys_runtime)

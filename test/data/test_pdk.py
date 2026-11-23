@@ -81,6 +81,12 @@ def test_pdk_ics55_version_absent_resolves_to_v1(tmp_path, minimal_ics55_pdk_fac
         tap_cell="FILLTAPH7R",
         end_cap="FILLTAPH7R",
         buffers=["BUFX8H7L", "BUFX12H7L", "BUFX16H7L", "BUFX20H7L"],
+        buffer_drive_strengths={
+            "BUFX8H7L": 8.0,
+            "BUFX12H7L": 12.0,
+            "BUFX16H7L": 16.0,
+            "BUFX20H7L": 20.0,
+        },
         fillers=[
             "FILLER64H7R",
             "FILLER32H7R",
@@ -171,6 +177,12 @@ def test_pdk_ics55_version_v2_marker_resolves_to_v2(tmp_path, minimal_ics55_pdk_
         tap_cell="TAPX1_9TSVT",
         end_cap="TAPX1_9TSVT",
         buffers=["BUFX8_9TLVT", "BUFX12_9TLVT", "BUFX16_9TLVT", "BUFX24_9TLVT"],
+        buffer_drive_strengths={
+            "BUFX8_9TLVT": 8.0,
+            "BUFX12_9TLVT": 12.0,
+            "BUFX16_9TLVT": 16.0,
+            "BUFX24_9TLVT": 24.0,
+        },
         fillers=[
             "FILL32_9TSVT",
             "FILL16_9TSVT",

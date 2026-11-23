@@ -20,20 +20,56 @@ foreach file $lib_list {
 	yosys read_liberty -lib "$file"
 }
 
+# The names of the Liberty cells loaded into the current design, taken from
+# yosys's own module listing. A Liberty cell name may contain "/", which is
+# also what separates a cell from its pin in a selection record, so the set of
+# cell names has to come from an authoritative listing rather than from
+# guessing where a record splits.
+proc liberty_module_names {} {
+	global tmp_dir
+	set out_file "${tmp_dir}/liberty_modules.txt"
+	yosys tee -q -o $out_file ls
+	set fh [open $out_file "r"]
+	set text [read $fh]
+	close $fh
+	file delete $out_file
+	set names {}
+	set listing 0
+	foreach line [split $text "\n"] {
+		if {!$listing} {
+			set listing [string match "*modules:" [string trim $line]]
+			continue
+		}
+		# The listing is indented; anything flush left ends it.
+		if {[string trim $line] eq ""} {
+			continue
+		}
+		if {![string match " *" $line] && ![string match \t* $line]} {
+			break
+		}
+		lappend names [string trim $line]
+	}
+	return $names
+}
+
 # Every Liberty cell's pin names, keyed "<cell>/<direction>", read in an
 # isolated scratch design so the blackbox modules used by dfflibmap/abc above
 # are left untouched. Built once per run: a full PDK's Liberty set is hundreds
 # of megabytes, and the mapping below asks about a dozen masters.
 proc liberty_pin_index {} {
-	global lib_list tmp_dir liberty_pins
-	if {[info exists liberty_pins]} {
+	global lib_list tmp_dir liberty_pins liberty_cells
+	if {[info exists liberty_cells]} {
 		return
 	}
 	file mkdir $tmp_dir
 	set liberty_pins [dict create]
+	set liberty_cells [dict create]
 	yosys design -push
 	foreach file $lib_list {
 		yosys read_liberty -ignore_miss_func -ignore_miss_dir -ignore_buses "$file"
+	}
+	foreach name [liberty_module_names] {
+		dict set liberty_cells $name 1
 	}
 	foreach direction {i o} {
 		set out_file "${tmp_dir}/liberty_pins_${direction}.txt"
@@ -43,19 +79,37 @@ proc liberty_pin_index {} {
 		close $fh
 		file delete $out_file
 		foreach line [split $text "\n"] {
-			set parts [split [string trim $line] "/"]
-			if {[llength $parts] == 2} {
-				dict lappend liberty_pins "[lindex $parts 0]/$direction" [lindex $parts 1]
+			set record [string trim $line]
+			if {$record eq ""} {
+				continue
+			}
+			# Attribute the record to the longest known cell name it starts
+			# with; the remainder is the pin. Longest first, so a cell named
+			# "A/B" wins over a cell named "A" for record "A/B/pin".
+			set parts [split $record "/"]
+			for {set count [expr {[llength $parts] - 1}]} {$count > 0} {incr count -1} {
+				set cell [join [lrange $parts 0 [expr {$count - 1}]] "/"]
+				if {![dict exists $liberty_cells $cell]} {
+					continue
+				}
+				dict lappend liberty_pins "${cell}/${direction}" \
+					[join [lrange $parts $count end] "/"]
+				break
 			}
 		}
 	}
 	yosys design -pop
 }
 
-# A cell's pin names on a given direction; empty if the cell has none.
+# A cell's pin names on a given direction; empty if it declares none there. A
+# cell absent from the libraries is reported as such, so a master misnamed in
+# the PDK does not surface as a missing pin on a cell that does not exist.
 proc liberty_cell_pins {cell direction} {
-	global liberty_pins
+	global liberty_pins liberty_cells
 	liberty_pin_index
+	if {![dict exists $liberty_cells $cell]} {
+		return -code error "cell $cell is not in the loaded Liberty libraries"
+	}
 	set key "${cell}/${direction}"
 	if {[dict exists $liberty_pins $key]} {
 		return [dict get $liberty_pins $key]
