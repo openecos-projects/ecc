@@ -20,6 +20,7 @@ from chipcompiler.data import (
     build_workspace_config_paths,
     update_step_config,
 )
+from chipcompiler.data.flow.options import geometry_snapshot_requested
 from chipcompiler.data.step import new_step_directory
 
 
@@ -53,7 +54,8 @@ def build_step(
     report_dir = directory / "report"
     analysis_dir = directory / "analysis"
     qor_metrics_path = analysis_dir / "qor_metrics.json"
-    output_geometry = output_dir / "geometry"
+    capture_geometry = step_name == StepEnum.DEFVIEW.value or geometry_snapshot_requested(workspace)
+    output_geometry = output_dir / "geometry" if capture_geometry else None
 
     return EccStep(
         name=step_name,
@@ -75,10 +77,10 @@ def build_step(
             ),
             gds=Path(output_gds) if output_gds else output_dir / f"{design}_{step_name}.gds",
             db=output_dir / f"{design}_{step_name}_db",
-            image=output_dir / f"{design}_{step_name}.png",
+            image=output_dir / f"{design}_{step_name}.png" if capture_geometry else None,
             json=output_dir / f"{design}_{step_name}.json",
             geometry=output_geometry,
-            geometry_manifest=output_geometry / "geometry.manifest",
+            geometry_manifest=output_geometry / "geometry.manifest" if output_geometry else None,
             lef=output_dir / f"{design}_{step_name}.lef",
             lib=output_dir / f"{design}_{step_name}.lib",
             spef=[],

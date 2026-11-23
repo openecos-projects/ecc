@@ -145,7 +145,9 @@ def save_layout_image(workspace: Workspace, step: WorkspaceStep) -> bool:
     Save the layout image for the given step.
     """
     image = step.output.image
-    if image is not None and os.path.exists(image) and os.path.getsize(image) > 0:
+    if image is None:
+        return True
+    if os.path.exists(image) and os.path.getsize(image) > 0:
         # Geometry snapshots already render the thumbnail; keep it.
         return True
 
