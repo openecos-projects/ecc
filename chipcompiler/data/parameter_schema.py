@@ -5,6 +5,7 @@ specific PDK path validation remains in ``chipcompiler.cli.project.params``.
 """
 
 import json
+import math
 from copy import deepcopy
 from dataclasses import dataclass
 
@@ -335,10 +336,23 @@ def validate_value(value: object, schema: ParamSchema, pdk: str | None = None) -
                 f"value {value} out of range [{schema.range[0]}, {schema.range[1]}] "
                 f"for {schema.param}"
             )
+    if not errors and _has_non_finite_number(value):
+        # NaN compares false with both bounds, and a parameter without a range
+        # has no bound to fail: neither NaN nor an infinity is a usable value.
+        problem = (
+            "contains a non-finite number" if isinstance(value, list) else "is not a finite number"
+        )
+        errors.append(f"value {value} {problem} for {schema.param}")
     choices = schema.choices_for(pdk)
     if choices is not None and str(value) not in choices:
         errors.append(f"value '{value}' not in allowed choices {choices} for {schema.param}")
     return errors
+
+
+def _has_non_finite_number(value: object) -> bool:
+    """True for a NaN or infinite float, also as an element of a list value."""
+    items = value if isinstance(value, (list, tuple)) else (value,)
+    return any(isinstance(item, float) and not math.isfinite(item) for item in items)
 
 
 @dataclass
