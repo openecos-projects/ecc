@@ -696,7 +696,7 @@ export ECC_PDK_ROOT=/path/to/ics55-pdk
 2. `ECC_PDK_ROOT` 环境变量；
 3. 默认：ecc 检出目录旁的 `../pdk/icsprout55-pdk`（ecos-studio 工作区布局）。
 
-Project 使用 `ecc pdk set-root` 或 `ecc project apply` 配置运行时路径。Workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 Workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 Workspace 时仍会回退环境变量，但 `ecc run` 会发出 `pdk_root_env_fallback` 警告并指明解析来源。执行 `ecc workspace refresh` 可把当前 Project 配置投影到 Workspace。
+Project 使用 `ecc pdk set-root` 或 `ecc project apply` 配置运行时路径。Workspace 创建时会把解析出的 root（绝对路径）持久化到 `home/params.toml` 的 `[pdk] root`，因此同一 Workspace 在任何机器上解析结果一致。加载持久化 root 为空/缺失的已有 Workspace（且使用内置 ics55/sg13g2 PDK）时会以 `pdk_root_not_persisted` 硬错误阻断运行，而不是静默回退环境变量；执行 `ecc run --overwrite` 可把解析出的 root 固化进 Workspace。执行 `ecc workspace refresh` 可把当前 Project 配置投影到 Workspace。
 
 示例：
 

@@ -61,6 +61,17 @@ proc liberty_output_pin {cell} {
 	return -code error "cell $cell: expected exactly one output pin or a Q pin, got: $pins"
 }
 
+# A tie cell's output pin: unlike liberty_output_pin, no Q fallback — a tie
+# cell is expected to have exactly one output, so a multi-output Liberty
+# entry (e.g. accidentally pointing at a latch master) is a hard error.
+proc liberty_tie_output_pin {cell} {
+	set pins [liberty_cell_pins $cell "o"]
+	if {[llength $pins] != 1} {
+		return -code error "tie cell $cell: expected exactly one output pin, got: $pins"
+	}
+	return [lindex $pins 0]
+}
+
 # A cell's single input pin; only valid for single-input cells (inverters).
 proc liberty_input_pin {cell} {
 	set pins [liberty_cell_pins $cell "i"]
@@ -74,6 +85,6 @@ proc liberty_input_pin {cell} {
 set tech_cell_tiehi ""
 set tech_cell_tielo ""
 if {$tie_high_cell ne "" && $tie_low_cell ne ""} {
-	set tech_cell_tiehi "$tie_high_cell [liberty_output_pin $tie_high_cell]"
-	set tech_cell_tielo "$tie_low_cell [liberty_output_pin $tie_low_cell]"
+	set tech_cell_tiehi "$tie_high_cell [liberty_tie_output_pin $tie_high_cell]"
+	set tech_cell_tielo "$tie_low_cell [liberty_tie_output_pin $tie_low_cell]"
 }

@@ -40,9 +40,15 @@ class TestMissingPdkRootReason:
 
         assert missing_pdk_root_reason(run_dir) is None
 
-    def test_no_reason_for_a_non_ics55_pdk(self, tmp_path):
+    def test_reason_for_sg13g2_with_missing_root(self, tmp_path):
         run_dir = str(tmp_path / "ws")
         _write_workspace(run_dir, _base_parameters(pdk="sg13g2"))
+
+        assert missing_pdk_root_reason(run_dir) is not None
+
+    def test_no_reason_for_an_externally_configured_pdk(self, tmp_path):
+        run_dir = str(tmp_path / "ws")
+        _write_workspace(run_dir, _base_parameters(pdk="custom-asic"))
 
         assert missing_pdk_root_reason(run_dir) is None
 

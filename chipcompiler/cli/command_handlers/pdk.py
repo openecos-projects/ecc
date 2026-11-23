@@ -113,7 +113,10 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                     "pdk": "contents",
                     "status": "incomplete",
                     "reason": problem.replace("\n", " "),
-                    "hint": ("create ecc-pdk.json with `ecc pdk configure init`, then validate it"),
+                    "hint": (
+                        "populate the PDK root (e.g. `make unzip`), or override the missing "
+                        "path(s) under [pdk.overrides] in ecc.toml"
+                    ),
                 }
             )
     return CommandResult.ok(records)

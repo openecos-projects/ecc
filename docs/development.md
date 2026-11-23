@@ -1130,14 +1130,12 @@ export ECC_PDK_ROOT=/path/to/ics55-pdk
 
 ### PDK
 
-New projects select a resource root with a vendor or ECC-managed description and
-freeze its resource hashes and ECC adaptation. PDK descriptions carry process
-facts; tool policy is stored in ECC management outside the PDK root. See [PDK descriptions and project bindings](multi-pdk.md)
-for authoring commands, shared inventory, defaults, relocation and backend limits.
-There is no implicit checkout or process-family configuration fallback.
+See [PDK Selection and Configuration](pdk.md) for `ECC_PDK_ROOT`, ICS55
+`VERSION` release selection, and point-tool `configs/defaults` +
+`configs/pdk/<variant>` overrides.
 
 ```sh
-ecc init /path/to/project --pdk-root /path/to/pdk
+ECC_PDK_ROOT=/path/to/pdk ecc init /path/to/project
 ```
 
 ## Common Workflows

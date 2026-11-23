@@ -21,6 +21,7 @@ from ..flow.build import (
 )
 from ..flow.document import FlowDocument, FlowStepEntry, load_flow_document
 from ..parameter import (
+    ICS55_V2_PARAMETERS,
     Parameters,
     get_parameters,
     reload_parameter,
@@ -399,39 +400,6 @@ def _ensure_writable(path: str | Path):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
 
 
-def _write_missing_tool_configs(workspace: Workspace) -> None:
-    """Populate each tool's missing workspace config files from its defaults,
-    merged with the workspace PDK's sparse override for that tool."""
-    import os
-    import shutil
-
-    from chipcompiler.utility import json_write
-
-    from .tool_configs import tool_config
-
-    root_dir = Path(__file__).resolve().parent.parent.parent
-    config_dir = workspace.config["dir"]
-    os.makedirs(config_dir, exist_ok=True)
-
-    ecc_configs_dir = root_dir / "tools" / "ecc" / "configs"
-    for name in sorted(os.listdir(ecc_configs_dir / "defaults")):
-        source = ecc_configs_dir / "defaults" / name
-        destination = config_dir / name
-        if not source.is_file() or destination.exists():
-            continue
-        if name.endswith(".json"):
-            json_write(destination, tool_config(ecc_configs_dir, name, workspace.pdk))
-        else:
-            shutil.copy2(source, destination)
-
-    for key in ("dreamplace", "sizer"):
-        destination = workspace.config[key]
-        if destination.exists():
-            continue
-        tool_configs_dir = root_dir / "tools" / f"ecc_{key}" / "configs"
-        json_write(destination, tool_config(tool_configs_dir, destination.name, workspace.pdk))
-
-
 def _rcx_temperature_key(temperature) -> str:
     try:
         numeric = float(temperature)
@@ -449,7 +417,9 @@ def init_workspace_config(workspace: Workspace) -> None:
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    _write_missing_tool_configs(workspace)
+    from .tool_configs import write_missing_tool_configs
+
+    write_missing_tool_configs(workspace)
     _ensure_writable(workspace.config["dir"])
 
     refresh_workspace_config(workspace)
@@ -838,6 +808,10 @@ def create_workspace(
         # format parameters
         pdk_name = workspace.pdk.name or (pdk if isinstance(pdk, str) else "")
         workspace.parameters = get_parameters(pdk_name)
+        if workspace.pdk.config_variant == "ics55-v2":
+            update_parameters(
+                parameters_src=ICS55_V2_PARAMETERS, parameters_target=workspace.parameters.data
+            )
         update_parameters(parameters_src=parameters, parameters_target=workspace.parameters.data)
 
         workspace.design.name = workspace.parameters.data["design"]

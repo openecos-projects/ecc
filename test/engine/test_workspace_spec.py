@@ -175,25 +175,6 @@ def test_manual_pdk_workspace_reopens_through_main_persistence(tmp_path):
     pdk_root.mkdir()
     for name in ("tech.lef", "cells.lef", "typ.lib"):
         (pdk_root / name).write_text(name)
-    descriptor = {
-        "family_id": "ics55",
-        "parameters": {"frequency_max": 100},
-        "resources": {
-            "tech": {"path": "tech.lef", "role": "tech"},
-            "cells": {"path": "cells.lef", "role": "lef"},
-            "lib": {"path": "typ.lib", "role": "liberty"},
-        },
-        "synthesis_libraries": ["lib"],
-        "tools": {
-            "configs": {
-                "sta": {
-                    "liberty": [{"corner": "TYP", "temperature": 25, "path": ["typ.lib"]}],
-                    "signoff": [{"TYP": ["TYPICAL"]}],
-                }
-            }
-        },
-    }
-    (pdk_root / "ecc-pdk.json").write_text(json.dumps(descriptor))
     spec = _valid_spec()
     spec["flow"] = {"flowId": "syn_sta"}
     spec["pdk"] = {

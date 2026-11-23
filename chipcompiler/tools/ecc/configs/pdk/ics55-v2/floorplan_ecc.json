@@ -54,6 +54,28 @@
     }
   },
   "pdn_generator": {
+    "global_connect": [
+      {
+        "net_name": "VDD",
+        "instance_pin_name": "VDD",
+        "is_power": true
+      },
+      {
+        "net_name": "VSS",
+        "instance_pin_name": "VSS",
+        "is_power": false
+      },
+      {
+        "net_name": "VDD",
+        "instance_pin_name": "VNW",
+        "is_power": true
+      },
+      {
+        "net_name": "VSS",
+        "instance_pin_name": "VPW",
+        "is_power": false
+      }
+    ],
     "rail": [
       {
         "routing_layer_name": "MET1",

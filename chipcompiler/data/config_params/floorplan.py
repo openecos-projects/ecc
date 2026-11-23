@@ -78,11 +78,12 @@ SCHEMAS = (
         [
             {"net_name": "VDD", "instance_pin_name": "VDD", "is_power": True},
             {"net_name": "VSS", "instance_pin_name": "VSS", "is_power": False},
-            {"net_name": "VDD", "instance_pin_name": "VNW", "is_power": True},
-            {"net_name": "VSS", "instance_pin_name": "VPW", "is_power": False},
         ],
         applies="pre_floorplan",
-        description="Global power and ground net-to-instance-pin connection declarations.",
+        description=(
+            "Global power and ground net-to-instance-pin connection declarations. "
+            "ICS55 v2 adds VNW/VPW well-tie connections via its PDK override."
+        ),
         type="json",
     ),
     config_param(

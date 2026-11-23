@@ -88,6 +88,10 @@ SG13G2_PARAMETERS_TEMPLATE = {
     },
 }
 
+#: Parameter baseline that differs between ICS55 release profiles, layered in
+#: before the caller's own parameters when workspace.pdk.config_variant == "ics55-v2".
+ICS55_V2_PARAMETERS = {"bottom_layer": "MET1"}
+
 ICS55_DESIGN_PARAMETERS = {
     "gcd": {
         "design": "gcd",

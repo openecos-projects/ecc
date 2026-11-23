@@ -378,15 +378,18 @@ is outside the project. Bare `ecc run` creates `default` for a project with no
 workspace, resumes its sole active workspace, and reports `workspace_required`
 when several are active.
 
-Runs against an existing workspace can surface two advisory warnings without
-changing execution:
+Runs against an existing workspace can hit one blocking error and surface one
+advisory warning:
 
-- `pdk_root_env_fallback` — the workspace persists an empty `[pdk] root`, so
-  the PDK root resolves from the `ECC_PDK_ROOT` environment variable. The warning names the winning variable; `ecc run --overwrite` pins
-  the resolved root into the workspace.
+- `pdk_root_not_persisted` — the workspace persists an empty `[pdk] root` for
+  a built-in PDK that resolves its root from `ECC_PDK_ROOT` (ics55, sg13g2);
+  re-running it would silently resolve the root from whatever `ECC_PDK_ROOT`
+  or the repository default happens to be today, so the run is blocked.
+  `ecc run --overwrite` pins the resolved root into the workspace.
 - `workspace_spec_drift` — a CLI run of a spec-mode workspace (one carrying
   `home/engineering-snapshot.json`) whose `home/params.toml` is newer than
-  the snapshot, so the GUI-side spec may be stale.
+  the snapshot, so the GUI-side spec may be stale. This one is advisory and
+  does not change execution.
 
 ### Parameter Management
 
@@ -653,8 +656,8 @@ The override delta reaches the Yosys builder and other tool steps within a singl
 `ecc run`. Persistence behavior varies by field category:
 
 - **Scalar/list fields** (`corners`, `site_core`, `site_io`, `site_corner`,
-  `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`, `tie_high_port`,
-  `tie_low_cell`, `tie_low_port`, `dont_use`, `abc_driver_cell`, `abc_load`):
+  `tap_cell`, `end_cap`, `buffers`, `fillers`, `tie_high_cell`,
+  `tie_low_cell`, `dont_use`, `abc_driver_cell`, `abc_load`):
   Applied in memory and consumed within the run (e.g., baked into generated Yosys
   scripts). Not written to `home/params.toml`. On `load_workspace` (e.g., a subsequent
   `ecc run` without `[pdk.overrides]` in `ecc.toml`), these fields are
