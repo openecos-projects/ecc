@@ -36,11 +36,14 @@ neither override just gets the defaults.
 Corner names, routing layers, cell lists and VT suffixes are all PDK-specific
 and belong in an override, never in `defaults/`.
 
-A tool's routing layers are its own: DreamPlace's `gpugr_*_routing_layer` is
-not required to match the detailed router's `RT.-bottom_routing_layer`. Its
-global router never routes the first metal layer, so a PDK whose detailed
-router starts at `MET1` still has to give the global router `MET2`, or every
-net that needs the bottom layer comes back unrouted.
+Both ICS55 releases route signals from `MET2` up. `MET1` carries the
+standard-cell pins, the cells' own internal metal and the row power rails, so
+a bottom routing layer of `MET1` shorts signal wires into the rails and into
+cell interiors; DreamPlace's global router also refuses the first metal layer
+outright and reports every net that needs it as unrouted. Keep
+`RT.-bottom_routing_layer`, `LayerSettings.routing_layer_1st` and
+`gpugr_bottom_routing_layer` above the rail layer named by
+`floorplan_ecc.json`.
 
 Adding a *new ICS55 release* takes two edits in `chipcompiler/data/pdk.py`,
 because the marker allowlist is closed by design:

@@ -1,6 +1,6 @@
 {
     "RT": {
-        "-bottom_routing_layer": "MET1",
+        "-bottom_routing_layer": "MET2",
         "-top_routing_layer": "MET5"
     }
 }

@@ -1644,17 +1644,16 @@ def test_create_workspace_pdk_overrides_typo_propagates(
 
 
 @pytest.mark.parametrize("as_parameters_object", [False, True])
-def test_create_workspace_v2_takes_each_bottom_routing_layer_from_its_tool_override(
+def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, as_parameters_object
 ):
-    """Every v2 routing target gets its layer from its own shipped tool override.
+    """v2 routes signals from MET2 up, like v1, and every target agrees.
 
-    Detailed routing and the DB start at MET1. DreamPlace's global router starts
-    one layer higher: it never routes the first metal layer, so including MET1 in
-    its range leaves every net that needs the bottom layer unrouted.
+    MET1 holds the cell pins, the cells' internal metal and the row power rails,
+    so routing it shorts signals into the rails and cell interiors.
 
-    No layer may be promoted into parameters: parameters outrank the tool-config
-    layers, so a copy there would override a PDK supplying its own.
+    The layer must not be promoted into parameters: parameters outrank the
+    tool-config layers, so a copy there would override a PDK supplying its own.
     """
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
     rtl_path = tmp_path / "gcd.v"
@@ -1684,7 +1683,7 @@ def test_create_workspace_v2_takes_each_bottom_routing_layer_from_its_tool_overr
         routing["RT"]["-bottom_routing_layer"],
         db["LayerSettings"]["routing_layer_1st"],
         dreamplace["gpugr_bottom_routing_layer"],
-    ) == ("MET1", "MET1", "MET2")
+    ) == ("MET2", "MET2", "MET2")
 
 
 def test_create_workspace_v2_explicit_layer_overrides_the_pdk_configuration(
