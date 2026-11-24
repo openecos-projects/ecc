@@ -27,7 +27,7 @@ def test_routing_state_replaces_process_layers_and_preserves_power(tmp_path):
                 "state_domain": "native_committed" if i == 3 else "algorithm_state",
             },
         )
-    publish(tmp_path, "a", "route", "ecc", 3)
+    publish(tmp_path, "a", "routing", "ecc", 3)
     directory = tmp_path / "attempts/a"
     manifest = json.loads((directory / "manifest.json").read_text())
     scene = {}
@@ -74,7 +74,7 @@ def test_native_transport_patch_removes_previous_overlay_and_restores_routing(tm
                 "state_domain": "native_committed" if i == 4 else "algorithm_state",
             },
         )
-    publish(tmp_path, "a", "route", "ecc", 4)
+    publish(tmp_path, "a", "routing", "ecc", 4)
     directory = tmp_path / "attempts/a"
     manifest = json.loads((directory / "manifest.json").read_text())
     scene = {}

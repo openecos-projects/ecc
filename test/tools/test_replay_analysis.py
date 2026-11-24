@@ -126,7 +126,7 @@ def test_formal_witness_stays_logical_and_is_frozen_before_staging_cleanup(tmp_p
 
 
 def test_power_geometry_is_preferred_frozen_and_stale_or_invalid_geometry_falls_back(tmp_path):
-    step = SimpleNamespace(name="powerAnalysis", directory=tmp_path / "powerAnalysis_ecc")
+    step = SimpleNamespace(name="power_analysis", directory=tmp_path / "powerAnalysis_ecc")
     raw = step.directory / "data/pw/power_reporter/instance_power.tsv"
     spatial = step.directory / "output/geometry/power/instance_power_geometry.tsv"
     raw.parent.mkdir(parents=True)

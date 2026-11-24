@@ -15,7 +15,7 @@ def setup(tmp_path):
         directory=tmp_path, parameters=SimpleNamespace(data={"replay": {"enabled": True}})
     )
     step = SimpleNamespace(
-        name="Synthesis",
+        name="synthesis",
         tool="yosys",
         directory=tmp_path / "Synthesis_yosys",
         output=SimpleNamespace(),

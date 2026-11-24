@@ -12,6 +12,7 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, inserted_step_kind
 from chipcompiler.tools.replay_analysis_compact import compact_analysis
 from chipcompiler.tools.replay_harden import lef_views, liberty_views
 from chipcompiler.tools.replay_reports import deliverables, formal, rcx
@@ -172,6 +173,7 @@ def inventory(path):
 
 
 def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
+    step_kind = inserted_step_kind(step.name) or step.name
     from chipcompiler.tools.geometry_display import belongs_to_step, metadata
 
     manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
@@ -190,7 +192,7 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
                 kind == "ir" and not info.get("layer")
             ):
                 native_views += 1
-        if step.name == "drc":
+        if step_kind == StepEnum.DRC:
             native_views += int(
                 any(
                     line.startswith("drc=") and line.endswith(".gdisplay")
@@ -210,34 +212,34 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
             )
             return {"analysis": relative, "analysis_view_count": native_views}
     patterns = {
-        "drc": [("data/drc/violation_map.json", lambda p: violations(p, "drc"))],
-        "lvs": [("data/lvs/lvs_reporter/ilvs.json", lambda p: violations(p, "lvs"))],
-        "antennaCheck": [("feature/*.step.json", lambda p: violations(p, "antenna"))],
-        "sta": [("feature/**/timing_paths.json", timing)],
-        "powerAnalysis": [
+        StepEnum.DRC: [("data/drc/violation_map.json", lambda p: violations(p, "drc"))],
+        StepEnum.LVS: [("data/lvs/lvs_reporter/ilvs.json", lambda p: violations(p, "lvs"))],
+        StepEnum.ANTENNA_CHECK: [("feature/*.step.json", lambda p: violations(p, "antenna"))],
+        StepEnum.STA: [("feature/**/timing_paths.json", timing)],
+        StepEnum.POWER_ANALYSIS: [
             ("output/geometry/power/instance_power_geometry.tsv", power),
             ("data/pw/power_reporter/instance_power.tsv", power),
         ],
-        "RCX": [("output/*.spef", rcx)],
-        "lec": [("output/*_result.json", formal)],
-        "postRouteLec": [("output/*_result.json", formal)],
-        "Harden": [
+        StepEnum.RCX: [("output/*.spef", rcx)],
+        StepEnum.LEC: [("output/*_result.json", formal)],
+        SkippableStepEnum.POST_ROUTE_LEC: [("output/*_result.json", formal)],
+        StepEnum.HARDEN: [
             ("output/*.lef", lambda p: lef_views(p, Path(step.input.def_))),
             ("output/*.lib", liberty_views),
         ],
-        "emir": [("emir.json", lambda p: json.loads(p.read_text())["views"])],
+        StepEnum.EMIR: [("emir.json", lambda p: json.loads(p.read_text())["views"])],
     }
-    if step.name not in patterns:
+    if step_kind not in patterns:
         return {}
-    root = directory / "capture/analysis" if step.name == "emir" else Path(step.directory)
+    root = directory / "capture/analysis" if step_kind == StepEnum.EMIR else Path(step.directory)
     relative = "subflows/analysis/overlays"
     destination = directory / relative
     views, unavailable = [], []
-    if step.name == "Harden":
+    if step_kind == StepEnum.HARDEN:
         views.append(deliverables(step, started_unix_ns))
-    for pattern, parse in patterns[step.name]:
+    for pattern, parse in patterns[step_kind]:
         if (
-            step.name == "powerAnalysis"
+            step_kind == StepEnum.POWER_ANALYSIS
             and pattern == "data/pw/power_reporter/instance_power.tsv"
             and views
         ):
@@ -264,7 +266,7 @@ def collect_analysis(step, directory: Path, started_unix_ns: int) -> dict:
             except (OSError, ValueError, KeyError, TypeError) as error:
                 unavailable.append(f"{path.relative_to(root)}: {error}")
                 logger.warning("Replay analysis unavailable: %s", unavailable[-1])
-    if step.name in {"lec", "postRouteLec"}:
+    if step_kind in {StepEnum.LEC, SkippableStepEnum.POST_ROUTE_LEC}:
         for path in sorted((directory / "capture").glob("kepler-*.json")):
             event = json.loads(path.read_text())
             if event.get("state_domain") == "analysis_complete":

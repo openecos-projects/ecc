@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 
+from chipcompiler.data.types import inserted_step_kind
 from chipcompiler.tools.replay_storage import atomic_json, read_pointer, replay_root, update_pointer
 from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -17,7 +18,10 @@ def prepare(workspace, step) -> str | None:
     root = replay_root(step)
     if root is None:
         return None
-    if step.name not in SUPPORTED or not read_settings(workspace):
+    if (
+        not read_settings(workspace)
+        or (inserted_step_kind(step.name) or step.name) not in SUPPORTED
+    ):
         if (root / "manifest.json").exists():
             update_pointer(root, {"status": "stale"})
         return None

@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, inserted_step_kind
 from chipcompiler.tools.replay_analysis import collect_analysis
 from chipcompiler.tools.replay_artifacts import reference_geometry
 from chipcompiler.tools.replay_storage import within
@@ -48,7 +49,10 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
     metrics = current_metrics(step, started_unix_ns)
     result: dict[str, object] = {"result_metrics": metrics}
     result.update(collect_analysis(step, directory, started_unix_ns))
-    if step.name in {"lec", "postRouteLec"}:
+    if (inserted_step_kind(step.name) or step.name) in {
+        StepEnum.LEC,
+        SkippableStepEnum.POST_ROUTE_LEC,
+    }:
         output_json = getattr(getattr(step, "output", None), "json", None)
         if (
             output_json
@@ -89,7 +93,7 @@ def collect_results(step, directory: Path, started_unix_ns: int, workspace_dir=N
                     result.update(reference_geometry(resolved))
             except (OSError, ValueError) as error:
                 result["geometry_unavailable"] = str(error)
-    if step.name != "place" or not feature:
+    if step.name != StepEnum.PLACEMENT or not feature:
         return result
     manifest = getattr(getattr(step, "output", None), "geometry_manifest", None)
     if (

@@ -35,7 +35,7 @@ def test_diffs_preserve_input_pdn_and_checkpoint_touched_state(tmp_path):
     sample(capture, 0, baseline)
     sample(capture, 1, {"inst:a": instance(20), "inst:b": instance(40)}, scope="instances")
     sample(capture, 2, {"inst:a": instance(0)}, scope="instances", final=True)
-    publish(tmp_path, "a", "place", "dreamplace", 300)
+    publish(tmp_path, "a", "placement", "dreamplace", 300)
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     frames = [
         json.loads((tmp_path / "attempts/a" / f["path"]).read_text()) for f in manifest["frames"]
@@ -63,7 +63,7 @@ def test_macro_scope_does_not_delete_standard_cells(tmp_path):
         scope="macros",
         final=True,
     )
-    publish(tmp_path, "a", "macroPlacement", "dreamplace", 100)
+    publish(tmp_path, "a", "macro_placement", "dreamplace", 100)
     end = json.loads((tmp_path / "attempts/a/subflows/000/frames/000001.json").read_text())
     assert end["upsert"]["inst:a"] == instance(0)
     assert end["touched"] == ["inst:m"]
@@ -73,7 +73,7 @@ def test_macro_scope_does_not_delete_standard_cells(tmp_path):
 def execution(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path, parameters=SimpleNamespace(data={}))
     step = SimpleNamespace(
-        name="place",
+        name="placement",
         tool="dreamplace",
         output=SimpleNamespace(geometry=tmp_path / "place_dreamplace/output/geometry"),
     )
@@ -108,10 +108,10 @@ def test_missing_final_and_failed_sampler_never_publish(tmp_path):
     capture = tmp_path / "attempts/a/capture"
     sample(capture, 0, {"inst:a": instance(0)})
     with pytest.raises(ValueError, match="committed"):
-        publish(tmp_path, "a", "place", "dreamplace", 10)
+        publish(tmp_path, "a", "placement", "dreamplace", 10)
     atomic_json(capture / "error.json", {"error": "disk full"})
     with pytest.raises(ValueError, match="capture failed"):
-        publish(tmp_path, "a", "place", "dreamplace", 10)
+        publish(tmp_path, "a", "placement", "dreamplace", 10)
     assert not (tmp_path / "manifest.json").exists()
 
 
@@ -124,33 +124,10 @@ def test_settings_reject_truthy_string(execution):
 
 
 def test_all_standard_flow_steps_are_supported_for_replay():
+    from chipcompiler.rtl2gds.builder import rtl2gds_step_names
     from chipcompiler.tools.replay import SUPPORTED
 
-    assert {
-        "Synthesis",
-        "lec",
-        "preFloorplan",
-        "macroPlacement",
-        "postFloorplan",
-        "preplace",
-        "place",
-        "diff_opt",
-        "diff_sizing",
-        "CTS",
-        "legalization",
-        "Timing optimization",
-        "route",
-        "filler",
-        "lvs",
-        "drc",
-        "antennaCheck",
-        "postRouteLec",
-        "RCX",
-        "sta",
-        "powerAnalysis",
-        "emir",
-        "Harden",
-    } <= SUPPORTED
+    assert set(rtl2gds_step_names()) <= SUPPORTED
 
 
 def test_report_only_steps_publish_real_subflow_timeline(tmp_path):
@@ -160,7 +137,7 @@ def test_report_only_steps_publish_real_subflow_timeline(tmp_path):
         '{"name":"run yosys","state":"Success","elapsed_ns":100}\n'
         '{"name":"analysis","state":"Success","elapsed_ns":200}\n'
     )
-    publish(tmp_path, "a", "Synthesis", "yosys", 200)
+    publish(tmp_path, "a", "synthesis", "yosys", 200)
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     assert manifest["geometry_detail"] == "report_only"
     assert [frame["subflow"] for frame in manifest["frames"]] == ["run yosys", "analysis"]
@@ -177,7 +154,7 @@ def test_report_only_step_without_geometry_path_still_publishes(tmp_path):
     )
     step_dir = tmp_path / "Synthesis_yosys"
     step = SimpleNamespace(
-        name="Synthesis",
+        name="synthesis",
         tool="yosys",
         directory=step_dir,
         output=SimpleNamespace(dir=step_dir / "output"),
@@ -199,7 +176,7 @@ def test_partial_samples_preserve_master_and_orientation(tmp_path):
     sample(capture, 0, baseline)
     sample(capture, 1, {"inst:a": instance(0)}, scope="instances")
     sample(capture, 2, {"inst:a": {**instance(0), "master": "BUF_X2", "orient": 1}}, final=True)
-    publish(tmp_path, "a", "place", "dreamplace", 300)
+    publish(tmp_path, "a", "placement", "dreamplace", 300)
     directory = tmp_path / "attempts/a/subflows/000/frames"
     assert json.loads((directory / "000001.json").read_text())["touched"] == []
     assert json.loads((directory / "000002.json").read_text())["touched"] == ["inst:a"]
@@ -225,7 +202,7 @@ def test_completion_artifacts_exclude_stale_metrics_and_maps(tmp_path):
         os.utime(path, ns=(200, 200))
     os.utime(stale, ns=(50, 50))
     step = SimpleNamespace(
-        name="place",
+        name="placement",
         feature=SimpleNamespace(dir=feature),
         analysis=SimpleNamespace(qor_metrics=metrics),
     )
@@ -253,7 +230,7 @@ def test_runner_boundaries_include_stages_without_geometry(tmp_path, monkeypatch
     capture_subflow("load data", "Success")
     capture_subflow("run placement", "Success")
     capture_subflow("analysis", "Success")
-    publish(tmp_path, "a", "place", "dreamplace", 300)
+    publish(tmp_path, "a", "placement", "dreamplace", 300)
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     assert manifest["subflow_timing"] == [
         {"name": "load data", "state": "Success", "start_ns": 0, "end_ns": 25},
@@ -275,7 +252,7 @@ def test_floorplan_timing_uses_native_stage_end_not_batched_ledger(tmp_path):
     (capture / "subflows.jsonl").write_text(
         json.dumps({"name": "create tracks", "state": "Success", "elapsed_ns": 180}) + "\n"
     )
-    publish(tmp_path, "a", "postFloorplan", "ecc", 300)
+    publish(tmp_path, "a", "post_floorplan", "ecc", 300)
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     assert manifest["subflow_timing"] == [
         {"name": "create tracks", "state": "Success", "start_ns": 0, "end_ns": 100}
@@ -290,7 +267,7 @@ def test_subflow_ongoing_and_success_form_one_timed_node(tmp_path):
         '{"name":"run placement","state":"Ongoing","elapsed_ns":20}\n'
         '{"name":"run placement","state":"Success","elapsed_ns":80}\n'
     )
-    publish(tmp_path, "a", "place", "dreamplace", 100)
+    publish(tmp_path, "a", "placement", "dreamplace", 100)
     manifest = json.loads((tmp_path / "attempts/a/manifest.json").read_text())
     assert manifest["subflow_timing"] == [
         {"name": "run placement", "state": "Success", "start_ns": 20, "end_ns": 80}
@@ -303,7 +280,7 @@ def test_deleted_name_reuse_gets_a_new_lifetime_and_retains_deletion_marker(tmp_
     capture.mkdir(parents=True)
     for i, objects in enumerate([{"inst:a": instance(0)}, {}, {"inst:a": instance(10)}]):
         sample(capture, i, objects, final=i == 2)
-    publish(root, "a", "place", "ecc", 10**12)
+    publish(root, "a", "placement", "ecc", 10**12)
     manifest = json.loads((root / "attempts/a/manifest.json").read_text())
     final = json.loads((root / "attempts/a" / manifest["frames"][-1]["path"]).read_text())
     assert set(final["upsert"]) == {"inst:a#birth:1"}
@@ -321,7 +298,7 @@ def test_route_replacement_preserves_power_and_pin_vias(tmp_path):
     routed = {"new": {"kind": "wire", "bbox": [10, 10, 20, 20]}}
     sample(capture, 0, baseline)
     sample(capture, 1, routed, scope="routing", final=True)
-    publish(tmp_path, "a", "route", "ecc", 100)
+    publish(tmp_path, "a", "routing", "ecc", 100)
     final = json.loads((tmp_path / "attempts/a/subflows/000/frames/000001.json").read_text())
     assert final["upsert"] == {"power": baseline["power"], "pin": baseline["pin"], **routed}
 

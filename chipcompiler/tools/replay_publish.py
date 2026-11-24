@@ -4,10 +4,20 @@ import json
 import shutil
 from pathlib import Path
 
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, inserted_step_kind
 from chipcompiler.tools.replay_storage import atomic_json, read_pointer, update_pointer
 
-REPORT_ONLY = {"Synthesis", "lec", "postRouteLec"}
-UNCHANGED_LAYOUT = {"Harden", "powerAnalysis", "emir", "RCX", "sta", "antennaCheck", "lvs", "drc"}
+REPORT_ONLY = {StepEnum.SYNTHESIS, StepEnum.LEC, SkippableStepEnum.POST_ROUTE_LEC}
+UNCHANGED_LAYOUT = {
+    StepEnum.HARDEN,
+    StepEnum.POWER_ANALYSIS,
+    StepEnum.EMIR,
+    StepEnum.RCX,
+    StepEnum.STA,
+    StepEnum.ANTENNA_CHECK,
+    StepEnum.LVS,
+    StepEnum.DRC,
+}
 
 
 def publish(
@@ -22,6 +32,7 @@ def publish(
     defer_completion: bool = False,
 ) -> None:
     """Convert real tool samples to reversible semantic diffs and seek checkpoints."""
+    step_kind = inserted_step_kind(step) or step
     directory = root / "attempts" / attempt
     if (directory / "capture" / "error.json").exists():
         raise ValueError("native Replay capture failed; see tool log")
@@ -35,7 +46,7 @@ def publish(
         samples.append((sample["elapsed_ns"], sample["sequence"], path, sample["state_domain"]))
     samples.sort(key=lambda entry: (entry[0], entry[1], entry[2].name))
     capture_dir = directory / "capture"
-    if not samples and step in REPORT_ONLY:
+    if not samples and step_kind in REPORT_ONLY:
         timing_path = capture_dir / "subflows.jsonl"
         events = (
             [json.loads(line) for line in timing_path.read_text().splitlines()]
@@ -63,7 +74,7 @@ def publish(
     inputs = [sample for sample in samples if sample[3] == "native_input"]
     if (
         inputs
-        and step in UNCHANGED_LAYOUT
+        and step_kind in UNCHANGED_LAYOUT
         and samples[-1][3] not in {"native_committed", "analysis_complete"}
     ):
         elapsed_ns, sequence, source, _ = inputs[0]
@@ -269,7 +280,7 @@ def publish(
             end = event["elapsed_ns"]
             # run_fp returns once for four native stages; the Python ledger
             # acknowledges them together. Use each native stage's last sample.
-            if step == "postFloorplan" and event["name"] in {
+            if step_kind == StepEnum.POST_FLOORPLAN and event["name"] in {
                 "create tracks",
                 "place io pins",
                 "tap cell",
@@ -298,7 +309,7 @@ def publish(
         "history_completeness": "sampled",
         "capabilities": {
             "geometry": "report_only"
-            if step in REPORT_ONLY
+            if step_kind in REPORT_ONLY
             else (
                 "sampled_process"
                 if any(count > 1 for count in changes_by_kind.values())
@@ -325,7 +336,7 @@ def publish(
         "frames": frames,
         "subflows": subflows,
         "subflow_timing": timings,
-        "geometry_detail": "report_only" if step in REPORT_ONLY else "physical_bounds",
+        "geometry_detail": "report_only" if step_kind in REPORT_ONLY else "physical_bounds",
         "started_at_unix_ns": started_unix_ns,
         **(results or {}),
     }

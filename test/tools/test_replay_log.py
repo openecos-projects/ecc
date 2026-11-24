@@ -72,7 +72,7 @@ def test_disabled_replay_never_starts_log_observer(tmp_path, monkeypatch):
     monkeypatch.setattr(LogCapture, "start", unexpected)
     workspace = SimpleNamespace(directory=tmp_path, parameters=SimpleNamespace(data={}))
     step = SimpleNamespace(
-        name="place",
+        name="placement",
         tool="dreamplace",
         output=SimpleNamespace(geometry=tmp_path / "output/geometry"),
         log=SimpleNamespace(file=tmp_path / "log/place.log"),
@@ -87,9 +87,9 @@ def test_features_are_frozen_with_source_freshness(tmp_path):
 
     feature = tmp_path / "feature"
     feature.mkdir()
-    source = feature / "preFloorplan.db.json"
+    source = feature / "pre_floorplan.db.json"
     source.write_text('{"Design Layout":{"die_area":42}}')
-    step = SimpleNamespace(name="preFloorplan", tool="ecc", feature=SimpleNamespace(dir=feature))
+    step = SimpleNamespace(name="pre_floorplan", tool="ecc", feature=SimpleNamespace(dir=feature))
     attempt = tmp_path / "attempt"
     result = collect_results(step, attempt, source.stat().st_mtime_ns, tmp_path)
     assert result["result_feature_files"] == ["subflows/results/features/db.json"]
@@ -110,7 +110,7 @@ def test_complete_attempt_publishes_log_index_with_geometry(tmp_path):
         directory=tmp_path, parameters=SimpleNamespace(data={"replay": {"enabled": True}})
     )
     step = SimpleNamespace(
-        name="place",
+        name="placement",
         tool="dreamplace",
         output=SimpleNamespace(geometry=tmp_path / "output/geometry"),
         log=SimpleNamespace(file=source),

@@ -19,7 +19,7 @@ def test_rcx_keeps_reported_net_membership_and_capacitance_units(tmp_path):
 
 
 def test_rcx_corners_share_net_names_and_do_not_store_electrical_graphs(tmp_path):
-    step = SimpleNamespace(name="RCX", directory=tmp_path / "RCX_ecc")
+    step = SimpleNamespace(name="rcx", directory=tmp_path / "RCX_ecc")
     output = step.directory / "output"
     output.mkdir(parents=True)
     for corner, nets in [("a", [("clk", 1), ("data", 2)]), ("b", [("clk", 3)])]:

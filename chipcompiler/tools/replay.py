@@ -8,35 +8,12 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
+from chipcompiler.data.types import StepEnum
+from chipcompiler.rtl2gds.builder import rtl2gds_step_names
 from chipcompiler.tools.replay_publish import publish
 from chipcompiler.tools.replay_storage import atomic_json, read_pointer, replay_root, update_pointer
 
-SUPPORTED = {
-    "Synthesis",
-    "lec",
-    "preFloorplan",
-    "macroPlacement",
-    "postFloorplan",
-    "preplace",
-    "place",
-    "diff_opt",
-    "diff_buffering",
-    "diff_sizing",
-    "CTS",
-    "legalization",
-    "Timing optimization",
-    "route",
-    "filler",
-    "lvs",
-    "drc",
-    "antennaCheck",
-    "postRouteLec",
-    "RCX",
-    "sta",
-    "powerAnalysis",
-    "emir",
-    "Harden",
-}
+SUPPORTED = frozenset(rtl2gds_step_names()) | {StepEnum.LEC}
 ENV_KEYS = (
     "ECC_REPLAY_CAPTURE_DIR",
     "ECC_REPLAY_START_NS",
@@ -212,7 +189,11 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                 os.environ.update(
                     ECC_REPLAY_CAPTURE_DIR=str(capture),
                     ECC_REPLAY_START_NS=str(started),
-                    ECC_REPLAY_STEP=step.name,
+                    # iFP's native callback uses this one historical label to
+                    # distinguish track creation from initial floorplanning.
+                    ECC_REPLAY_STEP=(
+                        "postFloorplan" if step.name == StepEnum.POST_FLOORPLAN else step.name
+                    ),
                     ECC_REPLAY_SAMPLE_ITERATIONS=str(interval),
                 )
                 from chipcompiler.tools.replay_log import LogCapture

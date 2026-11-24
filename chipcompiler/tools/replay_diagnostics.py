@@ -3,11 +3,22 @@
 import json
 from pathlib import Path
 
-CHECKS = {"lec", "postRouteLec", "lvs", "drc", "antennaCheck", "sta", "powerAnalysis", "emir"}
+from chipcompiler.data.types import SkippableStepEnum, StepEnum, inserted_step_kind
+
+CHECKS = {
+    StepEnum.LEC,
+    SkippableStepEnum.POST_ROUTE_LEC,
+    StepEnum.LVS,
+    StepEnum.DRC,
+    StepEnum.ANTENNA_CHECK,
+    StepEnum.STA,
+    StepEnum.POWER_ANALYSIS,
+    StepEnum.EMIR,
+}
 
 
 def require_evidence(step: str, directory: Path, results: dict) -> None:
-    if step not in CHECKS or not results.get("analysis"):
+    if (inserted_step_kind(step) or step) not in CHECKS or not results.get("analysis"):
         raise ValueError("EDA step failed without a replayable diagnostic")
     analysis = json.loads((directory / results["analysis"]).read_text())
     # Only a parsed, fresh, frozen native report counts as evidence. A generic

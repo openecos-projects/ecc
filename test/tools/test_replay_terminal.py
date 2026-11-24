@@ -13,7 +13,7 @@ def test_terminal_capture_reloads_committed_geometry_without_routing(monkeypatch
     capture.mkdir()
     monkeypatch.setenv("ECC_REPLAY_CAPTURE_DIR", str(capture))
     monkeypatch.setenv("ECC_REPLAY_START_NS", "0")
-    step = EccStep(name="place", tool="dreamplace")
+    step = EccStep(name="placement", tool="dreamplace")
     step.output.def_ = tmp_path / "placed.def"
     step.output.verilog = tmp_path / "placed.v"
     step.feature.db = tmp_path / "place.db.json"
@@ -65,7 +65,7 @@ def test_disabled_terminal_capture_never_touches_native_database(monkeypatch):
 def test_missing_committed_database_marks_replay_unavailable(monkeypatch, tmp_path):
     monkeypatch.setenv("ECC_REPLAY_CAPTURE_DIR", str(tmp_path))
     monkeypatch.setattr(runner, "create_db_engine", lambda *_: None)
-    replay.capture_placement_result(Workspace(directory=tmp_path), EccStep(name="place"), None)
+    replay.capture_placement_result(Workspace(directory=tmp_path), EccStep(name="placement"), None)
     assert json.loads((tmp_path / "error.json").read_text()) == {
         "error": "Cannot load committed placement for Replay"
     }
