@@ -4,11 +4,11 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from test.flow_fixture import step_fields
 
 import chipcompiler.engine.workspace.derive_range as derive_range
 from chipcompiler.data import Workspace
 from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+from test.flow_fixture import step_fields
 
 _LEDGER = [
     ("synthesis", "yosys"),
