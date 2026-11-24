@@ -1,11 +1,16 @@
 """Core no-clock decision and skip-policy boundary tests."""
 
+from collections.abc import Mapping
+from typing import cast
+
 import pytest
 
 from chipcompiler.data import DEFAULT_SKIP_STEPS
 from chipcompiler.rtl2gds import NoClockDecision, resolve_no_clock, resolve_skip_steps
 
 _NO_CLOCK_SKIPS = ("preplace", "diff_opt", "diff_sizing", "cts", "timing_optimization")
+# Bypass the annotation deliberately so runtime caller-boundary validation is tested.
+_INVALID_MATERIALS = cast(Mapping[str, object], ["clock_port"])
 
 
 def test_explicit_true_wins_over_clock_material():
@@ -58,7 +63,7 @@ def test_invalid_clock_material_types_are_rejected(clock):
 
 def test_invalid_materials_container_is_rejected():
     with pytest.raises(ValueError, match="clock materials must be a mapping"):
-        resolve_no_clock({}, materials=["clock_port"])
+        resolve_no_clock({}, materials=_INVALID_MATERIALS)
 
 
 @pytest.mark.parametrize(
@@ -69,7 +74,7 @@ def test_invalid_materials_container_is_rejected():
     ],
 )
 def test_explicit_flag_precedence_does_not_inspect_materials(flag, expected):
-    assert resolve_no_clock({"no_clock": flag}, materials=["invalid"]) == expected
+    assert resolve_no_clock({"no_clock": flag}, materials=_INVALID_MATERIALS) == expected
 
 
 @pytest.mark.parametrize("flow_config", [{}, {"skip_steps": []}])

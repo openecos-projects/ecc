@@ -14,6 +14,7 @@ Layout::
     [pdk]      name / root (absolute) / config (workspace-relative)
     [flow]     preset = "rtl2gds"  OR  start = "...", end = "..."
                skip_steps = [...]  (optional, normalized)
+               no_clock = true / false  (optional, explicit or inferred)
     [params]   flat snake_case parameters; nested dicts map to subtables;
                identity mirrors are reconstructed on load, not persisted;
                [params.step_params.<step>] holds per-step DreamPlace values
@@ -23,6 +24,7 @@ import logging
 import os
 import tempfile
 import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -100,7 +102,7 @@ def parameters_have_chip_identity(data: object) -> bool:
 
 #: The ``[flow]`` keys that shape the steps of a flow target besides its
 #: preset or range; each rides along wherever the target is persisted.
-FLOW_POLICY_KEYS = ("skip_steps", "lec_engine", "insert_steps")
+FLOW_POLICY_KEYS = ("skip_steps", "lec_engine", "insert_steps", "no_clock")
 
 
 def validate_flow_config(flow: object) -> dict:
@@ -109,13 +111,14 @@ def validate_flow_config(flow: object) -> dict:
     Raises WorkspaceFlowTargetError on any rule violation: ``preset`` mixed
     with ``start``/``end``, only one of ``start``/``end``, unknown step
     names, ``start`` positioned after ``end`` in the canonical chain, an
-    invalid ``skip_steps`` or ``insert_steps`` list, or an unknown
-    ``lec_engine``. ``skip_steps`` is stored normalized (canonical step values
-    in canonical chain order) and ``insert_steps`` too (canonical inserted
-    names, ordered by the step they follow); an explicit empty list
-    round-trips as ``[]`` and an absent key stays absent. ``lec_engine`` is
-    stored normalized; an absent key
-    stays absent.
+    invalid ``skip_steps`` or ``insert_steps`` list, an invalid ``no_clock``
+    flag, or an unknown ``lec_engine``. ``skip_steps`` is stored normalized
+    (canonical step values in canonical chain order) and ``insert_steps`` too
+    (canonical inserted names, ordered by the step they follow); an explicit
+    empty list round-trips as ``[]`` and an absent key stays absent.
+    ``no_clock`` round-trips as a boolean and folds its effective steps into
+    the persisted skip policy. ``lec_engine`` is stored normalized; an absent
+    key stays absent.
     """
     if flow is None:
         return {}
@@ -133,11 +136,17 @@ def validate_flow_config(flow: object) -> dict:
         return {}
 
     result: dict = {}
-    if "skip_steps" in section:
-        from chipcompiler.rtl2gds import resolve_skip_steps
+    from chipcompiler.rtl2gds import resolve_no_clock, resolve_skip_steps
 
+    try:
+        no_clock = resolve_no_clock(section).enabled
+    except ValueError as exc:
+        raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
+    if "no_clock" in section:
+        result["no_clock"] = no_clock
+    if "skip_steps" in section or no_clock:
         try:
-            result["skip_steps"] = list(resolve_skip_steps({"skip_steps": section["skip_steps"]}))
+            result["skip_steps"] = list(resolve_skip_steps(section))
         except ValueError as exc:
             raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
     if "lec_engine" in section:
@@ -250,17 +259,32 @@ def flow_steps_in_range(start: str, end: str) -> list[str]:
         raise WorkspaceFlowTargetError(f"flow range outside the canonical chain: {exc}") from exc
 
 
-def flow_section_from_flow_config(flow_config: dict | None) -> dict:
+def flow_section_from_flow_config(
+    flow_config: dict | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> dict:
     """Derive the [flow] section (start/end canonical form) from a flow_config.
 
     Uses the same selection resolution as the flow.json seeding, so both
     stores always describe the same contiguous range. A declared
     policy (``FLOW_POLICY_KEYS``) rides along normalized; an undeclared one
-    stays absent so the code default keeps applying.
+    stays absent so the code default keeps applying. Supplied clock materials
+    persist an inferred enabled no-clock decision with the target, making a
+    reload independent of the original project materials.
     Returns {} when the flow_config does not select steps.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
+
+    from chipcompiler.rtl2gds import resolve_no_clock
+
+    try:
+        decision = resolve_no_clock(flow_config, materials=materials)
+    except ValueError as exc:
+        raise WorkspaceFlowTargetError(f"[flow] {exc}") from None
+    if "no_clock" not in flow_config and decision.enabled:
+        flow_config = {**flow_config, "no_clock": True}
 
     # A preset-shaped flow_config selects the preset's canonical range.
     if "preset" in flow_config and "start_step" not in flow_config and "steps" not in flow_config:

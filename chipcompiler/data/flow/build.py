@@ -6,6 +6,8 @@ selection, plus an optional declared skip policy) into the initial
 (reconcile, config validation) slices from. Pure computation: no IO.
 """
 
+from collections.abc import Mapping
+
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.types import (
     StateEnum,
@@ -53,17 +55,22 @@ def _flow_entries_for_config(flow_config: dict) -> list[tuple[str, str, str]]:
     return _canonical_rtl2gds_flow_entries()
 
 
-def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
+def build_dynamic_flow_data(
+    flow_config: dict | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> FlowDocument:
     """Build initial flow.json data from GUI-provided flow_config.
 
     A non-contiguous explicit selection degrades to the contiguous
     first..last range (with a log note) so flow.json and the [flow] target
     always describe the same steps. A preset-shaped config selects the
     preset's chain, whose first step may be skipped. The config's skip
-    policy and inserted steps are resolved here: skipped steps never enter
-    the ledger, an inserted step follows the step it is inserted after, and
-    a selection whose remaining steps lack required design data
-    (:func:`~chipcompiler.data.flow.plan.plan_flow`) raises ``ValueError``.
+    policy, optional clock materials, and inserted steps are resolved here:
+    skipped steps never enter the ledger, an inserted step follows the step
+    it is inserted after, and a selection whose remaining steps lack required
+    design data (:func:`~chipcompiler.data.flow.plan.plan_flow`) raises
+    ``ValueError``.
     """
     if not isinstance(flow_config, dict) or not flow_config:
         return {}
@@ -85,7 +92,7 @@ def build_dynamic_flow_data(flow_config: dict | None) -> FlowDocument:
     import chipcompiler.rtl2gds as rtl2gds_api
     from chipcompiler.data.flow.plan import inserted_chain, plan_flow
 
-    skip = rtl2gds_api.resolve_skip_steps(flow_config)
+    skip = rtl2gds_api.resolve_skip_steps(flow_config, materials=materials)
     lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
     plan = plan_flow(
         [(name, tool) for name, tool, _state in entries],
