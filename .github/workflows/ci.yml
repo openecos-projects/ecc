@@ -793,12 +793,11 @@ jobs:
           DESIGNS_DIR: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
         run: |
           set -euo pipefail
-          # xtea and usb disabled everywhere for now: real runs show hold WNS < 0,
-          # which would keep their strict signoff gates red until tuned. Re-enable
-          # usb after trying timing_opt.hold_margin=0.10 in the next PR. All other
-          # designs, including the memory-heavy BM64, run on the self-hosted runner
-          # for every event.
-          excludes=(xtea usb)
+          # xtea disabled everywhere for now: real run shows hold WNS < 0,
+          # which would keep its strict signoff gates red until tuned. All
+          # other designs, including the memory-heavy BM64, run on the
+          # self-hosted runner for every event.
+          excludes=(xtea)
           designs="$(find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
             | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
             | jq -R . | jq -cs .)"
@@ -885,6 +884,14 @@ jobs:
           stage-path: ${{ runner.temp }}/e2e-design-input/${{ matrix.design }}
           source-path: ${{ env.E2E_DESIGNS_DIR }}/${{ matrix.design }}
           root-marker: ecc.toml
+
+      - name: Configure USB hold-margin experiment
+        if: matrix.design == 'usb'
+        run: |
+          # The default 0.04 margin left USB hold WNS at -0.043 ns.
+          ecc_bin="$PWD/dist/ecc-bundle/ecc"
+          "$ecc_bin" param set timing_opt.hold_margin 0.10 \
+            --project "$RUNNER_TEMP/e2e-design-input/usb"
 
       - name: Run design flows
         id: design-flow
