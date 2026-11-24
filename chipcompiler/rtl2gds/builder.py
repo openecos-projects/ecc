@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
 from functools import cache
-from typing import Final
+from typing import Final, Literal
 
 from chipcompiler.data import (
     DEFAULT_LEC_ENGINE,
@@ -20,6 +21,65 @@ from chipcompiler.data.types import INSERTED_STEP_MARK
 
 #: One built chain entry: (step, tool, state).
 BuiltStep = tuple[StepBaseEnum | str, str, StateEnum | str]
+
+_NO_CLOCK_SKIP_STEPS: Final = frozenset(
+    {
+        StepEnum.PREPLACE.value,
+        SkippableStepEnum.DIFF_OPT.value,
+        StepEnum.DIFF_SIZING.value,
+        StepEnum.CTS.value,
+        SkippableStepEnum.TIMING_OPT.value,
+    }
+)
+
+
+@dataclass(frozen=True)
+class NoClockDecision:
+    """Effective no-clock policy and how it was decided."""
+
+    enabled: bool
+    source: Literal["explicit", "inferred", "off"]
+
+
+def _clock_name_from_materials(materials: Mapping[str, object]) -> str:
+    key = "clock_port" if "clock_port" in materials else "clock"
+    if key not in materials:
+        return ""
+    raw = materials[key]
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"{key} clock material must be a string, not {type(raw).__name__}: {raw!r}"
+        )
+    return raw.strip()
+
+
+def resolve_no_clock(
+    flow_config: Mapping[str, object] | None = None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> NoClockDecision:
+    """Resolve explicit no-clock policy, optionally inferring it from materials.
+
+    A declared ``no_clock`` flag must be a boolean and always takes precedence.
+    Without a flag, supplied materials infer no-clock when their clock name is
+    absent, empty or whitespace-only. ``clock_port`` is canonical; ``clock`` is
+    its compatibility alias. Clock names must be strings. Omitting ``materials``
+    disables inference.
+    """
+    if isinstance(flow_config, Mapping) and "no_clock" in flow_config:
+        flag = flow_config["no_clock"]
+        if not isinstance(flag, bool):
+            raise ValueError(f"no_clock must be a boolean, not {type(flag).__name__}: {flag!r}")
+        if flag:
+            return NoClockDecision(enabled=True, source="explicit")
+        return NoClockDecision(enabled=False, source="off")
+    if materials is not None:
+        if not isinstance(materials, Mapping):
+            raise ValueError(f"clock materials must be a mapping, not {type(materials).__name__}")
+        if not _clock_name_from_materials(materials):
+            return NoClockDecision(enabled=True, source="inferred")
+    return NoClockDecision(enabled=False, source="off")
+
 
 #: The canonical rtl2gds chain as (step, tool); ``None`` takes the LEC engine.
 #: Skip policies validate against this data, never a (patched) builder call.
@@ -66,29 +126,40 @@ def resolve_lec_engine(flow_config: Mapping[str, object] | None) -> LECEngineEnu
     return LECEngineEnum.from_value(flow_config["lec_engine"])
 
 
-def resolve_skip_steps(flow_config: Mapping[str, object] | None) -> tuple[str, ...]:
+def resolve_skip_steps(
+    flow_config: Mapping[str, object] | None,
+    *,
+    materials: Mapping[str, object] | None = None,
+) -> tuple[str, ...]:
     """The effective skip policy carried by a flow config.
 
-    Presence-keyed: an absent ``skip_steps`` key yields the code default;
-    an explicitly empty list yields ``()`` (run every step). Entries must
-    name steps of the rtl2gds chain exactly and are returned deduplicated in
-    canonical chain order (idempotently). ``lec`` is accepted and dropped: it was a chain step, and
-    existing ecc.toml, project.json and params.toml files still list it;
-    an LEC is inserted with ``insert_steps`` instead. Whether the remaining
-    steps can run is decided by their capabilities
-    (:func:`chipcompiler.data.flow.plan.plan_flow`), not here.
+    Presence-keyed: an absent ``skip_steps`` key starts from the code default;
+    an explicitly empty list starts empty. Entries must name steps of the
+    rtl2gds chain exactly and are returned deduplicated in canonical chain
+    order (idempotently). Effective no-clock mode folds the clock-dependent
+    placement and timing steps into either starting policy. ``lec`` is accepted
+    and dropped: it was a chain step, and existing ecc.toml, project.json and
+    params.toml files still list it; an LEC is inserted with ``insert_steps``
+    instead. Whether the remaining steps can run is decided by their
+    capabilities (:func:`chipcompiler.data.flow.plan.plan_flow`), not here.
     """
+    no_clock = resolve_no_clock(flow_config, materials=materials).enabled
     if not isinstance(flow_config, Mapping) or "skip_steps" not in flow_config:
-        return DEFAULT_SKIP_STEPS
-    raw = flow_config["skip_steps"]
-    if not isinstance(raw, list):
-        raise ValueError(f"skip_steps must be a list, not {type(raw).__name__}: {raw!r}")
+        if not no_clock:
+            return DEFAULT_SKIP_STEPS
+        raw = list(DEFAULT_SKIP_STEPS)
+    else:
+        raw = flow_config["skip_steps"]
+        if not isinstance(raw, list):
+            raise ValueError(f"skip_steps must be a list, not {type(raw).__name__}: {raw!r}")
     requested = set()
     for entry in raw:
         if not isinstance(entry, str):
             raise ValueError(f"skip_steps entries must be strings, not {entry!r}")
         requested.add(entry.strip())
     requested.discard(StepEnum.LEC.value)
+    if no_clock:
+        requested.update(_NO_CLOCK_SKIP_STEPS)
     chain_names = rtl2gds_step_names()
     unknown = sorted(requested - set(chain_names))
     if unknown:
