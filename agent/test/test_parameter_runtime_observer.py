@@ -66,6 +66,17 @@ def test_adaptive_density_tensor_does_not_revoke_effectiveness():
     assert report["observation"]["density_tensor_value"] == 0.709
 
 
+def test_placement_observes_native_density_floor_without_a_margin():
+    recorder = DreamplaceRecorder({"knob_id": "place.target_density", "value": 0.4})
+    placedb = SimpleNamespace(total_movable_node_area=38, total_space_area=100)
+    engine = SimpleNamespace(placedb=placedb)
+
+    def place(engine):
+        assert recorder.probe["utilization_floor"] == 0.38
+
+    _observe_placement_call(recorder, place, engine)
+
+
 def test_completed_placement_preserves_overflow_before_later_failure():
     recorder = DreamplaceRecorder({"knob_id": "place.target_overflow", "value": 0.1})
     engine = SimpleNamespace(params=SimpleNamespace(stop_overflow=0.1))

@@ -167,7 +167,7 @@ def _observe_placement_call(recorder, original, engine, *args, **kwargs):
     area = _scalar_value(getattr(placedb, "total_movable_node_area", None))
     space = _scalar_value(getattr(placedb, "total_space_area", None))
     if area is not None and space is not None and space > 0:
-        recorder.probe["utilization_floor"] = min(area / space + 0.05, 1.0)
+        recorder.probe["utilization_floor"] = min(area / space, 1.0)
     result = original(engine, *args, **kwargs)
     recorder.probe["placement_completed"] = True
     metrics = getattr(engine, "metrics", None)
