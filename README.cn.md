@@ -120,7 +120,7 @@ cp /path/to/gcd.v gcd/rtl/gcd.v  # 示例设计：docs/examples/gcd/gcd.v
 ```
 
 `ecc init` 会生成 `gcd/ecc.toml`，按需编辑。未设置
-`CHIPCOMPILER_ICS55_PDK_ROOT` 时必须填写 `pdk.root`（安装脚本
+`ECC_PDK_ROOT` 时必须填写 `pdk.root`（安装脚本
 `--with-toolchain` 的 wrapper 会设置该环境变量）：
 
 ```toml

@@ -35,7 +35,7 @@ wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入：
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`，Yosys 与 PDK 由 wrapper 自动配置；缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`。
+`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `ECC_PDK_ROOT`，Yosys 与 PDK 由 wrapper 自动配置；缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`。
 
 ### 预编译 CLI 包（手动安装）
 
@@ -350,7 +350,7 @@ sdc = "timing_constraints_template.tcl"
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
-root = ""                # icsprout55-pdk 路径；留空则用 CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT 环境变量
+root = ""                # icsprout55-pdk 路径；留空则用 ECC_PDK_ROOT 环境变量
 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
@@ -466,7 +466,7 @@ rc=1
 
 补充说明：
 
-- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局；数据层与 `ecc pdk show` 使用。`ecc check`/`ecc run` 仍要求前三者之一，未设置时报 `pdk.root is required`）。
+- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `ECC_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局；数据层与 `ecc pdk show` 使用。`ecc check`/`ecc run` 仍要求前三者之一，未设置时报 `pdk.root is required`）。
 - 综合步骤内部仍有 slang fail-fast（日志报 `yosys slang frontend check failed`），事后排查用 `ecc log synthesis`。
 - 重装/补齐工具链：重新运行第 0 节的安装脚本（加 `--with-toolchain`）。
 
@@ -498,7 +498,7 @@ yosys -Q -T -p "help read_slang" 2>&1 | grep -q "No such command" \
 
 说明：
 
-- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（`ecc check`/`ecc run` 仍要求前三者之一）。
+- PDK 根目录解析优先级：`ecc.toml` 的 `pdk.root` > 环境变量 `ECC_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（`ecc check`/`ecc run` 仍要求前三者之一）。
 - ECC-Tools / DreamPlace 以 Python wheel（`ecc-tools-bin`、`ecc-dreamplace`）形式捆绑在 CLI 包内，正常安装即就绪。
 
 ## 5. run — 执行 flow
@@ -1509,7 +1509,7 @@ $ ecc pdk set-root ~/pdk/icsprout55-pdk
   check: ecc check
 ```
 
-解析优先级不变：`ecc.toml [pdk] root` > `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局）。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
+解析优先级不变：`ecc.toml [pdk] root` > `ECC_PDK_ROOT` > 仓库默认 `<ecc 检出目录>/../pdk/icsprout55-pdk`（ecos-studio workspace 布局）。除 root 使用 `ecc pdk set-root` 外，`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file`、`pdk.sdc` 和 `pdk.spef` 可由 `ecc param set KEY VALUE` 管理，写入 `[pdk.overrides]`。
 
 ## 11. signoff — 签核包
 

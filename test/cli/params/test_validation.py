@@ -69,7 +69,7 @@ class TestNativeTomlTypeValidation:
         toml_path = os.path.join(project_dir, "ecc.toml")
         with open(toml_path) as f:
             content = f.read()
-        content += "\n[params.floorplan]\ncore_margin = [2.5, 3]\n"
+        content += "\n[params.cts]\nrouting_layer = [2.5, 3]\n"
         with open(toml_path, "w") as f:
             f.write(content)
         rc = cli_main.run(["check", "--project", project_dir, "--plain"])

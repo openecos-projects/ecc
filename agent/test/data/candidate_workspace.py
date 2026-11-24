@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent.data.candidate_artifacts import canonical_json_bytes, sha256_bytes
+from chipcompiler.data.pdk import PDK
 from test.flow_fixture import step_fields
 
 
@@ -91,7 +92,7 @@ def workspace(tmp_path: Path):
             "filler": pl_path,
             "routing": tmp_path / "config" / "routing_ecc.json",
         },
-        pdk=SimpleNamespace(
+        pdk=PDK(
             buffers=["BUF_1", "BUF_2"],
             fillers=["FILL_1", "FILL_2"],
             site_core="core7",

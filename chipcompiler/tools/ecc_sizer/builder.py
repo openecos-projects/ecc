@@ -7,7 +7,7 @@ from chipcompiler.data import EccStep, SkippableStepEnum, StepEnum, Workspace
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.tools.ecc import builder as ecc_builder
 from chipcompiler.tools.ecc.timing_constraints import step_tcl_path
-from chipcompiler.utility import json_read
+from chipcompiler.utility import JsonReadError, json_read, json_read_strict
 
 from .utility import find_sizer_root
 
@@ -205,11 +205,7 @@ def _placement_wire_rc(workspace: Workspace) -> tuple[str, float, float] | None:
     if not isinstance(placement_config, dict):
         raise ValueError("sizer hold_stage placement_wire_rc must be an object")
     config = placement_config
-    corner = str(
-        config.get("corner", config.get("placement_wire_rc_corner", "MIN_m40/Cbest"))
-    ).strip()
-    if not corner:
-        raise ValueError("sizer placement wire RC corner must be non-empty")
+    corner = str(config.get("corner", config.get("placement_wire_rc_corner", ""))).strip()
     resistance = config.get(
         "resistance_ohm_per_um", config.get("placement_wire_resistance_ohm_per_um")
     )
@@ -222,6 +218,8 @@ def _placement_wire_rc(workspace: Workspace) -> tuple[str, float, float] | None:
         raise ValueError(
             "sizer placement wire resistance and capacitance must be configured together"
         )
+    if not corner:
+        raise ValueError("sizer placement wire RC corner must be non-empty")
     try:
         resistance = float(resistance)
         capacitance = float(capacitance)
@@ -269,7 +267,7 @@ def _global_routing_rc(workspace: Workspace) -> tuple[str, dict, dict]:
     raw = config.get("global_routing_rc", {})
     if not isinstance(raw, dict):
         raise ValueError("sizer hold_stage global_routing_rc must be an object")
-    corner = str(raw.get("corner", "MIN_m40/Cbest")).strip()
+    corner = str(raw.get("corner", "")).strip()
     layers = raw.get("layers", {})
     vias = raw.get("vias", {})
     if not corner or not isinstance(layers, dict) or not isinstance(vias, dict):
@@ -463,6 +461,37 @@ def _hold_cmd_text(workspace: Workspace, step: EccStep) -> str:
     return command.build()
 
 
+def _vt_environment(workspace: Workspace) -> str:
+    """Explicit process VT groups, read from the merged sizer_ecc.json."""
+    config_path = workspace.config.get("sizer")
+    if not config_path:
+        return "-num_vt 1\n"
+    # Strict: a malformed or non-object config must not read as "one VT group",
+    # which would silently substitute different process settings.
+    config = json_read_strict(config_path)
+    if not isinstance(config, dict):
+        raise JsonReadError(f"Sizer config must be an object: {config_path}")
+    suffixes = config.get("vt_suffixes", [])
+    # Validate the shape before measuring it: a bare string has a length and
+    # iterates into characters, so it would otherwise pass as VT groups.
+    if not isinstance(suffixes, list) or not all(isinstance(item, str) for item in suffixes):
+        raise ValueError("Sizer vt_suffixes must be a list of strings")
+    if not suffixes:
+        return "-num_vt 1\n"
+    # The current native ABI has three ordered slots. Package authors supply
+    # groups from slow/high-threshold to fast/low-threshold.
+    if len(suffixes) > 3:
+        raise ValueError("Sizer backend supports at most three ordered VT groups")
+    if len(suffixes) != len(set(suffixes)):
+        raise ValueError("duplicate Sizer VT suffix")
+    lines = [f"-num_vt {len(suffixes)}"]
+    for slot, suffix in zip(("hvt", "nvt", "lvt"), suffixes, strict=False):
+        if not suffix or any(character.isspace() for character in suffix):
+            raise ValueError("Sizer VT suffix must be a nonempty token")
+        lines.append(f"-suffix_{slot} {suffix}")
+    return "\n".join(lines) + "\n"
+
+
 def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path]) -> None:
     """Write the FF/MIN hold-only Sizer scripts for *step*."""
     env_path = step.script.sizer_hold_env
@@ -472,6 +501,7 @@ def build_hold_config(workspace: Workspace, step: EccStep, libs: Sequence[Path])
 
     env_template = _sizer_env_template()
     _copy_or_seed_template(env_template, Path(env_path), "-num_vt 1\n")
+    _append_text(Path(env_path), _vt_environment(workspace))
     _append_text(Path(env_path), _tech_text(workspace, libs=libs))
     Path(cmd_path).parent.mkdir(parents=True, exist_ok=True)
     rc_path = sizer_hold_rc(step)
@@ -504,6 +534,7 @@ def build_step_config(workspace: Workspace, step: EccStep) -> None:
     with Path(cmd_path).open("w", encoding="utf-8"):
         pass
 
+    _append_text(env_path, _vt_environment(workspace))
     _append_text(env_path, _tech_text(workspace))
     _append_text(cmd_path, _cmd_text(workspace, step))
 

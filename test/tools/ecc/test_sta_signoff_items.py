@@ -8,9 +8,16 @@ import pytest
 from chipcompiler.data import PDK, OriginDesign, Workspace
 from chipcompiler.data.handshake import load_request
 from chipcompiler.data.types import AnalysisData
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.ecc import runner as ecc_runner
 from test.flow_fixture import step_fields
 from test.tools.ecc.sta_requests import sta_step_with_request
+
+_STA_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+
+
+def _default_sta_config():
+    return tool_config(_STA_CONFIGS_DIR, "sta_ecc.json", PDK(name="ics55", version="v1"))
 
 
 def test_sta_signoff_items_use_top_module_for_rcx_spef(tmp_path):
@@ -123,10 +130,9 @@ def test_derived_sta_workspace_reads_the_rcx_outputs_it_inherited(tmp_path):
 
 
 def test_default_sta_signoff_items_use_typ_and_min_corners(tmp_path):
-    template = Path(ecc_runner.__file__).parent / "configs" / "sta_ecc.json"
     sta_config = tmp_path / "config" / "sta_ecc.json"
     sta_config.parent.mkdir()
-    sta_config.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    sta_config.write_text(json.dumps(_default_sta_config()), encoding="utf-8")
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),

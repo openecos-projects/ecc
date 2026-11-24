@@ -5,6 +5,6 @@
   "max_sink_tran": "0.5",
   "max_cap": "0.15",
   "max_fanout": "32",
-  "routing_layer": [4, 5],
+  "routing_layer": [],
   "buffer_type": []
 }

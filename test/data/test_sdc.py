@@ -21,7 +21,7 @@ def workspace(tmp_path):
     return Workspace(
         directory=tmp_path,
         design=OriginDesign(name="design", top_module="chip"),
-        pdk=PDK(),
+        pdk=PDK(name="ics55", version="v1"),
         parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
 
@@ -177,7 +177,7 @@ def test_generated_constraints_refresh_uses_current_design_parameters(workspace,
 
 
 def _configured_signoff_pairs():
-    template = Path(__file__).parents[2] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
+    template = Path(__file__).parents[2] / "chipcompiler/tools/ecc/configs/defaults/sta_ecc.json"
     config = json.loads(template.read_text())
     return [
         (corner, rc)

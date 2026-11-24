@@ -22,6 +22,7 @@ from chipcompiler.data import (
     YosysStep,
 )
 from chipcompiler.data.pdk import get_pdk
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.yosys import builder as yosys_builder
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
 
@@ -57,9 +58,7 @@ def _build_workspace_and_step(tmp_path, *, rtl_name="top.v", create_rtl=True, fi
             libs=[lib_a, lib_b],
             dont_use=["DFF*", "CELL WITH SPACE"],
             tie_low_cell="TIELO",
-            tie_low_port="Z",
             tie_high_cell="TIEHI",
-            tie_high_port="Z",
             abc_driver_cell="BUFX4",
             abc_load=0.02,
         ),
@@ -192,8 +191,8 @@ def test_h7ch_is_excluded_from_synthesis_but_preserved_for_backend(
     workspace.pdk = get_pdk("ics55", pdk_root=pdk_root)
     baseline = yosys_builder.generate_global_var_tcl(workspace, step)
 
-    sta_template = Path(yosys_builder.__file__).resolve().parents[1] / "ecc/configs/sta_ecc.json"
-    sta = json.loads(sta_template.read_text())
+    configs_dir = Path(yosys_builder.__file__).resolve().parents[1] / "ecc/configs"
+    sta = tool_config(configs_dir, "sta_ecc.json", workspace.pdk)
     h7ch_libs = [
         _write_file(pdk_root / path.lstrip("/"))
         for corner in sta["liberty"]

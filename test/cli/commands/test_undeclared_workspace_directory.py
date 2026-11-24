@@ -30,6 +30,7 @@ def _workspace_directory(path: Path, *, design: str = "gcd", state: str = "Unsta
             path=home / "params.toml",
             data={
                 "pdk": "ics55",
+                "pdk_root": str(path.parent.parent / "ics55"),
                 "design": design,
                 "top_module": design,
                 "clock": "clk",

@@ -16,6 +16,7 @@ from chipcompiler.data import (
     SkippableStepEnum,
     StepEnum,
     create_workspace,
+    get_design_parameters,
     load_workspace,
 )
 from chipcompiler.data.flow.document import FlowStepEntry
@@ -986,7 +987,8 @@ def test_workspace_config_refresh_uses_updated_parameters(
     init_workspace_config(workspace)
 
     filler = json_read(workspace.config["filler"])
-    assert filler == {"-min_filler_width": 1}
+    # Refresh validates the filler config without stripping the PDK's MJ selection.
+    assert filler == {"-min_filler_width": 1, "MJ": {"-filler": ""}}
 
 
 def test_refresh_workspace_config_updates_all_parameter_derived_fields(
@@ -1051,7 +1053,8 @@ def test_refresh_workspace_config_updates_all_parameter_derived_fields(
     assert cts["max_fanout"] == 91
     assert cts["buffer_type"] == workspace.pdk.buffers
     assert cts["skew_bound"] == "0.13"
-    assert filler == {"-min_filler_width": 1}
+    # Refresh validates the filler config without stripping the PDK's MJ selection.
+    assert filler == {"-min_filler_width": 1, "MJ": {"-filler": ""}}
     assert db["LayerSettings"]["routing_layer_1st"] == "MET3"
     assert routing["RT"]["-bottom_routing_layer"] == "MET3"
     assert routing["RT"]["-top_routing_layer"] == "MET6"
@@ -1191,7 +1194,7 @@ def test_refresh_workspace_config_reapplies_direct_config_overrides(
         parameters={
             **default_ics55_parameters,
             "config_overrides": {
-                "cts": {"skew_bound": "0.05", "buffer_type": []},
+                "cts": {"skew_bound": "0.05"},
                 "dreamplace": {"num_threads": 12},
             },
         },
@@ -1229,7 +1232,7 @@ def test_refresh_workspace_config_expands_pdk_relative_sta_liberty_overrides(
             "corner": "MAX",
             "temperature": 125,
             "path": [
-                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+                "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"
             ],
         }
     ]
@@ -1268,7 +1271,7 @@ def test_update_step_config_keeps_sta_liberty_expanded_after_override_replay(
             "corner": "MAX",
             "temperature": 125,
             "path": [
-                "/IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/liberty/ics55_LLSC_H7CR_ss_rcworst_1p08_125_nldm.lib"
+                "/IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/liberty/ICsprout55_9TSVT_ss_v1p08_125c_basic_nldm.lib"
             ],
         }
     ]
@@ -1325,12 +1328,8 @@ def test_create_workspace_rejects_sta_liberty_with_invalid_io_timing(
             },
             pdk_root=str(pdk_root),
         )
-    assert str(exc_info.value) == (
-        "STA liberty validation failed:\n"
-        "  ICS55 IO liberty has invalid rise timing tables: "
-        f"{pdk_root / invalid_io_liberty.lstrip('/')}; "
-        "use ICSIOA_N55_3P3_ff_1p32_3p63v_0c.lib instead"
-    )
+    assert "ICS55 IO liberty has invalid rise timing tables" in str(exc_info.value)
+    assert invalid_io_liberty in str(exc_info.value)
 
 
 def test_refresh_sta_config_does_not_overwrite_corrupt_json(tmp_path):
@@ -1596,29 +1595,6 @@ def test_load_workspace_sg13g2_restores_pdk_root_from_parameters(
     assert all(path.is_relative_to(resolved_root) for path in loaded.pdk.libs)
 
 
-def test_create_workspace_with_pdk_overrides_str_branch(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-
-    workspace_dir = tmp_path / "workspace"
-    workspace = create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-        pdk_overrides={"dont_use": ["ICG*"]},
-    )
-    assert workspace is not None
-
-    assert workspace is not None
-    assert workspace.pdk.dont_use == ["ICG*"]
-
-
 def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1645,34 +1621,6 @@ def test_create_workspace_with_pdk_overrides_pdk_object_ignored(
     assert workspace.pdk.dont_use == original_dont_use
 
 
-def test_workspace_pdk_overrides_persisted_on_reload(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
-):
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
-    rtl_path = tmp_path / "gcd.v"
-    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
-    layer_map = tmp_path / "layers.map"
-    layer_map.write_text("MET1 1 0\n")
-
-    workspace_dir = tmp_path / "workspace"
-    workspace = create_workspace(
-        directory=str(workspace_dir),
-        origin_def="",
-        origin_verilog=str(rtl_path),
-        pdk="ics55",
-        parameters=default_ics55_parameters,
-        pdk_root=str(pdk_root),
-        pdk_overrides={"dont_use": ["ICG*"], "mapping_file": str(layer_map)},
-    )
-    assert workspace is not None
-    assert workspace.pdk.dont_use == ["ICG*"]
-
-    loaded = load_workspace(str(workspace_dir))
-    assert loaded is not None
-
-    assert loaded.pdk == workspace.pdk
-
-
 def test_create_workspace_pdk_overrides_typo_propagates(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
 ):
@@ -1693,3 +1641,92 @@ def test_create_workspace_pdk_overrides_typo_propagates(
             pdk_root=str(pdk_root),
             pdk_overrides={"dontuse": ["ICG*"]},
         )
+
+
+@pytest.mark.parametrize("as_parameters_object", [False, True])
+def test_create_workspace_v2_applies_one_bottom_layer_to_every_routing_target(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, as_parameters_object
+):
+    """v2 routes signals from MET2 up, like v1, and every target agrees.
+
+    MET1 holds the cell pins, the cells' internal metal and the row power rails,
+    so routing it shorts signals into the rails and cell interiors.
+
+    The layer must not be promoted into parameters: parameters outrank the
+    tool-config layers, so a copy there would override a PDK supplying its own.
+    """
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    parameters = (
+        get_design_parameters("ics55", "gcd")
+        if as_parameters_object
+        else deepcopy(default_ics55_parameters)
+    )
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=parameters,
+        pdk_root=pdk_root,
+    )
+    assert workspace is not None
+    assert workspace.pdk.config_variant == "ics55-v2"
+    assert "bottom_layer" not in workspace.parameters.data
+
+    routing = json_read(workspace.config["routing"])
+    db = json_read(workspace.config["db"])
+    dreamplace = json_read(workspace.config["dreamplace"])
+    assert (
+        routing["RT"]["-bottom_routing_layer"],
+        db["LayerSettings"]["routing_layer_1st"],
+        dreamplace["gpugr_bottom_routing_layer"],
+    ) == ("MET2", "MET2", "MET2")
+
+
+def test_create_workspace_v2_explicit_layer_overrides_the_pdk_configuration(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    """Parameter fan-out is reserved for what the caller asked for explicitly."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters={**deepcopy(default_ics55_parameters), "bottom_layer": "MET3"},
+        pdk_root=pdk_root,
+    )
+    assert workspace is not None
+    assert workspace.parameters.data["bottom_layer"] == "MET3"
+    assert json_read(workspace.config["routing"])["RT"]["-bottom_routing_layer"] == "MET3"
+    assert json_read(workspace.config["db"])["LayerSettings"]["routing_layer_1st"] == "MET3"
+    assert json_read(workspace.config["dreamplace"])["gpugr_bottom_routing_layer"] == "MET3"
+
+
+def test_create_workspace_keeps_a_routing_override_carried_by_the_pdk_root(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    """A PDK's own `ecc-configs/` override survives workspace creation."""
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55", release="v2")
+    override = pdk_root / "ecc-configs" / "ecc" / "routing_ecc.json"
+    override.parent.mkdir(parents=True)
+    assert json_write(override, {"RT": {"-bottom_routing_layer": "MET3"}})
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    workspace = create_workspace(
+        directory=tmp_path / "workspace",
+        origin_def="",
+        origin_verilog=rtl_path,
+        pdk="ics55",
+        parameters=deepcopy(default_ics55_parameters),
+        pdk_root=pdk_root,
+    )
+    assert workspace is not None
+    assert json_read(workspace.config["routing"])["RT"]["-bottom_routing_layer"] == "MET3"

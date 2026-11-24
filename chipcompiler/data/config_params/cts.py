@@ -45,7 +45,7 @@ SCHEMAS = (
         "cts.routing_layer",
         "cts",
         ("routing_layer",),
-        [4, 5],
+        [],
         applies="cts",
         description="Clock-routing layer range as metal-layer indices.",
         type="list[int]",

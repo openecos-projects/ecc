@@ -11,7 +11,15 @@ from typing import Any
 
 import pytest
 
+from chipcompiler.data.pdk import PDK
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.ecc import sta_parallel as sta
+
+_STA_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+
+
+def _default_sta_config():
+    return tool_config(_STA_CONFIGS_DIR, "sta_ecc.json", PDK(name="ics55", version="v1"))
 
 
 def _guarded_worker(connection, stale_parent):
@@ -144,8 +152,7 @@ def _workspace(tmp_path):
 
 
 def _sta_config(**overrides):
-    template = Path(sta.__file__).parent / "configs" / "sta_ecc.json"
-    return {**json.loads(template.read_text()), **overrides}
+    return {**_default_sta_config(), **overrides}
 
 
 def test_worker_setting_applies_to_every_workspace_sta_step(tmp_path, monkeypatch):

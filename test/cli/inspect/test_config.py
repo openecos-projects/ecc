@@ -50,7 +50,7 @@ class TestConfigResolved:
         mock_pdk_validation()
         pdk_root = tmp_path / "ics55_env"
         pdk_root.mkdir()
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", str(pdk_root))
+        monkeypatch.setenv("ECC_PDK_ROOT", str(pdk_root))
 
         project_dir = create_cli_project(pdk_root="")
 

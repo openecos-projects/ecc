@@ -42,8 +42,10 @@ def _synthesis_libraries(paths: list[Path]) -> list[str]:
     for path in paths:
         if not path or not path.is_file():
             continue
-        # H7CH is backend-only; latch techmap also selects from loaded libraries.
-        if path.name.startswith("ics55_LLSC_H7CH_"):
+        # HVT is backend-only for ICS55; keep the legacy H7CH spelling and
+        # recognize the v2 9T library name without coupling to its directory.
+        name = path.name.lower()
+        if "h7ch" in name or "_9thvt_" in name:
             continue
         abs_path = os.path.abspath(path)
         if abs_path in seen:
@@ -189,10 +191,8 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     dont_use_cells = pdk.dont_use if pdk.dont_use else []
 
     tie_low_cell = pdk.tie_low_cell if pdk.tie_low_cell else ""
-    tie_low_port = pdk.tie_low_port if pdk.tie_low_port else ""
     tie_high_cell = pdk.tie_high_cell if pdk.tie_high_cell else ""
-    tie_high_port = pdk.tie_high_port if pdk.tie_high_port else ""
-    abc_driver_cell = pdk.abc_driver_cell if pdk.abc_driver_cell else "BUFX4H7L"
+    abc_driver_cell = pdk.abc_driver_cell
     abc_load = pdk.abc_load if pdk.abc_load else DEFAULT_ABC_LOAD
 
     lib_stdcell_paths = workspace.pdk.libs if workspace.pdk.libs else []
@@ -242,9 +242,7 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     script.comment("Cell configurations")
     script.set_list("dont_use_cells", dont_use_cells)
     script.set("tie_low_cell", tcl.word(tie_low_cell))
-    script.set("tie_low_port", tcl.word(tie_low_port))
     script.set("tie_high_cell", tcl.word(tie_high_cell))
-    script.set("tie_high_port", tcl.word(tie_high_port))
     script.set("abc_driver_cell", tcl.word(abc_driver_cell))
     script.set("abc_load", abc_load)
     script.blank_line()
@@ -252,6 +250,27 @@ def generate_global_var_tcl(workspace: Workspace, step: YosysStep) -> str:
     script.comment("Library files")
     script.set_list("lib_stdcell_list", lib_stdcell)
     script.set_list("lib_list", lib_files)
+    script.blank_line()
+
+    # Pins are resolved from the loaded Liberty in Tcl: outputs (tie, latch Q,
+    # inverter/tbuf Y) by direction, and each enable as the leftover input.
+    # Only the data/reset/set role names are PDK-level facts.
+    script.comment("Latch and tri-state cell configurations")
+    latch_cells = pdk.latch_cells
+    latch_pins = pdk.latch_pins
+    tbuf_pins = pdk.tbuf_pins
+    script.set("latch_cell_n", tcl.word(latch_cells.get("$_DLATCH_N_", "")))
+    script.set("latch_cell_p", tcl.word(latch_cells.get("$_DLATCH_P_", "")))
+    script.set("latch_cell_nn0", tcl.word(latch_cells.get("$_DLATCH_NN0_", "")))
+    script.set("latch_cell_nn1", tcl.word(latch_cells.get("$_DLATCH_NN1_", "")))
+    script.set("latch_cell_pn0", tcl.word(latch_cells.get("$_DLATCH_PN0_", "")))
+    script.set("latch_cell_pn1", tcl.word(latch_cells.get("$_DLATCH_PN1_", "")))
+    script.set("latch_pin_data", tcl.word(latch_pins.get("data", "")))
+    script.set("latch_pin_reset", tcl.word(latch_pins.get("reset", "")))
+    script.set("latch_pin_set", tcl.word(latch_pins.get("set", "")))
+    script.set("inverter_cell", tcl.word(pdk.inverter_cell))
+    script.set("tbuf_cell", tcl.word(pdk.tbuf_cell))
+    script.set("tbuf_pin_data", tcl.word(tbuf_pins.get("data", "")))
     script.blank_line()
 
     script.comment("Working directories")

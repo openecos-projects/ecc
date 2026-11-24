@@ -38,6 +38,26 @@ def test_forked_route_layers_reach_every_target_with_the_pdk_default(tmp_path: P
     assert _read(paths, "dreamplace")["gpugr_top_routing_layer"] == "Metal5"
 
 
+def test_profile_route_layers_reach_every_target_from_pdk_parameters(tmp_path: Path) -> None:
+    paths = _configs(
+        tmp_path,
+        {"routing": {"RT": {}}, "db": {"LayerSettings": {}}, "dreamplace": {}},
+    )
+
+    derive_parameter_configs(
+        paths,
+        {"pdk": "ics55", "bottom_layer": "MET1", "top_layer": "MET5"},
+    )
+
+    assert _read(paths, "routing")["RT"] == {
+        "-bottom_routing_layer": "MET1",
+        "-top_routing_layer": "MET5",
+    }
+    assert _read(paths, "db")["LayerSettings"]["routing_layer_1st"] == "MET1"
+    assert _read(paths, "dreamplace")["gpugr_bottom_routing_layer"] == "MET1"
+    assert _read(paths, "dreamplace")["gpugr_top_routing_layer"] == "MET5"
+
+
 def test_stored_core_margin_fans_out_into_per_side_scalars(tmp_path: Path) -> None:
     paths = _configs(tmp_path, {"floorplan": {"die_builder": {}}})
 

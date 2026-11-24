@@ -22,17 +22,23 @@ from chipcompiler.data.handshake import (
 from chipcompiler.data.types import AnalysisData, DesignState
 from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.timing_constraints import prepare_timing_context, step_tcl_path
 from test.flow_fixture import publish_response
 
+_STA_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+
+
+def _default_sta_config():
+    return tool_config(_STA_CONFIGS_DIR, "sta_ecc.json", PDK(name="ics55", version="v1"))
+
 
 @pytest.fixture
 def timing_workspace(tmp_path):
-    template = Path(runner.__file__).parent / "configs" / "sta_ecc.json"
-    config = json.loads(template.read_text())
+    config = _default_sta_config()
     for library in config["liberty"]:
         library["path"] = [str(tmp_path / Path(path).name) for path in library["path"]]
         for path in library["path"]:
@@ -45,7 +51,9 @@ def timing_workspace(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
-        pdk=PDK(libs=[Path(path) for path in config["liberty"][0]["path"]]),
+        pdk=PDK(
+            name="ics55", version="v1", libs=[Path(path) for path in config["liberty"][0]["path"]]
+        ),
         config={StepEnum.STA.value: config_path},
         parameters=Parameters(data={"clock": "clk", "frequency_max": 100}),
     )
@@ -251,11 +259,13 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     ]
     assert all(path is not None and path.is_file() for path in paths)
 
+    # The workspace no longer declares TYP, so default consumers follow its
+    # own first scenario rather than a corner name its config dropped.
     for name, phase in ((StepEnum.PREPLACE, "pre_CTS"), (StepEnum.HARDEN, "post_CTS")):
         step = build_step(workspace, name.value, input_def=None, input_verilog=None)
-        typical = step_tcl_path(workspace, step)
-        assert typical == workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
-        assert typical is not None and typical.is_file()
+        default = step_tcl_path(workspace, step)
+        assert default == workspace.directory / "origin" / phase / "MAX_85_Cworst.tcl"
+        assert default is not None and default.is_file()
     assert config_path.read_bytes() == config_before
 
 

@@ -17,8 +17,11 @@ from chipcompiler.data.workspace.timing_constraints import scenario_tcl_path, ti
 
 @pytest.fixture
 def sta_template():
-    path = Path(__file__).resolve().parents[2] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
-    return json.loads(path.read_text())
+    from chipcompiler.data.pdk import PDK
+    from chipcompiler.data.workspace.tool_configs import tool_config
+
+    configs_dir = Path(__file__).resolve().parents[2] / "chipcompiler/tools/ecc/configs"
+    return tool_config(configs_dir, "sta_ecc.json", PDK(name="ics55", version="v1"))
 
 
 @pytest.mark.parametrize("read_only", [False, True])
@@ -180,13 +183,15 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
     override_keys,
 ):
     template = sta_template
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "pdk").resolve()
+    (pdk_root / "liberty").mkdir()
+    (pdk_root / "liberty/custom.lib").write_text("library(fixture) {}")
     max_library = next(item for item in template["liberty"] if item["corner"] == "MAX")
     choices = {
-        "liberty": [{**max_library, "path": ["liberty/custom.lib"]}],
+        "liberty": [{**max_library, "path": [str(pdk_root / "liberty/custom.lib")]}],
         "signoff": [{"MAX": ["Cworst"]}],
     }
     overrides = {key: choices[key] for key in override_keys}
-    pdk_root = minimal_ics55_pdk_factory(tmp_path / "pdk")
     workspace = create_workspace(
         directory=tmp_path / "run",
         origin_def="",
@@ -199,25 +204,27 @@ def test_selected_sta_corners_preserve_default_and_configured_constraint_sets(
         },
     )
     assert workspace is not None
-    temperatures = {item["corner"]: str(item["temperature"]) for item in template["liberty"]}
+    expected_sta = deepcopy(template)
+    for library in expected_sta["liberty"]:
+        library["path"] = [
+            str(pdk_root / path.lstrip("/")) if path.startswith("/IP/") else path
+            for path in library["path"]
+        ]
+    expected_sta.update(overrides)
+    # Scripts belong to the persisted workspace config alone: overriding
+    # signoff replaces the scenario set instead of adding to the defaults.
+    temperatures = {item["corner"]: str(item["temperature"]) for item in expected_sta["liberty"]}
     expected_scripts = {
         workspace.directory
         / "origin"
         / phase
         / f"{corner}_{temperatures[corner].replace('-', 'm').replace('.', 'p')}_{rc}.tcl"
         for phase in ("pre_CTS", "post_CTS")
-        for group in template["signoff"]
+        for group in expected_sta["signoff"]
         for corner, rc_corners in group.items()
+        if corner in temperatures
         for rc in rc_corners
     }
-    if "signoff" in overrides:
-        expected_scripts.update(
-            workspace.directory / "origin" / phase / f"MAX_{temperatures['MAX']}_Cworst.tcl"
-            for phase in ("pre_CTS", "post_CTS")
-        )
-    expected_sta = deepcopy(template | overrides)
-    for library in expected_sta["liberty"]:
-        library["path"] = [str(pdk_root / path.lstrip("/")) for path in library["path"]]
     assert set((workspace.directory / "origin").rglob("*.tcl")) == expected_scripts
     assert json.loads(workspace.config["sta"].read_text()) == expected_sta
 
