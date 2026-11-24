@@ -198,12 +198,7 @@ def collect_xplace_runtime():
     candidates = (
         *((Path(staged_root).expanduser(),) if staged_root else ()),
         Path(sysconfig.get_path("platlib")) / "thirdparty" / "xplace",
-        ECC_DIR
-        / "chipcompiler"
-        / "thirdparty"
-        / "ecc-dreamplace"
-        / "thirdparty"
-        / "xplace",
+        ECC_DIR / "chipcompiler" / "thirdparty" / "ecc-dreamplace" / "thirdparty" / "xplace",
     )
     for root in candidates:
         cpybin = root / "cpp_to_py" / "cpybin"
