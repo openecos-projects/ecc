@@ -86,7 +86,7 @@ def skip_steps_shadow_warning(entry, cfg) -> dict | None:
     try:
         toml_effective = effective(cfg.flow_skip_steps or [])
         manifest_effective = effective(manifest_value)
-    except ValueError:
+    except (ValueError, TypeError):
         # An invalid list or no-clock declaration shadows nothing; config
         # validation reports it through the canonical resolver.
         return None

@@ -109,9 +109,9 @@ class ProjectNoClockDecisionResolver:
     def materials(self) -> dict[str, object] | None:
         if self.config is None:
             return None
-        clock = self.config._clock_material
+        clock = getattr(self.config, "_clock_material", None)
         if clock is None:
-            clock = self.config.design_clock_port
+            clock = getattr(self.config, "design_clock_port", None)
         return {"clock_port": clock}
 
     def resolve(self) -> "NoClockDecision":
