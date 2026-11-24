@@ -204,8 +204,9 @@ class TestEffectiveConfigValidation:
     def test_manifest_only_check_fails_semantic_validation(self, tmp_path, capsys, manifest_stubs):
         project_dir = tmp_path / "proj"
         project_dir.mkdir()
-        # Missing top/clock and an empty PDK root must fail `ecc check` for a
-        # manifest-only project, not pass silently.
+        # Missing top and an empty PDK root must fail `ecc check` for a
+        # manifest-only project, not pass silently. The empty clock instead
+        # infers no-clock mode through the canonical policy resolver.
         manifest_stubs.write(
             project_dir,
             [manifest_stubs.entry(project_dir, "ws_0001")],
@@ -217,7 +218,7 @@ class TestEffectiveConfigValidation:
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert "design.top is required" in reasons
-        assert "design.clock_port is required" in reasons
+        assert "design.clock_port is required" not in reasons
         assert "PDK tech LEF is missing" in reasons
 
     def test_manifest_only_check_validates_every_rtl_source(

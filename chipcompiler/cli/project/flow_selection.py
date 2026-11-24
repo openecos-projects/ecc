@@ -28,13 +28,19 @@ FlowConfig = Mapping[str, object]
 
 def effective_skip_steps(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> tuple[str, ...]:
     """Canonical skipped step names; raises ``ValueError`` for an invalid policy."""
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
     from chipcompiler.rtl2gds import resolve_skip_steps
 
-    if flow_config is not None and "skip_steps" in flow_config:
-        return resolve_skip_steps(flow_config)
-    if "flow.skip_steps" in _explicit_keys(cfg):
-        return resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
-    return resolve_skip_steps(None)
+    explicit = _explicit_keys(cfg)
+    probe: dict[str, object] = dict(flow_config or {})
+    if "skip_steps" not in probe and "flow.skip_steps" in explicit:
+        probe["skip_steps"] = cfg.flow_skip_steps
+    if "no_clock" not in probe and "flow.no_clock" in explicit:
+        probe["no_clock"] = cfg.flow_no_clock
+    return resolve_skip_steps(
+        probe or None,
+        materials=ProjectNoClockDecisionResolver(cfg).materials(),
+    )
 
 
 def effective_insert_steps(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> tuple[str, ...]:
@@ -204,10 +210,19 @@ def _plan_or_error(
 
 
 def _policy_declared(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> bool:
-    return any(
+    if any(
         (flow_config is not None and key in flow_config) or f"flow.{key}" in _explicit_keys(cfg)
-        for key in ("skip_steps", "insert_steps")
-    )
+        for key in ("skip_steps", "insert_steps", "no_clock")
+    ):
+        return True
+    # Inferred no-clock is an effective policy too: it must reject skipped
+    # range boundaries even though no flow key was written explicitly.
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+    try:
+        return ProjectNoClockDecisionResolver(cfg).resolve().enabled
+    except ValueError:
+        return False
 
 
 def effective_lec_engine(cfg: "ProjectConfig", flow_config: FlowConfig | None) -> "LECEngineEnum":

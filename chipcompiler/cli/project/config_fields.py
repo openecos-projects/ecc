@@ -31,6 +31,7 @@ PROJECT_FIELDS = (
     ProjectField("pdk.overrides.lefs", "pdk.overrides", "lefs", "str", list_value=True),
     ProjectField("pdk.overrides.libs", "pdk.overrides", "libs", "str", list_value=True),
     ProjectField("flow.preset", "flow", "preset", "str"),
+    ProjectField("flow.no_clock", "flow", "no_clock", "bool"),
 )
 
 _FIELD_INDEX = {field.key: field for field in PROJECT_FIELDS}
@@ -42,7 +43,7 @@ def lookup_project_field(key: str) -> ProjectField | None:
 
 def parse_project_field_values(
     field: ProjectField, values: tuple[str, ...]
-) -> str | float | list[str]:
+) -> str | float | bool | list[str]:
     if field.list_value:
         if not values or any(not value.strip() for value in values):
             raise ValueError(f"{field.key} requires one or more non-empty values")
@@ -52,6 +53,11 @@ def parse_project_field_values(
     value = values[0].strip()
     if not value:
         raise ValueError(f"{field.key} must not be empty")
+    if field.type == "bool":
+        normalized = value.lower()
+        if normalized not in ("true", "false"):
+            raise ValueError(f"{field.key} must be true or false")
+        return normalized == "true"
     if field.type == "float":
         try:
             parsed = float(value)

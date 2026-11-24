@@ -88,9 +88,11 @@ class TestDivergenceProjectionFields:
 
 
 class TestExplicitEmptyStaysExplicit:
-    """A key present in ecc.toml — even with an empty value — is never
-    filled from the manifest layer: it stays explicit, fails validation,
-    and participates in divergence reporting."""
+    """Explicit empty values are not filled from the manifest layer.
+
+    They face validation, except that an empty clock is the declaration from
+    which the canonical resolver infers no-clock mode.
+    """
 
     def _hybrid(self, manifest_stubs, tmp_path, monkeypatch, toml_text):
         project_dir = tmp_path / "proj"
@@ -116,9 +118,9 @@ class TestExplicitEmptyStaysExplicit:
             id="empty-top",
         ),
         pytest.param(
-            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
-            "design.clock_port is required",
-            id="empty-clock",
+            _HYBRID_TOML.replace('name = "ics55"', 'name = ""'),
+            "pdk.name is required",
+            id="empty-pdk-name",
         ),
         pytest.param(
             _HYBRID_TOML.replace('root = "{ROOT}"', 'root = ""'),
@@ -143,6 +145,25 @@ class TestExplicitEmptyStaysExplicit:
         assert rc != 0
         reasons = "\n".join(r.get("reason", "") for r in manifest_stubs.records())
         assert expected in reasons
+
+    def test_empty_clock_infers_no_clock_for_check_and_run(
+        self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks
+    ):
+        project_dir = self._hybrid(
+            manifest_stubs,
+            tmp_path,
+            monkeypatch,
+            _HYBRID_TOML.replace('clock_port = "clk"', 'clock_port = ""'),
+        )
+
+        assert cli_main.run(["check", "--project", str(project_dir), "--plain"]) == 0
+        checked = manifest_stubs.records()[0]
+        assert (checked["no_clock"], checked["no_clock_source"]) == ("True", "inferred")
+
+        assert cli_main.run(["run", "--project", str(project_dir), "--plain"]) == 0
+        created = flow_mocks.capture["create_kwargs"]
+        assert created["flow_config"]["no_clock"] is True
+        assert created["parameters"]["clock"] == ""
 
     def test_check_explicit_empty_rtl_allowed_until_run(
         self, manifest_stubs, tmp_path, capsys, monkeypatch, flow_mocks

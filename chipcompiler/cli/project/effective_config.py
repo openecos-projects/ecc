@@ -73,14 +73,23 @@ def skip_steps_shadow_warning(entry, cfg) -> dict | None:
     manifest_value = getattr(entry, "skip_steps", None)
     if manifest_value is None:
         return None
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
     from chipcompiler.rtl2gds.builder import resolve_skip_steps
 
+    resolver = ProjectNoClockDecisionResolver(cfg)
+    policy = resolver.flow_config()
+    materials = resolver.materials()
+
+    def effective(skip_steps) -> tuple[str, ...]:
+        return resolve_skip_steps({**policy, "skip_steps": list(skip_steps)}, materials=materials)
+
     try:
-        toml_effective = resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+        toml_effective = effective(cfg.flow_skip_steps or [])
+        manifest_effective = effective(manifest_value)
     except ValueError:
-        # An invalid list shadows nothing; config validation reports it.
+        # An invalid list or no-clock declaration shadows nothing; config
+        # validation reports it through the canonical resolver.
         return None
-    manifest_effective = resolve_skip_steps({"skip_steps": list(manifest_value)})
     if toml_effective == manifest_effective:
         return None
     return warning_record(
@@ -110,6 +119,40 @@ def _attach_flow_key(flow_config: dict | None, key: str, value) -> dict | None:
     flow_config = dict(flow_config or {})
     flow_config[key] = value
     return flow_config
+
+
+def _attach_no_clock(
+    flow_config: dict | None, *, no_clock_decision, declared: bool = False
+) -> dict | None:
+    """Carry enabled and explicitly disabled no-clock policy.
+
+    Inference is materialized before workspace creation, while explicit false
+    must survive to prevent a later empty-clock reload from enabling it.
+    """
+    if no_clock_decision.enabled:
+        return _attach_flow_key(flow_config, "no_clock", value=True)
+    if declared:
+        return _attach_flow_key(flow_config, "no_clock", value=False)
+    return flow_config
+
+
+def attach_project_no_clock(flow_config: dict | None, cfg) -> dict | None:
+    """Attach the project's effective decision without raising on bad input.
+
+    Validation owns the structured error. An invalid declared flag rides along
+    in its raw form so every subsequent resolver rejects it consistently; an
+    invalid inference material is likewise reported by project validation.
+    """
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+    resolver = ProjectNoClockDecisionResolver(cfg)
+    try:
+        decision = resolver.resolve()
+    except ValueError:
+        if resolver.declared:
+            return _attach_flow_key(flow_config, "no_clock", cfg.flow_no_clock)
+        return flow_config
+    return _attach_no_clock(flow_config, no_clock_decision=decision, declared=resolver.declared)
 
 
 def declared_lec_engine(cfg) -> str | None:
@@ -169,6 +212,7 @@ def resolve_effective_config(
     declared = declared_skip_steps(entry, cfg)
     flow_config = _attach_skip_steps(flow_config, declared)
     flow_config = _attach_lec_engine(flow_config, declared_lec_engine(cfg))
+    flow_config = attach_project_no_clock(flow_config, cfg)
     flow_config = attach_insert_steps(flow_config, manifest_synthesis_lec(entry, cfg))
     flow_config = attach_insert_steps(flow_config, declared_insert_steps(cfg))
     # Provenance for inspection surfaces: the winning layer's name.
@@ -216,6 +260,7 @@ def _manifest_only_config(ctx, assembled, entry):
     cfg.params_overrides = {}
     cfg.manifest_driven = True
     cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
+    cfg._clock_material = assembled["clock"]
 
     from .timing_inputs import resolve_timing_input_metadata
 
@@ -253,7 +298,7 @@ def _source_path(assembled: dict, key: str, project_dir: str) -> str:
 def _assembled_frequency(assembled: Mapping[str, object]) -> float:
     """The manifest layer's frequency_mhz as a float (0.0 when absent/invalid)."""
     declared = assembled.get("frequency_mhz")
-    if not isinstance(declared, int | float | str):
+    if isinstance(declared, bool) or not isinstance(declared, int | float | str):
         return 0.0
     try:
         return float(declared or 0)
@@ -277,6 +322,7 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
         cfg.design_top = assembled["top_module"]
     if "design.clock_port" not in explicit:
         cfg.design_clock_port = assembled["clock"]
+        cfg._clock_material = assembled["clock"]
     if "design.rtl" not in explicit:
         cfg.design_rtl = _source_rtl(assembled)
     for dotted, field_name, source_key in (
@@ -366,7 +412,16 @@ def _manifest_frequency_errors(
     supplies; an ecc.toml ``[design]``/``[params]`` value, a ``--set`` value
     or a validated timing-input file takes over the key and is validated there.
     """
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
     from chipcompiler.params import lookup_schema, validate_value
+
+    try:
+        no_clock = ProjectNoClockDecisionResolver(cfg).resolve()
+    except ValueError:
+        return []
+    clock_retained = isinstance(cfg.design_clock_port, str) and bool(cfg.design_clock_port.strip())
+    if no_clock.enabled and not clock_retained:
+        return []
 
     key = "design.frequency_mhz"
     overridden = (

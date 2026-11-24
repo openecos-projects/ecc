@@ -236,6 +236,7 @@ def execute_fresh_run(
 
     from chipcompiler import rtl2gds as rtl2gds_api
     from chipcompiler.cli.project.config import (
+        ProjectNoClockDecisionResolver,
         resolve_max_parallel_steps,
         resolve_pdk_overrides,
         resolve_pdk_root,
@@ -480,18 +481,18 @@ def execute_fresh_run(
                 if workspace_parameters is not None:
                     from chipcompiler.data.workspace.config import (
                         FLOW_POLICY_KEYS,
-                        validate_flow_config,
+                        flow_section_from_flow_config,
                     )
 
-                    flow_section: dict = {"preset": cfg.flow_preset}
                     policies = (
                         {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
                         if isinstance(flow_config, dict)
                         else {}
                     )
-                    if policies:
-                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
-                    workspace_parameters.data["_flow"] = flow_section
+                    workspace_parameters.data["_flow"] = flow_section_from_flow_config(
+                        {"preset": cfg.flow_preset, **policies},
+                        materials=ProjectNoClockDecisionResolver(cfg).materials(),
+                    )
                     if not save_parameter(workspace_parameters):
                         return failed_workspace("failed to persist the flow target in params.toml")
         except Exception as exc:
@@ -515,7 +516,11 @@ def execute_fresh_run(
                 )
                 for step, tool, state in rtl2gds_api.insert_flow_steps(
                     rtl2gds_api.filter_flow_steps(
-                        seeded, rtl2gds_api.resolve_skip_steps(flow_config)
+                        seeded,
+                        rtl2gds_api.resolve_skip_steps(
+                            flow_config,
+                            materials=ProjectNoClockDecisionResolver(cfg).materials(),
+                        ),
                     ),
                     rtl2gds_api.resolve_insert_steps(flow_config),
                     lec_engine,

@@ -16,10 +16,14 @@ from chipcompiler.cli.core.types import CommandResult
 
 
 def _declared_selection(flow_config) -> dict:
-    """The declared skipped and inserted steps a run's flow config carries."""
+    """The declared step policies a run's flow config carries."""
     if not isinstance(flow_config, dict):
         return {}
-    return {key: flow_config[key] for key in ("skip_steps", "insert_steps") if key in flow_config}
+    return {
+        key: flow_config[key]
+        for key in ("skip_steps", "insert_steps", "no_clock")
+        if key in flow_config
+    }
 
 
 def _workspace_range_target(run_dir: str, flow_config) -> dict | None:
@@ -194,6 +198,7 @@ def _resume_existing_workspace(
             for key, value in (
                 ("skip_steps", cfg.flow_skip_steps),
                 ("insert_steps", cfg.flow_insert_steps),
+                ("no_clock", cfg.flow_no_clock),
             ):
                 if key not in target_section and f"flow.{key}" in cfg._explicit_keys:
                     target_section[key] = value
