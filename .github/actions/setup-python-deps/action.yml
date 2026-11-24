@@ -36,7 +36,7 @@ runs:
           flex flex-devel bison eigen3-devel gtest-devel \
           tbb-devel hwloc-devel libcurl-devel libunwind-devel \
           metis-devel gmp-devel tcl-devel \
-          unzip zip gh jq
+          unzip zip gh jq bzip2
 
     - name: Setup Rust
       if: ${{ inputs.build-all == 'true' }}

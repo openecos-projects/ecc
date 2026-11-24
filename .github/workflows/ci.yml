@@ -171,7 +171,7 @@ jobs:
       - name: Extract PDK
         run: |
           mkdir -p ../pdk/icsprout55-pdk
-          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
+          tar -xjf ../pdk/icsprout55-pdk.tar.bz2 -C ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
@@ -309,6 +309,7 @@ jobs:
     outputs:
       revision: ${{ steps.checkout.outputs.revision }}
       release: ${{ steps.unpack.outputs.release }}
+      sha256: ${{ steps.package.outputs.sha256 }}
     steps:
       - name: Checkout PDK
         id: checkout
@@ -325,19 +326,59 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           cd pdk
-          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
-          make unzip
+
+          assets=()
+          for vt in HVT LVT SVT; do
+            base="ICsprout55_SC9T_BASIC_${vt}"
+            assets+=("${base}_liberty_nldm.tar.bz2" "${base}_gds.tar.bz2")
+          done
+          io_asset="ICsprout_55LLULP1225_IO_0901_gds.tar.bz2"
+          assets+=("$io_asset")
+
+          download_args=()
+          for asset in "${assets[@]}"; do
+            download_args+=(--pattern "$asset")
+          done
+          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" "${download_args[@]}"
+
+          : > ci-release-assets.sha256
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+            awk -v asset="$asset" '$2 == asset {print; found = 1} END {if (!found) exit 1}' \
+              release-assets.sha256 >> ci-release-assets.sha256
+          done
+          sha256sum --check ci-release-assets.sha256
+
+          for vt in HVT LVT SVT; do
+            base="ICsprout55_SC9T_BASIC_${vt}"
+            target="IP/STD_cell/$base"
+            mkdir -p "$target"
+            tar -xjf "${base}_liberty_nldm.tar.bz2" -C "$target"
+            tar -xjf "${base}_gds.tar.bz2" -C "$target"
+          done
+          mkdir -p IP/IO
+          tar -xjf "$io_asset" -C IP/IO
+          rm -- "${assets[@]}" ci-release-assets.sha256
           echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Package PDK
-        run: tar -czf icsprout55-pdk.tar.gz -C pdk .
+        id: package
+        run: |
+          printf 'repo=%s\nrevision=%s\nrelease=%s\n' \
+            "$PDK_REPO" "$PDK_GIT_COMMIT" "$PDK_RELEASE" > pdk/ci-metadata
+          tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+            --exclude='./.git' -cjf icsprout55-pdk.tar.bz2 -C pdk .
+          archive_sha256="$(sha256sum icsprout55-pdk.tar.bz2)"
+          echo "sha256=${archive_sha256%% *}" >> "$GITHUB_OUTPUT"
 
       - name: Upload PDK
         uses: actions/upload-artifact@v4
         with:
           name: icsprout55-pdk
-          path: icsprout55-pdk.tar.gz
+          path: icsprout55-pdk.tar.bz2
+          compression-level: 0
 
   sizer:
     name: Fetch Sizer
@@ -436,9 +477,6 @@ jobs:
           oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
           kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
-          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
-          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
-          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
 
       - name: Setup OSS CAD Suite
         if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
@@ -529,9 +567,7 @@ jobs:
           oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
           kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
-          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
-          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
-          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+          pdk-sha256: ${{ needs.pdk.outputs.sha256 }}
 
       - name: Download PDK artifact
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
@@ -552,14 +588,10 @@ jobs:
         uses: ./.github/actions/stage-tool
         with:
           stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
-          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
+          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.bz2
           extract: "true"
           extract-subdir: icsprout55-pdk
           root-marker: icsprout55-pdk/techfile/icsprout55.layermap
-          metadata-path: icsprout55-pdk/ci-metadata
-          metadata: |
-            revision=${{ needs.pdk.outputs.revision }}
-            release=${{ needs.pdk.outputs.release }}
 
       - name: Stage Sizer on shared storage
         if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
@@ -619,7 +651,7 @@ jobs:
           test -s "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
           test -s "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
           test -s "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
-          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2"
 
           archive_sha256() {
             local archive="$1"
@@ -640,6 +672,7 @@ jobs:
           sizer_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/sizer/ci-metadata")"
           kepler_head_sha="$(metadata_value head_sha "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
           kepler_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          pdk_repo="$(metadata_value repo "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           pdk_revision="$(metadata_value revision "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           pdk_release="$(metadata_value release "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           ecc_commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/"
@@ -651,7 +684,7 @@ jobs:
             "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz" \
             "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz" \
             "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz" \
-            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"; do
+            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2"; do
             checksum="$(archive_sha256 "$archive")"
             printf '%s  %s\n' "$checksum" "${archive#"$E2E_STAGE_ROOT"/}"
           done
@@ -697,11 +730,12 @@ jobs:
             printf '```text\n'
             "$E2E_STAGE_ROOT/kepler-formal/bin/kepler-formal" --version
             printf '```\n\n### PDK\n\n'
-            printf -- '- Git commit: [%s](https://github.com/openecos-projects/icsprout55-pdk/commit/%s)\n' \
-              "$pdk_revision" "$pdk_revision"
+            printf -- '- Repository: [%s](https://github.com/%s)\n' "$pdk_repo" "$pdk_repo"
+            printf -- '- Git commit: [%s](https://github.com/%s/commit/%s)\n' \
+              "$pdk_repo" "$pdk_repo" "$pdk_revision"
             printf -- '- Release: [%s](https://github.com/openecos-projects/icsprout55-pdk/releases/tag/%s)\n' \
               "$pdk_release" "$pdk_release"
-            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz")"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2")"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   e2e-designs:
