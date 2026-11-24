@@ -194,7 +194,9 @@ def collect_dreamplace_thirdparty_files():
 
 
 def collect_xplace_runtime():
+    staged_root = os.environ.get("ECC_XPLACE_ROOT")
     candidates = (
+        *((Path(staged_root).expanduser(),) if staged_root else ()),
         Path(sysconfig.get_path("platlib")) / "thirdparty" / "xplace",
         ECC_DIR
         / "chipcompiler"
@@ -204,7 +206,10 @@ def collect_xplace_runtime():
         / "xplace",
     )
     for root in candidates:
-        if not root.is_dir():
+        cpybin = root / "cpp_to_py" / "cpybin"
+        if not any(cpybin.glob("gpugr*.so")):
+            if staged_root and root == candidates[0]:
+                raise RuntimeError(f"No Xplace native build under ECC_XPLACE_ROOT: {root}")
             continue
         datas = []
         binaries = []
@@ -218,7 +223,6 @@ def collect_xplace_runtime():
                 continue
             destination = str(Path("thirdparty/xplace") / Path(relpath).parent)
             datas.append((str(path), destination))
-        cpybin = root / "cpp_to_py" / "cpybin"
         for path in sorted(cpybin.glob("*.so")):
             binaries.append((str(path), "thirdparty/xplace/cpp_to_py/cpybin"))
         if datas or binaries:

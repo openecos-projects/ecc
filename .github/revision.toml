@@ -9,12 +9,12 @@ sha256 = "a6ccc6b96b2d985336a1061c78b2fd2bdd73e0f68690da17db88e00457881a11"
 [sizer]
 repo = "openecos-projects/ecc-sizer"
 workflow = "ci.yml"
-run_id = 44663746004
-git_commit = "2a5daeb5b75de644b5b2cf3593f3ec218b5c7086"
+run_id = 45437438974
+git_commit = "d22d20a08a55148bdad94c0655746ec2092ca62c"
 artifact = "ecc-sizer-linux-x64"
 archive = "ecc-sizer-linux-x64.tar.gz"
 root_marker = "src/sizer_os.tcl"
-sha256 = "eb708584839068c86927bd3ff560192608a7998071e0586693da7b002c2b5f06"
+sha256 = "478d76d361810e8acec039e42d7c8295431b8586da9897c238a77eeba0a41e8c"
 
 [kepler-formal]
 repo = "openecos-projects/kepler-formal"
