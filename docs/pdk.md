@@ -36,6 +36,12 @@ neither override just gets the defaults.
 Corner names, routing layers, cell lists and VT suffixes are all PDK-specific
 and belong in an override, never in `defaults/`.
 
+A tool's routing layers are its own: DreamPlace's `gpugr_*_routing_layer` is
+not required to match the detailed router's `RT.-bottom_routing_layer`. Its
+global router never routes the first metal layer, so a PDK whose detailed
+router starts at `MET1` still has to give the global router `MET2`, or every
+net that needs the bottom layer comes back unrouted.
+
 Adding a *new ICS55 release* takes two edits in `chipcompiler/data/pdk.py`,
 because the marker allowlist is closed by design:
 
