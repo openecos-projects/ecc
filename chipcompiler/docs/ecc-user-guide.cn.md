@@ -322,7 +322,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-在 `NAME/` 下生成 `ecc.toml`、`rtl/`、`constraints/` 骨架（workspace 由首个 `ecc run` 创建）：
+在 `NAME/` 下生成 `ecc.toml`、`project.json` 和 `timing_constraints_template.tcl`。不再创建空的 RTL 或 SDC 目录；workspace 由首个 `ecc run` 创建：
 
 ```console
 $ ecc init gcd
@@ -340,15 +340,13 @@ $ ecc init gcd
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # 一个或多个 Verilog 源文件，也可指向一个 filelist（如 rtl/filelist.f）
+rtl = []                # 运行前指定源文件或 filelist
+sdc = "timing_constraints_template.tcl"
 # 非 RTL 范围可按需声明入口输入：
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
@@ -367,13 +365,17 @@ skip_steps = ["diff_opt"]
 max_parallel_steps = 4
 ```
 
+通过 `ecc project set design.rtl /path/to/filelist.f --project gcd` 指定 RTL。
+在时序模板的五组输入中填写时钟与约束，默认主时钟是 `clk`、100 MHz；
+`project.json` 由 ECC 自动维护。
+
 ## 4. check — 校验项目配置
 
 ```bash
 ecc check [--project DIR] [--workspace NAME] [--plain]
 ```
 
-校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty），并逐一校验每个声明的 RTL 源文件（源文件缺失即失败）。指定 `--workspace NAME` 时改为按该 workspace 解析出的有效配置校验（应用 manifest 回退与入口层范围），而不是裸项目：
+校验 `ecc.toml` 必填项（design/pdk/flow）、PDK 名称与内容（tech LEF/LEF/liberty），并逐一校验每个声明的 RTL 源文件（源文件缺失即失败）。指定 `--workspace NAME` 时改为按该 workspace 解析出的有效配置校验（应用 manifest 回退与入口层范围），而不是裸项目。不带 `--workspace` 时：项目还没有活动的 workspace 则校验裸项目，只有一个活动 workspace 则自动选中它，有多个则必须指定 `--workspace`（否则报 `workspace_required`）：
 
 ```console
 $ ecc check        # PDK 未就绪时
@@ -520,7 +522,9 @@ ecc run [OPTIONS]
 
 自动化选项（供 ECOS Studio 与 CI 驱动使用，交互式使用可忽略）：`--expected-revision N`
 在 workspace revision 已变化时报 `revision_conflict`（退出码 21）；`--command-id TEXT`
-为变更打上幂等/审计标记；`--no-wait` 在 workspace 忙时不等待（直接报错）；
+为变更打上幂等/审计标记（用同一个 id 和相同参数重发的命令返回第一次的结果，不会再次执行；
+同一个 id 下的不同请求报 `idempotency_conflict`；`--expected-revision` 只有在显式给出时才算
+请求的一部分）；`--no-wait` 在 workspace 忙时不等待（直接报错）；
 `--run-id`/`--runtime-id` 命名登记的运行进程；`--log-file PATH` 在预检前以受限权限
 创建运行日志并把整个 run 的 stdout/stderr 重定向进去。这些选项同样出现在其他变更类
 命令上（`param apply`、`macro import`、`workspace …`）；`signoff export` 接受
@@ -879,6 +883,11 @@ ecc project reconcile                 # 修复可证明的项目中间状态（�
 ecc project doctor [--fix]            # 交叉核对 project.json 与 workspace 目录；--fix 显式修复
 ```
 
+当 `design.sdc` 指向五组时序输入文件时，第一条 `primary_clocks` 命令提供时钟对象和频率。
+`project set` 和 `project apply` 仍会写入 `[design]` 的 `clock_port` / `frequency_mhz`，
+同时输出 `warning=timing_inputs_override_design`，说明这些声明不能覆盖时序文件。
+修改时钟请编辑该文件中的 `create_clock` 命令，再创建新的 workspace。
+
 `project set`/`unset`/`add`/`remove` 对 manifest 项目也走同一条原子更新路径，立即同步
 `project.json.base_design`；`project apply` 可把多项修改打包成一次原子 manifest 更新
 （失败时不会出现改了一半的组合）。`project baseline` 记录后续 run 以哪个已声明
@@ -907,7 +916,10 @@ ecc rtl import \
 
 对于 filelist，路径以 filelist 所在目录为基准解析。filelist 本身和它引用
 的文件都会复制到 `<project>/rtl/` 下，并保留原有的相对目录结构。复制后的
-filelist 会被重写为只引用项目内路径。目标文件默认不能覆盖，确认要覆盖时
+filelist 会被重写为只引用项目内路径。每个 `+incdir+` 目录连同其下的全部文件
+一起导入：位于 filelist 所在目录之内的保持相对路径，其余的（`../common`、
+绝对路径）按目录名放到 `rtl/` 下，并改写对应的指令；目录不存在时以
+`rtl_incdir_not_found` 拒绝。目标文件默认不能覆盖，确认要覆盖时
 才使用 `--force`。不支持的递归/库文件选项（`-f`、`-v`、`-y`）需要在导入
 前手动展开。
 
@@ -1018,7 +1030,12 @@ Engineering Snapshot）时报 `workspace_fork_source_unavailable`。
 `--from`/`--to` 需要同时给出 SOURCE 与 TARGET；没有终端时报
 `workspace_fork_requires_terminal`。脚本、agent 和 ECOS Studio 传 SOURCE 与 TARGET；
 旧名称 `ecc workspace derive` 对它们仍然可用。`archive` 是让 workspace 退出自动选择的推荐方式
-（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。自动化选项按需适用
+（不必手改 `project.json`）；`delete` 取消登记并可选删除目录。`delete` 保留下来的目录仍是磁盘上的一个
+workspace：用同一个名字执行 `create` 或 `ecc run` 会把它连同已保存的状态重新登记；
+想从空的 workspace 开始，请在删除时加 `--delete-directory`，或运行时加
+`--overwrite`。已登记 workspace 的目录若已被删除，`delete` 直接去掉这条登记
+（此时没有 revision 可校验）；`archive`、`reset-flow`、`refresh` 则报 `workspace_missing`，
+并给出 `ecc workspace delete` 与 `ecc workspace create` 两条出路。自动化选项按需适用
 （archive/delete/reset-flow 带 `--expected-revision`；创建/fork 类子命令带
 `--command-id` 与 `--no-wait`；见 §5.1），对占用中的 workspace 执行变更会报
 `workspace_busy`（退出码 20）。

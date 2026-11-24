@@ -483,6 +483,7 @@ def _require_refresh_command_proof(
 ) -> None:
     from chipcompiler.engine.workspace.lifecycle import (
         WorkspaceLifecycleError,
+        request_revision,
         workspace_command_fingerprint,
     )
 
@@ -523,11 +524,14 @@ def _require_refresh_command_proof(
             or set(request) != {"workspaceSpec", "workspaceBindings"}
         ):
             continue
+        # A request that named no revision is fingerprinted without one; a
+        # ledger written before that distinction existed is always pinned.
+        pinned = metadata.get("revisionPinned", True) is not False
         expected = workspace_command_fingerprint(
             "update",
             request["workspaceSpec"],
             request["workspaceBindings"],
-            source_revision,
+            request_revision(source_revision, pinned=pinned),
         )
         if record.get("fingerprint") == expected:
             matches.append(record)

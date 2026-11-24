@@ -193,6 +193,16 @@ def create_command_spec(command_input, run_name: str) -> dict:
     }
 
 
+def _mark_explicit_frequency(resolved, parameters: dict) -> None:
+    """Preserve explicit frequency overrides for legacy clock-list snapshots."""
+    from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY
+
+    sources = {item.param: item.source for item in resolved}
+    explicit = sources.get("design.frequency_mhz", "default") != "default"
+    if explicit:
+        parameters[EXPLICIT_FREQUENCY_KEY] = True
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -387,6 +397,7 @@ def execute_fresh_run(
             pdk=cfg.pdk_name or None,
         )
         update_parameters(build_backend_overrides(resolved), parameters)
+        _mark_explicit_frequency(resolved, parameters)
         config_overrides = build_config_overrides(resolved)
         if config_overrides:
             update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)

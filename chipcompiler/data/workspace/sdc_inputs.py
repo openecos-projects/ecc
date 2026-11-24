@@ -2,29 +2,79 @@
 
 import math
 import re
-from dataclasses import dataclass, fields
+import tomllib
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 
+from .primary_clocks import PrimaryClock, parse_primary_clocks
 
-@dataclass(frozen=True)
-class PrimaryClock:
-    target: str
-    frequency_mhz: float
+# Internal workspace parameter: design.frequency_mhz was set explicitly when the
+# workspace was created (ecc.toml [params] or --set), on top of the clock list.
+EXPLICIT_FREQUENCY_KEY = "_explicit_frequency"
+_FREQUENCY_PARAM = "design.frequency_mhz"
 
-    @property
-    def name(self) -> str:
-        target = self.target
-        if "/" in target:
-            target = re.sub(r"[/\[.]", "_", target).replace("]", "")
-        return f"CLK_{target}"
+# Public file names map to frozen workspace fields at this boundary. Existing
+# workspace snapshots still use the old names and corner:MHz clock rows.
+_FILE_FIELDS = {
+    "primary_clocks": "primary_clocks",
+    "generated_clocks": "generated_clock_txt",
+    "clock_groups": "clk_group_txt",
+    "io_constraints": "io_constraint_txt",
+    "timing_exceptions": "timing_exception_txt",
+}
 
 
 @dataclass(frozen=True)
 class SdcInputs:
+    primary_clocks: str = ""
     clock_list: str = ""
     generated_clock_txt: str = ""
     clk_group_txt: str = ""
     io_constraint_txt: str = ""
     timing_exception_txt: str = ""
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "SdcInputs":
+        """Read the five top-level TOML strings; never execute an input as Tcl."""
+        path = Path(path)
+        required = set(_FILE_FIELDS)
+        try:
+            with path.open("rb") as stream:
+                values = tomllib.load(stream)
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
+            raise ValueError(
+                f"Invalid timing input {path}: expected five TOML string fields, not a full "
+                "SDC/Tcl script. Put commands in primary_clocks, generated_clocks, clock_groups, "
+                "io_constraints and timing_exceptions."
+            ) from exc
+        if set(values) != required:
+            missing = sorted(required - values.keys())
+            unknown = sorted(values.keys() - required)
+            raise ValueError(
+                f"Invalid timing input {path}: expected the five fields at the file root "
+                f"(no [params.sdc] table); missing={missing}, unknown={unknown}"
+            )
+        for name, value in values.items():
+            if not isinstance(value, str):
+                raise ValueError(f"{name} must be a string")
+        inputs = cls(**{_FILE_FIELDS[name]: value for name, value in values.items()})
+        inputs.primary_clock()
+        return inputs
+
+    def primary_clock(self) -> PrimaryClock:
+        clocks = self.clocks({}, "TYP")
+        if not clocks:
+            raise ValueError("Timing input primary_clocks requires an uncommented create_clock")
+        return clocks[0]
+
+    def parameters(self) -> dict:
+        """Workspace snapshot and legacy single-clock metadata from one source."""
+        primary = self.primary_clock()
+        return {
+            "sdc": asdict(self),
+            "clock": primary.target,
+            "frequency_max": primary.frequency_mhz,
+        }
 
     @classmethod
     def from_parameters(cls, parameters: dict) -> "SdcInputs":
@@ -38,9 +88,14 @@ class SdcInputs:
         return cls(**values)
 
     @property
+    def has_primary_clocks(self) -> bool:
+        return _has_commands(self.primary_clocks)
+
+    @property
     def has_clock_inputs(self) -> bool:
         return bool(
-            parse_clock_list(self.clock_list)
+            self.has_primary_clocks
+            or parse_clock_list(self.clock_list)
             or self.has_generated_clocks
             or _has_commands(self.clk_group_txt)
         )
@@ -50,6 +105,10 @@ class SdcInputs:
         return _has_commands(self.generated_clock_txt)
 
     def clocks(self, parameters: dict, corner: str) -> tuple[PrimaryClock, ...]:
+        if self.has_primary_clocks:
+            if parse_clock_list(self.clock_list):
+                raise ValueError("Use primary_clocks or legacy clock_list, not both")
+            return parse_primary_clocks(self.primary_clocks)
         definitions = parse_clock_list(self.clock_list)
         if not definitions:
             target = parameters.get("clock", "")
@@ -59,14 +118,70 @@ class SdcInputs:
                 else ()
             )
         clocks = []
-        for target, frequencies in definitions.items():
+        for index, (target, frequencies) in enumerate(definitions.items()):
             if corner not in frequencies:
                 raise ValueError(f"sdc.clock_list: {target!r} has no frequency for corner {corner}")
-            clocks.append(PrimaryClock(target, frequencies[corner]))
+            frequency = frequencies[corner]
+            if index == 0:
+                frequency = _primary_clock_frequency(frequency, parameters)
+            clocks.append(PrimaryClock(target, frequency))
         names = [clock.name for clock in clocks]
         if len(set(names)) != len(names):
             raise ValueError("sdc.clock_list: targets produce duplicate clock names")
         return tuple(clocks)
+
+
+def validate_frequency_edit(parameters: dict, param: str, value: object) -> None:
+    """Reject metadata edits that contradict frozen literal clock commands."""
+    if param != _FREQUENCY_PARAM:
+        return
+    inputs = SdcInputs.from_parameters(parameters)
+    if not inputs.has_primary_clocks:
+        return
+    frequency = inputs.primary_clock().frequency_mhz
+    if clock_frequency(value) != frequency:
+        raise ValueError(
+            f"{param} is fixed at {frequency:g} MHz by primary_clocks; "
+            "edit -period in the project's timing input file (design.sdc) "
+            "and create a new workspace."
+        )
+
+
+def frequency_is_explicit(parameters: dict) -> bool:
+    """True when ``design.frequency_mhz`` was set on top of the clock list.
+
+    Two records say so: the marker written when the workspace was created with
+    an explicit value, and a workspace-scope override of the parameter that
+    changes its value. A ``frequency_max`` that merely differs from the list is
+    not evidence: it is derived metadata and can be older than the list in
+    effect.
+    """
+    if parameters.get(EXPLICIT_FREQUENCY_KEY) is True:
+        return True
+    overrides = parameters.get("workspace_param_overrides")
+    return isinstance(overrides, list) and any(
+        isinstance(item, dict)
+        and item.get("key") == _FREQUENCY_PARAM
+        and item.get("value") != item.get("baseline")
+        for item in overrides
+    )
+
+
+def _primary_clock_frequency(frequency: float, parameters: dict) -> float:
+    """The first clock's frequency, following an explicit ``design.frequency_mhz``.
+
+    Synthesis and the summaries read ``frequency_max``. When the user set
+    ``design.frequency_mhz`` on top of the clock list, the constraints have to
+    describe the same clock, so that value replaces the row's frequency in
+    every corner, as it does for a project without a clock list. Otherwise the
+    rows of the list decide.
+    """
+    if not frequency_is_explicit(parameters):
+        return frequency
+    try:
+        return clock_frequency(parameters.get("frequency_max"))
+    except ValueError:
+        return frequency
 
 
 def _has_commands(text: str) -> bool:

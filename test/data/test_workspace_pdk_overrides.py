@@ -2,6 +2,7 @@
 
 import pytest
 
+from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import create_workspace, load_workspace
 
 
@@ -13,7 +14,7 @@ def test_pdk_design_input_override_survives_source_removal(
     rtl = tmp_path / "gcd.v"
     rtl.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
     source = tmp_path / f"input.{field}"
-    source.write_text("fixture\n")
+    source.write_text(SDC_INPUT_TEMPLATE if field == "sdc" else "fixture\n")
     directory = tmp_path / "workspace"
     workspace = create_workspace(
         directory=str(directory),

@@ -1,10 +1,12 @@
 """Runtime selection of workspace-owned pre/post-CTS constraints."""
 
 import json
+import tomllib
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
+import tomli_w
 
 from chipcompiler.data import PDK, OriginDesign, Parameters, StepEnum, Workspace
 from chipcompiler.data.handshake import (
@@ -18,6 +20,7 @@ from chipcompiler.data.handshake import (
     write_response,
 )
 from chipcompiler.data.types import AnalysisData, DesignState
+from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts, timing_scenarios
 from chipcompiler.tools.ecc import runner
 from chipcompiler.tools.ecc.builder import build_step, build_step_space
@@ -143,25 +146,29 @@ def test_native_probe_is_closed_and_failed_export_never_reuses_old_count(
         (StepEnum.POWER_ANALYSIS, "post_CTS"),
     ],
 )
-def test_custom_constraints_select_phase_without_native_probe(
+def test_external_timing_inputs_select_phase_after_native_probe(
     timing_workspace, native_module, suffix, step_name, phase
 ):
     workspace = timing_workspace
     custom = workspace.directory / f"custom{suffix}"
-    contents = b"# custom \xff\ncreate_clock -period 5 [get_ports fast_clk]\n"
-    custom.write_bytes(contents)
-    workspace.pdk.sdc = custom
+    from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name FAST -period 10 [get_ports fast_clk]\n"
+    contents = tomli_w.dumps(values)
+    custom.write_text(contents)
+    workspace.parameters.data.update(SdcInputs.from_file(custom).parameters())
     workspace.config.clear()
     step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
-    files = {path: path.read_bytes() for path in (workspace.directory / "origin").rglob("*.tcl")}
+    build_step_space(step)
     generate_timing_scripts(workspace)
     prepare_timing_context(workspace, step, native_module)
-    expected = workspace.directory / "origin" / phase / f"{custom.name}.ecc.tcl"
+    expected = workspace.directory / "origin" / phase / "TYP_25_TYPICAL.tcl"
     assert step_tcl_path(workspace, step) == expected
     assert expected.is_file()
-    assert custom.read_bytes() == contents
-    assert {path: path.read_bytes() for path in files} == files
-    assert native_module.mock_calls == []
+    assert custom.read_text() == contents
+    assert 'set clk_port_name "fast_clk"' in expected.read_text()
+    native_module.feature_sammry.assert_called_once()
 
 
 def test_final_sta_selects_each_actual_corner(timing_workspace):
@@ -172,6 +179,33 @@ def test_final_sta_selects_each_actual_corner(timing_workspace):
         assert path.parent == timing_workspace.directory / "origin/post_CTS"
         assert f'set corner "{scenario.corner}"' in path.read_text()
         assert f'set rc_para "{scenario.rc}"' in path.read_text()
+
+
+@pytest.mark.parametrize(
+    ("step_name", "phase"),
+    [(StepEnum.CTS, "pre_CTS"), (StepEnum.STA, "post_CTS"), (StepEnum.POWER_ANALYSIS, "post_CTS")],
+)
+def test_legacy_full_sdc_uses_phase_wrapper_without_native_io_probe(
+    timing_workspace, native_module, step_name, phase
+):
+    workspace = timing_workspace
+    source = workspace.directory / "origin" / "legacy.sdc"
+    contents = "create_clock -name USER -period 8 [get_ports clk]\n"
+    source.write_text(contents)
+    workspace.pdk.sdc = source
+    step = build_step(workspace, step_name.value, input_def=None, input_verilog=None)
+    build_step_space(step)
+
+    prepare_timing_context(workspace, step, native_module)
+
+    assert native_module.mock_calls == []
+    paths = {
+        step_tcl_path(workspace, step, corner=scenario.corner, rc=scenario.rc)
+        for scenario in timing_scenarios(workspace)
+    }
+    assert paths == {workspace.directory / "origin" / phase / "legacy.sdc.ecc.tcl"}
+    assert source.read_text() == contents
+    assert workspace.pdk.sdc == source
 
 
 def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(timing_workspace):
@@ -273,11 +307,11 @@ def test_cts_receives_pre_cts_constraints(timing_workspace, native_module, monke
     workspace = timing_workspace
     filename = "TYP_25_TYPICAL.tcl"
     if custom:
-        workspace.pdk.sdc = workspace.directory / "user.sdc"
-        workspace.pdk.sdc.write_text(
-            "create_clock -period 10 [get_ports clk]\nset_propagated_clock [all_clocks]\n"
-        )
-        filename = "user.sdc.ecc.tcl"
+        from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
+
+        source = workspace.directory / "user.tcl"
+        source.write_text(SDC_INPUT_TEMPLATE)
+        workspace.parameters.data.update(SdcInputs.from_file(source).parameters())
     step = build_step(workspace, StepEnum.CTS.value, input_def=None, input_verilog=None)
     build_step_space(step)
     native_module.run_cts.return_value = False

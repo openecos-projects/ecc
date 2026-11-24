@@ -70,6 +70,10 @@ class CreationDraft:
                         (source, staging / target)
                         for (source, _), target in zip(self.rtl.copied, targets, strict=True)
                     ],
+                    include_dirs={
+                        source: staging / target.relative_to(self.project)
+                        for source, target in self.rtl.include_dirs.items()
+                    },
                 ).copy()
                 cfg = replace(cfg, design_rtl=self.rtl.configured_paths)
             start, end = manifest_range_for_flow(cfg, flow_config)

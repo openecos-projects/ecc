@@ -265,7 +265,7 @@ ecc init <NAME> [--project-name TEXT] [--design-name TEXT] [--plain]
 #   --mpc-resource-id / --mpc-display-name / --mpc-version / --mpc-root / --mpc-design-index
 ```
 
-Creates an `ecc.toml`, `rtl/`, and `constraints/` skeleton under `NAME/` (the workspace is created by the first `ecc run`):
+Creates `ecc.toml`, `project.json`, and `timing_constraints_template.tcl` under `NAME/`. No empty RTL or SDC directories are created; the workspace is created by the first `ecc run`:
 
 ```console
 $ ecc init gcd
@@ -283,15 +283,13 @@ The generated `ecc.toml` (edit `design.*` and `pdk.root` as needed):
 [design]
 name = "gcd"
 top = "gcd"
-rtl = ["rtl/gcd.v"]      # a single Verilog file, or one filelist for multiple sources (e.g. rtl/filelist.f)
+rtl = []                # set your source files or filelist before running
+sdc = "timing_constraints_template.tcl"
 # Optional entry inputs for non-RTL ranges:
 # netlist = "inputs/gcd.v"
 # golden_netlist = "inputs/gcd-golden.v"
 # def = "inputs/gcd.def"
-# sdc = "constraints/gcd.sdc"
 # spef = "inputs/gcd.spef"
-clock_port = "clk"
-frequency_mhz = 100.0
 
 [pdk]
 name = "ics55"           # ics55 is the currently supported PDK
@@ -310,13 +308,17 @@ skip_steps = ["diff_opt"]
 max_parallel_steps = 4
 ```
 
+Bind your RTL with `ecc project set design.rtl /path/to/filelist.f --project gcd`.
+Edit the timing template's five fields to set clocks and constraints; its default
+primary clock is `clk` at 100 MHz. `project.json` is maintained by ECC.
+
 ## 4. check — validate the project configuration
 
 ```bash
 ecc check [--project DIR] [--workspace NAME] [--plain]
 ```
 
-Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check). With `--workspace NAME` the check runs against the effective configuration resolved for that declared workspace (manifest fallback and entry-layer range applied) instead of the bare project:
+Validates required `ecc.toml` fields (design/pdk/flow), the PDK name and contents (tech LEF/LEF/liberty), and every declared RTL source file (missing sources fail the check). With `--workspace NAME` the check runs against the effective configuration resolved for that declared workspace (manifest fallback and entry-layer range applied) instead of the bare project. Without `--workspace`, a project that has no active workspace yet is checked as the bare project, a single active workspace is selected automatically, and several active workspaces require `--workspace` (`workspace_required`):
 
 ```console
 $ ecc check        # PDK not ready
@@ -462,7 +464,7 @@ ecc run [OPTIONS]
   --plain            key=value output for scripting
 ```
 
-Automation options (used by ECOS Studio and CI drivers; optional for interactive use): `--expected-revision N` fails with `revision_conflict` (exit 21) when the workspace revision moved, `--command-id TEXT` stamps the mutation for idempotency/audit, `--no-wait` never blocks on a busy workspace (other mutation errors instead of waiting), `--run-id`/`--runtime-id` name the registered run process, and `--log-file PATH` redirects the whole run's stdout/stderr into a restricted-mode run log owned before preflight. The same revision/wait flags recur on other mutating commands (`param apply`, `macro import`, `workspace …`); `signoff export` accepts `--expected-revision` and `--no-wait`, but not `--command-id`. Runs registered this way are controlled with `ecc process` (§6.5).
+Automation options (used by ECOS Studio and CI drivers; optional for interactive use): `--expected-revision N` fails with `revision_conflict` (exit 21) when the workspace revision moved, `--command-id TEXT` stamps the mutation for idempotency/audit (a command repeated with the same id and the same arguments returns the first result without applying the change again; a different request under that id is `idempotency_conflict`; `--expected-revision` is part of the request only when it is given), `--no-wait` never blocks on a busy workspace (other mutation errors instead of waiting), `--run-id`/`--runtime-id` name the registered run process, and `--log-file PATH` redirects the whole run's stdout/stderr into a restricted-mode run log owned before preflight. The same revision/wait flags recur on other mutating commands (`param apply`, `macro import`, `workspace …`); `signoff export` accepts `--expected-revision` and `--no-wait`, but not `--command-id`. Runs registered this way are controlled with `ecc process` (§6.5).
 
 For a fresh or `--overwrite` workspace, the pipeline reads `ecc.toml` → resolves only the design files required by the entry step plus PDK/parameters → preflights bundled ecc-tools plus the selected tools → records the workspace in `project.json` → creates it under `<project>/<workspace-name>` when the selector is a name, or at the exact absolute path when the selector is a path → copies its declared design inputs to `origin/`, writes the resulting step configuration, and executes the selected flow. An absolute workspace selector must be a complete external directory whose parent already exists; its basename becomes the new workspace ID unless the path is already registered. An existing valid workspace at an external path can be registered and resumed with the same command. A workspace never stores a second project input manifest. Existing workspaces resume their persisted flow without rewriting its inputs or step configuration. `rtl2gds` is the full step chain (synthesis→pre_floorplan→macro_placement→post_floorplan→preplace→placement→diff_opt (skipped by default: `[flow] skip_steps` defaults to `["diff_opt"]`)→diff_sizing→cts→legalization→timing_optimization (sizer)→routing→filler→lvs→drc→antenna_check→post_route_lec (kepler-formal)→rcx→sta→power_analysis→emir→harden; Harden emits GDS + Abstract LEF + timing LIB); `[flow] insert_steps` adds LEC checks, `lec@synthesis` among them (§8.6). `antenna_check` and `emir` are advisory steps: an incomplete analysis is reported but does not by itself stop the remaining flow.
 
@@ -814,6 +816,12 @@ ecc project reconcile                 # repair provable project intermediate sta
 ecc project doctor [--fix]            # cross-check project.json against workspace directories; --fix repairs
 ```
 
+With a five-group timing file in `design.sdc`, the first `primary_clocks` declaration
+supplies the clock target and frequency. `project set` and `project apply` still write
+`[design] clock_port` / `frequency_mhz`, but print `warning=timing_inputs_override_design`
+because these declarations do not override the timing file. Edit its `create_clock`
+command and create a new workspace to change the clock.
+
 For manifest projects, `project set`/`unset`/`add`/`remove` use the same atomic update path
 and immediately sync `project.json.base_design`. `project apply` batches multiple edits so
 they land in a single atomic manifest update (no half-applied combination on failure). `project
@@ -846,7 +854,11 @@ ecc rtl import \
 For a filelist, paths are resolved relative to the filelist's directory. The
 filelist and referenced files are copied below `<project>/rtl/` while retaining
 their relative layout. The copied filelist is rewritten to reference only
-project-local paths. Existing targets are rejected unless `--force` is passed.
+project-local paths. Each `+incdir+` directory is imported with all the files below
+it: a directory below the filelist's directory keeps its relative path, any other
+one (`../common`, an absolute path) is placed under `rtl/` by its name and its
+directive is rewritten; a directory that does not exist is rejected with
+`rtl_incdir_not_found`. Existing targets are rejected unless `--force` is passed.
 Unsupported recursive/library filelist options (`-f`, `-v`, and `-y`) must be
 expanded before import.
 
@@ -1010,7 +1022,13 @@ the command fails with `workspace_fork_requires_terminal`. Scripts, agents and E
 SOURCE and TARGET; the former name `ecc workspace derive` still works for them.
 `archive` is the preferred way to
 retire a workspace from auto-selection (instead of editing `project.json` by hand); `delete`
-unregisters it and optionally removes the directory. The automation flags apply where
+unregisters it and optionally removes the directory. A directory that `delete` kept is
+still a workspace on disk: `create` or `ecc run` under the same name registers it again
+with its saved state. To start from an empty workspace instead, delete with
+`--delete-directory` or run with `--overwrite`. When the directory of a declared
+workspace has already been removed, `delete` drops the entry (there is no revision left to
+check), while `archive`, `reset-flow` and `refresh` answer `workspace_missing` and name
+`ecc workspace delete` and `ecc workspace create` as the ways out. The automation flags apply where
 relevant (`--expected-revision` on archive/delete/reset-flow; `--command-id` and `--no-wait`
 on the creating/branching subcommands; §5.1), and a mutation on an in-use workspace fails
 with `workspace_busy` (exit 20).

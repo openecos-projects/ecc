@@ -1,7 +1,10 @@
 import json
 import tomllib
 
+import tomli_w
+
 from chipcompiler.cli import main as cli_main
+from chipcompiler.cli.project.timing_template import SDC_INPUT_FILENAME, SDC_INPUT_TEMPLATE
 from chipcompiler.project.manifest_write import manifest_workspace_entry
 
 
@@ -100,18 +103,14 @@ def test_project_set_rejects_unknown_field(capsys, create_cli_project, plain_rec
 
 def test_project_set_syncs_manifest_base_design(tmp_path, monkeypatch):
     project_dir = _manifest_project(tmp_path, monkeypatch)
-    # This command still supports legacy projects with explicit clock metadata.
-    config = project_dir / "ecc.toml"
-    text = config.read_text()
-    clock_list = tomllib.loads(text)["params"]["sdc"]["clock_list"]
-    text = text.replace(f"clock_list = '''\n{clock_list}'''", "clock_list = ''")
-    text = text.replace("[design]", '[design]\nclock_port = "clk"\nfrequency_mhz = 100.0')
-    config.write_text(text)
+    values = tomllib.loads(SDC_INPUT_TEMPLATE)
+    values["primary_clocks"] = "create_clock -name CLK_clk -period 4 [get_ports clk]\n"
+    (project_dir / "fast.tcl").write_text(tomli_w.dumps(values))
     pdk = tmp_path / "pdk"
     pdk.mkdir()
 
     _run_project(project_dir, "set", "design.top", "gcd_top")
-    _run_project(project_dir, "set", "design.frequency_mhz", "250")
+    _run_project(project_dir, "set", "design.sdc", "fast.tcl")
     _run_project(project_dir, "set", "pdk.root", str(pdk))
 
     base = _manifest(project_dir)["base_design"]
@@ -170,12 +169,12 @@ def test_project_set_prevents_config_layer_divergence(tmp_path, monkeypatch, cap
     project_dir = _manifest_project(tmp_path, monkeypatch)
     pdk = tmp_path / "pdk"
     pdk.mkdir()
-    (project_dir / "rtl" / "demo.v").write_text("module demo(input clk); endmodule\n")
+    (project_dir / "demo.v").write_text("module demo(input clk); endmodule\n")
 
     for key, value in (
         ("pdk.root", str(pdk)),
         ("design.top", "demo_top"),
-        ("design.rtl", "rtl/demo.v"),
+        ("design.rtl", "demo.v"),
     ):
         _run_project(project_dir, "set", key, value)
 
@@ -198,3 +197,67 @@ def test_project_set_prevents_config_layer_divergence(tmp_path, monkeypatch, cap
     )
     records = _records(capsys, plain_records)
     assert not [record for record in records if record.get("warning") == "config_layer_diverged"]
+
+
+def test_project_set_warns_when_the_timing_input_decides_the_clock(
+    tmp_path, monkeypatch, capsys, plain_records
+):
+    # The template's first primary clock supplies the target and frequency.
+    project_dir = _manifest_project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for key, value in (("design.frequency_mhz", "300"), ("design.clock_port", "sys_clk")):
+        rc = cli_main.run(["project", "set", key, value, "--project", str(project_dir), "--plain"])
+
+        records = _records(capsys, plain_records)
+        assert rc == 0
+        assert [record.get("warning") for record in records] == [
+            "timing_inputs_override_design",
+            None,
+        ]
+        assert key in records[0]["keys"]
+        assert records[0]["timing_input"] == SDC_INPUT_FILENAME
+        assert (records[1]["project_field"], records[1]["status"]) == (key, "set")
+
+    # project apply validates the whole configuration, so it needs a PDK root
+    # of its own instead of one from the environment.
+    pdk = tmp_path / "pdk"
+    pdk.mkdir()
+    rc = cli_main.run(
+        [
+            "project",
+            "apply",
+            "--set",
+            f"pdk.root={pdk}",
+            "--set",
+            "design.frequency_mhz=250",
+            "--project",
+            str(project_dir),
+            "--plain",
+        ]
+    )
+    records = _records(capsys, plain_records)
+    assert rc == 0
+    assert records[0]["warning"] == "timing_inputs_override_design"
+    assert records[1]["status"] == "applied"
+
+    rc = cli_main.run(
+        ["project", "set", "design.top", "gcd", "--project", str(project_dir), "--plain"]
+    )
+    assert rc == 0
+    assert [record.get("kind") for record in _records(capsys, plain_records)] == [None]
+
+
+def test_project_set_does_not_warn_without_a_timing_input(
+    tmp_path, monkeypatch, capsys, plain_records
+):
+    project_dir = _manifest_project(tmp_path, monkeypatch)
+    assert cli_main.run(["project", "unset", "design.sdc", "--project", str(project_dir)]) == 0
+    capsys.readouterr()
+
+    rc = cli_main.run(
+        ["project", "set", "design.frequency_mhz", "300", "--project", str(project_dir), "--plain"]
+    )
+
+    assert rc == 0
+    assert [record.get("kind") for record in _records(capsys, plain_records)] == [None]

@@ -574,9 +574,43 @@ def test_macro_import_workspace_can_commit_published_step_output(
                 "command_id": "macro-publish-1",
                 "commit_step_output": True,
                 "step_id": "macro_placement",
+                "revision_pinned": True,
             },
         )
     ]
+
+
+def test_macro_import_without_expected_revision_keeps_it_out_of_the_request(
+    create_cli_project, monkeypatch, tmp_path
+):
+    project_dir = create_cli_project()
+    workspace_dir = Path(project_dir) / "baseline"
+    _write_manifest(project_dir)
+    (workspace_dir / "home").mkdir(parents=True)
+    (workspace_dir / "home" / "engineering-snapshot.json").write_text(
+        json.dumps({"workspaceRevision": 4})
+    )
+    handoff = tmp_path / "macro_location.tcl"
+    handoff.write_text("placeInstance u_a 10 20.5 R0\n")
+    calls = []
+    monkeypatch.setattr(
+        "chipcompiler.engine.apply_workspace_parameters",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.store.read_engineering_snapshot_from_directory",
+        lambda _directory: {"workspaceRevision": 4},
+    )
+    command = ["macro", "import", str(handoff), "--workspace", "baseline"]
+
+    rc = cli_main.run([*command, "--project", project_dir, "--command-id", "macro-1", "--plain"])
+
+    assert rc == 0
+    ((arguments, options),) = calls
+    # The current revision is checked, but the caller did not name it.
+    assert arguments[1] == 4
+    assert options["command_id"] == "macro-1"
+    assert options["revision_pinned"] is False
 
 
 def test_macro_import_rejects_published_output_commit_without_workspace(

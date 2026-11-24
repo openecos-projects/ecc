@@ -135,6 +135,54 @@ def delete_managed_workspace(
     return workspace
 
 
+def unregister_missing_workspace(
+    project_dir: str | Path, workspace_id: str, *, blocking: bool
+) -> Path:
+    """Drop the registration of a Workspace whose directory no longer exists.
+
+    The directory held the Engineering Snapshot and the command ledger, so
+    there is no revision to check and nowhere to record the command: the
+    Project Manifest entry is all that is left of the Workspace. A directory
+    staged by an interrupted delete is not "gone"; that case stays with
+    :func:`reconcile_workspace_deletes`.
+    """
+    project = Path(project_dir).expanduser().resolve()
+    workspace = _manifest_workspace_path(project, workspace_id)
+    # Same lock order as archive and delete: a command that holds the
+    # workspace (a refresh between the two renames of its directory exchange)
+    # makes the directory look absent; the check below runs under its lock.
+    with (
+        workspace_lock(workspace, blocking=blocking),
+        manifest_lock(project, blocking=blocking),
+    ):
+        manifest = load_manifest(str(project))
+        _require_entry(manifest, workspace_id, workspace)
+        if workspace.is_dir():
+            raise WorkspaceLifecycleError(
+                "workspace_identity_changed",
+                "Workspace directory exists; delete it as a Workspace",
+            )
+        # Matched literally: a workspace id may contain glob characters.
+        prefix = f"{_DELETE_STAGING_PREFIX}{workspace_id}-"
+        staged = sorted(path for path in project.iterdir() if path.name.startswith(prefix))
+        if staged:
+            raise WorkspaceLifecycleError(
+                "workspace_delete_recovery_required",
+                f"An interrupted delete staged this Workspace: {staged[0]}",
+            )
+        _reject_running(manifest.raw, workspace_id)
+        if not update_manifest_locked(
+            project,
+            project_manifest_mutator(
+                project, {"type": "delete_workspace", "workspace_id": workspace_id}
+            ),
+        ):
+            raise WorkspaceLifecycleError(
+                "project_manifest_update_failed", "Project Manifest update failed"
+            )
+    return workspace
+
+
 def reconcile_workspace_deletes(project_dir: str | Path, *, blocking: bool) -> tuple[str, ...]:
     """Recover proven interrupted destructive deletes in the Project root."""
     project = Path(project_dir).expanduser().resolve()

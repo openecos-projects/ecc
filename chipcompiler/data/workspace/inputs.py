@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .filelist_copy import copy_filelist_with_sources
 from .sdc import is_generated_sdc
+from .sdc_inputs import SdcInputs
 
 
 def persist_origin_inputs(
@@ -79,12 +80,13 @@ def persist_origin_inputs(
         workspace.design.golden_verilog = target
 
     if workspace.pdk.sdc and workspace.pdk.sdc.exists() and not is_generated_sdc(workspace.pdk.sdc):
+        inputs = SdcInputs.from_file(workspace.pdk.sdc)
         sdc_target = origin_dir / workspace.pdk.sdc.name
         shutil.copy(workspace.pdk.sdc, sdc_target)
-        workspace.pdk.sdc = sdc_target
-    else:
-        # Owned timing inputs are generated with the workspace configuration.
-        workspace.pdk.sdc = None
+        workspace.parameters.data.update(inputs.parameters())
+    # New inputs are frozen above; native entry points are generated from that
+    # snapshot, never by reparsing the copied input during runtime refresh.
+    workspace.pdk.sdc = None
 
     if workspace.pdk.spef and workspace.pdk.spef.exists():
         spef_target = origin_dir / workspace.pdk.spef.name

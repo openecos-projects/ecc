@@ -255,57 +255,67 @@ The file must cover every hard macro in the design — `post_floorplan` fails wi
 
 ### 1.6 Auto-generated SDC
 
-When `[design].sdc` is absent, workspace creation generates the complete corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`, without a standalone `origin/<design>.sdc`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. A user-provided full SDC or Tcl is copied without changing its bytes or generating automatic design constraints. ECC creates `<filename>.ecc.tcl` wrappers in both phase directories: each sources the copied input, then applies `remove_propagated_clock [all_clocks]` through CTS, or `set_propagated_clock [all_clocks]` after CTS. ECC recognizes its generated corner constraints by the first-line `# ECC-generated SDC file` marker and refreshes them when parameters change.
+Workspace creation reads the five-field input file selected by `[design].sdc` and generates the corner constraint sets in `origin/pre_CTS/` and `origin/post_CTS/`. The default timing entry points to the pre-CTS TYP/TYPICAL Tcl. CTS and earlier steps select pre-CTS constraints; later steps select post-CTS constraints, with final STA using each configured corner. Complete SDC/Tcl files are no longer accepted: convert their design-specific constraints to the five fields below first. ECC recognizes generated corner scripts by the first-line `# ECC-generated SDC file` marker.
 
-The generated Tcl defines primary clocks from `params.sdc.clock_list`, together with the scenario's IO constraints, OCV derates, setup/hold uncertainty, transition limits, and fanout constraints. After loading the design, Python emits only the IO rules selected by the actual iDB's IO-cell presence; no companion `timing_io.tcl` or Tcl branch selects the IO mode. Initial files contain an explicit preparation error until the design is loaded; timing preparation replaces them with complete constraints before execution. Clockless designs do not acquire an invented clock. For the same corner, pre-CTS and post-CTS rules are identical except that post-CTS adds `set_propagated_clock [all_clocks]`.
+The generated Tcl includes the input file's `primary_clocks` commands, together with the scenario's IO constraints, OCV derates, setup/hold uncertainty, transition limits, and fanout constraints. After loading the design, Python emits only the IO rules selected by the actual iDB's IO-cell presence; no companion `timing_io.tcl` or Tcl branch selects the IO mode. Initial files contain an explicit preparation error until the design is loaded; timing preparation replaces them with complete constraints before execution. For the same corner, pre-CTS and post-CTS rules are identical except that post-CTS adds `set_propagated_clock [all_clocks]`.
 
 ### 1.7 Five user-written timing inputs
 
-New `ecc init` projects include `[params.sdc]` with an active `clk`/100 MHz row and commented examples for the four optional fields. Write each input between triple **single** quotes to preserve Tcl backslashes, line continuations and `$variables`; do not wrap it in `set clock_list {...}` or another Tcl variable assignment. Substitute real design objects and interface requirements for all example names and values.
+`ecc init gcd` creates `timing_constraints_template.tcl` in the project root with an active `create_clock` for `clk`/100 MHz and commented examples for the four optional fields. Both `ecc.toml` and `project.json` reference this file. Despite its `.tcl` suffix, this input is **five TOML strings**, not an executable Tcl script; do not `source` it. Only the generated pre/post-CTS scripts are executable Tcl.
+
+Edit `timing_constraints_template.tcl` directly, or select another five-field file with:
+
+```bash
+ecc project set design.sdc /path/to/gcd.tcl --project /path/to/project
+```
+
+Keep all five keys at the file root, with no `[params.sdc]` header. Write each input between triple **single** quotes to preserve Tcl backslashes, line continuations and `$variables`; leave unused optional fields empty. Substitute real design objects and interface requirements for all examples.
 
 ```toml
-[params.sdc]
-# 1. Primary clocks: one port/pin and corner:MHz pairs per line.
-# Required in new projects: uncomment/edit at least one row; cover every PVT corner.
-# The first row's TYP frequency supplies single-primary-clock flow metadata.
-clock_list = '''
-clk MAX:100 WCL:100 MIN:100 ML:100 TYP:100
-clk_aux MAX:25 WCL:25 MIN:25 ML:25 TYP:25
+# 1. Primary clocks: period in ns; 10 ns = 100 MHz (all corners).
+# One create_clock per line; the first supplies the flow's main clock.
+primary_clocks = '''
+create_clock -name CLK_clk -period 10 [get_ports clk]
+# create_clock -name CLK_clk_aux -period 40 [get_ports clk_aux]
 '''
 
 # 2. Generated clocks: uncomment only after checking the real source/target.
-generated_clock_txt = '''
+generated_clocks = '''
 # create_generated_clock -name CLK_div2 -divide_by 2 \
 #     -source [get_ports clk] [get_pins u_div/clk_reg/Q]
 '''
 
 # 3. Group only truly asynchronous domains, including their derived clocks.
 # Without IO cells, also include each port's VCLK interface clock.
-clk_group_txt = '''
+clock_groups = '''
 # set_clock_groups -asynchronous \
 #     -group {CLK_clk VCLK_clk} -group {CLK_clk_aux VCLK_clk_aux}
 '''
 
 # 4. User IO rules run after automatic IO rules; these ns values are examples.
-io_constraint_txt = '''
+io_constraints = '''
 # set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]
 # set_output_delay 0.0625 -max -clock CLK_clk [get_ports data_out*]
 '''
 
 # 5. Exceptions require a design/protocol justification.
-timing_exception_txt = '''
+timing_exceptions = '''
 # set_false_path -from [get_ports reset_n]
 # set_multicycle_path -setup 3 -end -to [get_ports data_out*]
 # set_multicycle_path -hold 2 -end -to [get_ports data_out*]
 '''
 ```
 
-- Both `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` and `origin/post_CTS/...` receive these inputs. Clock MHz supports decimals and is selected by each file's PVT corner; only post-CTS adds propagated clocks.
-- Primary targets resolve as ports first, then pins. Names are `CLK_<port>`; a hierarchical pin replaces `/`, `.`, `[` with `_` and removes `]`, e.g. `u_pll/Q` becomes `CLK_u_pll_Q`. The full hierarchy is retained.
-- Execution order: primary clocks (plus port-based virtual clocks when there are no IO cells), generated clocks, groups, automatic IO, user IO, user exceptions, golden limits, and post-CTS propagation. The four Tcl bodies execute verbatim and can use `$corner` and `$rc_para`. Whether IO commands replace or add delays depends on their options.
-- New project templates omit `design.clock_port` / `frequency_mhz`: fill `clock_list` instead. Its first row and TYP frequency supply single-primary-clock flow metadata; generated constraints still use every row's scenario frequency. Empty/comment-only lists fail before a new run rather than using the init manifest's clock defaults. Legacy projects with explicit clock metadata and complete `design.sdc` inputs remain supported; a complete file still overrides all five inputs. This does not add multi-clock optimization to every native tool.
+- Both `origin/pre_CTS/<corner>_<temperature>_<RC>.tcl` and `origin/post_CTS/...` receive these inputs. The primary commands and periods are the same for all corners; corner-specific golden rules remain. Only post-CTS adds propagated clocks.
+- Use literal `create_clock -name NAME -period NS [get_ports PORT]`, or `get_pins PIN` for an internal clock. Decimal periods, quoted/braced names, `\\` line continuations, `-quiet` queries, and an optional `-waveform {RISE FALL}` are supported. Keep one declaration per logical line with one literal source and a unique clock name. Primary commands cannot use variables, expressions, wildcards, virtual sources, `-add`, or Tcl control flow; unsupported input is rejected rather than guessed.
+- Clock names and explicit port/pin selection are preserved. Without IO cells, ECC creates `V<clock-name>` interface clocks only for port clocks, with matching periods and waveforms; avoid primary names that collide with them. For `CLK_clk`, the interface clock is `VCLK_clk`.
+- Execution order: primary clocks, port-based virtual clocks when there are no IO cells, generated clocks, groups, automatic IO, user IO, user exceptions, golden limits, and post-CTS propagation. All five command bodies are preserved. The four optional bodies can use `$corner` and `$rc_para`; whether IO commands replace or add delays depends on their options.
+- Fill `primary_clocks` rather than `design.clock_port` / `frequency_mhz`. The first declaration supplies the target and `1000 / period_ns` MHz for single-primary-clock flow metadata. Empty/comment-only primary inputs fail before a new run. This does not add multi-clock optimization to every native tool.
+- For these workspaces, `ecc param set design.frequency_mhz VALUE --workspace NAME` and batch edits reject values that differ from the first primary clock. Edit its `-period` in the project's timing input file and create a new workspace to change the frequency; legacy clock-list workspaces still support frequency overrides.
 - ECC can calculate declared primary-clock periods directly. With generated-clock Tcl, constraints use `get_attribute` and `foreach_in_collection` to obtain each clock's actual period. **The currently tested iSTA lacks these commands: generated-clock mode is not native end-to-end validated.** Do not substitute a primary period for derived periods. Other commands in user Tcl also require support in the consuming tool.
-- Edited project TOML is read when creating a new workspace. Existing workspaces use their own `home/params.toml`; change one with `ecc param set sdc.io_constraint_txt 'set_input_delay 0.1 -max -clock CLK_clk [get_ports data_in*]' --project "$PROJECT_DIR" --workspace "$WORKSPACE"`. This refreshes its configuration. A plain `--resume` does not re-import these fields from project TOML.
+- Creation copies the input file unchanged into `origin/` and stores the parsed values in the workspace's `home/params.toml`. Edit the project input file and create a new workspace to use new constraints; `--resume` does not re-import them. The copied input is data, not a timing-tool entry point.
+- To migrate old `[params.sdc]` settings, convert `clock_list` rows to `create_clock` commands and rename the four remaining keys to the names above. Remove that table from `ecc.toml` and set `design.sdc` to the standalone file. `ecc param set sdc.*` is no longer an input interface. Obsolete project parameters are rejected by creation, `ecc check`, and `--resume`; this does not change the workspace's frozen timing inputs.
+- Existing workspaces created with a complete SDC/Tcl retain that frozen file. Their phase wrappers source it unchanged, then remove propagated clocks before/at CTS or enable them after CTS. This compatibility does not allow complete SDC inputs for new projects/workspaces.
 
 ## 2. Shared configuration: db_ecc.json
 
@@ -318,7 +328,7 @@ Shared by all ecc tool steps. At step startup it is used to load LEF/DEF/netlist
 | `INPUT.def_path` | `sta_ecc/output/gcd_sta.def.gz` | rewritten per step | Input DEF (previous step's layout) |
 | `INPUT.verilog_path` | `sta_ecc/output/gcd_sta.v.gz` | rewritten per step | Input gate-level netlist |
 | `INPUT.lib_path` | H7CR/H7CL/H7CH SS | PDK | Shared timing libraries; Yosys synthesis excludes H7CH |
-| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | Default timing entry (generated Tcl or user-provided full constraints) |
+| `INPUT.sdc_path` | `origin/pre_CTS/TYP_25_TYPICAL.tcl` | workspace | Default generated timing entry; each step selects its phase/scenario |
 | `INPUT.spef` | `""` | PDK/workspace | Pre-set parasitics file (usually empty before RCX) |
 | `OUTPUT.output_dir_path` | `harden_ecc/output` | rewritten per step | Output directory for this step's artifacts |
 | `LayerSettings.routing_layer_1st` | `MET2` | parameter `route.bottom_layer` | First usable routing layer (affects database layer settings) |

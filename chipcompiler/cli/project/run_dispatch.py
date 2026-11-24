@@ -253,29 +253,40 @@ def dispatch_project_run(
 ) -> CommandResult:
     """Serialize target creation/replacement with workspace locks, then execute."""
 
+    def rejected_create_overrides() -> CommandResult | None:
+        """`workspace create --set` on an existing workspace is refused.
+
+        Same rule as `ecc run --set`: an override is recorded when the
+        workspace is created, never dropped without a message. A retry of the
+        command that created it is not a new request.
+        """
+        if execute_flow or not cli_overrides:
+            return None
+        if _repeats_recorded_create(command_input, run_dir, run_name):
+            return None
+        from chipcompiler.cli.core.records import error_record
+
+        return CommandResult.err(
+            [
+                error_record(
+                    "set_requires_fresh_run",
+                    workspace_id=run_name,
+                    workspace=run_dir,
+                    reason=(
+                        "--set applies only when the workspace is created; "
+                        "use ecc param set --workspace or a new workspace id"
+                    ),
+                )
+            ]
+        )
+
     def existing_workspace_run() -> CommandResult:
         # When execute_flow is False (e.g., workspace create on existing target),
         # return success without resuming the flow (#393).
         if not execute_flow:
-            if cli_overrides and not _repeats_recorded_create(command_input, run_dir, run_name):
-                from chipcompiler.cli.core.records import error_record
-
-                # Same rule as `ecc run --set`: an override is recorded when
-                # the workspace is created, never dropped without a message.
-                # A retry of the command that created it is not a new request.
-                return CommandResult.err(
-                    [
-                        error_record(
-                            "set_requires_fresh_run",
-                            workspace_id=run_name,
-                            workspace=run_dir,
-                            reason=(
-                                "--set applies only when the workspace is created; "
-                                "use ecc param set --workspace or a new workspace id"
-                            ),
-                        )
-                    ]
-                )
+            rejected = rejected_create_overrides()
+            if rejected is not None:
+                return rejected
             return CommandResult.ok(
                 warning_records
                 + [
@@ -354,7 +365,22 @@ def dispatch_project_run(
             unsafe = _existing_target_guard(run_dir, project_dir, run_name)
             if unsafe is not None:
                 return unsafe
-            if not workspace_registered and ctx.workspace_path_explicit:
+            # A workspace directory that is there but not declared - an
+            # external path, or one kept by a default `workspace delete` -
+            # is registered before it is used: neither `ecc run` nor
+            # `workspace create` reports success for a workspace the
+            # project does not know.
+            if not workspace_registered and (
+                ctx.workspace_path_explicit or project_state == "manifest"
+            ):
+                # A command this branch is going to refuse registers nothing.
+                rejected = rejected_create_overrides()
+                if rejected is None and execute_flow and cli_overrides:
+                    from chipcompiler.cli.project.run_existing import rejected_run_overrides
+
+                    rejected = rejected_run_overrides(run_name, run_dir)
+                if rejected is not None:
+                    return rejected
                 from chipcompiler.cli.core.records import error_record
                 from chipcompiler.cli.project.config import resolve_pdk_root
                 from chipcompiler.cli.project.workspace_registration import (
@@ -369,7 +395,10 @@ def dispatch_project_run(
                         pdk_root=resolve_pdk_root(cfg),
                         workspace_id=run_name,
                         workspace_path=run_dir,
+                        blocking=not command_input.no_wait,
                     )
+                except BlockingIOError:
+                    return CommandResult.err([error_record("workspace_busy")], exit_code=20)
                 except WorkspaceRegistrationError as exc:
                     return CommandResult.err(
                         [
@@ -403,8 +432,10 @@ def dispatch_project_run(
                     )
                 workspace_registered = True
                 # This execution must use the imported workspace's own
-                # persisted range, not the project's fresh-run preset.
-                cfg.manifest_driven = True
+                # persisted range, not the project's fresh-run preset - unless
+                # the command names a preset, which is checked against it.
+                if command_input.preset is None:
+                    cfg.manifest_driven = True
         else:
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
             if isinstance(prepared, CommandResult):
