@@ -203,6 +203,7 @@ new project and workspace with this ECC.
 | `ecc gdsview` | Open a workspace step's GDS in the KLayout viewer |
 | `ecc chipview` | Open a workspace step's geometry snapshot in Chip Viewer |
 | `ecc check-update` | Check whether a newer nightly build is available |
+| `ecc fe ...` | Run the ECC-FE RTL frontend; arguments go to `ecc-fe` unchanged |
 
 Project commands accept `--project <dir>` (defaults to the current directory).
 Most commands support `--plain` output for scripting.

@@ -193,6 +193,7 @@ Commands:
   config        Show resolved project or step configuration
   doctor        Check host environment: PDK, tools, and components
   check-update  Check whether a newer nightly build is available
+  fe            Run the ECC-FE RTL frontend: every argument goes to ecc-fe unchanged
   rtl           Import project RTL sources
   param         Manage EDA parameters
   flow          Inspect available ECC flows and the project's step selection
@@ -247,6 +248,7 @@ eval "$(ecc --show-completion)"     # 自动探测当前 shell
 | `ecc doc TOPIC` | 终端阅读内置指南（`config` / `ug` / `tutorial`） | §1.5 |
 | `ecc gdsview` | 在 KLayout 中打开 workspace step 的 GDS | §13 |
 | `ecc chipview` | 打开 workspace step 的 geometry snapshot | §14 |
+| `ecc fe ...` | 运行 ECC-FE RTL 前端；参数原样交给 `ecc-fe` | §14.5 |
 | `ecc init NAME` | 创建项目骨架 | §3 |
 | `ecc check` | 校验项目配置、RTL 源与 PDK 内容 | §4 |
 | `ecc run` | 执行 flow（新建/续跑/范围/单步，项目与 workspace 模式） | §5 |
@@ -2286,6 +2288,35 @@ AppImage 不作为 GDS 输入解析。命令只要求 AppImage 内的
 
 ```bash
 ecc chipview --workspace default --step filler
+```
+
+## 14.5 fe — RTL 前端
+
+ECC-FE 在设计进入 RTL-to-GDS 流程之前检查它（review、elaboration、lint，
+CPU 设计还有仿真）。它是独立的程序 `ecc-fe`，单独安装和发布。`ecc fe`
+用来运行它：
+
+```bash
+ecc fe init my_core --kind rtl --top core --filelist rtl/core.f
+ecc fe run --project my_core
+ecc fe status --project my_core
+ecc fe --help
+```
+
+`fe` 之后的所有参数（包括 `--help`）原样交给 `ecc-fe`，它的输出和退出码
+也原样返回。ECC 不了解 ECC-FE 的子命令；具体用法见 `ecc fe --help` 和
+ECC-FE 的文档。经 `ecc fe` 运行时，ECC-FE 在输出中自称 `ecc fe`，所以它
+提示的后续命令可以照原样输入。
+
+`ecc-fe` 从 `PATH` 中查找；装在别处时，把 `CHIPCOMPILER_ECC_FE` 设为该
+可执行文件的路径。找不到时 `ecc fe` 以退出码 127 结束。
+
+两个工具只在一处衔接：`ecc-fe handoff` 为通过前端的设计写出交接清单，
+`ecc rtl import --from-fe` 导入它（§8.5）：
+
+```bash
+ecc fe handoff --project my_core
+ecc rtl import --from-fe my_core/handoff/default --project /projects/chip
 ```
 
 ## 15. 端到端典型工作流

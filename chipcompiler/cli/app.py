@@ -17,6 +17,7 @@ from chipcompiler.cli.commands.experiments import (
     reproducible_app,
     sweep_app,
 )
+from chipcompiler.cli.commands.fe import register_fe_command
 from chipcompiler.cli.commands.flow import flow_app
 from chipcompiler.cli.commands.gds_view import register_gds_view_commands
 from chipcompiler.cli.commands.macro import macro_app
@@ -81,6 +82,7 @@ register_gds_view_commands(app)
 register_project_commands(app)
 register_doctor_commands(app)
 register_check_update_command(app)
+register_fe_command(app)
 app.add_typer(param_app, name="param")
 app.add_typer(flow_app, name="flow")
 app.add_typer(macro_app, name="macro")
