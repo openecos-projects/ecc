@@ -46,17 +46,24 @@ def rtl_import_cmd(
     *,
     filelist: Annotated[str | None, typer.Option("--filelist")] = None,
     verilog: Annotated[list[str] | None, typer.Option("--verilog")] = None,
+    from_fe: Annotated[
+        str | None,
+        typer.Option("--from-fe", help="Import the design of an ecc-fe handoff manifest"),
+    ] = None,
     project: ProjectOption = None,
     force: Annotated[bool, typer.Option("--force")] = False,
     plain: PlainOption = False,
 ) -> None:
-    if not filelist and not verilog:
-        raise typer.BadParameter("provide --filelist or at least one --verilog")
+    if from_fe and (filelist or verilog):
+        raise typer.BadParameter("--from-fe cannot be combined with --filelist or --verilog")
+    if not from_fe and not filelist and not verilog:
+        raise typer.BadParameter("provide --filelist, --from-fe or at least one --verilog")
     command_input = RtlImportInput(
         output=output_options(plain=plain),
         project=project_options(project),
         filelist=filelist,
         verilog=tuple(verilog or ()),
+        from_fe=from_fe,
         force=force,
     )
     execute_command("project", command_input, project_handlers.import_rtl)

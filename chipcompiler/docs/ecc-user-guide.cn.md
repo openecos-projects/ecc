@@ -923,6 +923,33 @@ filelist 会被重写为只引用项目内路径。每个 `+incdir+` 目录连�
 才使用 `--force`。不支持的递归/库文件选项（`-f`、`-v`、`-y`）需要在导入
 前手动展开。
 
+通过了 ECC-FE 前端流程的设计，从它的交接清单导入，即 `ecc-fe handoff`
+写出的 `handoff.json`（也可以给出它所在的目录）：
+
+```bash
+ecc rtl import \
+  --from-fe /designs/core/handoff/default \
+  --project /projects/core
+```
+
+导入时只读取这份清单，不读取 ECC-FE 工程的其他内容。清单列出的源文件和
+头文件按原有目录结构复制到 `<project>/rtl/` 下，并生成 `rtl/design.f`，
+其中带有设计的 include 目录、宏定义（`+define+`）和参数覆盖
+（`-G NAME=value`）。`design.top` 取自清单；清单给出时钟端口时，同时写入
+`design.clock_port`；目标频率不导入。以下情况会拒绝导入：
+
+| 错误 | 含义 |
+| --- | --- |
+| `fe_handoff_not_found`、`fe_handoff_invalid` | 路径下没有清单，或它不是 `ecc-fe` 写出的清单。 |
+| `fe_handoff_unsupported_version` | 清单的 schema 版本不被当前 ECC 支持。 |
+| `fe_handoff_incomplete` | 前端流程没有完成（`ecc-fe handoff --allow-incomplete`）。 |
+| `fe_handoff_file_missing`、`fe_handoff_file_changed` | 清单列出的文件已不存在，或内容与前端检查时不同；请重新执行 `ecc-fe handoff`。 |
+| `fe_handoff_unsupported` | 设计使用了库目录（`-y`）。 |
+
+如果项目的 `design.sdc` 时序输入声明了主时钟，时钟端口以它为准。它与导入
+设计的时钟端口不一致时，导入会给出 `clock_port_mismatch` 警告；请修改
+时序输入里的 `primary_clocks`。
+
 该命令会写入 `ecc.toml` 的 `design.rtl`，并更新
 `project.json.base_design.rtl_list` 及源输入元数据。创建 Workspace 前建议先
 检查项目：

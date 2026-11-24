@@ -70,6 +70,7 @@ class RtlImportInput:
     project: ProjectOptions
     filelist: str | None = None
     verilog: tuple[str, ...] = ()
+    from_fe: str | None = None
     force: bool = False
 
 
