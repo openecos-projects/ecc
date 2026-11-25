@@ -1050,7 +1050,7 @@ manifest 的 `path` 和 `min_path` 分别记录两份模型。最终 iSTA 按分
 
 ### 13.5 emir（iEMIR）
 
-`emir_ecc.json` 只有一个公开字段 `technology_file_path`。模板值为空时，
+`emir_ecc.json` 提供 `technology_file_path` 和 `ploc_file_path` 两个公开字段。工艺路径为空时，
 workspace 刷新会填入 workspace 内的 `config/ics55_synthetic.tech`（创建
 workspace 时从打包资源复制）。旧 workspace 中指向打包路径的默认值会在刷新时
 迁移到该副本。选择 `emir` 步骤时，预检要求配置的路径实际存在。修改方式：
@@ -1058,11 +1058,19 @@ workspace 时从打包资源复制）。旧 workspace 中指向打包路径的�
 ```bash
 ecc param list --step emir
 ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
+# 从 floorplan 之后开始的新流程，需要显式提供对应的 PLOC。
+ecc param set emir.ploc_file_path /path/to/power.ploc --workspace NAME
 ```
 
 iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位置文件
 （`post_floorplan_ecc/data/fp/pdn_generator/power.ploc`）以及 `power_analysis`
-生成的逐实例功耗。子阶段为 load data → run EMIR → save data。原生报告位于
+生成的逐实例功耗。`ploc_file_path` 留空时沿用上述上游查找；非空时优先使用
+指定文件，可将原 floorplan 的 PLOC 接入单独创建的续跑 workspace。请使用
+EMIR 输出目录之外的绝对路径；ECC 原样传递，不复制或重新生成文件，PLOC
+必须与输入电源网格匹配。只修改项目参数不会更新已有 workspace，需要指定
+`--workspace NAME`，然后执行 `ecc run --workspace NAME --only emir`。
+打包的 synthetic 工艺仅用于流程测试，不是 foundry 签核数据。
+子阶段为 load data → run EMIR → save data。原生报告位于
 `emir_ecc/data/emir/emir_reporter/`，并会复制到 `emir_ecc/report/`。
 `emir` 是 advisory 步骤：分析未完成会被记录，但不会单独阻断后续流程。
 
