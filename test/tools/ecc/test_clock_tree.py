@@ -68,6 +68,15 @@ def test_select_typical_spef_requires_exact_corner_and_temperature(tmp_path):
 
 def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tmp_path):
     sta_config, _liberty = _sta_config(tmp_path)
+    from chipcompiler.data.workspace.tool_configs import tool_config
+
+    configs_dir = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+    rcx_config = tmp_path / "rcx_ecc.json"
+    rcx_payload = tool_config(configs_dir, rcx_config.name, PDK()) | {
+        "mapping_file": str(tmp_path / "layers.map"),
+        "corners": [{"name": "TYPICAL", "process_file": str(tmp_path / "typ.itf")}],
+    }
+    rcx_config.write_text(json.dumps(rcx_payload))
     sdc = tmp_path / "gcd.sdc"
     sdc.write_text("create_clock -period 10 clk\n", encoding="utf-8")
     workspace = Workspace(
@@ -77,7 +86,7 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
             path=tmp_path / "home" / "params.toml",
             data={"geometry": {"clock_tree": True}},
         ),
-        config={StepEnum.STA.value: sta_config},
+        config={StepEnum.STA.value: sta_config, StepEnum.RCX.value: rcx_config},
     )
     step = SimpleNamespace(
         name=StepEnum.FILLER.value,
@@ -127,9 +136,12 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
         def get_ecc(self):
             return self.native
 
-        def init_rcx(self, config, pdk):
-            self.calls.append(("init_rcx", config, pdk))
+        def init_rcx(self, config):
+            self.calls.append(("init_rcx", config))
             payload = json.loads(Path(config).read_text(encoding="utf-8"))
+            assert payload == rcx_payload | {
+                "output": str(tmp_path / "filler_ecc/data/clock_tree/rcx")
+            }
             _write_spef(Path(payload["output"]) / "spef_writer" / "gcd_TYPICAL_25C.spef")
             return True
 
@@ -149,7 +161,6 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tm
         (
             "init_rcx",
             tmp_path / "filler_ecc" / "data" / "clock_tree" / "rcx_config.json",
-            "fixture",
         ),
         ("run_rcx",),
         ("destroy_rcx",),

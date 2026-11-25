@@ -76,6 +76,20 @@ silently: generated timing constraints need a `TYP`/`TYPICAL` scenario and
 raise an error naming `config_overrides.sta.signoff` when none exists.
 Per-project one-offs still belong in `config_overrides`.
 
+## RC extraction inputs
+
+`rcx_ecc.json` supplies native iRCX with a `mapping_file` and a nonempty
+`corners` list. Each corner declares its `name`, `temperature` values,
+`process_file` (ITF), and `captab_file`. The native interface also accepts
+the legacy `itf_file` spelling. Relative process, capacitance-table and
+mapping paths are resolved against the PDK root; absolute paths are preserved.
+
+The ICS55 profiles use the files under `<root>/corners/`. Their layer map,
+`ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map`, maps design layer names to process
+layer names; it is **not** the GDS stream-out `techfile/icsprout55.layermap`.
+Custom PDKs supply the same schema through `ecc-configs/ecc/rcx_ecc.json`.
+Clock-tree capture reuses these inputs with a separate output directory.
+
 ## Cell-name overrides
 
 `ecc.toml`'s `[pdk.overrides]` table can override any `PDK` dataclass field
