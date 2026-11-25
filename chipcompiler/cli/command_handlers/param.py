@@ -28,9 +28,9 @@ from chipcompiler.params import (
     resolve_parameters,
     validate_value,
 )
+from chipcompiler.project.config_write import edit_project_config
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.rtl2gds import get_flow_builders
-from chipcompiler.utility.file import write_text_atomic
 
 
 def _project_pdk(ctx: CommandContext) -> str | None:
@@ -636,20 +636,8 @@ def _load_toml_overrides(project_dir: str) -> tuple[dict[str, object], list[str]
 # or the future EccTomlConfig owner. CLI should only call the edit operation and
 # translate its result into command records.
 def _write_param_to_toml(config_path: str, schema, value: object, step: str | None = None) -> None:
-    with open(config_path) as f:
-        original = f.read()
-
-    new_text = set_parameter(original, schema, value, step)
-    write_text_atomic(config_path, new_text)
+    edit_project_config(config_path, lambda text: set_parameter(text, schema, value, step))
 
 
 def _remove_param_from_toml(config_path: str, schema, step: str | None = None) -> bool:
-    with open(config_path) as f:
-        original = f.read()
-
-    result = unset_parameter(original, schema, step)
-    if result is None:
-        return False
-
-    write_text_atomic(config_path, result)
-    return True
+    return edit_project_config(config_path, lambda text: unset_parameter(text, schema, step))

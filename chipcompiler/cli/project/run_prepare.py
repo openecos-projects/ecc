@@ -576,14 +576,11 @@ def execute_fresh_run(
                         },
                     )
             if draft is not None:
-                draft.publish(
-                    cfg,
-                    flow_config,
-                    Path(run_dir),
-                    reuse_empty=ctx.workspace_path_explicit,
-                    blocking=not command_input.no_wait,
+                from chipcompiler.cli.project.creation import publish_workspace_creation
+
+                return publish_workspace_creation(
+                    draft, cfg, flow_config, command_input, ctx, run_dir, run_name, warning_records
                 )
-                workspace_registered = True
 
             retained_backup = commit_replacement()
 

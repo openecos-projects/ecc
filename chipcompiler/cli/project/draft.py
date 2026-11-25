@@ -3,7 +3,7 @@
 import json
 import shutil
 import stat
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import contextmanager, suppress
 from copy import copy
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -32,13 +32,25 @@ from chipcompiler.project.manifest_write import (
     manifest_range_for_flow,
     update_manifest_locked,
 )
-from chipcompiler.utility.file import write_text_atomic
+from chipcompiler.utility.file import file_digest, write_text_atomic
+from chipcompiler.utility.filelist import FILELIST_SUFFIXES
 
 _JOURNAL = ".workspace-draft-publish.json"
 _STAGING_ROOT = ".workspace-draft-builds"
 _STAGING_OWNER = ".owner"
 _LEGACY_RTL = ".workspace-draft-rtl"
 _CONFIG_STAGE = "ecc.toml.next"
+DRAFT_PROJECT_CHANGES_SKIPPED = "draft_project_changes_skipped"
+
+
+class DraftPublicationPending(OSError):
+    """A journaled publish requires recovery before it can finish."""
+
+
+@dataclass(frozen=True)
+class PublicationResult:
+    workspace_created: bool
+    project_changes_skipped: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,7 +88,7 @@ class CreationDraft:
 
     def publish(
         self, cfg: ProjectConfig, flow_config, workspace: Path, *, reuse_empty: bool, blocking: bool
-    ) -> None:
+    ) -> PublicationResult:
         """Publish a completed staging tree, or leave enough evidence to resume."""
         from chipcompiler.engine.workspace.lifecycle import _rewrite_workspace_paths
 
@@ -118,7 +130,7 @@ class CreationDraft:
             empty_mode = _check_destination(workspace, reuse_empty=reuse_empty)
             next_config.chmod(stat.S_IMODE(config.stat().st_mode))
             record = {
-                "version": 2,
+                "version": 3,
                 "project_id": self.project_id,
                 "workspace": workspace.name,
                 "device": identity.st_dev,
@@ -131,18 +143,25 @@ class CreationDraft:
                 "skip_steps": (flow_config or {}).get("skip_steps"),
                 "empty_mode": empty_mode,
             }
-            _rtl_links(self.project, staging, record, already_published=False)
+            rtl_paths = _rtl_paths(self.project, staging, targets)
+            _rtl_links(rtl_paths, {})
+            digests = {}
+            for source, destination in rtl_paths:
+                digest = file_digest(source)
+                if digest is None:
+                    raise OSError(f"Could not read staged RTL: {source}")
+                digests[destination.relative_to(self.project).as_posix()] = digest[0]
+            record["rtl_sha256"] = digests
             write_text_atomic(journal, json.dumps(record))
-            rollback = ExitStack()
             try:
-                _publish_locked(self.project, record, rollback)
-            except Exception:
-                rollback.close()
-                journal.unlink()
-                raise
-            rollback.pop_all()
+                result = _publish_locked(self.project, record)
+            except (OSError, ValueError) as exc:
+                raise DraftPublicationPending(
+                    f"{exc}. Run ecc project reconcile to finish."
+                ) from exc
             with suppress(OSError):
                 _finish(self.project, record, journal)
+            return result
 
     def _stage_rtl(self, staging: Path) -> None:
         if self.rtl is None:
@@ -219,7 +238,7 @@ def _read_journal(journal: Path) -> dict | None:
         return None
     except ValueError as exc:
         raise OSError("Invalid Workspace draft journal") from exc
-    if not isinstance(record, dict) or record.get("version") not in (1, 2):
+    if not isinstance(record, dict) or record.get("version") not in (1, 2, 3):
         raise OSError("Invalid Workspace draft journal")
     return record
 
@@ -309,32 +328,81 @@ def _preserve_legacy_build(project: Path, workspace: Path, record: dict) -> None
             workspace.mkdir(mode=stat.S_IMODE((archive / workspace.name).stat().st_mode))
 
 
-def _rtl_links(
-    project: Path, staging: Path, record: dict, *, already_published: bool
-) -> list[tuple[Path, Path]]:
-    links = []
-    for target in record["rtl"]:
+def _rtl_paths(project: Path, staging: Path, targets: list[str]) -> list[tuple[Path, Path]]:
+    paths = []
+    for target in targets:
         relative = Path(target)
-        source, destination = staging / relative, project / relative
-        if (
-            relative.is_absolute()
-            or len(relative.parts) < 2
-            or relative.parts[0] != "rtl"
-            or ".." in relative.parts
-            or source.resolve() != source
-            or destination.resolve() != destination
-            or not source.is_file()
-        ):
+        if relative.is_absolute() or relative.parts[:1] != ("rtl",) or ".." in relative.parts:
             raise OSError("Invalid RTL path in Workspace draft")
+        source = staging / relative
+        if len(relative.parts) < 2 or source.resolve() != source or not source.is_file():
+            raise OSError("Invalid staged RTL in Workspace draft")
+        paths.append((source, project / relative))
+    return paths
+
+
+def _rtl_links(paths: list[tuple[Path, Path]], digests: dict[Path, str]) -> list[tuple[Path, Path]]:
+    links = []
+    for source, destination in paths:
+        if destination.resolve() != destination:
+            raise FileExistsError(f"RTL target is a symbolic link: {destination}")
         if destination.exists():
-            if already_published and destination.samefile(source):
-                continue
+            if destination.is_file() and destination.samefile(source):
+                expected = digests.get(destination)
+                if expected is None or _matches_digest(source, expected):
+                    continue
             raise FileExistsError(f"RTL target already exists: {destination}")
         links.append((source, destination))
     return links
 
 
-def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = None) -> None:
+def _matches_digest(source: Path, expected: str) -> bool:
+    digest = file_digest(source)
+    return digest is not None and digest[0] == expected
+
+
+def _discard_partial_rtl(
+    project: Path,
+    cfg: ProjectConfig,
+    paths: list[tuple[Path, Path]],
+    digests: dict[Path, str],
+) -> None:
+    selected = {(project / path).resolve() for path in cfg.design_rtl}
+    # A selected filelist can refer to other files in the same import.
+    if any(path.suffix.lower() in FILELIST_SUFFIXES for path in selected):
+        from chipcompiler.utility.filelist import parse_filelist, parse_incdir_directives
+
+        filelists = {path for path in selected if path.suffix.lower() in FILELIST_SUFFIXES}
+        include_dirs = set()
+        for path in filelists:
+            try:
+                selected.update(
+                    (path.parent / item).resolve() for item in parse_filelist(str(path))
+                )
+                include_dirs.update(
+                    (path.parent / item).resolve() for item in parse_incdir_directives(str(path))
+                )
+            except (OSError, ValueError):
+                return
+        selected.update(
+            destination
+            for _, destination in paths
+            if any(destination.is_relative_to(directory) for directory in include_dirs)
+        )
+    for source, destination in paths:
+        expected = digests.get(destination)
+        if (
+            expected is not None
+            and destination not in selected
+            and destination.resolve() == destination
+            and destination.is_file()
+            and destination.samefile(source)
+            and _matches_digest(source, expected)
+        ):
+            destination.unlink()
+
+
+def _publish_locked(project: Path, record: dict) -> PublicationResult:
     workspace = _journal_target(project, record)
     manifest = load_manifest(str(project))
     if manifest.project_id != record["project_id"]:
@@ -344,7 +412,10 @@ def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = No
     if entry is not None:
         if not installed or Path(entry.workspace_path).resolve() != workspace:
             raise ManifestError("Draft Workspace identity conflicts with the Project Manifest")
-        return
+        return PublicationResult(
+            workspace_created=True,
+            project_changes_skipped=entry.raw.get(DRAFT_PROJECT_CHANGES_SKIPPED),
+        )
 
     legacy = record["version"] == 1
     staging = workspace / "home" / _LEGACY_RTL if legacy else _staging(project, workspace)
@@ -352,53 +423,56 @@ def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = No
     next_config = staging / _CONFIG_STAGE
     current = config.read_text(encoding="utf-8")
     original, updated = record["original"], record["updated"]
-    # The atomic move consumes ecc.toml.next. Once installed, any later
-    # Project edit wins, including an edit that restores the original bytes.
-    install_config = current in (original, updated) and (legacy or next_config.is_file())
-    if not installed and not install_config:
-        return
+    # The atomic move consumes ecc.toml.next. Later Project edits then win,
+    # including an edit that restores the original bytes.
+    pending_config = current != updated if legacy else next_config.is_file()
+    skipped = record.get(DRAFT_PROJECT_CHANGES_SKIPPED)
     links = []
-    if install_config:
-        try:
-            links = _rtl_links(project, staging, record, already_published=True)
-        except FileExistsError:
-            if rollback is not None:
-                raise
-            if not installed:
-                return
-            # An edit supplied a different file after the interrupted publish.
-            # The built Workspace has its own copy of the design inputs.
-            install_config = False
-    draft_config = parse_project_config(updated, str(config))
-    cfg = draft_config if install_config else parse_project_config(current, str(config))
+    paths = []
+    digests = {project / path: digest for path, digest in record.get("rtl_sha256", {}).items()}
+    if pending_config or skipped:
+        paths = _rtl_paths(project, staging, record["rtl"])
+    if pending_config and not skipped:
+        if current not in (original, updated):
+            skipped = "Project configuration changed before the draft could update it."
+        else:
+            try:
+                links = _rtl_links(paths, digests)
+            except FileExistsError as exc:
+                skipped = str(exc)
     if not installed:
+        if skipped:
+            return PublicationResult(workspace_created=False, project_changes_skipped=skipped)
         built = staging / "workspace"
         if legacy or not _owns_directory(built, record):
             raise OSError("Workspace draft staging changed")
         try:
             mode = _check_destination(workspace, reuse_empty=record["empty_mode"] is not None)
-        except FileExistsError:
-            if rollback is None:
-                # The publication never reached its target. Preserve its current owner.
-                return
-            raise
+        except FileExistsError as exc:
+            return PublicationResult(workspace_created=False, project_changes_skipped=str(exc))
         if mode is not None:
             built.chmod(mode)
         built.rename(workspace)
-        if rollback is not None:
-            rollback.callback(_restore_destination, workspace, built, mode)
-    for source, destination in links:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.hardlink_to(source)
-        if rollback is not None:
-            rollback.callback(destination.unlink, missing_ok=True)
-    if install_config:
+
+    draft_config = parse_project_config(updated, str(config))
+    cfg = (
+        draft_config
+        if pending_config and not skipped
+        else parse_project_config(current, str(config))
+    )
+    if skipped:
+        if DRAFT_PROJECT_CHANGES_SKIPPED not in record:
+            record = {**record, DRAFT_PROJECT_CHANGES_SKIPPED: skipped}
+            write_text_atomic(project / _JOURNAL, json.dumps(record))
+        _discard_partial_rtl(project, cfg, paths, digests)
+    elif pending_config:
+        for source, destination in links:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.hardlink_to(source)
         if legacy:
             write_text_atomic(config, updated)
         else:
             next_config.replace(config)
-            if rollback is not None:
-                rollback.callback(_restore_config, config, next_config, current, updated)
 
     register = project_manifest_mutator(
         project,
@@ -417,32 +491,22 @@ def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = No
         register(document)
         document["design_name"] = cfg.design_name
         document["base_design"] = base_design
+        entry = next(
+            item for item in document["workspaces"] if item["workspace_id"] == workspace.name
+        )
         if record["skip_steps"] is not None:
-            next(
-                entry for entry in document["workspaces"] if entry["workspace_id"] == workspace.name
-            )["skip_steps"] = record["skip_steps"]
+            entry["skip_steps"] = record["skip_steps"]
+        if skipped:
+            entry[DRAFT_PROJECT_CHANGES_SKIPPED] = skipped
 
     if not update_manifest_locked(project, mutate):
         raise OSError("Project Manifest update failed")
-
-
-def _restore_destination(workspace: Path, built: Path, mode: int | None) -> None:
-    workspace.rename(built)
-    if mode is not None:
-        workspace.mkdir(mode=mode)
-        workspace.chmod(mode)
-
-
-def _restore_config(config: Path, next_config: Path, original: str, updated: str) -> None:
-    # Recovery can finish publishing if the process stops during rollback.
-    write_text_atomic(next_config, updated)
-    next_config.chmod(stat.S_IMODE(config.stat().st_mode))
-    write_text_atomic(config, original)
+    return PublicationResult(workspace_created=True, project_changes_skipped=skipped)
 
 
 def _finish(project: Path, record: dict, journal: Path) -> None:
     workspace = _journal_target(project, record)
-    if record["version"] == 2:
+    if record["version"] != 1:
         journal.unlink()
         _discard_staging(_staging(project, workspace))
     else:

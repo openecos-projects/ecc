@@ -10,7 +10,8 @@ from pathlib import Path
 
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
-from chipcompiler.project.manifest_write import update_manifest
+from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
+from chipcompiler.utility.file import write_text_atomic
 from chipcompiler.utility.filelist import (
     _remove_inline_comment,
     parse_filelist,
@@ -38,23 +39,23 @@ def import_project_rtl(
         raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
     if not (root / MANIFEST_FILENAME).is_file():
         raise RtlImportError("missing_manifest", "project.json was not found", str(root))
-    plan = plan_project_rtl(root, filelist=filelist, verilog=verilog)
-    plan.copy(force=force)
-    rtl_config, rtl_entries = plan.configured_paths, plan.rtl_entries
+    with manifest_lock(root):
+        plan = plan_project_rtl(root, filelist=filelist, verilog=verilog)
+        plan.copy(force=force)
+        rtl_config, rtl_entries = plan.configured_paths, plan.rtl_entries
 
-    text = config_path.read_text(encoding="utf-8")
-    text = set_scoped_key(text, "design", "rtl", rtl_config)
-    config_path.write_text(text, encoding="utf-8")
+        text = config_path.read_text(encoding="utf-8")
+        write_text_atomic(config_path, set_scoped_key(text, "design", "rtl", rtl_config))
 
-    def mutate(document: dict) -> None:
-        base = document.setdefault("base_design", {})
-        base["rtl_list"] = rtl_entries
-        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
-        if filelist:
-            base["origin_filelist"] = rtl_config[0]
-        document["design_name"] = document.get("design_name") or root.name
+        def mutate(document: dict) -> None:
+            base = document.setdefault("base_design", {})
+            base["rtl_list"] = rtl_entries
+            base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
+            if filelist:
+                base["origin_filelist"] = rtl_config[0]
+            document["design_name"] = document.get("design_name") or root.name
 
-    update_manifest(root, mutate)
+        update_manifest_locked(root, mutate)
     return {
         "project": str(root),
         "status": "rtl_imported",

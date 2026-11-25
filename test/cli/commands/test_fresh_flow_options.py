@@ -9,6 +9,7 @@ import json
 import os
 import signal
 from multiprocessing import Event, Process
+from pathlib import Path
 
 import pytest
 
@@ -155,7 +156,7 @@ def test_workspace_preview_create_and_retry_use_one_draft(fresh_project, capsys)
     assert cli_main.run(args) == 0
 
 
-def test_failed_draft_publication_rolls_back_project_config_and_rtl(
+def test_failed_draft_registration_keeps_the_published_workspace_for_recovery(
     fresh_project, monkeypatch, tmp_path
 ):
     config, manifest = (fresh_project / name for name in ("ecc.toml", "project.json"))
@@ -163,31 +164,185 @@ def test_failed_draft_publication_rolls_back_project_config_and_rtl(
     rtl = tmp_path / "new.v"
     rtl.write_text("module gcd(input clk); endmodule\n")
     new_rtl = fresh_project / "rtl/new.v"
+    target = fresh_project / "rejected"
+    target.mkdir()
+    note = target / "notes.txt"
 
     def fail_publication(_project, _mutator):
         assert new_rtl.exists()
         assert config.read_bytes() != original_config
+        note.write_text("added to the visible workspace")
         return False
 
-    monkeypatch.setattr("chipcompiler.cli.project.draft.update_manifest_locked", fail_publication)
-    assert (
-        cli_main.run(
-            [
-                "workspace",
-                "create",
-                "rejected",
-                "--project",
-                str(fresh_project),
-                "--draft",
-                json.dumps({"rtl": [str(rtl)], "maxParallelSteps": 2}),
-            ]
+    with monkeypatch.context() as failed:
+        failed.setattr("chipcompiler.cli.project.draft.update_manifest_locked", fail_publication)
+        assert (
+            cli_main.run(
+                [
+                    "workspace",
+                    "create",
+                    str(target),
+                    "--project",
+                    str(fresh_project),
+                    "--draft",
+                    json.dumps({"rtl": [str(rtl)], "maxParallelSteps": 2}),
+                ]
+            )
+            == 1
         )
-        != 0
-    )
-    assert config.read_bytes() == original_config
+
+    assert note.read_text() == "added to the visible workspace"
     assert manifest.read_bytes() == original_manifest
-    assert not new_rtl.exists()
-    assert not (fresh_project / "rejected").exists()
+    assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    assert note.read_text() == "added to the visible workspace"
+    assert new_rtl.read_bytes() == rtl.read_bytes()
+    assert [entry["workspace_id"] for entry in json.loads(manifest.read_text())["workspaces"]] == [
+        target.name
+    ]
+
+
+def test_config_edit_serializes_with_draft_publication(
+    fresh_project, monkeypatch, tmp_path, minimal_ics55_pdk_factory
+):
+    import tomllib
+
+    from chipcompiler.cli.command_handlers import pdk
+
+    config = fresh_project / "ecc.toml"
+    other_pdk = minimal_ics55_pdk_factory(tmp_path / "other-pdk")
+    committing, edit_started, release = Event(), Event(), Event()
+    replace = Path.replace
+    set_root = pdk._write_pdk_root
+
+    def pause_config_commit(path, target):
+        if path.name == "ecc.toml.next" and target == config:
+            committing.set()
+            assert release.wait(10)
+        return replace(path, target)
+
+    def start_pdk_write(*args):
+        edit_started.set()
+        set_root(*args)
+
+    def create():
+        raise SystemExit(
+            cli_main.run(
+                [
+                    "workspace",
+                    "create",
+                    "draft",
+                    "--project",
+                    str(fresh_project),
+                    "--draft",
+                    '{"maxParallelSteps":2}',
+                ]
+            )
+        )
+
+    def edit():
+        raise SystemExit(
+            cli_main.run(
+                [
+                    "pdk",
+                    "set-root",
+                    str(other_pdk),
+                    "--project",
+                    str(fresh_project),
+                ]
+            )
+        )
+
+    monkeypatch.setattr(Path, "replace", pause_config_commit)
+    monkeypatch.setattr(pdk, "_write_pdk_root", start_pdk_write)
+    creator, editor = Process(target=create), Process(target=edit)
+    creator.start()
+    try:
+        assert committing.wait(10)
+        editor.start()
+        assert edit_started.wait(10)
+        editor.join(0.5)
+    finally:
+        release.set()
+        creator.join(10)
+        if editor.pid is not None:
+            editor.join(10)
+    assert creator.exitcode == editor.exitcode == 0
+    data = tomllib.loads(config.read_text())
+    assert data["pdk"]["root"] == str(other_pdk)
+    assert data["flow"]["max_parallel_steps"] == 2
+
+
+@pytest.mark.parametrize(
+    ("user_edited_first_link", "registration_fails_once"),
+    [(False, False), (True, False), (False, True)],
+)
+def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
+    fresh_project, monkeypatch, tmp_path, capsys, user_edited_first_link, registration_fails_once
+):
+    target = fresh_project / "draft"
+    files = [tmp_path / "first.v", tmp_path / "second.v"]
+    for source, module in zip(files, ("gcd", "other"), strict=True):
+        source.write_text(f"module {module}; endmodule\n")
+    first, second = (fresh_project / "rtl" / source.name for source in files)
+    original_config = (fresh_project / "ecc.toml").read_bytes()
+    args = [
+        "workspace",
+        "create",
+        target.name,
+        "--project",
+        str(fresh_project),
+        "--draft",
+        json.dumps({"rtl": [str(source) for source in files]}),
+        "--command-id",
+        "partial-import",
+        "--json",
+    ]
+    link = Path.hardlink_to
+
+    def stop_after_first(path, source):
+        link(path, source)
+        if path == first:
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    with monkeypatch.context() as child:
+        child.setattr(Path, "hardlink_to", stop_after_first)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                cli_main.run(args)
+            finally:
+                os._exit(1)
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+
+    assert first.is_file()
+    second.write_text("user-owned second file")
+    if user_edited_first_link:
+        first.write_text("user edit to the first file")
+    if registration_fails_once:
+        with monkeypatch.context() as failed:
+            failed.setattr(
+                "chipcompiler.cli.project.draft.update_manifest_locked", lambda *_: False
+            )
+            assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 1
+        second.unlink()
+    assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    assert (target / "home" / "flow.json").is_file()
+    assert (fresh_project / "ecc.toml").read_bytes() == original_config
+    if registration_fails_once:
+        assert not second.exists()
+    else:
+        assert second.read_text() == "user-owned second file"
+    if user_edited_first_link:
+        assert first.read_text() == "user edit to the first file"
+    else:
+        assert not first.exists()
+
+    capsys.readouterr()
+    assert cli_main.run(args) == 1
+    (record,) = json.loads(capsys.readouterr().out)
+    assert record["error"] == "workspace_draft_project_changes_skipped"
+    assert record["workspace_created"] is True
 
 
 @pytest.mark.parametrize(

@@ -290,7 +290,10 @@ def _write(
     confirm: Confirm | None,
 ) -> CommandResult:
     """Ask *confirm* (None: ``--yes``), then write *plan* of *chosen* to ecc.toml [flow]."""
-    from chipcompiler.cli.project.flow_selection import write_flow_selection
+    from chipcompiler.cli.project.flow_selection import (
+        FlowSelectionChangedError,
+        write_flow_selection,
+    )
 
     config_path = os.path.join(ctx.project_dir, CONFIG_FILENAME)
     changes, warnings = _selection_records(
@@ -305,15 +308,19 @@ def _write(
     )
     if confirm is not None and not confirm([changes, *warnings]):
         return _cancelled()
-    write_flow_selection(
-        config_path,
-        preset=cfg.flow_preset,
-        lec_engine=lec_engine.value,
-        skip_steps=plan.skip_steps,
-        # Kept as chosen: an inserted step whose step the preset lacks stays declared.
-        insert_steps=chosen.insert_steps,
-        max_parallel_steps=max_parallel_steps,
-    )
+    try:
+        write_flow_selection(
+            config_path,
+            preset=cfg.flow_preset,
+            lec_engine=lec_engine.value,
+            skip_steps=plan.skip_steps,
+            # Kept as chosen: an inserted step whose step the preset lacks stays declared.
+            insert_steps=chosen.insert_steps,
+            max_parallel_steps=max_parallel_steps,
+            expected=cfg,
+        )
+    except FlowSelectionChangedError as exc:
+        return CommandResult.err([error_record("project_config_changed", reason=str(exc))])
     return CommandResult.ok(
         [
             {"record": "flow_edit", "status": "written", **changes},

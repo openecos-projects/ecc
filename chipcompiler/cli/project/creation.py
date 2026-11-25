@@ -6,11 +6,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.inputs import RunInput, WorkspaceCreateInput
+from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 
 if TYPE_CHECKING:
+    from chipcompiler.cli.project.config import ProjectConfig
     from chipcompiler.cli.project.draft import CreationDraft
+    from chipcompiler.cli.project.flow_selection import FlowConfig
 
 
 def prepare_workspace_creation(
@@ -64,6 +67,10 @@ def prepare_workspace_creation(
 def existing_draft_workspace(
     command_input: RunInput, ctx: CommandContext, run_dir: str, run_name: str, *, preview: bool
 ) -> CommandResult:
+    from chipcompiler.cli.project.draft import (
+        DRAFT_PROJECT_CHANGES_SKIPPED,
+        require_draft_published,
+    )
     from chipcompiler.project.manifest import load_manifest
     from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -76,11 +83,79 @@ def existing_draft_workspace(
                 and Path(entry.workspace_path).resolve() == target.resolve()
                 and repeats_recorded_create(command_input, run_dir, run_name)
             ):
+                skipped = entry.raw.get(DRAFT_PROJECT_CHANGES_SKIPPED)
+                if isinstance(skipped, str):
+                    return draft_project_changes_error(run_dir, run_name, skipped)
                 return CommandResult.ok(
                     [{"workspace_id": run_name, "workspace": run_dir, "status": "created"}]
                 )
+            try:
+                require_draft_published(Path(ctx.project_dir), target)
+            except OSError as exc:
+                return CommandResult.err([error_record("workspace_draft_pending", reason=str(exc))])
     return CommandResult.err(
         [error_record("workspace_conflict", reason=f"Workspace already exists: {target}")]
+    )
+
+
+def draft_project_changes_error(run_dir: str, run_name: str, reason: str) -> CommandResult:
+    return CommandResult.err(
+        [
+            error_record(
+                "workspace_draft_project_changes_skipped",
+                reason=reason,
+                workspace_id=run_name,
+                workspace=run_dir,
+                workspace_created=True,
+            )
+        ]
+    )
+
+
+def publish_workspace_creation(
+    draft: "CreationDraft",
+    cfg: "ProjectConfig",
+    flow_config: "FlowConfig | None",
+    command_input: RunInput,
+    ctx: CommandContext,
+    run_dir: str,
+    run_name: str,
+    warnings: list[dict],
+) -> CommandResult:
+    from chipcompiler.cli.project.draft import DraftPublicationPending
+
+    fields = {"workspace_id": run_name, "workspace": run_dir}
+    try:
+        publication = draft.publish(
+            cfg,
+            flow_config,
+            Path(run_dir),
+            reuse_empty=ctx.workspace_path_explicit,
+            blocking=not command_input.no_wait,
+        )
+    except DraftPublicationPending as exc:
+        return CommandResult.err(
+            [error_record("workspace_draft_pending", reason=str(exc), **fields)]
+        )
+    if not publication.workspace_created:
+        return CommandResult.err(
+            [
+                error_record(
+                    "workspace_conflict", reason=publication.project_changes_skipped, **fields
+                )
+            ]
+        )
+    if publication.project_changes_skipped:
+        return draft_project_changes_error(run_dir, run_name, publication.project_changes_skipped)
+    return CommandResult.ok(
+        [
+            *warnings,
+            {
+                **fields,
+                "status": "refreshed",
+                "run": disclosure_cmd("ecc run", ctx.project, run_name),
+            },
+        ]
     )
 
 
