@@ -77,10 +77,20 @@ def prepare_drive_table(workspace: Workspace, step: WorkspaceStep, params: dict)
 
     directory = require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
     table_path = directory / "buffer_drive_strength.json"
+    # The backend takes the strengths explicitly instead of recognizing a fixed
+    # master list, so they come from the PDK beside the buffers. Row order sets
+    # each master's drive_type_id, so it follows the PDK's buffer list rather
+    # than however the strength mapping happens to be ordered.
+    strengths = workspace.pdk.buffer_drive_strengths
     table = build_drive_strength_table(
         workspace.pdk.name,
         workspace.pdk.buffers,
         Path(workspace.directory) / "home/engineering-snapshot.json",
+        drive_strengths=[
+            {"master": master, "strength": strengths[master]}
+            for master in workspace.pdk.buffers
+            if master in strengths
+        ],
     )
     directory.mkdir(parents=True, exist_ok=True)
     json_write(table_path, table)

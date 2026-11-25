@@ -32,8 +32,8 @@ def pdk_issues_for_config(cfg, step_names) -> list[dict]:
             _issue(
                 "pdk",
                 f"pdk.name={cfg.pdk_name}",
-                "Set pdk.root in ecc.toml, or export CHIPCOMPILER_ICS55_PDK_ROOT / "
-                "ICS55_PDK_ROOT pointing at the icsprout55-pdk checkout.",
+                "Set pdk.root in ecc.toml, or export ECC_PDK_ROOT pointing at the "
+                "icsprout55-pdk checkout.",
             )
         ]
     try:

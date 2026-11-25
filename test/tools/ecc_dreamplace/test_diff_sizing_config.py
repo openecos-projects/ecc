@@ -53,7 +53,7 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters(
             {
                 "dreamplace": placement_weights,
@@ -81,8 +81,8 @@ def test_public_s50_coefficients_survive_step_resolution_without_changing_placem
         "num_bins_y": 256,
         "route_num_bins_x": 512,
         "route_num_bins_y": 512,
-        "gpugr_bottom_routing_layer": "MET2",
-        "gpugr_top_routing_layer": "MET5",
+        "gpugr_bottom_routing_layer": dreamplace_default_config["gpugr_bottom_routing_layer"],
+        "gpugr_top_routing_layer": dreamplace_default_config["gpugr_top_routing_layer"],
         "timing_wns_coeff": expected_policy["wns"],
         "timing_tns_coeff": expected_policy["tns"],
         "timing_cap_weight": expected_policy["cap"],
@@ -134,8 +134,8 @@ def test_old_config_uses_s50_defaults_without_inheriting_gp_weights(dreamplace_d
             "timing_grad_balance_weight",
         )
     } == {
-        "gpugr_bottom_routing_layer": "MET2",
-        "gpugr_top_routing_layer": "MET5",
+        "gpugr_bottom_routing_layer": "",
+        "gpugr_top_routing_layer": "",
         "timing_wns_coeff": policy["wns"],
         "timing_tns_coeff": policy["tns"],
         "timing_grad_balance_weight": 1.0,
@@ -320,7 +320,7 @@ def test_public_lut_action_mode_survives_step_resolution(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
         parameters=make_ics55_parameters({"step_params": step_params}),
     )
     step = builder.build_step(

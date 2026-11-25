@@ -85,7 +85,7 @@ def workspace_param_default(workspace, schema) -> object:
         mode_schema = lookup_schema("floorplan.io_placer.mode")
         assert mode_schema is not None
         mode = workspace_param_value(workspace, mode_schema)
-        return pdn_defaults(pdk, mode)[schema.name]
+        return pdn_defaults(workspace.pdk, mode)[schema.name]
     return schema.default_for(pdk)
 
 

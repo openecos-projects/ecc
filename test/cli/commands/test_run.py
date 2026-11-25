@@ -281,7 +281,7 @@ class TestRunFlowPreset:
         with open(toml_path, "a") as f:
             f.write('\n[pdk.overrides]\nlefs = ["IP/STD_cell/x.lef"]\n')
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CHIPCOMPILER_ICS55_PDK_ROOT", "ics55")
+        monkeypatch.setenv("ECC_PDK_ROOT", "ics55")
 
         rc = cli_main.run(["run", "--project", project_dir])
 
@@ -327,7 +327,13 @@ class TestWorkspaceRun:
             json.dump({"schema_version": 3, "steps": steps}, f)
         assert save_workspace_config(
             run_dir,
-            {"pdk": "ics55", "design": "gcd", "top_module": "gcd", "clock": "clk"},
+            {
+                "pdk": "ics55",
+                "design": "gcd",
+                "top_module": "gcd",
+                "clock": "clk",
+                "pdk_root": str(tmp_path / "ics55"),
+            },
             {"preset": "rtl2gds"},
         )
         seen = SimpleNamespace(

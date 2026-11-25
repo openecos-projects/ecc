@@ -6,6 +6,7 @@ import pytest
 
 from chipcompiler.cli.project.timing_template import SDC_INPUT_TEMPLATE
 from chipcompiler.data import (
+    PDK,
     EccData,
     EccStep,
     OriginDesign,
@@ -315,6 +316,7 @@ def test_build_params_resolves_openroad_timing_inputs(tmp_path, legacy_sdc):
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
+        pdk=PDK(name="ics55", version="v1"),
         config={"dreamplace": config_path},
     )
     workspace.pdk.root = pdk_root

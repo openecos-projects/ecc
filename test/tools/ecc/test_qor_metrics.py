@@ -2,8 +2,16 @@ import json
 from pathlib import Path
 
 from chipcompiler.data import StepEnum, Workspace
+from chipcompiler.data.pdk import PDK
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.ecc.qor_metrics import QorMetrics
 from chipcompiler.tools.ecc.sta_qor import configured_sta_artifact_directories
+
+_STA_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+
+
+def _default_sta_config():
+    return tool_config(_STA_CONFIGS_DIR, "sta_ecc.json", PDK(name="ics55", version="v1"))
 
 
 def _write(path, payload):
@@ -67,10 +75,9 @@ def test_harden_signoff_source_reads_the_step_directory_table(tmp_path):
 
 
 def test_configured_sta_directories_follow_default_five_signoff_corners(tmp_path):
-    template = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs/sta_ecc.json"
     config_path = tmp_path / "config" / "sta_ecc.json"
     config_path.parent.mkdir()
-    config_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
+    config_path.write_text(json.dumps(_default_sta_config()), encoding="utf-8")
     workspace = Workspace(directory=tmp_path, config={StepEnum.STA.value: config_path})
 
     directories = configured_sta_artifact_directories(

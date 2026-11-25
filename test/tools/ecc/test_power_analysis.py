@@ -14,9 +14,11 @@ from chipcompiler.data import (
     StepEnum,
     Workspace,
 )
+from chipcompiler.data.pdk import PDK
 from chipcompiler.data.step import STEP_DIRECTORIES
 from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
+from chipcompiler.data.workspace.tool_configs import tool_config
 from chipcompiler.tools.ecc import runner as ecc_runner
 from chipcompiler.tools.ecc.module import ECCToolsModule
 from chipcompiler.tools.ecc.sta_qor import (
@@ -32,6 +34,12 @@ Net Switching Power  =    2.0000 mW
 Total Dynamic Power  =    3.0000 mW
 Cell Leakage Power   =    4.0000 uW
 """
+
+_STA_CONFIGS_DIR = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
+
+
+def _default_sta_config():
+    return tool_config(_STA_CONFIGS_DIR, "sta_ecc.json", PDK(name="ics55", version="v1"))
 
 
 class FakePowerModule:
@@ -109,6 +117,7 @@ def _power_workspace(tmp_path, monkeypatch):
     workspace = Workspace(
         directory=tmp_path,
         design=OriginDesign(name="gcd", top_module="gcd"),
+        pdk=PDK(name="ics55", version="v1"),
     )
     workspace.parameters.data.update(SdcInputs.from_file(sdc).parameters())
     generate_timing_scripts(workspace)
@@ -209,6 +218,9 @@ def test_power_analysis_uses_typical_signoff_item_even_when_configured_later(tmp
     for path in (typical_liberty, typical_spef):
         path.write_text("input\n", encoding="utf-8")
     sdc.write_text("# ECC-generated SDC file\n", encoding="utf-8")
+    config_path = tmp_path / "config/sta_ecc.json"
+    config_path.parent.mkdir()
+    config_path.write_text(json.dumps(_default_sta_config()))
     monkeypatch.setattr(
         ecc_runner,
         "collect_sta_signoff_items",

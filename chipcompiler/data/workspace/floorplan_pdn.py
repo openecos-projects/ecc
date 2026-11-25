@@ -1,12 +1,10 @@
 """Select the chip/core PDN baseline without replacing explicit user meshes."""
 
 from chipcompiler.data.config_params.floorplan import pdn_defaults
+from chipcompiler.data.pdk import PDK
 
 
-def refresh_pdn_defaults(floorplan: dict, parameters: dict) -> None:
-    pdk = str(parameters.get("pdk") or "")
-    if pdk.casefold() != "ics55":
-        return
+def refresh_pdn_defaults(floorplan: dict, parameters: dict, pdk: PDK) -> None:
     patch = parameters.get("config_overrides", {}).get("floorplan", {})
     mode = patch.get("io_placer", {}).get("mode", floorplan["io_placer"]["mode"])
     core = pdn_defaults(pdk, "auto")

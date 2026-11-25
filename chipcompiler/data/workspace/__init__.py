@@ -234,11 +234,11 @@ def _reload_workspace_parameters(workspace: Workspace) -> None:
     workspace.parameters = reload_parameter(parameter_path, workspace.parameters)
 
 
-def _load_default_floorplan_config() -> dict:
-    from chipcompiler.utility import json_read
+def _load_default_floorplan_config(pdk) -> dict:
+    from .tool_configs import tool_config
 
     root_dir = Path(__file__).resolve().parent.parent.parent
-    return json_read(root_dir / "tools" / "ecc" / "configs" / "floorplan_ecc.json")
+    return tool_config(root_dir / "tools" / "ecc" / "configs", "floorplan_ecc.json", pdk)
 
 
 def _refresh_emir_config(workspace: Workspace) -> None:
@@ -321,7 +321,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     if not config_path:
         return
 
-    default_floorplan = _load_default_floorplan_config()
+    default_floorplan = _load_default_floorplan_config(workspace.pdk)
     floorplan = json_read(config_path) if Path(config_path).exists() else {}
     if not _has_new_floorplan_schema(floorplan):
         floorplan = default_floorplan
@@ -372,7 +372,7 @@ def _refresh_floorplan_config(workspace: Workspace, step: WorkspaceStep | None =
     side_endcap["left_cell_name"] = workspace.pdk.end_cap or side_endcap.get("left_cell_name", "")
     side_endcap["right_cell_name"] = workspace.pdk.end_cap or side_endcap.get("right_cell_name", "")
 
-    refresh_pdn_defaults(floorplan, workspace.parameters.data)
+    refresh_pdn_defaults(floorplan, workspace.parameters.data, workspace.pdk)
     json_write(config_path, floorplan)
 
     from chipcompiler.params.targets import derive_parameter_configs
@@ -401,18 +401,6 @@ def _ensure_writable(path: str | Path):
                 os.chmod(target, os.stat(target).st_mode | stat.S_IWUSR)
 
 
-def _copy_missing_files(src_dir: str | Path, dst_dir: str | Path):
-    import os
-    import shutil
-
-    os.makedirs(dst_dir, exist_ok=True)
-    for name in os.listdir(src_dir):
-        src = os.path.join(src_dir, name)
-        dst = os.path.join(dst_dir, name)
-        if os.path.isfile(src) and not os.path.exists(dst):
-            shutil.copy2(src, dst)
-
-
 def _rcx_temperature_key(temperature) -> str:
     try:
         numeric = float(temperature)
@@ -427,20 +415,13 @@ def _rcx_temperature_token(temperature) -> str:
 
 def init_workspace_config(workspace: Workspace) -> None:
     """Create workspace-level configs, then refresh parameter/PDK-derived fields."""
-    import shutil
-
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
 
-    config_dir = workspace.config["dir"]
-    root_dir = Path(__file__).resolve().parent.parent.parent
-    ecc_config_dir = root_dir / "tools" / "ecc" / "configs"
-    dreamplace_config = root_dir / "tools" / "ecc_dreamplace" / "configs" / "dreamplace_ecc.json"
+    from .tool_configs import write_missing_tool_configs
 
-    _copy_missing_files(ecc_config_dir, config_dir)
-    if not workspace.config["dreamplace"].exists():
-        shutil.copy2(dreamplace_config, workspace.config["dreamplace"])
-    _ensure_writable(config_dir)
+    write_missing_tool_configs(workspace)
+    _ensure_writable(workspace.config["dir"])
 
     refresh_workspace_config(workspace)
 
@@ -479,7 +460,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     min_filler_width = filler.get("-min_filler_width")
     if min_filler_width is None:
         raise ValueError(f"filler config requires -min_filler_width: {filler_path}")
-    json_write(filler_path, {"-min_filler_width": min_filler_width})
+    # Validate only: the merged config also carries the PDK's filler-master
+    # selection under MJ, which must survive refresh.
+    if not filler_path.is_file():
+        raise FileNotFoundError(f"Filler config missing: {filler_path}")
 
     cts = json_read(workspace.config[f"{StepEnum.CTS.value}"])
     if not cts:

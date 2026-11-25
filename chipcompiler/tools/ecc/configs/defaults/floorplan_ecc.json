@@ -1,0 +1,81 @@
+{
+  "ifp": {
+    "temp_directory_path": "",
+    "thread_number": 16
+  },
+  "macro_placer": {
+    "file_path": "",
+    "macro_placement_halo": 3.0,
+    "macro_routing_halo": 3.0
+  },
+  "die_builder": {
+    "mode": "die_util",
+    "site_name": "",
+    "margin": {
+      "left_micron": 2.0,
+      "right_micron": 2.0,
+      "top_micron": 2.0,
+      "bottom_micron": 2.0
+    },
+    "die_util": {
+      "aspect_ratio": 1.0,
+      "utilization": 0.5
+    },
+    "die_size": {
+      "width_micron": 100.1,
+      "height_micron": 246.6
+    }
+  },
+  "io_placer": {
+    "mode": "auto",
+    "file_path": "",
+        "io_cell": {
+            "definition_file_path": "",
+            "power": {
+                "target_group_spacing": 1000.0
+            },
+            "auto_resize": {
+                "enable": true
+            }
+        },
+    "io_layer_list": []
+  },
+  "phy_placer": {
+    "well_tap": {
+      "cell_name": "",
+      "distance_micron": 58.0
+    },
+    "side_endcap": {
+      "left_cell_name": "",
+      "right_cell_name": ""
+    },
+    "edge_endcap": {
+      "top_cell_name_list": [],
+      "bottom_cell_name_list": []
+    },
+    "boundary_tap": {
+      "top_cell_name_list": [],
+      "bottom_cell_name_list": [],
+      "rule_micron": 30.0
+    }
+  },
+  "pdn_generator": {
+        "core_power_net": "",
+        "core_ground_net": "",
+    "global_connect": [
+      {
+        "net_name": "VDD",
+        "instance_pin_name": "VDD",
+        "is_power": true
+      },
+      {
+        "net_name": "VSS",
+        "instance_pin_name": "VSS",
+        "is_power": false
+      }
+    ],
+    "rail": [],
+    "stripe": [],
+    "connect_layers": []
+  }
+}

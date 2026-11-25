@@ -1,57 +1,20 @@
-from copy import deepcopy
+from pathlib import Path
+
+from chipcompiler.data.pdk import PDK, get_pdk
 
 from .common import config_param
 
-_CORE_PDN: dict[str, list[dict[str, object]]] = {
-    "stripe": [
-        {
-            "routing_layer_name": "MET4",
-            "width_micron": 1.0,
-            "pitch_micron": 16.0,
-            "offset_micron": 0.5,
-        },
-        {
-            "routing_layer_name": "MET5",
-            "width_micron": 1.0,
-            "pitch_micron": 16.0,
-            "offset_micron": 0.5,
-        },
-    ],
-    "connect_layers": [
-        {"bottom_routing_layer_name": "MET1", "top_routing_layer_name": "MET4"},
-        {"bottom_routing_layer_name": "MET4", "top_routing_layer_name": "MET5"},
-    ],
-}
 
-_CX55_CHIP_PDN: dict[str, list[dict[str, object]]] = {
-    "stripe": [
-        {
-            "routing_layer_name": "T4M2",
-            "width_micron": 6.0,
-            "pitch_micron": 16.0,
-            "offset_micron": 0.5,
-        },
-        {
-            "routing_layer_name": "RDL",
-            "width_micron": 35.0,
-            "pitch_micron": 90.0,
-            "offset_micron": 50.0,
-        },
-    ],
-    "connect_layers": [
-        {"bottom_routing_layer_name": "MET5", "top_routing_layer_name": "T4M2"},
-        {"bottom_routing_layer_name": "T4M2", "top_routing_layer_name": "RDL"},
-    ],
-}
+def pdn_defaults(pdk: PDK | str | None, io_mode: object) -> dict[str, list[dict[str, object]]]:
+    """Read the versioned core/chip mesh, preserving PDK-carried overrides."""
+    from chipcompiler.data.workspace.tool_configs import tool_config
 
-
-def pdn_defaults(pdk: str | None, io_mode: object) -> dict[str, list[dict[str, object]]]:
-    """Core mesh defaults, extended for CX55 pad-based chips (MPW or assembled MPC)."""
-    defaults = deepcopy(_CORE_PDN)
-    if pdk and pdk.casefold() == "ics55" and io_mode == "io_cell":
-        for name, extension in _CX55_CHIP_PDN.items():
-            defaults[name].extend(deepcopy(extension))
-    return defaults
+    profile = pdk if isinstance(pdk, PDK) else get_pdk(pdk or "", validate=False)
+    configs = Path(__file__).resolve().parents[2] / "tools" / "ecc" / "configs"
+    config = tool_config(
+        configs, "floorplan_ecc.json", profile, mode="io_cell" if io_mode == "io_cell" else ""
+    )
+    return {name: config["pdn_generator"][name] for name in ("stripe", "connect_layers")}
 
 
 SCHEMAS = (
@@ -86,7 +49,7 @@ SCHEMAS = (
         "floorplan.die_builder.site_name",
         "floorplan",
         ("die_builder", "site_name"),
-        "core7",
+        "",
         applies="pre_floorplan",
         description="PDK site name for standard-cell placement rows.",
     ),
@@ -141,7 +104,7 @@ SCHEMAS = (
         "floorplan.io_placer.io_layer_list",
         "floorplan",
         ("io_placer", "io_layer_list"),
-        ["MET3", "MET4"],
+        [],
         applies="pre_floorplan",
         description="Metal layers allowed for IO pin placement.",
     ),
@@ -192,14 +155,17 @@ SCHEMAS = (
             {"net_name": "VSS", "instance_pin_name": "VSS", "is_power": False},
         ],
         applies="pre_floorplan",
-        description="Global power and ground net-to-instance-pin connection declarations.",
+        description=(
+            "Global power and ground net-to-instance-pin connection declarations. "
+            "ICS55 v2 adds VNW/VPW well-tie connections via its PDK override."
+        ),
         type="json",
     ),
     config_param(
         "floorplan.pdn_generator.rail",
         "floorplan",
         ("pdn_generator", "rail"),
-        [{"routing_layer_name": "MET1", "width_micron": 0.16}],
+        [],
         applies="pre_floorplan",
         description="Standard-cell row power-rail layers and widths in micrometers.",
         type="json",
@@ -208,7 +174,7 @@ SCHEMAS = (
         "floorplan.pdn_generator.stripe",
         "floorplan",
         ("pdn_generator", "stripe"),
-        _CORE_PDN["stripe"],
+        [],
         applies="pre_floorplan",
         description=(
             "Power-stripe layers, widths, pitches, and offsets in micrometers. "
@@ -220,7 +186,7 @@ SCHEMAS = (
         "floorplan.pdn_generator.connect_layers",
         "floorplan",
         ("pdn_generator", "connect_layers"),
-        _CORE_PDN["connect_layers"],
+        [],
         applies="pre_floorplan",
         description=(
             "Routing-layer pairs connected by power-distribution vias. "
@@ -232,7 +198,7 @@ SCHEMAS = (
         "floorplan.phy_placer.well_tap.cell_name",
         "floorplan",
         ("phy_placer", "well_tap", "cell_name"),
-        "FILLTAPH7R",
+        "",
         applies="pre_floorplan",
         description="PDK well-tap cell inserted into standard-cell rows.",
     ),
@@ -248,7 +214,7 @@ SCHEMAS = (
         "floorplan.phy_placer.side_endcap.left_cell_name",
         "floorplan",
         ("phy_placer", "side_endcap", "left_cell_name"),
-        "FILLTAPH7R",
+        "",
         applies="pre_floorplan",
         description="Endcap cell placed at the left edge of each standard-cell row.",
     ),
@@ -256,7 +222,7 @@ SCHEMAS = (
         "floorplan.phy_placer.side_endcap.right_cell_name",
         "floorplan",
         ("phy_placer", "side_endcap", "right_cell_name"),
-        "FILLTAPH7R",
+        "",
         applies="pre_floorplan",
         description="Endcap cell placed at the right edge of each standard-cell row.",
     ),
@@ -264,7 +230,7 @@ SCHEMAS = (
         "floorplan.phy_placer.edge_endcap.top_cell_name_list",
         "floorplan",
         ("phy_placer", "edge_endcap", "top_cell_name_list"),
-        ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
+        [],
         applies="pre_floorplan",
         description="Candidate endcap cells for the die top edge, selected by width.",
     ),
@@ -272,7 +238,7 @@ SCHEMAS = (
         "floorplan.phy_placer.edge_endcap.bottom_cell_name_list",
         "floorplan",
         ("phy_placer", "edge_endcap", "bottom_cell_name_list"),
-        ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
+        [],
         applies="pre_floorplan",
         description="Candidate endcap cells for the die bottom edge, selected by width.",
     ),
@@ -280,7 +246,7 @@ SCHEMAS = (
         "floorplan.phy_placer.boundary_tap.top_cell_name_list",
         "floorplan",
         ("phy_placer", "boundary_tap", "top_cell_name_list"),
-        ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
+        [],
         applies="pre_floorplan",
         description="Candidate tap cells for the die top boundary, selected by width.",
     ),
@@ -288,7 +254,7 @@ SCHEMAS = (
         "floorplan.phy_placer.boundary_tap.bottom_cell_name_list",
         "floorplan",
         ("phy_placer", "boundary_tap", "bottom_cell_name_list"),
-        ["FILLCAP4H7R", "FILLCAP8H7R", "FILLCAP16H7R", "FILLCAP32H7R", "FILLER2H7R", "FILLER1H7R"],
+        [],
         applies="pre_floorplan",
         description="Candidate tap cells for the die bottom boundary, selected by width.",
     ),

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.parameter import Parameters
+from chipcompiler.data.pdk import PDK
 from chipcompiler.data.workspace import Flow, _load_default_floorplan_config
 
 
@@ -24,6 +25,7 @@ def _workspace(workspace_dir):
     dreamplace_config.write_text('{"target_density": 0.2}')
     return SimpleNamespace(
         directory=workspace_dir,
+        pdk=PDK(name="ics55", version="v1"),
         parameters=Parameters(
             path=parameters_path,
             data={
@@ -106,7 +108,7 @@ def test_workspace_lists_mode_dependent_pdn_defaults(
     project_dir = create_cli_project()
     _write_manifest(project_dir)
     workspace = _workspace(Path(project_dir) / "baseline")
-    floorplan = _load_default_floorplan_config()
+    floorplan = _load_default_floorplan_config(workspace.pdk)
     floorplan["io_placer"]["mode"] = "io_cell"
     floorplan["pdn_generator"].update(pdn_defaults("ics55", "io_cell"))
     floorplan["pdn_generator"]["stripe"] = []
