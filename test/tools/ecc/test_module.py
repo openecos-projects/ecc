@@ -1558,6 +1558,45 @@ invalid cap record
     }
 
 
+@pytest.mark.parametrize("raw_value", [True, False, None, 0, -100, "nan", ""])
+def test_sta_target_frequency_rejects_invalid_native_values(tmp_path, raw_value):
+    feature_path = tmp_path / "feature" / "sta.step.json"
+    feature_path.parent.mkdir()
+    feature_path.write_text(
+        json.dumps(
+            {
+                "constraints": {
+                    "sdc": {"availability": "available", "target_frequency_mhz": raw_value}
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    step: Any = SimpleNamespace(
+        name=StepEnum.STA.value,
+        directory=tmp_path,
+        feature=SimpleNamespace(step=feature_path),
+    )
+    assert ecc_metrics._sta_target_frequency_qor_record(step) is None
+
+
+def test_sta_target_frequency_is_not_emitted_for_other_steps(tmp_path):
+    feature_path = tmp_path / "feature" / "routing.step.json"
+    feature_path.parent.mkdir()
+    feature_path.write_text(
+        json.dumps(
+            {"constraints": {"sdc": {"availability": "available", "target_frequency_mhz": 200}}}
+        ),
+        encoding="utf-8",
+    )
+    step: Any = SimpleNamespace(
+        name=StepEnum.ROUTING.value,
+        directory=tmp_path,
+        feature=SimpleNamespace(step=feature_path),
+    )
+    assert ecc_metrics._sta_target_frequency_qor_record(step) is None
+
+
 def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     workspace = Workspace(
         directory=tmp_path,
@@ -1585,6 +1624,13 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
         input_verilog=tmp_path / "input.v",
     )
     build_step_space(step)
+    assert step.feature.step is not None
+    step.feature.step.write_text(
+        json.dumps(
+            {"constraints": {"sdc": {"availability": "available", "target_frequency_mhz": 800}}}
+        ),
+        encoding="utf-8",
+    )
 
     assert step.feature.dir is not None
     reports = {
@@ -1766,6 +1812,12 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert records["sta_setup_wns"]["value"] == -0.2
     assert records["sta_hold_wns"]["value"] == -0.05
     assert records["sta_frequency_mhz"]["value"] == 750
+    assert records["sta_target_frequency_mhz"]["value"] == 800
+    assert records["sta_target_frequency_mhz"]["source"] == {
+        "kind": "feature",
+        "path": "feature/sta.step.json",
+        "selector": "/constraints/sdc/target_frequency_mhz",
+    }
     assert records["sta_corner_count"]["value"] == 2
     assert records["sta_setup_violation_count"]["value"] == 3
     assert records["sta_hold_violation_count"]["value"] == 1

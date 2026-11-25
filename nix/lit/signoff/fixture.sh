@@ -107,6 +107,7 @@ JSON
 write_json "$workspace/sta_ecc/analysis/qor_metrics.json" <<'JSON'
 {
   "schema_version": 3,
+  "design": "gcd",
   "metrics": [
     {"id": "sta_setup_wns", "value": 1.2, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_setup_tns", "value": 0.0, "unit": "", "source": {"kind": "analysis", "path": ""}},
@@ -114,7 +115,8 @@ write_json "$workspace/sta_ecc/analysis/qor_metrics.json" <<'JSON'
     {"id": "sta_hold_wns", "value": 0.15, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_hold_tns", "value": 0.0, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_hold_violation_count", "value": 0, "unit": "", "source": {"kind": "analysis", "path": ""}},
-    {"id": "sta_frequency_mhz", "value": 100.0, "unit": "", "source": {"kind": "analysis", "path": ""}},
+    {"id": "sta_frequency_mhz", "value": 195.5, "unit": "", "source": {"kind": "analysis", "path": ""}},
+    {"id": "sta_target_frequency_mhz", "value": 200.0, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_corner_count", "value": 1, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_expected_corner_count", "value": 1, "unit": "", "source": {"kind": "analysis", "path": ""}},
     {"id": "sta_missing_corner_count", "value": 0, "unit": "", "source": {"kind": "analysis", "path": ""}}
@@ -125,9 +127,32 @@ JSON
 write_json "$workspace/sta_ecc/feature/MAX_125/RCworst/qor_summary.json" <<'JSON'
 {
   "summary": {
-    "setup": {"wns": 1.2, "tns": 0.0, "nvp": 0, "frequency_mhz": 100.0},
+    "setup": {"wns": 1.2, "tns": 0.0, "nvp": 0, "frequency_mhz": 195.5},
     "hold": {"wns": 0.15, "tns": 0.0, "nvp": 0}
   }
+}
+JSON
+
+write_json "$workspace/home/frequency.json" <<'JSON'
+{
+  "schema_version": 1,
+  "kind": "frequency_run_results",
+  "design": "gcd",
+  "base_id": "fixture-gcd-v1",
+  "evidence_mode": "fixture",
+  "params": {
+    "pll_refclk_mhz": "20",
+    "pll_bypass": false,
+    "frequency_min_mhz": "150",
+    "frequency_max_mhz": "200",
+    "guardband_frequency_ratio": "0.05"
+  },
+  "runs": [
+    {"candidate_mhz": "200", "phase": "verification", "run_id": "v200", "base_id": "fixture-gcd-v1", "status": "fail", "coverage_status": "pass"},
+    {"candidate_mhz": "195", "phase": "verification", "run_id": "v195", "base_id": "fixture-gcd-v1", "status": "fail", "coverage_status": "pass"},
+    {"candidate_mhz": "190", "phase": "verification", "run_id": "v190", "base_id": "fixture-gcd-v1", "status": "pass", "coverage_status": "pass"},
+    {"candidate_mhz": "180", "phase": "guardband", "run_id": "g180", "base_id": "fixture-gcd-v1", "status": "pass", "coverage_status": "pass"}
+  ]
 }
 JSON
 

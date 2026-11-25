@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Standalone signoff product CSV collector implemented in shell + jq.
-# Usage: export.sh --workspace DIR --out-dir DIR [--checks sta,drc,lec,harden,area]
+# Usage: export.sh --workspace DIR --out-dir DIR [--checks sta,drc,lec,harden,area,frequency]
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 --workspace DIR --out-dir DIR [--checks sta,drc,lec,harden,area]" >&2
+  echo "usage: $0 --workspace DIR --out-dir DIR [--checks sta,drc,lec,harden,area,frequency]" >&2
   exit 2
 }
 
 workspace=
 out_dir=
-checks=sta,drc,lec,harden,area
+checks=sta,drc,lec,harden,area,frequency
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --checks)
-      checks="${2:-sta,drc,lec,harden,area}"
+      checks="${2:-sta,drc,lec,harden,area,frequency}"
       shift 2
       ;;
     *)
@@ -94,7 +94,7 @@ for i in "${!check_array[@]}"; do
 done
 for c in "${check_array[@]}"; do
   case "$c" in
-    sta|drc|lec|harden|area) ;;
+    sta|drc|lec|harden|area|frequency) ;;
     *)
       echo "unknown checks: $c" >&2
       exit 2
@@ -377,6 +377,20 @@ collect_area() {
   done
 }
 
+collect_frequency() {
+  local sta_dir model
+  sta_dir="$(step_directory sta)"
+  if [[ -n "${ECC_FREQUENCY_MODEL:-}" ]]; then
+    model="${ECC_FREQUENCY_MODEL}"
+  else
+    model="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/frequency_model.py"
+  fi
+  "${PYTHON:-python3}" "${model}" \
+    --input "${workspace}/home/frequency.json" \
+    --sta-metrics "${workspace}/${sta_dir}/analysis/qor_metrics.json" \
+    --output "${out_dir}/frequency.csv"
+}
+
 contains_check() {
   local wanted="$1"
   local c
@@ -392,16 +406,20 @@ drc_selected=0
 lec_selected=0
 harden_selected=0
 area_selected=0
+frequency_selected=0
 sta_status=pass
 drc_status=pass
 lec_status=pass
 harden_status=pass
 area_status=pass
+frequency_status=unavailable
+frequency_evidence_mode=
 sta_rows=0
 drc_rows=0
 lec_rows=0
 harden_rows=0
 area_rows=0
+frequency_rows=0
 
 for check in "${check_array[@]}"; do
   case "$check" in
@@ -429,6 +447,14 @@ for check in "${check_array[@]}"; do
       area_selected=1
       collect_area > "${out_dir}/area.csv"
       area_rows=$(($(wc -l < "${out_dir}/area.csv") - 1))
+      ;;
+    frequency)
+      frequency_selected=1
+      collect_frequency
+      frequency_rows=$(($(wc -l < "${out_dir}/frequency.csv") - 1))
+      frequency_status="$(awk -F, 'NR > 1 && $2 == "recommended_frequency_mhz" {print $5; exit}' "${out_dir}/frequency.csv")"
+      frequency_status="${frequency_status:-unavailable}"
+      frequency_evidence_mode="$(awk -F, 'NR > 1 && $2 == "evidence_mode" {print $3; exit}' "${out_dir}/frequency.csv")"
       ;;
   esac
 done
@@ -509,26 +535,32 @@ manifest="$(
     --arg lec_selected "${lec_selected}" \
     --arg harden_selected "${harden_selected}" \
     --arg area_selected "${area_selected}" \
+    --arg frequency_selected "${frequency_selected}" \
     --arg sta_status "${sta_status}" \
     --arg drc_status "${drc_status}" \
     --arg lec_status "${lec_status}" \
     --arg harden_status "${harden_status}" \
     --arg area_status "${area_status}" \
+    --arg frequency_status "${frequency_status}" \
+    --arg frequency_evidence_mode "${frequency_evidence_mode}" \
     --argjson sta_rows "${sta_rows}" \
     --argjson drc_rows "${drc_rows}" \
     --argjson lec_rows "${lec_rows}" \
     --argjson harden_rows "${harden_rows}" \
     --argjson area_rows "${area_rows}" \
+    --argjson frequency_rows "${frequency_rows}" \
     --arg sta_file "sta.csv" \
     --arg drc_file "drc.csv" \
     --arg lec_file "lec.csv" \
     --arg harden_file "harden.csv" \
     --arg area_file "area.csv" \
+    --arg frequency_file "frequency.csv" \
     --arg sta_path "${out_dir}/sta.csv" \
     --arg drc_path "${out_dir}/drc.csv" \
     --arg lec_path "${out_dir}/lec.csv" \
     --arg harden_path "${out_dir}/harden.csv" \
     --arg area_path "${out_dir}/area.csv" \
+    --arg frequency_path "${out_dir}/frequency.csv" \
     --arg gate "${gate}" \
     '{
        schema_version: 1,
@@ -541,6 +573,7 @@ manifest="$(
          + (if $lec_selected == "1" then {"lec": {"status": $lec_status, "rows": $lec_rows, "file": $lec_file}} else {} end)
          + (if $harden_selected == "1" then {"harden": {"status": $harden_status, "rows": $harden_rows, "file": $harden_file}} else {} end)
          + (if $area_selected == "1" then {"area": {"status": $area_status, "rows": $area_rows, "file": $area_file}} else {} end)
+         + (if $frequency_selected == "1" then {"frequency": {"status": $frequency_status, "rows": $frequency_rows, "file": $frequency_file, "evidence_mode": $frequency_evidence_mode}} else {} end)
        ),
        files: (
          (if $sta_selected == "1" then {"sta": $sta_path} else {} end)
@@ -548,6 +581,7 @@ manifest="$(
          + (if $lec_selected == "1" then {"lec": $lec_path} else {} end)
          + (if $harden_selected == "1" then {"harden": $harden_path} else {} end)
          + (if $area_selected == "1" then {"area": $area_path} else {} end)
+         + (if $frequency_selected == "1" then {"frequency": $frequency_path} else {} end)
        ),
        gate: $gate
      }'

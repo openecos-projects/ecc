@@ -52,6 +52,7 @@ METRIC_REGISTRY = {
     "sta_hold_wns": ("ns", "higher_is_better"),
     "sta_hold_tns": ("ns", "higher_is_better"),
     "sta_frequency_mhz": ("MHz", "higher_is_better"),
+    "sta_target_frequency_mhz": ("MHz", "trend_only"),
     "sta_setup_violation_count": ("count", "lower_is_better"),
     "sta_hold_violation_count": ("count", "lower_is_better"),
     "sta_corner_count": ("count", "trend_only"),
