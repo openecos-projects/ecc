@@ -45,7 +45,8 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             output_dir=step.data.steps[StepEnum.EMIR.value],
             instance_power_file_path=instance_power_path(power_directory),
             technology_file_path=technology_file,
-            ploc_file_path=pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
+            ploc_file_path=config.get("ploc_file_path")
+            or pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
             spef_path=spef_path,
         )
         if not initialized:
