@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +10,6 @@ PREFIX = "candidate-0123456789abcdef-"
 
 
 def test_cleanup_skips_other_episodes_and_keeps_operation_ledgers(tmp_path: Path):
-    source = SimpleNamespace(directory=tmp_path, _registered_directory=lambda: tmp_path)
     artifacts = tmp_path / ".agent" / "candidates"
     ledgers = tmp_path / ".agent" / "operations"
     candidate = artifacts / f"{PREFIX}one"
@@ -23,15 +21,14 @@ def test_cleanup_skips_other_episodes_and_keeps_operation_ledgers(tmp_path: Path
     receipt = ledgers / f"{PREFIX}one.json"
     receipt.write_text('{"state":"succeeded"}')
 
-    assert _cleanup_candidates(source, PREFIX) == 1
-    assert _cleanup_candidates(source, PREFIX) == 0
+    assert _cleanup_candidates(tmp_path, PREFIX, lambda: tmp_path) == 1
+    assert _cleanup_candidates(tmp_path, PREFIX, lambda: tmp_path) == 0
     assert not candidate.exists()
     assert other.is_dir()
     assert receipt.read_text() == '{"state":"succeeded"}'
 
 
 def test_cleanup_rejects_a_candidate_with_an_active_lock(tmp_path: Path):
-    source = SimpleNamespace(directory=tmp_path, _registered_directory=lambda: tmp_path)
     candidate = tmp_path / ".agent" / "candidates" / f"{PREFIX}one"
     operations = tmp_path / ".agent" / "operations"
     candidate.mkdir(parents=True)
@@ -40,7 +37,7 @@ def test_cleanup_rejects_a_candidate_with_an_active_lock(tmp_path: Path):
     # ECC creates the sibling lock before accepting or materializing a candidate.
     (operations / f"{starting.name}.lock").touch()
     with workspace_lock(starting), ThreadPoolExecutor() as executor:
-        cleanup = executor.submit(_cleanup_candidates, source, PREFIX)
+        cleanup = executor.submit(_cleanup_candidates, tmp_path, PREFIX, lambda: tmp_path)
         with pytest.raises(BlockingIOError):
             cleanup.result()
     assert candidate.is_dir()

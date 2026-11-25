@@ -165,5 +165,7 @@ def test_retained_workspace_rebases_inherited_paths(tmp_path, minimal_ics55_pdk_
     assert request.inputs.design.verilog == target / old_netlist
     assert request.inputs.spef == (tmp_path / "baseline-other" / "external.spef",)
     assert response is not None
-    assert response.design.verilog == target / old_netlist
-    assert response.design.verilog.read_bytes() == b"module gcd; endmodule\n"
+    verilog = response.design.verilog
+    assert verilog is not None
+    assert verilog == target / old_netlist
+    assert verilog.read_bytes() == b"module gcd; endmodule\n"

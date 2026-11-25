@@ -5,6 +5,7 @@ import re
 import shutil
 import signal
 import threading
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import partial
@@ -140,7 +141,9 @@ def run_command(command: CandidateCommand) -> None:
             _record("candidate_status", **_candidate_snapshot(source, directory, candidate))
             return
         if command.action == "cleanup":
-            removed = _cleanup_candidates(source, command.request["prefix"])
+            removed = _cleanup_candidates(
+                source.directory, command.request["prefix"], source._registered_directory
+            )
             _record("candidate_cleanup", removed=removed)
             return
         if command.action == "retain":
@@ -221,11 +224,11 @@ def _candidate_lock(directory: Path, candidate: str):
     return workspace_lock(directory / candidate, blocking=False)
 
 
-def _cleanup_candidates(source: ManagedWorkspace, prefix: str) -> int:
+def _cleanup_candidates(source: Path, prefix: str, registered_directory: Callable[[], Path]) -> int:
     if re.fullmatch(r"candidate-[0-9a-f]{16}-", prefix) is None:
         raise ValueError("Invalid candidate cleanup prefix")
-    artifacts = source.directory / ".agent" / "candidates"
-    ledgers = source.directory / ".agent" / "operations"
+    artifacts = source / ".agent" / "candidates"
+    ledgers = source / ".agent" / "operations"
     if any(path.resolve() != path for path in (artifacts, ledgers)):
         raise ValueError("Candidate directory is a symbolic link")
 
@@ -240,8 +243,8 @@ def _cleanup_candidates(source: ManagedWorkspace, prefix: str) -> int:
     with ExitStack() as locks:
         for candidate in sorted(ids):
             locks.enter_context(_candidate_lock(ledgers, candidate))
-        locks.enter_context(workspace_lock(source.directory, blocking=False))
-        if source._registered_directory() != source.directory:
+        locks.enter_context(workspace_lock(source, blocking=False))
+        if registered_directory() != source:
             raise AgentApplicationError(
                 "revision_conflict", "Source Workspace registration changed"
             )
