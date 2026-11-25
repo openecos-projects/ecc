@@ -2308,8 +2308,10 @@ ecc fe --help
 ECC-FE 的文档。经 `ecc fe` 运行时，ECC-FE 在输出中自称 `ecc fe`，所以它
 提示的后续命令可以照原样输入。
 
-`ecc-fe` 从 `PATH` 中查找；装在别处时，把 `CHIPCOMPILER_ECC_FE` 设为该
-可执行文件的路径。找不到时 `ecc fe` 以退出码 127 结束。
+查找 `ecc-fe` 的方式与其他外部工具相同：设置了 `CHIPCOMPILER_ECC_FE_ROOT`
+（指向 ECC-FE 的安装目录，发布包或源码检出均可）时，使用其下的
+`bin/ecc-fe`；否则从 `PATH` 中查找。两处都找不到时 `ecc fe` 以退出码 127
+结束。
 
 两个工具只在一处衔接：`ecc-fe handoff` 为通过前端的设计写出交接清单，
 `ecc rtl import --from-fe` 导入它（§8.5）：

@@ -2159,8 +2159,11 @@ commands of ECC-FE; `ecc fe --help` and the ECC-FE documentation describe
 them. ECC-FE names itself `ecc fe` in what it prints, so a command it
 suggests can be typed back as shown.
 
-`ecc-fe` is looked up on `PATH`. Set `CHIPCOMPILER_ECC_FE` to the executable
-when it is installed elsewhere. Without it `ecc fe` exits with status 127.
+ECC finds `ecc-fe` the way it finds its other external tools: when
+`CHIPCOMPILER_ECC_FE_ROOT` names an ECC-FE installation (a release archive
+or a source checkout), `bin/ecc-fe` under it is used; otherwise `ecc-fe` is
+looked up on `PATH`. When neither gives an executable, `ecc fe` exits with
+status 127.
 
 The two tools meet in one place: `ecc-fe handoff` writes a manifest of a
 design that passed the frontend, and `ecc rtl import --from-fe` imports it

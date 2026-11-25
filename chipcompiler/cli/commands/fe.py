@@ -8,11 +8,13 @@ it was reached under, and is replaced by it.
 import os
 import shutil
 import sys
+from pathlib import Path
 
 import typer
 
-#: Path of the ``ecc-fe`` executable, for an installation that is not on ``PATH``.
-EXECUTABLE_ENV = "CHIPCOMPILER_ECC_FE"
+#: Directory of an ECC-FE installation that is not on ``PATH``; the executable
+#: is ``bin/ecc-fe`` under it, as in a release archive or a source checkout.
+ROOT_ENV = "CHIPCOMPILER_ECC_FE_ROOT"
 #: Read by ``ecc-fe``: the words a user types to reach it, used in its output.
 PROGRAM_ENV = "ECC_FE_PROGRAM"
 #: The shell's exit status for a command that cannot be found.
@@ -32,12 +34,26 @@ def register_fe_command(app: typer.Typer) -> None:
     )(fe_cmd)
 
 
+def find_ecc_fe() -> str | None:
+    """``bin/ecc-fe`` under ``CHIPCOMPILER_ECC_FE_ROOT`` first, then ``PATH``.
+
+    Same order as the other external tools (Yosys, Sizer). A root without an
+    executable ``bin/ecc-fe`` does not hide an installation on ``PATH``.
+    """
+    root = os.environ.get(ROOT_ENV, "").strip()
+    if root:
+        executable = Path(root).expanduser() / "bin" / "ecc-fe"
+        if executable.is_file() and os.access(executable, os.X_OK):
+            return str(executable)
+    return shutil.which("ecc-fe")
+
+
 def fe_cmd(ctx: typer.Context) -> None:
-    executable = shutil.which(os.environ.get(EXECUTABLE_ENV) or "ecc-fe")
+    executable = find_ecc_fe()
     if executable is None:
         typer.echo(
             "ecc: error: ecc-fe was not found; install ECC-FE and put `ecc-fe` on PATH, "
-            f"or set {EXECUTABLE_ENV} to the executable",
+            f"or set {ROOT_ENV} to its installation directory",
             err=True,
         )
         raise typer.Exit(EXIT_NOT_FOUND)
