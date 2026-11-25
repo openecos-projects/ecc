@@ -266,3 +266,40 @@ def test_report_failure_does_not_change_tool_result(monkeypatch, tmp_path):
     monkeypatch.setattr("agent.data.parameter_runtime_observer.write_json_atomic", fail_write)
     assert _invoke_and_record(workspace, lambda: True, lambda _ok: {}) is True
     assert failures == ["Failed to persist parameter runtime evidence"]
+
+
+@pytest.mark.parametrize(
+    ("knob_id", "written", "native_key", "native_value", "expected"),
+    [
+        ("route.thread_number", 4, "thread_number", "4", 4),
+        ("route.enable_timing", True, "enable_timing", "1", True),
+        ("route.bottom_layer", "M2", "bottom_routing_layer", "M2", "M2"),
+        ("route.top_layer", "M5", "top_routing_layer", "M5", "M5"),
+    ],
+)
+def test_routing_observer_reports_effective_values_from_print_config(
+    tmp_path, knob_id, written, native_key, native_value, expected
+):
+    from agent.data.parameter_runtime_observer import (
+        RUNTIME_REPORT_REF,
+        run_with_parameter_observation,
+    )
+
+    log_path = tmp_path / "routing.log"
+    log_path.write_text("[RT 00:00 printConfig] prior_run\n", encoding="utf-8")
+    workspace = SimpleNamespace(directory=tmp_path, logger=None)
+    step = SimpleNamespace(name="routing", log=SimpleNamespace(file=str(log_path)))
+    materialization = {"patch": [{"knob_id": knob_id, "value": written}]}
+
+    def fake_route():
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                f"[RT 00:01 printConfig] {native_key}\n[RT 00:01 printConfig] {native_value}\n"
+            )
+        return True
+
+    assert run_with_parameter_observation(workspace, step, materialization, fake_route) is True
+    report = json.loads((tmp_path / RUNTIME_REPORT_REF).read_text(encoding="utf-8"))
+    assert report["status"] == "effective"
+    assert report["actual_value"] == expected
+    assert report["reason"] is None

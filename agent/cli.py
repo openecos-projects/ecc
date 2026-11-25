@@ -7,13 +7,12 @@ import signal
 import threading
 from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
+from typing import Any, TypeVar
 
 import chipcompiler
-from chipcompiler.cli.project.current_location import resolve_current_location
 from chipcompiler.data import load_workspace
 from chipcompiler.engine.snapshot.store import read_engineering_snapshot_from_directory
 from chipcompiler.project.manifest import load_manifest
@@ -21,37 +20,42 @@ from chipcompiler.project.runtime_processes import identity_is_live, validate_ru
 from chipcompiler.utility.file import write_text_atomic
 from chipcompiler.utility.workspace_lock import workspace_lock
 
-from .candidate_resume import _validate_candidate_resume_request
-from .data.candidate_artifacts import validate_candidate_id
+from .candidate_resume import validate_candidate_resume_request
+from .data.candidate_artifacts import candidate_lock, validate_candidate_id
+from .delivery import retain_candidate
 from .operations import RuntimeOperationIdempotencyConflict, RuntimeOperationManager
 from .requests import CandidateRerunRequest, CandidateResumeRequest, WorkspaceIdRequest
 from .runtime_support import AgentApplicationError
 from .workspace_api import (
     FlowAgentRuntimeApi,
-    _validate_candidate_rerun_request,
     candidate_operation_workspace_id,
+    validate_candidate_rerun_request,
 )
 
+_RequestT = TypeVar("_RequestT", CandidateRerunRequest, CandidateResumeRequest)
 
-@dataclass(frozen=True)
-class CandidateCommand:
-    action: str
-    project: str | None
-    workspace: str
-    request: dict
+
+@dataclass
+class ManagedSession:
+    workspace_revision: int
+    workspace: Any = None
 
 
 class ManagedWorkspace:
-    def __init__(self, project: str | None, workspace: str, operations: RuntimeOperationManager):
-        location = resolve_current_location(project, workspace, workspace_supported=True)
-        self.project = Path(location.project or ".").resolve()
+    def __init__(
+        self,
+        project: Path,
+        workspace: str,
+        operations: RuntimeOperationManager | None = None,
+    ):
+        self.project = project.resolve()
         self.workspace_id = workspace
         self.project_id = load_manifest(str(self.project)).project_id
-        self.directory = self._registered_directory()
+        self.directory = self.registered_directory()
         self.operations = operations
         self.expected_revision: int | None = None
 
-    def _registered_directory(self) -> Path:
+    def registered_directory(self) -> Path:
         manifest = load_manifest(str(self.project))
         if manifest.project_id != self.project_id:
             raise AgentApplicationError("revision_conflict", "Project identity changed")
@@ -63,21 +67,21 @@ class ManagedWorkspace:
             raise AgentApplicationError("workspace_unavailable", "Source Workspace is unavailable")
         return path.resolve()
 
-    def _get_session(self, workspace_id: str):
+    def _get_session(self, workspace_id: str) -> ManagedSession:
         if workspace_id != self.workspace_id:
             raise AgentApplicationError("workspace_unavailable", "Source Workspace is unavailable")
-        if self._registered_directory() != self.directory:
+        if self.registered_directory() != self.directory:
             raise AgentApplicationError(
                 "revision_conflict", "Source Workspace registration changed"
             )
-        return SimpleNamespace(
+        return ManagedSession(
             workspace_revision=read_engineering_snapshot_from_directory(self.directory)[
                 "workspaceRevision"
             ]
         )
 
     @staticmethod
-    def _validate_workspace_revision(session, expected: int | None) -> None:
+    def _validate_workspace_revision(session: ManagedSession, expected: int | None) -> None:
         if expected is not None and session.workspace_revision != expected:
             raise AgentApplicationError("revision_conflict", "Workspace Revision does not match")
 
@@ -121,156 +125,88 @@ def _record(record: str, **fields) -> None:
     print(json.dumps({"record": record, **fields}, allow_nan=False), flush=True)
 
 
-def run_command(command: CandidateCommand) -> None:
-    terminal = threading.Event()
-    operations = RuntimeOperationManager(
-        lambda event: terminal.set()
-        if event.get("type") in {"operation.completed", "operation.cancelled", "operation.failed"}
-        else None
-    )
-    source = ManagedWorkspace(command.project, command.workspace, operations)
+def _parse_request(
+    request_type: type[_RequestT], workspace_id: str, payload: dict[str, Any]
+) -> _RequestT:
+    allowed = {field.name for field in fields(request_type)} - {"workspace_id"}
+    required = {
+        field.name
+        for field in fields(request_type)
+        if field.name != "workspace_id" and field.default is field.default_factory
+    }
+    unknown = payload.keys() - allowed
+    missing = required - payload.keys()
+    if unknown:
+        raise AgentApplicationError(
+            "invalid_request",
+            f"Unknown candidate request fields: {', '.join(sorted(unknown))}",
+        )
+    if missing:
+        raise AgentApplicationError(
+            "invalid_request",
+            f"Missing candidate request fields: {', '.join(sorted(missing))}",
+        )
+    return request_type(workspace_id=workspace_id, **payload)
+
+
+def run_capabilities(project: Path, workspace_id: str) -> None:
+    source = ManagedWorkspace(project, workspace_id)
     api = FlowAgentRuntimeApi(source)
     try:
-        if command.action == "capabilities":
-            capabilities = api.candidate_capabilities(WorkspaceIdRequest(command.workspace))
-            _record("candidate_capabilities", eccVersion=chipcompiler.__version__, **capabilities)
-            return
-        if command.action == "status":
-            candidate = validate_candidate_id(command.request["candidate_id"])
-            directory = source.directory / ".agent" / "operations"
-            _record("candidate_status", **_candidate_snapshot(source, directory, candidate))
-            return
-        if command.action == "cleanup":
-            removed = _cleanup_candidates(
-                source.directory, command.request["prefix"], source._registered_directory
-            )
-            _record("candidate_cleanup", removed=removed)
-            return
-        if command.action == "retain":
-            from .delivery import retain_candidate
-
-            _record(
-                "candidate_retained",
-                **retain_candidate(
-                    project=source.project,
-                    project_id=source.project_id,
-                    source=source.directory,
-                    workspace_id=source.workspace_id,
-                    **command.request,
-                ),
-            )
-            return
-        if command.action == "operation":
-            _candidate_operation(
-                source, command.request["operation_id"], cancel=command.request["cancel"]
-            )
-            return
-        if command.action == "rerun":
-            request = CandidateRerunRequest(command.workspace, **command.request)
-            _validate_candidate_rerun_request(request)
-            parent_ref = request.parent_candidate_root_ref
-            start = partial(api.candidate_rerun, request)
-        else:
-            request = CandidateResumeRequest(command.workspace, **command.request)
-            _validate_candidate_resume_request(request)
-            parent_ref = None
-            start = partial(api.candidate_resume, request)
-        source.expected_revision = request.expected_workspace_revision
-        if source.expected_revision is None:
-            raise AgentApplicationError("invalid_request", "Workspace Revision is required")
-        directory = source.directory / ".agent" / "operations"
-        candidate_root = source.directory / ".agent" / "candidates"
-        for path in (directory, candidate_root):
-            if path.resolve() != path:
-                raise AgentApplicationError(
-                    "invalid_request", "Candidate directory is a symbolic link"
-                )
-        candidates = {request.candidate_id}
-        if parent_ref is not None:
-            parent = Path(parent_ref).name
-            if parent == request.candidate_id:
-                raise AgentApplicationError("invalid_request", "Candidate cannot be its own parent")
-            candidates.add(parent)
-        with ExitStack() as locks:
-            for name in sorted(candidates):
-                locks.enter_context(_candidate_lock(directory, name))
-            ledger = directory / f"{request.candidate_id}.json"
-            operation_workspace = candidate_operation_workspace_id(
-                command.workspace, request.candidate_id
-            )
-            operations.load_workspace_ledger(operation_workspace, ledger)
-            # Reject an active source before accepting the operation. The executor
-            # also checks the source again under its lock when cloning.
-            with workspace_lock(source.directory, blocking=False):
-                session = source._get_session(command.workspace)
-                source._validate_workspace_revision(session, source.expected_revision)
-                source.require_source_idle()
-            _execute(operations, start, terminal, directory)
+        capabilities = api.candidate_capabilities(WorkspaceIdRequest(workspace_id))
     except BlockingIOError as exc:
         raise AgentApplicationError(
             "workspace_busy", "Workspace already has an active operation"
         ) from exc
-    except RuntimeOperationIdempotencyConflict as exc:
-        raise AgentApplicationError("idempotency_conflict", str(exc)) from exc
+    _record("candidate_capabilities", eccVersion=chipcompiler.__version__, **capabilities)
 
 
-def _candidate_lock(directory: Path, candidate: str):
-    if directory.resolve() != directory or any(
-        (directory / f"{candidate}.{suffix}").is_symlink() for suffix in ("lock", "json")
-    ):
-        raise AgentApplicationError(
-            "invalid_request", "Candidate operation path is a symbolic link"
-        )
-    return workspace_lock(directory / candidate, blocking=False)
+def run_status(project: Path, workspace_id: str, candidate_id: str) -> None:
+    source = ManagedWorkspace(project, workspace_id)
+    candidate = validate_candidate_id(candidate_id)
+    directory = source.directory / ".agent" / "operations"
+    _record("candidate_status", **_candidate_snapshot(source, directory, candidate))
 
 
-def _cleanup_candidates(source: Path, prefix: str, registered_directory: Callable[[], Path]) -> int:
-    if re.fullmatch(r"candidate-[0-9a-f]{16}-", prefix) is None:
-        raise ValueError("Invalid candidate cleanup prefix")
-    artifacts = source / ".agent" / "candidates"
-    ledgers = source / ".agent" / "operations"
-    if any(path.resolve() != path for path in (artifacts, ledgers)):
-        raise ValueError("Candidate directory is a symbolic link")
-
-    paths = sorted(artifacts.glob(f"{prefix}*"))
-    ids = {validate_candidate_id(path.name) for path in paths}
-    # Include candidates that acquired their lock before materializing files.
-    ids.update(
-        validate_candidate_id(path.stem)
-        for path in ledgers.glob(f"{prefix}*")
-        if path.suffix in (".json", ".lock")
-    )
-    with ExitStack() as locks:
-        for candidate in sorted(ids):
-            locks.enter_context(_candidate_lock(ledgers, candidate))
-        locks.enter_context(workspace_lock(source, blocking=False))
-        if registered_directory() != source:
-            raise AgentApplicationError(
-                "revision_conflict", "Source Workspace registration changed"
-            )
-        if any(path.is_symlink() or not path.is_dir() for path in paths):
-            raise ValueError("Candidate artifact path is not a regular directory")
-        for path in paths:
-            shutil.rmtree(path)
-    return len(paths)
-
-
-def _candidate_snapshot(source: ManagedWorkspace, directory: Path, candidate: str) -> dict:
-    ledger = directory / f"{candidate}.json"
-    key = candidate_operation_workspace_id(source.workspace_id, candidate)
-    lock = _candidate_lock(directory, candidate)
-    if not ledger.is_file():
-        raise AgentApplicationError("candidate_unavailable", "Candidate ledger is unavailable")
-    reader = RuntimeOperationManager(lambda _event: None)
+def run_cleanup(project: Path, workspace_id: str, prefix: str) -> None:
+    source = ManagedWorkspace(project, workspace_id)
     try:
-        with lock:
-            reader.load_workspace_ledger(key, ledger)
-    except BlockingIOError:
-        reader.load_workspace_ledger(key, ledger, recover=False)
-    return reader.workspace_snapshot(key)
+        removed = cleanup_candidates(source.directory, prefix, source.registered_directory)
+    except BlockingIOError as exc:
+        raise AgentApplicationError(
+            "workspace_busy", "Workspace already has an active operation"
+        ) from exc
+    _record("candidate_cleanup", removed=removed)
 
 
-def _candidate_operation(source: ManagedWorkspace, operation_id: str, *, cancel: bool) -> None:
+def run_retain(
+    project: Path,
+    workspace_id: str,
+    *,
+    candidate_id: str,
+    digest: str,
+    target_id: str,
+) -> None:
+    source = ManagedWorkspace(project, workspace_id)
+    try:
+        retained = retain_candidate(
+            project=source.project,
+            project_id=source.project_id,
+            source=source.directory,
+            workspace_id=source.workspace_id,
+            candidate_id=candidate_id,
+            digest=digest,
+            target_id=target_id,
+        )
+    except BlockingIOError as exc:
+        raise AgentApplicationError(
+            "workspace_busy", "Workspace already has an active operation"
+        ) from exc
+    _record("candidate_retained", **retained)
+
+
+def run_operation(project: Path, workspace_id: str, operation_id: str, *, cancel: bool) -> None:
+    source = ManagedWorkspace(project, workspace_id)
     if re.fullmatch(r"operation-[0-9a-f]{32}", operation_id) is None:
         raise ValueError("Invalid candidate operation ID")
     directory = source.directory / ".agent" / "operations"
@@ -291,6 +227,136 @@ def _candidate_operation(source: ManagedWorkspace, operation_id: str, *, cancel:
         _record("candidate_operation", operation=operation, accepted=accepted)
         return
     raise AgentApplicationError("candidate_unavailable", "Candidate operation is unavailable")
+
+
+def run_rerun(project: Path, workspace_id: str, payload: dict[str, Any]) -> None:
+    request = _parse_request(CandidateRerunRequest, workspace_id, payload)
+    validate_candidate_rerun_request(request)
+    _run_candidate_operation(
+        project,
+        workspace_id,
+        candidate_id=request.candidate_id,
+        expected_revision=request.expected_workspace_revision,
+        parent_ref=request.parent_candidate_root_ref,
+        starter=lambda api: partial(api.candidate_rerun, request),
+    )
+
+
+def run_resume(project: Path, workspace_id: str, payload: dict[str, Any]) -> None:
+    request = _parse_request(CandidateResumeRequest, workspace_id, payload)
+    validate_candidate_resume_request(request)
+    _run_candidate_operation(
+        project,
+        workspace_id,
+        candidate_id=request.candidate_id,
+        expected_revision=request.expected_workspace_revision,
+        parent_ref=None,
+        starter=lambda api: partial(api.candidate_resume, request),
+    )
+
+
+def _run_candidate_operation(
+    project: Path,
+    workspace_id: str,
+    *,
+    candidate_id: str,
+    expected_revision: int | None,
+    parent_ref: str | None,
+    starter: Callable[[FlowAgentRuntimeApi], Callable[[], dict]],
+) -> None:
+    terminal = threading.Event()
+    operations = RuntimeOperationManager(
+        lambda event: terminal.set()
+        if event.get("type") in {"operation.completed", "operation.cancelled", "operation.failed"}
+        else None
+    )
+    source = ManagedWorkspace(project, workspace_id, operations)
+    api = FlowAgentRuntimeApi(source)
+    try:
+        source.expected_revision = expected_revision
+        if source.expected_revision is None:
+            raise AgentApplicationError("invalid_request", "Workspace Revision is required")
+        directory = source.directory / ".agent" / "operations"
+        candidate_root = source.directory / ".agent" / "candidates"
+        for path in (directory, candidate_root):
+            if path.resolve() != path:
+                raise AgentApplicationError(
+                    "invalid_request", "Candidate directory is a symbolic link"
+                )
+        candidates = {candidate_id}
+        if parent_ref is not None:
+            parent = Path(parent_ref).name
+            if parent == candidate_id:
+                raise AgentApplicationError("invalid_request", "Candidate cannot be its own parent")
+            candidates.add(parent)
+        with ExitStack() as locks:
+            for name in sorted(candidates):
+                locks.enter_context(candidate_lock(directory, name))
+            ledger = directory / f"{candidate_id}.json"
+            operation_workspace = candidate_operation_workspace_id(workspace_id, candidate_id)
+            operations.load_workspace_ledger(operation_workspace, ledger)
+            # Reject an active source before accepting the operation. The executor
+            # also checks the source again under its lock when cloning.
+            with workspace_lock(source.directory, blocking=False):
+                session = source._get_session(workspace_id)
+                source._validate_workspace_revision(session, source.expected_revision)
+                source.require_source_idle()
+            _execute(operations, starter(api), terminal, directory)
+    except BlockingIOError as exc:
+        raise AgentApplicationError(
+            "workspace_busy", "Workspace already has an active operation"
+        ) from exc
+    except RuntimeOperationIdempotencyConflict as exc:
+        raise AgentApplicationError("idempotency_conflict", str(exc)) from exc
+
+
+def cleanup_candidates(source: Path, prefix: str, registered_directory: Callable[[], Path]) -> int:
+    if re.fullmatch(r"candidate-[0-9a-f]{16}-", prefix) is None:
+        raise ValueError("Invalid candidate cleanup prefix")
+    artifacts = source / ".agent" / "candidates"
+    ledgers = source / ".agent" / "operations"
+    if any(path.resolve() != path for path in (artifacts, ledgers)):
+        raise ValueError("Candidate directory is a symbolic link")
+
+    paths = sorted(artifacts.glob(f"{prefix}*"))
+    ids = {validate_candidate_id(path.name) for path in paths}
+    # Include candidates that acquired their lock before materializing files.
+    ids.update(
+        validate_candidate_id(path.stem)
+        for path in ledgers.glob(f"{prefix}*")
+        if path.suffix in (".json", ".lock")
+    )
+    with ExitStack() as locks:
+        for candidate in sorted(ids):
+            locks.enter_context(candidate_lock(ledgers, candidate))
+        locks.enter_context(workspace_lock(source, blocking=False))
+        if registered_directory() != source:
+            raise AgentApplicationError(
+                "revision_conflict", "Source Workspace registration changed"
+            )
+        if any(path.is_symlink() or not path.is_dir() for path in paths):
+            raise ValueError("Candidate artifact path is not a regular directory")
+        for path in paths:
+            shutil.rmtree(path)
+    return len(paths)
+
+
+_cleanup_candidates = cleanup_candidates
+
+
+def _candidate_snapshot(source: ManagedWorkspace, directory: Path, candidate: str) -> dict:
+    ledger = directory / f"{candidate}.json"
+    key = candidate_operation_workspace_id(source.workspace_id, candidate)
+    lock = candidate_lock(directory, candidate)
+    if not ledger.is_file():
+        raise AgentApplicationError("candidate_unavailable", "Candidate ledger is unavailable")
+    reader = RuntimeOperationManager(lambda _event: None)
+    try:
+        with lock:
+            reader.load_workspace_ledger(key, ledger)
+    except BlockingIOError:
+        reader.load_workspace_ledger(key, ledger, recover=False)
+    return reader.workspace_snapshot(key)
 
 
 def _execute(operations, start, terminal: threading.Event, directory: Path) -> None:

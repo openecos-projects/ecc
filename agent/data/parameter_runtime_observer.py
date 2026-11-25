@@ -51,7 +51,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
     patch = materialization["patch"][0]
     if patch["knob_id"] in DREAMPLACE_KNOBS:
         with _capture_dreamplace(patch) as recorder:
-            return _invoke_and_record(
+            return invoke_and_record(
                 workspace,
                 invoke,
                 lambda succeeded: _build_dreamplace_report(
@@ -62,6 +62,10 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
                     engine_succeeded=succeeded,
                 ),
             )
+    from .routing_parameter_observer import ROUTING_KNOBS, run_with_routing_observation
+
+    if patch["knob_id"] in ROUTING_KNOBS:
+        return run_with_routing_observation(workspace, step, patch, invoke)
     from .floorplan_parameter_observer import (
         FLOORPLAN_KNOBS,
         build_floorplan_report,
@@ -72,7 +76,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
     if patch["knob_id"] not in FLOORPLAN_KNOBS:
         return invoke()
     with capture_floorplan(patch) as boundary:
-        return _invoke_and_record(
+        return invoke_and_record(
             workspace,
             invoke,
             lambda succeeded: build_floorplan_report(
@@ -84,7 +88,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
         )
 
 
-def _invoke_and_record(workspace, invoke, build_report):
+def invoke_and_record(workspace, invoke, build_report):
     try:
         result = invoke()
     except BaseException:
@@ -92,6 +96,9 @@ def _invoke_and_record(workspace, invoke, build_report):
         raise
     _persist_report(workspace, build_report, engine_succeeded=bool(result))
     return result
+
+
+_invoke_and_record = invoke_and_record
 
 
 def _persist_report(workspace, build_report, *, engine_succeeded):

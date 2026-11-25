@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 HASH_PREFIX = "sha256:"
+CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
 _CANDIDATE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
@@ -88,3 +89,17 @@ def workspace_relative_ref(workspace_directory: str | Path, path: Path) -> str:
 
 def workspace_analysis_path(workspace_directory: str | Path, filename: str) -> Path:
     return Path(workspace_directory).expanduser().resolve() / "analysis" / filename
+
+
+def candidate_lock(directory: Path, candidate: str):
+    """Acquire a non-blocking lock on one candidate operation ledger without following symlinks."""
+    from agent.runtime_support import AgentApplicationError
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    if directory.resolve() != directory or any(
+        (directory / f"{candidate}.{suffix}").is_symlink() for suffix in ("lock", "json")
+    ):
+        raise AgentApplicationError(
+            "invalid_request", "Candidate operation path is a symbolic link"
+        )
+    return workspace_lock(directory / candidate, blocking=False)

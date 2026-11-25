@@ -46,7 +46,7 @@ from .workspace_api import (
 
 
 def candidate_resume(api, request: CandidateResumeRequest) -> dict:
-    _validate_candidate_resume_request(request)
+    validate_candidate_resume_request(request)
     session = api.ecc_api._get_session(request.workspace_id)
     api.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
     api._reject_active_source_operation(request.workspace_id)
@@ -161,7 +161,7 @@ def _candidate_resume_failure_result(
     return result
 
 
-def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
+def validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
     if request.expected_workspace_revision is not None and (
         type(request.expected_workspace_revision) is not int
         or request.expected_workspace_revision < 1
@@ -223,9 +223,7 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeApiError("command_failed", "candidate resume manifest is invalid") from exc
-    _validate_candidate_resume_manifest(
-        workspace_root, candidate_root, candidate_root_ref, manifest
-    )
+    validate_candidate_resume_manifest(workspace_root, candidate_root, candidate_root_ref, manifest)
     parent = _candidate_parent_binding(workspace_root, manifest.get("parent_candidate_root_ref"))
     _validate_candidate_resume_parent(manifest, parent)
     candidate_workspace = ecc_api._load_workspace(str(candidate_root))
@@ -234,7 +232,7 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
     return candidate_workspace, manifest, parent
 
 
-def _validate_candidate_resume_manifest(
+def validate_candidate_resume_manifest(
     workspace_root: Path,
     candidate_root: Path,
     candidate_root_ref: str,
@@ -471,3 +469,7 @@ def _notify_candidate_resume_prepared(observer, steps: list, target_step: str) -
             scope="full_flow",
             target_step=target_step,
         )
+
+
+_validate_candidate_resume_request = validate_candidate_resume_request
+_validate_candidate_resume_manifest = validate_candidate_resume_manifest

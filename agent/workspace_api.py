@@ -21,7 +21,12 @@ from .data import (
     reapply_materialized_candidate_config,
     validate_candidate_step_contract,
 )
-from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
+from .data.candidate_artifacts import (
+    CANDIDATE_WORKSPACE_MANIFEST,
+    sha256_path,
+    validate_candidate_id,
+    write_json_atomic,
+)
 from .data.candidate_input_binding import candidate_source_step
 from .data.candidate_materialization import (
     candidate_written_patch,
@@ -48,6 +53,9 @@ from .requests import (
 from .runtime_env import preflight_sizer_runtime
 from .runtime_support import (
     AgentApplicationError as RuntimeApiError,
+)
+from .runtime_support import (
+    CandidateHost,
 )
 from .runtime_support import (
     state_value as _state_value,
@@ -101,7 +109,7 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
 class FlowAgentRuntimeApi:
     """Candidate execution facade over one ECC workspace application."""
 
-    def __init__(self, ecc_api):
+    def __init__(self, ecc_api: CandidateHost):
         self.ecc_api = ecc_api
 
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
@@ -123,7 +131,7 @@ class FlowAgentRuntimeApi:
         )
 
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
-        _validate_candidate_rerun_request(request)
+        validate_candidate_rerun_request(request)
         session = self.ecc_api._get_session(request.workspace_id)
         self.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
         self._reject_active_source_operation(request.workspace_id)
@@ -366,7 +374,7 @@ def _step_value(step, field: str):
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
-def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
+def validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
     validate_floorplan_mode_request(request)
     if request.expected_workspace_revision is not None and (
         type(request.expected_workspace_revision) is not int
@@ -437,7 +445,8 @@ def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRe
 
 
 _CANDIDATE_WORKSPACE_SCHEMA = "ecc.workspace.candidate_workspace.v1"
-_CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
+_CANDIDATE_WORKSPACE_MANIFEST = CANDIDATE_WORKSPACE_MANIFEST
+_validate_candidate_rerun_request = validate_candidate_rerun_request
 
 
 def _create_candidate_workspace(
@@ -603,10 +612,13 @@ def _candidate_workspace_root(parent_root: Path, candidate_id: str) -> Path:
     return root
 
 
-def _required_file_sha256(path: Path, label: str) -> str:
+def required_file_sha256(path: Path, label: str) -> str:
     if path.is_symlink() or not path.is_file() or (digest := sha256_path(path)) is None:
         raise RuntimeApiError("command_failed", f"candidate {label} is missing or unsafe")
     return digest
+
+
+_required_file_sha256 = required_file_sha256
 
 
 def _remove_failed_candidate_workspace(candidate_root: Path) -> None:

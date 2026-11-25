@@ -2,7 +2,9 @@
 
 import json
 import sys
-from typing import Annotated
+from collections.abc import Callable
+from pathlib import Path
+from typing import Annotated, Any
 
 import typer
 
@@ -13,20 +15,27 @@ candidate_app = create_app(help="Inspect and execute isolated optimization candi
 WorkspaceArgument = Annotated[str, typer.Argument(help="Managed source Workspace ID")]
 
 
-def _invoke(action: str, workspace: str, project: str | None, **fields) -> None:
-    from agent.cli import CandidateCommand, run_command
+def _resolve_project(project: str | None, workspace: str) -> Path:
+    from chipcompiler.cli.project.current_location import resolve_current_location
 
+    location = resolve_current_location(project, workspace, workspace_supported=True)
+    return Path(location.project or ".").resolve()
+
+
+def _read_stdin_request() -> dict[str, Any]:
+    raw = sys.stdin.buffer.read(64 * 1024 + 1)
+    if len(raw) > 64 * 1024:
+        raise ValueError("Candidate request exceeds 64 KiB")
+    data = json.loads(raw)
+    if not isinstance(data, dict) or "workspace_id" in data:
+        raise ValueError("Invalid candidate request")
+    return data
+
+
+def _run_checked(action: Callable[[], None]) -> None:
     try:
-        data = fields
-        if action in ("rerun", "resume"):
-            raw = sys.stdin.buffer.read(64 * 1024 + 1)
-            if len(raw) > 64 * 1024:
-                raise ValueError("Candidate request exceeds 64 KiB")
-            data = json.loads(raw)
-            if not isinstance(data, dict) or "workspace_id" in data:
-                raise ValueError("Invalid candidate request")
-        run_command(CandidateCommand(action, project, workspace, data))
-    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        action()
+    except (OSError, ValueError, RuntimeError) as exc:
         typer.echo(
             json.dumps(
                 {
@@ -50,7 +59,9 @@ def version() -> None:
 @candidate_app.command("capabilities")
 def capabilities(workspace: WorkspaceArgument, project: ProjectOption = None) -> None:
     """Report the knobs available in a managed Workspace as JSON."""
-    _invoke("capabilities", workspace, project)
+    from agent.cli import run_capabilities
+
+    _run_checked(lambda: run_capabilities(_resolve_project(project, workspace), workspace))
 
 
 @candidate_app.command("status")
@@ -60,7 +71,9 @@ def status(
     project: ProjectOption = None,
 ) -> None:
     """Read the durable operation ledger of an isolated candidate."""
-    _invoke("status", workspace, project, candidate_id=candidate)
+    from agent.cli import run_status
+
+    _run_checked(lambda: run_status(_resolve_project(project, workspace), workspace, candidate))
 
 
 @candidate_app.command("cleanup")
@@ -70,7 +83,9 @@ def cleanup(
     project: ProjectOption = None,
 ) -> None:
     """Remove candidate directories in a group and keep their operation ledgers."""
-    _invoke("cleanup", workspace, project, prefix=prefix)
+    from agent.cli import run_cleanup
+
+    _run_checked(lambda: run_cleanup(_resolve_project(project, workspace), workspace, prefix))
 
 
 @candidate_app.command("retain")
@@ -82,13 +97,16 @@ def retain(
     project: ProjectOption = None,
 ) -> None:
     """Keep a verified completed candidate as a new managed Workspace."""
-    _invoke(
-        "retain",
-        workspace,
-        project,
-        candidate_id=candidate,
-        digest=manifest_sha256,
-        target_id=target,
+    from agent.cli import run_retain
+
+    _run_checked(
+        lambda: run_retain(
+            _resolve_project(project, workspace),
+            workspace,
+            candidate_id=candidate,
+            digest=manifest_sha256,
+            target_id=target,
+        )
     )
 
 
@@ -101,16 +119,30 @@ def operation(
     project: ProjectOption = None,
 ) -> None:
     """Find or cancel a candidate operation in this source Workspace."""
-    _invoke("operation", workspace, project, operation_id=operation_id, cancel=cancel)
+    from agent.cli import run_operation
+
+    _run_checked(
+        lambda: run_operation(
+            _resolve_project(project, workspace), workspace, operation_id, cancel=cancel
+        )
+    )
 
 
 @candidate_app.command("rerun")
 def rerun(workspace: WorkspaceArgument, project: ProjectOption = None) -> None:
     """Run a JSON request from stdin and emit accepted and terminal records."""
-    _invoke("rerun", workspace, project)
+    from agent.cli import run_rerun
+
+    _run_checked(
+        lambda: run_rerun(_resolve_project(project, workspace), workspace, _read_stdin_request())
+    )
 
 
 @candidate_app.command("resume")
 def resume(workspace: WorkspaceArgument, project: ProjectOption = None) -> None:
     """Resume a JSON request from stdin and emit accepted and terminal records."""
-    _invoke("resume", workspace, project)
+    from agent.cli import run_resume
+
+    _run_checked(
+        lambda: run_resume(_resolve_project(project, workspace), workspace, _read_stdin_request())
+    )
