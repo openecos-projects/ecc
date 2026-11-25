@@ -210,6 +210,7 @@ def test_grouped_timing_inputs_freeze_under_explicit_no_clock(
         "frequency_max": 80,
     }
     workspace = create_workspace(**{**arguments, "directory": tmp_path / "persisted"})
+    assert workspace is not None
     frozen = SdcInputs.from_parameters(workspace.parameters.data)
     assert frozen.primary_clocks == values["primary_clocks"]
     assert frozen.generated_clock_txt == values["generated_clocks"]

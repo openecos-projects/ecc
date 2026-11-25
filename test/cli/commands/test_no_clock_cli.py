@@ -3,7 +3,6 @@
 import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +24,7 @@ from chipcompiler.cli.project.effective_config import (
     resolve_effective_config,
 )
 from chipcompiler.cli.project.flow_selection import effective_insert_steps, effective_skip_steps
+from chipcompiler.data.parameter import Parameters
 from chipcompiler.data.workspace.sdc_inputs import SdcInputs
 from chipcompiler.rtl2gds import NoClockDecision, resolve_skip_steps
 
@@ -325,7 +325,8 @@ def test_virgin_project_persists_inferred_policy_and_filters_initial_ledger(
 
     def create_with_parameters(**kwargs):
         workspace = fake_create(**kwargs)
-        workspace.parameters = SimpleNamespace(data={})
+        assert workspace is not None
+        workspace.parameters = Parameters(data={})
         return workspace
 
     monkeypatch.setattr(data_api, "create_workspace", create_with_parameters)
