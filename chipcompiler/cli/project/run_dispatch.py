@@ -15,8 +15,9 @@ from pathlib import Path
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
+from chipcompiler.cli.project.creation import existing_draft_workspace, repeats_recorded_create
 from chipcompiler.cli.project.run_existing import run_existing_workspace
-from chipcompiler.cli.project.run_prepare import create_command_spec, execute_fresh_run
+from chipcompiler.cli.project.run_prepare import execute_fresh_run
 from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 
@@ -219,29 +220,6 @@ def _abandon_prepared_target(backup_path: str | None, run_dir: str, *, owns_targ
             os.replace(backup_path, run_dir)
 
 
-def _repeats_recorded_create(command_input, run_dir: str, run_name: str) -> bool:
-    """True when this exact `workspace create` request already built the workspace."""
-    if not command_input.command_id:
-        return False
-    from chipcompiler.engine.workspace.lifecycle import (
-        WorkspaceLifecycleError,
-        command_retry_matches,
-        workspace_command_fingerprint,
-    )
-
-    fingerprint = workspace_command_fingerprint(
-        "create",
-        create_command_spec(command_input, run_name),
-        None,
-        command_input.expected_revision,
-    )
-    try:
-        return command_retry_matches(Path(run_dir), command_input.command_id, fingerprint)
-    except (WorkspaceLifecycleError, OSError, ValueError):
-        # A reused id with another request, or an unreadable ledger: not a retry.
-        return False
-
-
 def dispatch_project_run(
     command_input,
     ctx,
@@ -268,7 +246,7 @@ def dispatch_project_run(
         """
         if execute_flow or not cli_overrides:
             return None
-        if _repeats_recorded_create(command_input, run_dir, run_name):
+        if repeats_recorded_create(command_input, run_dir, run_name):
             return None
         from chipcompiler.cli.core.records import error_record
 
@@ -362,12 +340,31 @@ def dispatch_project_run(
     created_registration = False
     ws_locks = contextlib.ExitStack()
     try:
+        if draft is not None:
+            from chipcompiler.utility.workspace_lock import workspace_lock
+
+            target = Path(run_dir)
+            blocking = not command_input.no_wait
+            ws_locks.enter_context(workspace_lock(target, blocking=blocking))
+            if (target / "home" / "flow.json").is_file():
+                return existing_draft_workspace(
+                    command_input, ctx, run_dir, run_name, preview=False
+                )
+            try:
+                with draft.build_target(
+                    target, reuse_empty=ctx.workspace_path_explicit, blocking=blocking
+                ):
+                    return fresh_run(owns_target=False, ws_locks=ws_locks)
+            except BlockingIOError:
+                raise
+            except OSError as exc:
+                code = "run_exists" if isinstance(exc, FileExistsError) else "workspace_failed"
+                return CommandResult.err(
+                    [error_record(code, workspace_id=run_name, workspace=run_dir, reason=str(exc))]
+                )
+
         existing = os.path.exists(flow_json) and not command_input.overwrite
         if existing:
-            if draft is not None:
-                from chipcompiler.cli.command_handlers.project import _existing_draft_workspace
-
-                return _existing_draft_workspace(command_input, ctx, preview=False)
             unsafe = _existing_target_guard(run_dir, project_dir, run_name)
             if unsafe is not None:
                 return unsafe
@@ -442,32 +439,6 @@ def dispatch_project_run(
                 if command_input.preset is None:
                     cfg.manifest_driven = True
         else:
-            if draft is not None:
-                from chipcompiler.utility.workspace_lock import workspace_lock
-
-                target = Path(run_dir)
-                blocking = not command_input.no_wait
-                ws_locks.enter_context(workspace_lock(target, blocking=blocking))
-                if (target / "home" / "flow.json").is_file():
-                    from chipcompiler.cli.command_handlers.project import _existing_draft_workspace
-
-                    return _existing_draft_workspace(command_input, ctx, preview=False)
-                try:
-                    with draft.build_target(
-                        target, reuse_empty=ctx.workspace_path_explicit, blocking=blocking
-                    ):
-                        return fresh_run(owns_target=False, ws_locks=ws_locks)
-                except BlockingIOError:
-                    raise
-                except OSError as exc:
-                    code = "run_exists" if isinstance(exc, FileExistsError) else "workspace_failed"
-                    return CommandResult.err(
-                        [
-                            error_record(
-                                code, workspace_id=run_name, workspace=run_dir, reason=str(exc)
-                            )
-                        ]
-                    )
             prepared = _prepare_run_target(command_input, ctx, run_dir, run_name, ws_locks)
             if isinstance(prepared, CommandResult):
                 return prepared

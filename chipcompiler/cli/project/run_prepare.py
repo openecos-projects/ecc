@@ -181,18 +181,6 @@ def _quote_filelist_path(path: str) -> str:
     return f'"{path}"' if any(ch.isspace() for ch in path) else path
 
 
-def create_command_spec(command_input, run_name: str) -> dict:
-    """The request `workspace create` records under its command id."""
-    draft_id = getattr(command_input, "create_draft_id", None)
-    return {
-        "workspace": run_name,
-        "from": command_input.from_step,
-        "to": command_input.to_step,
-        "parameters": list(command_input.param_set),
-        **({"draft": draft_id} if draft_id else {}),
-    }
-
-
 def _mark_explicit_frequency(resolved, parameters: dict) -> None:
     """Preserve explicit frequency overrides for legacy clock-list snapshots."""
     from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY
@@ -556,6 +544,7 @@ def execute_fresh_run(
             if getattr(workspace, "directory", None):
                 snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
                 if command_input.command_id and not execute_flow:
+                    from chipcompiler.cli.project.creation import create_command_spec
                     from chipcompiler.engine.workspace.lifecycle import (
                         workspace_command_fingerprint,
                         write_workspace_command,
