@@ -1,0 +1,49 @@
+{
+    "mapping_file": "corners/ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map",
+    "corners": [
+        {
+            "name": "TYPICAL",
+            "temperature": [
+                25
+            ],
+            "process_file": "corners/TYP.itf",
+            "captab_file": "corners/TYP.captab"
+        },
+        {
+            "name": "RCbest",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "corners/RCbest.itf",
+            "captab_file": "corners/RCbest.captab"
+        },
+        {
+            "name": "RCworst",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "corners/RCworst.itf",
+            "captab_file": "corners/RCworst.captab"
+        },
+        {
+            "name": "Cbest",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "corners/Cbest.itf",
+            "captab_file": "corners/Cbest.captab"
+        },
+        {
+            "name": "Cworst",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "corners/Cworst.itf",
+            "captab_file": "corners/Cworst.captab"
+        }
+    ]
+}

@@ -484,13 +484,6 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     derive_parameter_configs(workspace.config, workspace.parameters.data)
     _refresh_emir_config(workspace)
 
-    # rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
-    # rcx["pdk"] = "ics55" if workspace.pdk.name == "ics55" else ""
-    # rcx["mapping_file"] = workspace.pdk.mapping_file
-    # corners = deepcopy(workspace.pdk.corners)
-    # rcx["corners"] = corners
-    # json_write(workspace.config[f"{StepEnum.RCX.value}"], rcx)
-
     dreamplace = json_read(workspace.config["dreamplace"])
     if not dreamplace:
         raise FileNotFoundError(
@@ -517,8 +510,10 @@ def refresh_workspace_config(workspace: Workspace) -> None:
     # explicit sta.liberty parameters carry the same PDK-relative defaults,
     # and re-applying them above must not resurrect unexpanded paths.
     _refresh_sta_config(workspace)
+    from .rcx_config import refresh_rcx_config
     from .timing_constraints import generate_timing_scripts
 
+    refresh_rcx_config(workspace)
     generate_timing_scripts(workspace)
     db = json_read(workspace.config["db"])
     db["INPUT"]["sdc_path"] = str(workspace.pdk.sdc or "")
@@ -659,6 +654,9 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         # Overrides replay raw PDK-relative sta.liberty defaults; re-expand
         # them so a mid-run step build cannot resurrect unexpanded paths.
         _refresh_sta_config(workspace)
+        from .rcx_config import refresh_rcx_config
+
+        refresh_rcx_config(workspace)
 
     if step.name == StepEnum.ROUTING.value and isinstance(step.data, EccData):
         router = json_read(workspace.config[f"{StepEnum.ROUTING.value}"])
@@ -673,6 +671,9 @@ def update_step_config(workspace: Workspace, step: WorkspaceStep) -> None:
         json_write(workspace.config[f"{StepEnum.ROUTING.value}"], router)
 
     if step.name == StepEnum.RCX.value:
+        from .rcx_config import refresh_rcx_config
+
+        refresh_rcx_config(workspace)
         rcx = json_read(workspace.config[f"{StepEnum.RCX.value}"])
         if not rcx:
             raise FileNotFoundError(

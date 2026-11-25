@@ -829,6 +829,9 @@ def test_run_rcx_propagates_init_failure(tmp_path, monkeypatch):
 
     assert ecc_runner.run_rcx(workspace, step, module) is False
 
+    assert [call for call in module.calls if call[0] == "init_rcx"] == [
+        ("init_rcx", {"config": ""})
+    ]
     call_names = [call[0] for call in module.calls]
     assert "init_rcx" in call_names
     assert "run_rcx" not in call_names

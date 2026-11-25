@@ -217,7 +217,7 @@ def build_step_config(workspace: Workspace, step: EccStep):
 
         rcx_config = json_read(workspace.config[f"{StepEnum.RCX.value}"])
         step.output.spef = [
-            spef_path
+            Path(spef_path)
             for corner in rcx_config.get("corners", [])
             for spef_item in (
                 corner.get("spef_file", [])

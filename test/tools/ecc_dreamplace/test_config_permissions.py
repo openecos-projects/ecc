@@ -19,6 +19,7 @@ def test_workspace_config_generation_leaves_config_root_writable_after_read_only
         pdk=PDK(
             name="ics55",
             version="v1",
+            root=tmp_path / "pdk",
             tech=Path("tech.lef"),
             lefs=[Path("std.lef")],
             buffers=[],
@@ -59,7 +60,13 @@ def test_dreamplace_config_generation_writes_generated_fields_to_copied_config(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(
+            name="ics55",
+            version="v1",
+            root=tmp_path / "pdk",
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
+        ),
         parameters=make_ics55_parameters(),
     )
     step = dreamplace_builder.build_step(
@@ -107,7 +114,13 @@ def test_dreamplace_config_uses_empty_strings_for_missing_inputs(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(
+            name="ics55",
+            version="v1",
+            root=tmp_path / "pdk",
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
+        ),
         parameters=make_ics55_parameters(),
     )
     step = dreamplace_builder.build_step(
@@ -144,7 +157,13 @@ def test_workspace_config_generation_applies_direct_dreamplace_overrides(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(
+            name="ics55",
+            version="v1",
+            root=tmp_path / "pdk",
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
+        ),
         parameters=make_ics55_parameters({"config_overrides": {"dreamplace": overrides}}),
     )
 
@@ -166,7 +185,13 @@ def test_dreamplace_step_config_refresh_reapplies_current_parameter_file(
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(
+            name="ics55",
+            version="v1",
+            root=tmp_path / "pdk",
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
+        ),
         parameters=make_ics55_parameters(initial_overrides),
     )
     (tmp_path / "workspace" / "home").mkdir(parents=True)
