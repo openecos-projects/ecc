@@ -11,8 +11,12 @@ from tempfile import mkdtemp
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
-from chipcompiler.cli.project.config import ProjectConfig, parse_project_config, resolve_pdk_root
+from chipcompiler.cli.project.config import ProjectConfig, parse_project_config
 from chipcompiler.cli.project.design_inputs import resolve_design_inputs
+from chipcompiler.cli.project.effective_config import (
+    apply_manifest_defaults,
+    project_manifest_summary,
+)
 from chipcompiler.cli.project.flow_selection import (
     changed_insert_steps,
     effective_insert_steps,
@@ -33,9 +37,13 @@ from chipcompiler.cli.project.rtl_import import (
 )
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.api import project_manifest_mutator
-from chipcompiler.project.manifest import CONFIG_FILENAME, ManifestError, load_manifest
+from chipcompiler.project.manifest import (
+    CONFIG_FILENAME,
+    ManifestError,
+    assemble_config,
+    load_manifest,
+)
 from chipcompiler.project.manifest_write import (
-    base_design_from_config,
     manifest_lock,
     manifest_range_for_flow,
     update_manifest_locked,
@@ -479,10 +487,12 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
             skipped = str(exc)
 
     cfg = draft_config if pending_config and not skipped else current_config
+    project_name, base_design = project_manifest_summary(cfg, manifest)
     if skipped:
         if DRAFT_PROJECT_CHANGES_SKIPPED not in record:
             record = {**record, DRAFT_PROJECT_CHANGES_SKIPPED: skipped}
             write_text_atomic(project / _JOURNAL, json.dumps(record))
+        apply_manifest_defaults(cfg, assemble_config(manifest, None), str(project))
         _discard_partial_rtl(cfg, paths, digests)
     elif pending_config:
         if legacy:
@@ -495,17 +505,18 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
         {
             "type": "register_workspace",
             "workspace_id": workspace.name,
-            "name": draft_config.design_name,
+            "name": draft_config.design_name
+            if "design.name" in draft_config._explicit_keys
+            else manifest.design_name,
             "workspace_path": str(workspace),
             "start_step": record["start_step"],
             "end_step": record["end_step"],
         },
     )
-    base_design = base_design_from_config(cfg, resolve_pdk_root(cfg))
 
     def mutate(document: dict) -> None:
         register(document)
-        document["design_name"] = cfg.design_name
+        document["design_name"] = project_name
         document["base_design"] = base_design
         entry = next(
             item for item in document["workspaces"] if item["workspace_id"] == workspace.name

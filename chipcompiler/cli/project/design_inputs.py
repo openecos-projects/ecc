@@ -23,6 +23,11 @@ class ResolvedDesignInputs:
     def_: str = ""
     sdc: str = ""
     spef: str = ""
+    manifest_origin_def: str = ""
+
+    @property
+    def workspace_def(self) -> str:
+        return self.def_ or self.manifest_origin_def
 
     def paths(self) -> tuple[str, ...]:
         """All declared design input paths, including inputs for other steps."""
@@ -32,7 +37,7 @@ class ResolvedDesignInputs:
                 *self.rtl,
                 self.netlist,
                 self.golden_netlist,
-                self.def_,
+                self.workspace_def,
                 self.sdc,
                 self.spef,
             )
@@ -91,6 +96,7 @@ def resolve_design_inputs(cfg: "ProjectConfig") -> ResolvedDesignInputs:
         def_=resolve(getattr(cfg, "design_def", "")),
         sdc=resolve(getattr(cfg, "design_sdc", "")),
         spef=resolve(getattr(cfg, "design_spef", "")),
+        manifest_origin_def=getattr(cfg, "manifest_origin_def", ""),
     )
 
 

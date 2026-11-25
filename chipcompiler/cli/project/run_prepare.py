@@ -341,7 +341,6 @@ def execute_fresh_run(
 
     inputs = resolve_design_inputs(cfg)
     _, origin_verilog, input_filelist = resolve_rtl(cfg)
-    origin_def = inputs.def_ or cfg.manifest_origin_def
 
     # The declared netlist is the synthesis OUTPUT consumed by a
     # post-synthesis entry step. A flow entering at Synthesis must use the
@@ -427,7 +426,7 @@ def execute_fresh_run(
         try:
             workspace = create_workspace(
                 directory=str(build_dir) if build_dir is not None else run_dir,
-                origin_def=origin_def,
+                origin_def=inputs.workspace_def,
                 origin_verilog=origin_verilog,
                 pdk=cfg.pdk_name,
                 parameters=parameters,

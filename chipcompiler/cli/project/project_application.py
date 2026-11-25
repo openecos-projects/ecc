@@ -4,25 +4,24 @@ import json
 import os
 import shutil
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from chipcompiler.cli.project.config import (
     ProjectConfig,
     parse_project_config,
-    resolve_pdk_root,
     validate_project_config,
 )
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
+from chipcompiler.cli.project.effective_config import (
+    apply_manifest_defaults,
+    project_manifest_summary,
+)
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
 from chipcompiler.params import parse_value, validate_value
-from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
-from chipcompiler.project.manifest_write import (
-    base_design_from_config,
-    manifest_lock,
-    update_manifest_locked,
-)
+from chipcompiler.project.manifest import CONFIG_FILENAME, assemble_config, load_manifest
+from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -61,7 +60,7 @@ def apply_project(
             original = config_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             raise ProjectApplicationError("config_error", str(exc)) from exc
-        load_manifest(str(project))
+        manifest = load_manifest(str(project))
         updated, changed = _apply_text(
             original,
             parsed_sets=parsed_sets,
@@ -69,11 +68,16 @@ def apply_project(
             add_rtl=add_rtl,
             remove_rtl=remove_rtl,
         )
-        cfg = _validate_text(project, updated, validate=validate)
+        cfg = parse_project_settings(project, updated)
+        name, base = project_manifest_summary(cfg, manifest, unsets=unsets)
+        if validate:
+            candidate = replace(manifest, design_name=name, base_design=base)
+            apply_manifest_defaults(cfg, assemble_config(candidate, None), str(project))
+            _validate_settings(cfg)
         try:
             if updated != original:
                 write_text_atomic(str(config_path), updated)
-            if not _update_summary_locked(project, cfg):
+            if not _update_summary_locked(project, name, base):
                 raise OSError("Project Manifest update failed")
         except BaseException as exc:
             try:
@@ -92,19 +96,14 @@ def apply_project(
 def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> bool:
     project = Path(project_dir).expanduser().resolve()
     with manifest_lock(project, blocking=blocking):
-        load_manifest(str(project))
+        manifest = load_manifest(str(project))
         cfg = parse_project_settings(project, read_project_settings(project))
-        errors = validate_project_config(cfg)
-        if errors:
-            raise ProjectApplicationError("invalid_project_config", errors[0])
-        before = load_manifest(str(project)).base_design
-        # Project reconciliation must not silently bind a fresh project to a
-        # host PDK environment before the user declares a project root.
-        pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
-        expected = base_design_from_config(cfg, pdk_root)
-        if before == expected:
+        name, base = project_manifest_summary(cfg, manifest)
+        apply_manifest_defaults(cfg, assemble_config(manifest, None), str(project))
+        _validate_settings(cfg)
+        if (manifest.design_name, manifest.base_design) == (name, base):
             return False
-        if not _update_summary_locked(project, cfg):
+        if not _update_summary_locked(project, name, base):
             raise ProjectApplicationError("project_reconcile_failed", "Manifest update failed")
         return True
 
@@ -755,21 +754,14 @@ def parse_project_settings(project: Path, text: str) -> ProjectConfig:
         ) from exc
 
 
-def _validate_text(project: Path, text: str, *, validate: bool = True):
-    cfg = parse_project_settings(project, text)
-    if validate:
-        errors = validate_project_config(cfg)
-        if errors:
-            raise ProjectApplicationError("invalid_project_config", errors[0])
-    return cfg
+def _validate_settings(cfg: ProjectConfig) -> None:
+    errors = validate_project_config(cfg)
+    if errors:
+        raise ProjectApplicationError("invalid_project_config", errors[0])
 
 
-def _update_summary_locked(project: Path, cfg) -> bool:
-    pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
-    base_design = base_design_from_config(cfg, pdk_root)
-
+def _update_summary_locked(project: Path, name: str, base_design: dict) -> bool:
     def mutate(document: dict) -> None:
-        document["design_name"] = cfg.design_name
-        document["base_design"] = base_design
+        document.update(design_name=name, base_design=base_design)
 
     return update_manifest_locked(project, mutate)

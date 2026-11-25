@@ -14,7 +14,7 @@ cheap (no chipcompiler.data imports here).
 """
 
 import os
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any, TypeGuard
 
 from chipcompiler.cli.core.records import error_record, warning_record
@@ -29,12 +29,23 @@ from chipcompiler.project.manifest import (
     PRESET_MANIFEST_RANGE,
     ManifestError,
     assemble_config,
+    base_design_from_config,
     load_manifest,
 )
 
 if TYPE_CHECKING:
     from chipcompiler.cli.core.types import CommandContext
     from chipcompiler.cli.project.config import ProjectConfig
+    from chipcompiler.project.manifest import ProjectManifest
+
+
+_DESIGN_PATH_FIELDS = {
+    "def": "origin_def",
+    "netlist": "netlist",
+    "golden_netlist": "golden_netlist",
+    "sdc": "sdc",
+    "spef": "spef",
+}
 
 
 def _resolve_entry(manifest, run_name: str | None):
@@ -160,7 +171,7 @@ def resolve_effective_config(
             return CommandResult.err([error_record("config_error", reason=unreadable)])
         cfg, flow_config = _manifest_only_config(ctx, assembled, entry)
     else:
-        _fill_missing_from_base(cfg, assembled, ctx.project_dir)
+        apply_manifest_defaults(cfg, assembled, ctx.project_dir)
         if entry is not None and "flow.preset" not in cfg._explicit_keys:
             flow_config = entry_flow_config(entry)
 
@@ -203,7 +214,7 @@ def _manifest_only_config(ctx, assembled, entry):
         design_rtl=_source_rtl(assembled),
         design_netlist=_source_path(assembled, "netlist", ctx.project_dir),
         design_golden_netlist=_source_path(assembled, "golden_netlist", ctx.project_dir),
-        design_def=_source_origin_def(assembled, ctx.project_dir),
+        design_def=_source_path(assembled, "origin_def", ctx.project_dir),
         design_sdc=_source_path(assembled, "sdc", ctx.project_dir),
         design_spef=_source_path(assembled, "spef", ctx.project_dir),
         design_clock_port=assembled["clock"],
@@ -215,7 +226,7 @@ def _manifest_only_config(ctx, assembled, entry):
     )
     cfg.params_overrides = {}
     cfg.manifest_driven = True
-    cfg.manifest_origin_def = _source_origin_def(assembled, ctx.project_dir)
+    cfg.manifest_origin_def = cfg.design_def
 
     from .timing_inputs import resolve_timing_input_metadata
 
@@ -231,16 +242,6 @@ def _source_rtl(assembled: dict) -> list[str]:
     if not rtl and assembled["origin_verilog"]:
         rtl = [assembled["origin_verilog"]]
     return rtl
-
-
-def _source_origin_def(assembled: dict, project_dir: str) -> str:
-    """The base_design origin DEF; relative spellings resolve against the
-    project root (create_workspace resolves paths against the process cwd),
-    absolute spellings pass through unchanged."""
-    value = assembled.get("origin_def") or ""
-    if not value or os.path.isabs(value):
-        return value
-    return os.path.normpath(os.path.join(project_dir, value))
 
 
 def _source_path(assembled: dict, key: str, project_dir: str) -> str:
@@ -263,7 +264,7 @@ def _assembled_frequency(assembled: Mapping[str, object]) -> float:
         return 0.0
 
 
-def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
+def apply_manifest_defaults(cfg: "ProjectConfig", assembled: dict, project_dir: str) -> None:
     """Fill a hybrid config's missing fields; explicit ecc.toml values win.
 
     Presence, not truthiness: a key present in ecc.toml — even with an
@@ -279,27 +280,53 @@ def _fill_missing_from_base(cfg, assembled: dict, project_dir: str) -> None:
         cfg.design_clock_port = assembled["clock"]
     if "design.rtl" not in explicit:
         cfg.design_rtl = _source_rtl(assembled)
-    for dotted, field_name, source_key in (
-        ("design.netlist", "design_netlist", "netlist"),
-        ("design.golden_netlist", "design_golden_netlist", "golden_netlist"),
-        ("design.def", "design_def", "origin_def"),
-        ("design.sdc", "design_sdc", "sdc"),
-        ("design.spef", "design_spef", "spef"),
-    ):
-        if dotted not in explicit:
-            setattr(cfg, field_name, _source_path(assembled, source_key, project_dir))
+    for field, source_key in _DESIGN_PATH_FIELDS.items():
+        if f"design.{field}" not in explicit:
+            setattr(cfg, f"design_{field}", _source_path(assembled, source_key, project_dir))
     if "pdk.name" not in explicit:
         cfg.pdk_name = assembled["pdk"]
     if "pdk.root" not in explicit:
         cfg.pdk_root = assembled["pdk_root"]
     if "design.frequency_mhz" not in explicit:
         cfg.design_frequency_mhz = _assembled_frequency(assembled)
-    # origin_def exists only in the manifest layer (no ecc.toml key), so it
-    # always comes from the base — resolved against the project root.
-    cfg.manifest_origin_def = _source_origin_def(assembled, project_dir)
+    # Fresh Workspace creation can still use the Manifest's origin DEF.
+    cfg.manifest_origin_def = _source_path(assembled, "origin_def", project_dir)
     from .timing_inputs import resolve_timing_input_metadata
 
     resolve_timing_input_metadata(cfg)
+
+
+def project_manifest_summary(
+    cfg: "ProjectConfig", manifest: "ProjectManifest", *, unsets: Collection[str] = ()
+) -> tuple[str, dict]:
+    """Sync explicit settings and clears, preserving remaining Manifest defaults."""
+    from chipcompiler.cli.project.config import resolve_pdk_root
+
+    root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
+    declared = base_design_from_config(cfg, root)
+    base = {key: value for key, value in manifest.base_design.items() if key != "parameters"}
+    if base.get("frequency_mhz") is None:
+        frequency = assemble_config(manifest, None)["frequency_mhz"]
+        if frequency is not None:
+            base["frequency_mhz"] = frequency
+    fields = {
+        **{f"design.{field}": (key,) for field, key in _DESIGN_PATH_FIELDS.items()},
+        "design.rtl": ("rtl_list", "origin_verilog"),
+        "design.top": ("top_module",),
+        "design.clock_port": ("clock",),
+        "design.frequency_mhz": ("frequency_mhz",),
+        "pdk.name": ("pdk",),
+        "pdk.root": ("pdk_root",),
+    }
+    changed = cfg._explicit_keys.union(unsets)
+    # The timing file supplies the clock and frequency whenever it loads.
+    if cfg.design_sdc and cfg._timing_input_error is None:
+        changed = changed.union(("design.clock_port", "design.frequency_mhz"))
+    for field in fields.keys() & changed:
+        for key in fields[field]:
+            base[key] = declared[key]
+    name = cfg.design_name if "design.name" in changed else manifest.design_name
+    return name, base
 
 
 def validate_effective(

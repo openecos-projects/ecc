@@ -280,6 +280,7 @@ def test_config_edit_serializes_with_draft_publication(
         (None, True),
         ("netlist", False),
         ("golden_netlist", False),
+        ("manifest_netlist", False),
         ("malformed_config", False),
         ("invalid_encoding", False),
     ],
@@ -326,7 +327,11 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
     second.write_text("user-owned second file")
     config = fresh_project / "ecc.toml"
     manifest = fresh_project / "project.json"
-    if user_change in {"malformed_config", "invalid_encoding"}:
+    if user_change == "manifest_netlist":
+        document = json.loads(manifest.read_text())
+        document["base_design"]["netlist"] = "rtl/first.v"
+        manifest.write_text(json.dumps(document))
+    elif user_change in {"malformed_config", "invalid_encoding"}:
         original = config.read_bytes()
         invalid = original + (b"\n[\n" if user_change == "malformed_config" else b"\xff")
         config.write_bytes(invalid)
@@ -369,7 +374,8 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
             )
             assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 1
         second.unlink()
-    assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    for _ in range(2):
+        assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
     assert (target / "home" / "flow.json").is_file()
     assert config.read_bytes() == expected_config
     if registration_fails_once:
@@ -378,10 +384,12 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
         assert second.read_text() == "user-owned second file"
     if user_change == "content":
         assert first.read_text() == "user edit to the first file"
-    elif user_change in {"netlist", "golden_netlist"}:
+    elif user_change in {"netlist", "golden_netlist", "manifest_netlist"}:
         assert first.read_bytes() == files[0].read_bytes()
     else:
         assert not first.exists()
+    if user_change == "manifest_netlist":
+        assert json.loads(manifest.read_text())["base_design"]["netlist"] == "rtl/first.v"
 
     capsys.readouterr()
     assert cli_main.run(args) == 1
