@@ -37,6 +37,7 @@ class StepRunResult(NamedTuple):
     ok: bool
     executed: tuple[str, ...]
     failed: str | None = None
+    failed_step_error: str | None = None
 
 
 def selected_step_names(
@@ -333,6 +334,7 @@ def _run_selected(
     return StepRunResult(
         ok=result.succeeded,
         executed=executed,
+        failed_step_error=result.failed_step_error,
         failed=result.failed_step
         or (
             None

@@ -669,13 +669,15 @@ def execute_fresh_run(
                         preserve_cli_stdio(),
                         run_progress_event_sink(engine_flow, ctx, project, sys.stderr) as sink,
                     ):
-                        flow_ok = execute(engine_flow, plan, event_sink=sink).succeeded
+                        result = execute(engine_flow, plan, event_sink=sink)
                 else:
-                    flow_ok = execute(engine_flow, plan).succeeded
+                    result = execute(engine_flow, plan)
                 if outcome is not None:
-                    outcome.succeeded = flow_ok
+                    outcome.record_execution(
+                        succeeded=result.succeeded, failed_step_error=result.failed_step_error
+                    )
 
-            if not flow_ok:
+            if not result.succeeded:
                 failure_records = [
                     {
                         "workspace_id": run_name,

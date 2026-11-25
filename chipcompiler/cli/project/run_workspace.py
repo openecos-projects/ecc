@@ -331,7 +331,9 @@ def _execute_workspace_run(
                 except ValueError as exc:
                     return run_failed("step_unavailable", str(exc))
                 if outcome is not None:
-                    outcome.succeeded = result.ok
+                    outcome.record_execution(
+                        succeeded=result.ok, failed_step_error=result.failed_step_error
+                    )
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

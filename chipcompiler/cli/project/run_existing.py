@@ -534,8 +534,12 @@ def _execute_existing_run(
                                 through=through,
                             )
                     flow_ok = run_result.ok
-                if outcome is not None:
-                    outcome.succeeded = flow_ok
+                    if outcome is not None:
+                        outcome.record_execution(
+                            succeeded=flow_ok, failed_step_error=run_result.failed_step_error
+                        )
+                elif outcome is not None:
+                    outcome.record_execution(succeeded=flow_ok)
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

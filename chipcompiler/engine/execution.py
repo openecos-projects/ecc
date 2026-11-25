@@ -21,6 +21,7 @@ class ExecutionResult:
     executed_steps: tuple[str, ...] = ()
     failed_step: str | None = None
     no_op: bool = False
+    failed_step_error: str | None = None
 
 
 def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> ExecutionResult:
@@ -71,6 +72,12 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
     executed_steps = in_flow_order(observer.executed_steps)
     failed_steps = () if succeeded else in_flow_order(observer.failed_steps)
     failed_step = failed_steps[0] if failed_steps else None
+    failed_step_error = None
+    if failed_step is not None:
+        detail = observer.failed_steps[failed_step]
+        failed_step_error = (
+            f"{failed_step}: {detail}" if detail else f"{failed_step} did not complete."
+        )
     state = StateEnum.Success.value if succeeded else StateEnum.Imcomplete.value
     result = ExecutionResult(
         succeeded=succeeded,
@@ -78,12 +85,9 @@ def execute(flow: Any, plan: ExecutionPlan, *, event_sink: Any = None) -> Execut
         step_id=selected_ids[0] if len(selected_ids) == 1 else None,
         executed_steps=executed_steps,
         failed_step=failed_step,
+        failed_step_error=failed_step_error,
     )
-    error = None
-    if failed_step is not None:
-        detail = observer.failed_steps[failed_step]
-        error = f"{failed_step}: {detail}" if detail else f"{failed_step} did not complete."
-    _notify_execution(event_sink, "on_execution_finished", result.state, error)
+    _notify_execution(event_sink, "on_execution_finished", result.state, result.failed_step_error)
     return result
 
 

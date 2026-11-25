@@ -14,7 +14,7 @@ from chipcompiler.cli.project.config import (
 )
 from chipcompiler.data import DEFAULT_MAX_PARALLEL_STEPS
 from chipcompiler.data.workspace.config import validate_flow_config
-from chipcompiler.engine import ExecutionPlan, StepRunResult
+from chipcompiler.engine import ExecutionPlan, ExecutionResult, StepRunResult
 from test.cli.commands.test_flow_continuation import RTL2GDS_NAMES, _write_existing_workspace
 
 
@@ -226,7 +226,7 @@ class TestRunApplication:
 
         def fake_execute(engine_flow, plan, *, event_sink=None):
             calls.append(("execute", plan, event_sink))
-            return type("Result", (), {"succeeded": True})()
+            return ExecutionResult(succeeded=True, state="Success")
 
         monkeypatch.setattr(progress, "should_enable_run_progress", lambda ctx, stderr: True)
         monkeypatch.setattr(progress, "run_progress_event_sink", fake_sink)

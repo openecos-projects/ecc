@@ -26,10 +26,11 @@ from chipcompiler.project.runtime_processes import (
 class RunOutcome:
     succeeded: bool = False
     error: dict[str, str] | None = None
-    step_error: str | None = None
 
-    def report_step_error(self, error: str) -> None:
-        self.step_error = error
+    def record_execution(self, *, succeeded: bool, failed_step_error: str | None = None) -> None:
+        self.succeeded = succeeded
+        if failed_step_error is not None:
+            self.error = {"code": "step_worker_failed", "message": failed_step_error}
 
 
 @contextmanager
@@ -96,7 +97,6 @@ def managed_run_process(
     registered_entry = None
     old_run_id = getattr(workspace, "_ecc_run_id", None)
     old_cancel_event = getattr(workspace, "_ecc_cancel_event", None)
-    old_report_step_error = getattr(workspace, "_ecc_report_step_error", None)
     try:
         _ensure_process_group_leader()
         old_handler = signal.getsignal(signal.SIGUSR1)
@@ -123,7 +123,6 @@ def managed_run_process(
         registered_entry = entry
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
-        workspace._ecc_report_step_error = outcome.report_step_error
         os.write(log_descriptor, f"ECC run {run_id} started\n".encode())
         # The existing-run paths redirect from run_log_stdio before preflight;
         # the fresh-run path (workspace created above this context) redirects
@@ -148,10 +147,9 @@ def managed_run_process(
                     state = "cancelled"
                 elif interrupted:
                     state = "interrupted"
-                error = outcome.error
-                if error is None and outcome.step_error is not None:
-                    error = {"code": "step_worker_failed", "message": outcome.step_error}
-                write_run_result(workspace_path, workspace_id, registered_entry, state, error)
+                write_run_result(
+                    workspace_path, workspace_id, registered_entry, state, outcome.error
+                )
             except OSError as exc:
                 result_write_error = exc
                 with suppress(OSError):
@@ -178,10 +176,6 @@ def managed_run_process(
             workspace.__dict__.pop("_ecc_cancel_event", None)
         else:
             workspace._ecc_cancel_event = old_cancel_event
-        if old_report_step_error is None:
-            workspace.__dict__.pop("_ecc_report_step_error", None)
-        else:
-            workspace._ecc_report_step_error = old_report_step_error
         if old_handler is not None:
             signal.signal(signal.SIGUSR1, old_handler)
         if close_log:

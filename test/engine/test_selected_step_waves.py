@@ -246,7 +246,10 @@ def test_a_failing_wave_step_stops_the_following_steps(resumed):
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
     assert result == rerun.StepRunResult(
-        ok=False, executed=("drc", "antenna_check", "rcx"), failed="post_route_lec"
+        ok=False,
+        executed=("drc", "antenna_check", "rcx"),
+        failed="post_route_lec",
+        failed_step_error="post_route_lec did not complete.",
     )
     assert {name for what, name in run.log if what == "start"} == {
         "drc",
@@ -272,7 +275,10 @@ def test_the_first_failed_step_in_selection_order_is_reported(resumed):
 
     # RCX failed first in time; drc is first in the flow.
     assert result == rerun.StepRunResult(
-        ok=False, executed=("antenna_check", "post_route_lec"), failed="drc"
+        ok=False,
+        executed=("antenna_check", "post_route_lec"),
+        failed="drc",
+        failed_step_error="drc did not complete.",
     )
 
 
@@ -311,7 +317,12 @@ def test_a_real_failure_after_a_skipped_step_is_reported(resumed):
 
     result = rerun.run_resume(resumed.flow, event_sink=resumed.sink)
 
-    assert result == rerun.StepRunResult(ok=False, executed=("drc", "antenna_check"), failed="rcx")
+    assert result == rerun.StepRunResult(
+        ok=False,
+        executed=("drc", "antenna_check"),
+        failed="rcx",
+        failed_step_error="rcx did not complete.",
+    )
 
 
 @pytest.mark.parametrize(
@@ -323,6 +334,7 @@ def test_a_real_failure_after_a_skipped_step_is_reported(resumed):
                 ok=False,
                 executed=("drc", "antenna_check", "post_route_lec", "rcx", "sta", "power_analysis"),
                 failed="emir",
+                failed_step_error="emir did not complete.",
             ),
         ),
         # emir is advisory: Incomplete does not block Harden.
