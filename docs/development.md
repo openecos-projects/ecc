@@ -549,7 +549,10 @@ structured `config_overrides` in `home/params.toml`;
 configuration refresh. PDK path schemas live in `config_params/pdk.py` and
 write `[pdk.overrides]`; keep `pdk.root` on `ecc pdk set-root`. Never add
 workspace input, output, temporary, generated-artifact, or STA multi-corner
-liberty paths as CLI parameters.
+liberty paths as CLI parameters. The reviewed `emir.ploc_file_path` exception
+accepts an external floorplan's supply-location input for a continuation
+workspace; it does not redirect generated PLOC output. Empty retains the
+canonical upstream post-floorplan lookup.
 
 `test/data/test_config_coverage.py` compares each JSON template field with
 exactly one direct schema, legacy mapping, or protected-path entry. Update
@@ -793,10 +796,17 @@ and the filler physical database. Set `emir.technology_file_path` to the absolut
 path of a real `process.tech`, using `ecc param set` or `[emir]` in `ecc.toml`.
 The value is replayed into `config/emir_ecc.json` when creating or refreshing the
 workspace; editing only that generated JSON is not persistent. The default is
-an empty placeholder and will stop the step. Supply sources come from iFP's
+an empty template value; workspace refresh supplies the packaged synthetic
+technology copy for flow testing, not foundry signoff. Supply sources come from iFP's
 `post_floorplan_ecc/data/fp/pdn_generator/power.ploc`, passed as `ploc_file_path`
 without enabling `add_ploc_from_top_def`. These are ideal sources at PDN stripe
-intersections, not a package/pad model. Native outputs go to `emir_ecc/data/emir/`;
+intersections, not a package/pad model. For a continuation workspace that
+imports a floorplanned design without the upstream PDN step, set
+`emir.ploc_file_path` to that design's existing PLOC using `ecc param set`
+(`--workspace NAME` for an existing workspace). This optional external-input
+path takes precedence over upstream lookup; empty preserves normal flow
+behavior. It is passed unchanged, not copied, and must be an absolute path
+outside EMIR's output directory. Native outputs go to `emir_ecc/data/emir/`;
 after a successful save, every file under `data/emir/emir_reporter/` is published
 to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
 is logged without changing the save result.
@@ -804,7 +814,8 @@ is logged without changing the save result.
 CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
 and EM limits are invented test data, **not foundry data**. A successful CI run
 with this fixture verifies execution and data handoff only; its IR/EM numbers
-must not be used for signoff. Normal projects do not select it automatically.
+must not be used for signoff. Real signoff requires an explicit foundry
+technology file instead of the workspace's synthetic default.
 
 Any step of the rtl2gds chain can be excluded from a workspace at creation
 time, not only the three optional steps — placement-parasitic optimization

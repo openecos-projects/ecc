@@ -45,10 +45,16 @@ def test_emir_default_technology_path_uses_workspace_config_copy(
     assert technology_path.is_file()
 
 
-def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_ics55_pdk_factory):
+@pytest.mark.parametrize("external_ploc", [False, True])
+def test_emir_input_overrides_survive_workspace_refresh(
+    tmp_path, minimal_ics55_pdk_factory, external_ploc
+):
     fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     technology_path = fixtures / "emir/ics55_synthetic.tech"
-    override = {"technology_file_path": str(technology_path)}
+    override = {
+        "technology_file_path": str(technology_path),
+        "ploc_file_path": str(tmp_path / "imported grid" / "power.ploc") if external_ploc else "",
+    }
     workspace = create_workspace(
         directory=tmp_path / "workspace",
         origin_def="",
@@ -61,7 +67,10 @@ def test_emir_technology_override_survives_workspace_refresh(tmp_path, minimal_i
     config_path = workspace.config[StepEnum.EMIR.value]
     assert json_read(config_path) == override
 
-    assert json_write(config_path, {"technology_file_path": "stale-path.tech"})
+    assert json_write(
+        config_path,
+        {"technology_file_path": "stale-path.tech", "ploc_file_path": "stale-grid.ploc"},
+    )
     refresh_workspace_config(workspace)
 
     assert json_read(config_path) == override
@@ -93,12 +102,13 @@ def emir_case(tmp_path, monkeypatch):
     return workspace, step, module, save_data
 
 
-def _emir_request(workspace_dir: Path, *, power: bool) -> StepRequest:
+def _emir_request(workspace_dir: Path, *, power: bool, pdn: bool = True) -> StepRequest:
     """EMIR's req.json: the grid from post_floorplan and power from power_analysis."""
     upstream: dict[DesignData, UpstreamResponse] = {
         DesignState.FILLED: UpstreamResponse("filler_ecc", None),
-        DesignState.PDN: UpstreamResponse("post_floorplan_ecc", None),
     }
+    if pdn:
+        upstream[DesignState.PDN] = UpstreamResponse("04_post_floorplan_ecc", None)
     if power:
         upstream[AnalysisData.POWER] = publish_response(workspace_dir, "power_analysis_ecc")
     return StepRequest(
@@ -123,8 +133,21 @@ def write_native_emir_reports(step, *files: str) -> None:
         report_path.write_text(relative_path)
 
 
-def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_case):
+@pytest.mark.parametrize("external_ploc", [False, True])
+@pytest.mark.parametrize("upstream_pdn", [False, True])
+def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(
+    emir_case, external_ploc, upstream_pdn
+):
     workspace, step, module, save_data = emir_case
+    pdn_directory = "04_post_floorplan_ecc" if upstream_pdn else "post_floorplan_ecc"
+    ploc_path = workspace.directory / pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc"
+    if external_ploc:
+        ploc_path = str(workspace.directory.parent / "imported grid" / "power.ploc")
+        config_path = workspace.config[StepEnum.EMIR.value]
+        config = json_read(config_path)
+        config["ploc_file_path"] = ploc_path
+        assert json_write(config_path, config)
+    write_request(_emir_request(workspace.directory, power=True, pdn=upstream_pdn))
     write_native_emir_reports(step, "ir.rpt")
 
     assert runner.run_step(workspace, step, module) is True
@@ -142,14 +165,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
                 / "instance_power.tsv"
             ),
             technology_file_path=str(workspace.directory / "process.tech"),
-            ploc_file_path=(
-                workspace.directory
-                / "post_floorplan_ecc"
-                / "data"
-                / "fp"
-                / "pdn_generator"
-                / "power.ploc"
-            ),
+            ploc_file_path=ploc_path,
             spef_path="",
         ),
         call.run_emir(),
@@ -332,6 +348,6 @@ def test_emir_reads_the_power_analysis_a_derived_workspace_inherited(emir_case, 
 
     # The grid from the post_floorplan step req.json names, power from the inherited run.
     assert emir._upstream_directories(workspace, step) == (
-        workspace.directory / "post_floorplan_ecc",
+        workspace.directory / "04_post_floorplan_ecc",
         inherited,
     )
