@@ -49,6 +49,28 @@ def apply_project(
     blocking: bool = True,
     validate: bool = True,
 ) -> tuple[str, ...]:
+    changed, _cfg = apply_project_with_config(
+        project_dir,
+        sets=sets,
+        unsets=unsets,
+        add_rtl=add_rtl,
+        remove_rtl=remove_rtl,
+        blocking=blocking,
+        validate=validate,
+    )
+    return changed
+
+
+def apply_project_with_config(
+    project_dir: str | Path,
+    *,
+    sets: tuple[str, ...],
+    unsets: tuple[str, ...],
+    add_rtl: tuple[str, ...],
+    remove_rtl: tuple[str, ...],
+    blocking: bool = True,
+    validate: bool = True,
+) -> tuple[tuple[str, ...], ProjectConfig]:
     project = Path(project_dir).expanduser().resolve()
     config_path = project / CONFIG_FILENAME
     if not any((sets, unsets, add_rtl, remove_rtl)):
@@ -90,7 +112,7 @@ def apply_project(
             if isinstance(exc, ProjectApplicationError):
                 raise
             raise ProjectApplicationError("project_apply_failed", str(exc)) from exc
-    return tuple(changed)
+    return tuple(changed), cfg
 
 
 def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> bool:

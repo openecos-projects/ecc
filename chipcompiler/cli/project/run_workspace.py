@@ -33,15 +33,14 @@ def execute_workspace_run(
     runs only within the reconciled target range. Manifest projects register
     the active process in project.json without writing flow status there.
     """
-    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.cli.project.run_process import locked_run_session
     from chipcompiler.project.runtime_processes import RuntimeProcessError
 
     workspace_path = os.path.abspath(workspace_path)
     try:
-        # §13.1 step 2: an explicit --log-file must exist and own stdout/
-        # stderr before the pure-read preflight below; a log-open failure
-        # exits here without running the flow.
-        with run_log_stdio(command_input, workspace_path) as run_log:
+        # §13.1 step 2: lock the Workspace across run-ID validation, optional
+        # --log-file capture, preflight, and execution.
+        with locked_run_session(command_input, workspace_path) as run_log:
             return _execute_workspace_run(
                 command_input,
                 workspace_path,

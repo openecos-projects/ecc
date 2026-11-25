@@ -44,16 +44,28 @@ def workspace_plan(_args, ctx: CommandContext) -> CommandResult:
 
 
 def plan_records(records: list[dict]) -> list[dict]:
-    steps = tuple(
-        PlannedStep(
-            name=row["name"],
-            tool=row["tool"],
-            enabled=True,
-            optional=False,
-            inserted=inserted_step_kind(row["name"]) is not None,
+    if not isinstance(records, list):
+        raise ValueError("Workspace flow steps must be a list")
+    validated_steps = []
+    for row in records:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("name"), str)
+            or not row["name"]
+            or not isinstance(row.get("tool"), str)
+            or not row["tool"]
+        ):
+            raise ValueError("Invalid step record in Workspace flow ledger")
+        validated_steps.append(
+            PlannedStep(
+                name=row["name"],
+                tool=row["tool"],
+                enabled=True,
+                optional=False,
+                inserted=inserted_step_kind(row["name"]) is not None,
+            )
         )
-        for row in records
-    )
+    steps = tuple(validated_steps)
     needs = plan_needs(steps)
     resolver = FlowInputResolver(records)
     stage, end = 0, 0

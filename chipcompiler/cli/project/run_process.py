@@ -34,13 +34,14 @@ class RunOutcome:
 
 
 @contextmanager
-def run_log_stdio(command_input, workspace_path):
-    """Check supplied run IDs before preflight and open explicit run logs.
+def locked_run_session(command_input, workspace_path):
+    """Hold the Workspace lock across run-ID validation, optional log capture, and execution.
 
-    Keep the Workspace lock through execution so another process cannot
-    claim the same ID between the check and registration. An explicit
-    ``--log-file`` captures stdout/stderr before preflight (§13.1 step 2).
-    Otherwise ``managed_run_process`` opens the default run log at registration.
+    When ``--run-id`` or ``--log-file`` is supplied on an existing Workspace,
+    this context keeps the Workspace lock held from ``require_unused_run_id``
+    through execution so another process cannot claim the same ID in between.
+    An explicit ``--log-file`` captures stdout/stderr before preflight
+    (§13.1 step 2); otherwise ``managed_run_process`` opens the default log.
     """
     if not (command_input.run_id or command_input.log_file):
         yield None
@@ -58,12 +59,21 @@ def run_log_stdio(command_input, workspace_path):
         if not command_input.log_file or not path.is_dir():
             yield None
             return
-        log_descriptor = create_run_log(path, log_path)
-        try:
-            with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
-                yield log_descriptor
-        finally:
-            os.close(log_descriptor)
+        with _open_run_log_stdio(path, log_path) as log_descriptor:
+            yield log_descriptor
+
+
+@contextmanager
+def _open_run_log_stdio(workspace_path: Path, log_path: str):
+    log_descriptor = create_run_log(workspace_path, log_path)
+    try:
+        with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
+            yield log_descriptor
+    finally:
+        os.close(log_descriptor)
+
+
+run_log_stdio = locked_run_session
 
 
 @contextmanager

@@ -25,12 +25,11 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
     config_path = _require_config_path(ctx)
     if ctx.project_state == "manifest":
         raw = json.dumps(value) if field.list_value else str(value)
-        error = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+        applied = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+        if isinstance(applied, CommandResult):
+            raise CommandError.from_result(applied)
     else:
         _set_value(config_path, field, value)
-        error = None
-    if error is not None:
-        raise CommandError.from_result(error)
     return CommandResult.ok(
         [*_shadowed_clock_warnings(config_path, (field.key,)), _record(field.key, value, "set")]
     )
@@ -144,11 +143,11 @@ def project_unset(args, ctx: CommandContext) -> CommandResult:
             return remove_scoped_key(text, field.table, field.name)
 
         if ctx.project_state == "manifest":
-            with open(config_path) as file:
-                changed = unset(file.read()) is not None
-            error = _apply_manifest_change(ctx, unsets=(field.key,))
-            if error is not None:
-                return error
+            applied = _apply_manifest_change(ctx, unsets=(field.key,))
+            if isinstance(applied, CommandResult):
+                return applied
+            changed_keys, _cfg = applied
+            changed = field.key in changed_keys
         else:
             changed = edit_project_config(config_path, unset)
     except (OSError, UnicodeDecodeError) as exc:
@@ -219,15 +218,15 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
         )
     config_path = _require_config_path(ctx)
     if ctx.project_state == "manifest":
-        error = _apply_manifest_change(
+        applied = _apply_manifest_change(
             ctx,
             add_rtl=tuple(values) if add else (),
             remove_rtl=() if add else tuple(values),
         )
-        if error is not None:
-            raise CommandError.from_result(error)
-        with open(config_path, "rb") as file:
-            updated = tomllib.load(file)["design"]["rtl"]
+        if isinstance(applied, CommandResult):
+            raise CommandError.from_result(applied)
+        _changed_keys, cfg = applied
+        updated = list(cfg.design_rtl)
     else:
         updated = []
 
@@ -264,7 +263,7 @@ def _apply_manifest_change(
     unsets: tuple[str, ...] = (),
     add_rtl: tuple[str, ...] = (),
     remove_rtl: tuple[str, ...] = (),
-) -> CommandResult | None:
+):
     """Apply one project edit to ``ecc.toml`` and ``project.json`` atomically.
 
     Skip full project validation to preserve project-set behavior on partially
@@ -272,12 +271,12 @@ def _apply_manifest_change(
     """
     from chipcompiler.cli.project.project_application import (
         ProjectApplicationError,
-        apply_project,
+        apply_project_with_config,
     )
     from chipcompiler.project.manifest import ManifestError
 
     try:
-        apply_project(
+        return apply_project_with_config(
             ctx.project_dir,
             sets=sets,
             unsets=unsets,
@@ -294,7 +293,6 @@ def _apply_manifest_change(
         if key:
             fields["key"] = key
         return CommandResult.err([error_record(code, **fields)])
-    return None
 
 
 def _set_value(config_path: str, field, value: object) -> None:
