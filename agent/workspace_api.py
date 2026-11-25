@@ -5,6 +5,7 @@ import shutil
 from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
+from typing import Generic, TypeVar
 
 import chipcompiler
 from chipcompiler.data.types import StepEnum
@@ -106,10 +107,13 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
     return flow
 
 
-class FlowAgentRuntimeApi:
+_HostT = TypeVar("_HostT", bound=CandidateHost)
+
+
+class FlowAgentRuntimeApi(Generic[_HostT]):
     """Candidate execution facade over one ECC workspace application."""
 
-    def __init__(self, ecc_api: CandidateHost):
+    def __init__(self, ecc_api: _HostT):
         self.ecc_api = ecc_api
 
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:

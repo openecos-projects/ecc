@@ -6,6 +6,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import Any
 
 from chipcompiler.utility.file import write_text_atomic
 
@@ -57,7 +58,7 @@ class DraftJournal:
         return payload
 
     @classmethod
-    def from_dict(cls, data: object) -> "DraftJournal":
+    def from_dict(cls, data: Any) -> "DraftJournal":
         if not isinstance(data, dict) or data.get("version") != JOURNAL_VERSION:
             raise OSError("Invalid Workspace draft journal")
         workspace = data.get("workspace")

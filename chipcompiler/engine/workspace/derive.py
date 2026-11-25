@@ -66,7 +66,11 @@ def publish_copied_workspace(
     # Blocking acquisition uses a stable path order so two derives can never
     # deadlock. Non-blocking takes the source lock first so a busy source fails
     # before the target's sibling lock file is created (#400).
-    locks = sorted((lock_target, target), key=str) if blocking else (lock_target, target)
+    locks: tuple[Path, Path] = (
+        (lock_target, target)
+        if not blocking or str(lock_target) <= str(target)
+        else (target, lock_target)
+    )
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         _sweep_stale_staging(target)
         if target.exists():
