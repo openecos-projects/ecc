@@ -2,9 +2,10 @@
 
 import json
 import shutil
-from contextlib import ExitStack, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
@@ -33,6 +34,7 @@ from chipcompiler.utility.file import write_text_atomic
 
 _JOURNAL = ".workspace-draft-publish.json"
 _STAGING = ".workspace-draft-rtl"
+_BUILD_PREFIX = ".workspace-draft-build-"
 
 
 @dataclass(frozen=True)
@@ -42,6 +44,61 @@ class CreationDraft:
     original: str
     updated: str
     rtl: RtlImportPlan | None
+
+    @contextmanager
+    def build_target(self, workspace: Path, *, reuse_empty: bool, blocking: bool):
+        """Record ownership before construction can leave a partial Workspace."""
+        journal = self.project / _JOURNAL
+        with manifest_lock(self.project, blocking=blocking):
+            if journal.exists() or journal.is_symlink():
+                raise OSError("An unfinished Workspace draft requires project reconcile.")
+            if workspace.resolve() != workspace or workspace.parent != self.project:
+                raise OSError("Draft Workspace is outside the Project.")
+            manifest = load_manifest(str(self.project))
+            if manifest.project_id != self.project_id:
+                raise OSError("Project identity changed during Workspace creation.")
+            if manifest.find_workspace(workspace.name) is not None:
+                raise FileExistsError(f"Workspace already registered: {workspace.name}")
+            existing = workspace.exists()
+            if existing and not (
+                reuse_empty and workspace.is_dir() and not any(workspace.iterdir())
+            ):
+                raise FileExistsError(f"Workspace already exists: {workspace}")
+            with ExitStack() as reservation:
+                if existing:
+                    staged = workspace
+                else:
+                    container = Path(
+                        reservation.enter_context(
+                            TemporaryDirectory(prefix=_BUILD_PREFIX, dir=self.project)
+                        )
+                    )
+                    staged = container / workspace.name
+                    staged.mkdir()
+                identity = staged.stat()
+                building = {
+                    "version": 1,
+                    "phase": "building",
+                    "project_id": self.project_id,
+                    "workspace": workspace.name,
+                    "device": identity.st_dev,
+                    "inode": identity.st_ino,
+                    "reserved_in": None if existing else staged.parent.name,
+                }
+                raw = json.dumps(building)
+                write_text_atomic(journal, raw)
+                if not existing:
+                    try:
+                        staged.rename(workspace)
+                    except OSError:
+                        journal.unlink()
+                        raise
+        try:
+            yield
+        finally:
+            with manifest_lock(self.project):
+                if journal.is_file() and journal.read_text(encoding="utf-8") == raw:
+                    _discard_build(self.project, workspace, building, journal)
 
     def publish(self, cfg, flow_config, run_name: str, run_dir: str, *, blocking: bool) -> None:
         path = self.project / CONFIG_FILENAME
@@ -53,11 +110,15 @@ class CreationDraft:
                     "Retry with the current settings."
                 )
             journal = self.project / _JOURNAL
-            if journal.exists() or journal.is_symlink():
-                raise ValueError("An unfinished Workspace draft requires project reconcile.")
-            workspace = Path(run_dir)
-            if workspace != self.project / run_name or workspace.resolve() != workspace:
-                raise ValueError("Draft Workspace is outside the Project.")
+            building = _read_journal(journal)
+            workspace = _journal_workspace(self.project, building)
+            if (
+                building.get("phase") != "building"
+                or building.get("project_id") != self.project_id
+                or workspace != Path(run_dir)
+                or workspace.name != run_name
+            ):
+                raise OSError("Workspace draft reservation changed")
             staging = workspace / "home" / _STAGING
             targets: list[str] = []
             if self.rtl is not None:
@@ -77,13 +138,9 @@ class CreationDraft:
                 ).copy()
                 cfg = replace(cfg, design_rtl=self.rtl.configured_paths)
             start, end = manifest_range_for_flow(cfg, flow_config)
-            identity = workspace.stat()
             record = {
-                "version": 1,
-                "project_id": self.project_id,
-                "workspace": run_name,
-                "device": identity.st_dev,
-                "inode": identity.st_ino,
+                **building,
+                "phase": "publishing",
                 "original": self.original,
                 "updated": self.updated,
                 "rtl": targets,
@@ -92,13 +149,14 @@ class CreationDraft:
                 "skip_steps": (flow_config or {}).get("skip_steps"),
             }
             write_text_atomic(journal, json.dumps(record))
+            rollback = ExitStack()
             try:
-                with ExitStack() as rollback:
-                    _publish_locked(self.project, record, rollback)
-                    rollback.pop_all()
+                _publish_locked(self.project, record, rollback)
             except Exception:
-                journal.unlink()
+                rollback.close()
+                write_text_atomic(journal, json.dumps(building))
                 raise
+            rollback.pop_all()
             # Registration is already committed. Reconcile can retry cleanup.
             with suppress(OSError):
                 _clear_journal(journal, staging)
@@ -111,37 +169,96 @@ def reconcile_creation_draft(project: Path, *, blocking: bool) -> str | None:
     if not journal.exists() and not journal.is_symlink():
         return None
     with manifest_lock(project, blocking=blocking):
-        if journal.is_symlink():
-            raise OSError("Workspace draft journal must be a regular file")
-        if not journal.exists():
+        if not journal.exists() and not journal.is_symlink():
             return None
-        raw = journal.read_text(encoding="utf-8")
-        try:
-            record = json.loads(raw)
-        except ValueError as exc:
-            raise OSError("Invalid Workspace draft journal") from exc
-        workspace = _journal_workspace(project, record)
+        record = _read_journal(journal)
+        workspace = _journal_target(project, record)
     with workspace_lock(workspace, blocking=blocking), manifest_lock(project, blocking=blocking):
-        if not journal.exists() or journal.read_text(encoding="utf-8") != raw:
+        if not journal.exists() or _read_journal(journal) != record:
             return None
-        _publish_locked(project, record)
-        _clear_journal(journal, workspace / "home" / _STAGING)
+        if record.get("phase") == "building":
+            _discard_build(project, workspace, record, journal)
+        else:
+            _publish_locked(project, record)
+            _clear_journal(journal, workspace / "home" / _STAGING)
         return workspace.name
 
 
-def _journal_workspace(project: Path, record: dict) -> Path:
+def require_draft_published(project: Path, workspace: Path) -> None:
+    """Prevent adoption or replacement of a pending draft under the Workspace lock."""
+    project = project.resolve()
+    workspace = workspace.resolve()
+    journal = project / _JOURNAL
+    if workspace.parent == project and (journal.exists() or journal.is_symlink()):
+        try:
+            record = _read_journal(journal)
+        except FileNotFoundError:
+            return
+        if _journal_target(project, record) == workspace:
+            raise OSError("An unfinished Workspace draft requires project reconcile.")
+
+
+def _read_journal(journal: Path) -> dict:
+    if journal.is_symlink():
+        raise OSError("Workspace draft journal must be a regular file")
+    try:
+        record = json.loads(journal.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise OSError("Invalid Workspace draft journal") from exc
     if not isinstance(record, dict) or record.get("version") != 1:
         raise OSError("Invalid Workspace draft journal")
+    return record
+
+
+def _journal_target(project: Path, record: dict) -> Path:
     name = record.get("workspace")
     if not isinstance(name, str) or Path(name).name != name or name in ("", ".", ".."):
         raise OSError("Invalid Workspace draft target")
-    workspace = project / name
-    if workspace.resolve() != workspace or not workspace.is_dir():
-        raise OSError("Workspace draft target is unavailable")
-    identity = workspace.stat()
-    if (identity.st_dev, identity.st_ino) != (record.get("device"), record.get("inode")):
+    return project / name
+
+
+def _owns_directory(path: Path, record: dict) -> bool:
+    if path.resolve() != path or not path.is_dir():
+        return False
+    identity = path.stat()
+    return (identity.st_dev, identity.st_ino) == (record.get("device"), record.get("inode"))
+
+
+def _journal_workspace(project: Path, record: dict) -> Path:
+    workspace = _journal_target(project, record)
+    if not _owns_directory(workspace, record):
         raise OSError("Workspace draft target changed")
     return workspace
+
+
+def _discard_build(project: Path, workspace: Path, record: dict, journal: Path) -> None:
+    manifest = load_manifest(str(project))
+    if manifest.project_id != record["project_id"] or manifest.find_workspace(workspace.name):
+        raise OSError("Workspace draft registration changed")
+    reservation = record["reserved_in"]
+    if _owns_directory(workspace, record):
+        if reservation is None:
+            for child in workspace.iterdir():
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+        else:
+            shutil.rmtree(workspace)
+    elif reservation is None:
+        raise OSError("Workspace draft target changed")
+    if reservation is not None:
+        if Path(reservation).name != reservation or not reservation.startswith(_BUILD_PREFIX):
+            raise OSError("Invalid Workspace draft reservation")
+        container = project / reservation
+        staged = container / workspace.name
+        if container.exists():
+            if _owns_directory(staged, record):
+                staged.rmdir()
+            if container.resolve() != container:
+                raise OSError("Workspace draft reservation changed")
+            container.rmdir()
+    journal.unlink()
 
 
 def _publish_locked(project: Path, record: dict, rollback: ExitStack | None = None) -> None:

@@ -231,3 +231,58 @@ def test_killed_draft_publication_is_recovered(fresh_project, monkeypatch, tmp_p
     manifest = json.loads((fresh_project / "project.json").read_text())
     assert [item["workspace_id"] for item in manifest["workspaces"]] == ["interrupted"]
     assert (fresh_project / "rtl" / "new.v").read_bytes() == rtl.read_bytes()
+
+
+@pytest.mark.parametrize("reuse_empty", [False, True])
+def test_killed_draft_build_is_discarded_and_can_be_retried(
+    fresh_project, monkeypatch, capsys, reuse_empty
+):
+    from chipcompiler.cli.project.draft import CreationDraft
+
+    target = fresh_project / "interrupted"
+    selector = str(target) if reuse_empty else target.name
+    if reuse_empty:
+        target.mkdir()
+    args = [
+        "workspace",
+        "create",
+        selector,
+        "--project",
+        str(fresh_project),
+        "--draft",
+        json.dumps({"maxParallelSteps": 2}),
+        "--command-id",
+        "interrupted-build",
+    ]
+    config = fresh_project / "ecc.toml"
+    original = config.read_bytes()
+
+    def kill_before_publication(*_args, **_kwargs):
+        os.kill(os.getpid(), signal.SIGKILL)
+
+    with monkeypatch.context() as child:
+        child.setattr(CreationDraft, "publish", kill_before_publication)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                cli_main.run(args)
+            finally:
+                os._exit(1)
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+
+    assert (target / "home" / "flow.json").is_file()
+    capsys.readouterr()
+    assert (
+        cli_main.run(
+            ["run", "--project", str(fresh_project), "--workspace", target.name, "--plain"]
+        )
+        == 1
+    )
+    assert "error=workspace_draft_pending" in capsys.readouterr().out
+    assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    assert target.exists() == reuse_empty
+    assert not reuse_empty or not list(target.iterdir())
+    assert config.read_bytes() == original
+    assert cli_main.run(args) == 0
+    assert (target / "home" / "flow.json").is_file()

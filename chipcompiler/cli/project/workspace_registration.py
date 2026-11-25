@@ -188,6 +188,7 @@ def _inspect_and_register(
     The workspace is inspected once before locking and again while locked so
     an import never binds metadata read from a replaced directory.
     """
+    from chipcompiler.cli.project.draft import require_draft_published
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     inspect_existing_workspace(
@@ -196,6 +197,10 @@ def _inspect_and_register(
         expected_pdk=expected_pdk,
     )
     with workspace_lock(Path(workspace_path), blocking=blocking):
+        try:
+            require_draft_published(Path(project_dir), Path(workspace_path))
+        except OSError as exc:
+            raise WorkspaceRegistrationError("workspace_draft_pending", str(exc)) from exc
         metadata = inspect_existing_workspace(
             workspace_path,
             expected_design=expected_design,
