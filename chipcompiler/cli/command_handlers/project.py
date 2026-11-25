@@ -1,6 +1,8 @@
 import contextlib
 import os
 import shlex
+from dataclasses import dataclass
+from typing import Any
 
 from chipcompiler.cli.core.inputs import (
     CheckInput,
@@ -300,15 +302,23 @@ def run(command_input: RunInput, ctx: CommandContext) -> CommandResult:
 
 
 def create_workspace(command_input: WorkspaceCreateInput, ctx: CommandContext) -> CommandResult:
-    from chipcompiler.cli.project.creation import prepare_workspace_creation
+    from chipcompiler.cli.project.creation import (
+        build_create_run_input,
+        create_draft_or_preview_workspace,
+    )
 
     try:
-        prepared = prepare_workspace_creation(command_input, ctx)
-        if isinstance(prepared, CommandResult):
-            return prepared
-        run_input, ctx, draft = prepared
-        return _run_project(
-            run_input, ctx, execute_flow=False, draft=draft, preview=command_input.preview
+        if command_input.draft is None and not command_input.preview:
+            run_input = build_create_run_input(command_input, ctx)
+            if isinstance(run_input, CommandResult):
+                return run_input
+            return _run_project(run_input, ctx, execute_flow=False)
+        return create_draft_or_preview_workspace(
+            command_input,
+            ctx,
+            resolve_setup=_resolve_run_setup,
+            validate_setup=_validate_run_setup,
+            preflight_fresh=_preflight_fresh_setup,
         )
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
@@ -733,14 +743,22 @@ def reset_workspace_flow(command_input, ctx: CommandContext) -> CommandResult:
     )
 
 
-def _run_project(
-    command_input: RunInput,
-    ctx: CommandContext,
-    *,
-    execute_flow: bool,
-    draft=None,
-    preview: bool = False,
-) -> CommandResult:
+@dataclass(frozen=True)
+class _RunSetup:
+    cfg: Any
+    flow_config: Any
+    effective_preset: str
+    cli_overrides: dict[str, object]
+    run_dir: str
+    run_name: str
+    workspace_registered: bool
+    warning_records: list[dict]
+    fresh_target: bool
+
+
+def _resolve_run_setup(
+    command_input: RunInput, ctx: CommandContext, *, execute_flow: bool
+) -> _RunSetup | CommandResult:
     def error(kind: str, **fields) -> CommandResult:
         return CommandResult.err([{"kind": "error", "error": kind, **fields}])
 
@@ -784,7 +802,7 @@ def _run_project(
         return error("force_requires_only")
 
     from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.project import run_dispatch, run_prepare
+    from chipcompiler.cli.project import effective_config, run_prepare
 
     project = ctx.project
     project_dir = ctx.project_dir
@@ -803,9 +821,6 @@ def _run_project(
             ]
         )
 
-    from chipcompiler.cli.project import effective_config
-    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
-
     if ctx.project_state == "manifest":
         resolved_cfg = effective_config.resolve_effective_config(ctx, ctx.run_id, cfg)
         if isinstance(resolved_cfg, CommandResult):
@@ -815,8 +830,6 @@ def _run_project(
     else:
         if cfg is None:
             return CommandResult.err([error_record("missing_config")])
-        # Virgin projects have no manifest layer; an ecc.toml skip policy
-        # still rides on the flow config (policy-only when no range applies).
         from chipcompiler.cli.project.effective_config import (
             _attach_lec_engine,
             _attach_skip_steps,
@@ -856,9 +869,6 @@ def _run_project(
                 )
             ]
         )
-    # The resolved skip policy, LEC engine and inserted steps survive every
-    # target override below (they come from configuration, never from the
-    # target spelling).
     from chipcompiler.data.workspace.config import FLOW_POLICY_KEYS
 
     policies = (
@@ -867,8 +877,6 @@ def _run_project(
         else {}
     )
     if command_input.preset is not None:
-        # The explicit CLI selection takes precedence over a manifest range
-        # for this invocation without changing either project config file.
         cfg.flow_preset = effective_preset
         cfg.manifest_driven = False
         flow_config = dict(policies) or None
@@ -917,17 +925,12 @@ def _run_project(
         if set_warning is not None:
             layer_warnings.append(set_warning)
 
-    # TODO: Move non-interactive project run preparation/execution into
-    # the historical project runner or
-    # chipcompiler.engine.project_run.prepare_and_run. Keep CLI ownership limited
-    # to input parsing, progress renderer selection, and CommandResult mapping.
-    project_state = ctx.project_state
     warning_records: list[dict] = []
     run_dir = ctx.run_dir
     run_name = ctx.run_id or "default"
     workspace_registered = False
 
-    if project_state in ("virgin", "manifest"):
+    if ctx.project_state in ("virgin", "manifest"):
         resolved = run_prepare.resolve_manifest_run_target(command_input, ctx)
         if isinstance(resolved, CommandResult):
             return resolved
@@ -936,8 +939,6 @@ def _run_project(
 
     flow_json = os.path.join(run_dir, "home", "flow.json")
     fresh_target = not os.path.exists(flow_json) or command_input.overwrite
-    # `workspace create` (execute_flow=False) never runs a step, so its --from
-    # is only ever one half of a creation range, also on an existing target.
     if (
         (fresh_target or not execute_flow)
         and command_input.from_step is not None
@@ -946,36 +947,33 @@ def _run_project(
         return error("flow_range_requires_pair")
     if fresh_target and (command_input.resume or command_input.only is not None):
         return error("selector_requires_workspace")
-    if (preview or draft is not None) and not fresh_target:
-        from chipcompiler.cli.project.creation import existing_draft_workspace
 
-        return existing_draft_workspace(command_input, ctx, run_dir, run_name, preview=preview)
-    if not fresh_target and ctx.project_state == "manifest" and cfg.manifest_driven:
-        return run_dispatch.dispatch_project_run(
-            command_input,
-            ctx,
-            cfg,
-            run_dir,
-            run_name,
-            cli_overrides,
-            flow_config,
-            project_state,
-            warning_records,
-            workspace_registered=workspace_registered,
-            execute_flow=execute_flow,
-        )
+    return _RunSetup(
+        cfg=cfg,
+        flow_config=flow_config,
+        effective_preset=effective_preset,
+        cli_overrides=cli_overrides,
+        run_dir=run_dir,
+        run_name=run_name,
+        workspace_registered=workspace_registered,
+        warning_records=warning_records,
+        fresh_target=fresh_target,
+    )
+
+
+def _validate_run_setup(
+    setup: _RunSetup, ctx: CommandContext, *, check_pdk_files: bool = True
+) -> CommandResult | None:
+    from chipcompiler.cli.project import effective_config
+
     errors = effective_config.validate_effective(
         ctx,
-        cfg,
-        # An overwrite wipes and recreates the target, so it validates as a
-        # fresh run (a derivable flow target is required) even when the
-        # ledger still exists at preflight time.
-        fresh=fresh_target,
-        flow_config=flow_config,
-        cli_overrides=cli_overrides,
-        check_pdk_files=not preview,
-        # Existing runs consume their frozen timing inputs.
-        validate_timing_input=fresh_target,
+        setup.cfg,
+        fresh=setup.fresh_target,
+        flow_config=setup.flow_config,
+        cli_overrides=setup.cli_overrides,
+        check_pdk_files=check_pdk_files,
+        validate_timing_input=setup.fresh_target,
     )
     if errors:
         return CommandResult.err(
@@ -989,55 +987,86 @@ def _run_project(
             ]
         )
 
-    protected = (project_dir, os.path.join(project_dir, "runs"))
+    protected = (ctx.project_dir, os.path.join(ctx.project_dir, "runs"))
     spelled = {os.path.normpath(p) for p in protected}
     canonical = {os.path.realpath(p) for p in protected}
-    if os.path.normpath(run_dir) in spelled or os.path.realpath(run_dir) in canonical:
+    if os.path.normpath(setup.run_dir) in spelled or os.path.realpath(setup.run_dir) in canonical:
         return CommandResult.err(
             [
                 {
                     "kind": "error",
                     "error": "invalid_workspace",
-                    "workspace_id": run_name,
-                    "workspace": run_dir,
+                    "workspace_id": setup.run_name,
+                    "workspace": setup.run_dir,
                     "reason": (
                         "workspace name must not resolve to the project or legacy runs container"
                     ),
                 }
             ]
         )
+    return None
 
-    if preview:
-        from chipcompiler.cli.project.creation import preview_workspace_creation
 
-        return preview_workspace_creation(cfg, flow_config)
+def _preflight_fresh_setup(
+    setup: _RunSetup, project: str | None
+) -> tuple[CommandResult | None, list[dict]]:
+    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
+    from chipcompiler.cli.project.flow_selection import selection_warnings
 
-    # Fresh targets preflight before any mutation. Named presets probe the
-    # tools their builder needs; manifest/CLI flow ranges derive the same
-    # probe set from the selected chain, so a missing tool fails fast
-    # instead of surfacing mid-creation.
-    if fresh_target:
-        if flow_config_selects_steps(flow_config):
-            preflight = _preflight_flow_range(flow_config, project, cfg)
-        elif effective_preset:
-            preflight = _preflight_environment(effective_preset, project, flow_config, cfg)
-        else:
-            preflight = None
+    if flow_config_selects_steps(setup.flow_config):
+        preflight = _preflight_flow_range(setup.flow_config, project, setup.cfg)
+    elif setup.effective_preset:
+        preflight = _preflight_environment(
+            setup.effective_preset, project, setup.flow_config, setup.cfg
+        )
+    else:
+        preflight = None
+    if preflight is not None:
+        return preflight, setup.warning_records
+    return None, [*setup.warning_records, *selection_warnings(setup.cfg, setup.flow_config)]
+
+
+def _run_project(
+    command_input: RunInput,
+    ctx: CommandContext,
+    *,
+    execute_flow: bool,
+) -> CommandResult:
+    from chipcompiler.cli.project import run_dispatch
+
+    setup = _resolve_run_setup(command_input, ctx, execute_flow=execute_flow)
+    if isinstance(setup, CommandResult):
+        return setup
+
+    if not setup.fresh_target and ctx.project_state == "manifest" and setup.cfg.manifest_driven:
+        return run_dispatch.dispatch_project_run(
+            command_input,
+            ctx,
+            setup.cfg,
+            setup.run_dir,
+            setup.run_name,
+            setup.cli_overrides,
+            setup.flow_config,
+            ctx.project_state,
+            setup.warning_records,
+            workspace_registered=setup.workspace_registered,
+            execute_flow=execute_flow,
+        )
+
+    validation_error = _validate_run_setup(setup, ctx)
+    if validation_error is not None:
+        return validation_error
+
+    warning_records = setup.warning_records
+    if setup.fresh_target:
+        preflight, warning_records = _preflight_fresh_setup(setup, ctx.project)
         if preflight is not None:
             return preflight
-        from chipcompiler.cli.project.flow_selection import selection_warnings
 
-        warning_records = [*warning_records, *selection_warnings(cfg, flow_config)]
-
-    # The selector path executes steps. `workspace create` on an existing
-    # target must not reach it: it reports the workspace instead (#393, #442).
-    # It also works on declared workspaces only, so an existing directory the
-    # manifest does not declare goes through the dispatcher, which registers
-    # it first - the same route an absolute workspace path takes.
-    undeclared_directory = project_state == "manifest" and not workspace_registered
+    undeclared_directory = ctx.project_state == "manifest" and not setup.workspace_registered
     if (
         execute_flow
-        and not fresh_target
+        and not setup.fresh_target
         and not ctx.workspace_path_explicit
         and not undeclared_directory
         and (
@@ -1051,16 +1080,15 @@ def _run_project(
     return run_dispatch.dispatch_project_run(
         command_input,
         ctx,
-        cfg,
-        run_dir,
-        run_name,
-        cli_overrides,
-        flow_config,
-        project_state,
+        setup.cfg,
+        setup.run_dir,
+        setup.run_name,
+        setup.cli_overrides,
+        setup.flow_config,
+        ctx.project_state,
         warning_records,
-        workspace_registered=workspace_registered,
+        workspace_registered=setup.workspace_registered,
         execute_flow=execute_flow,
-        draft=draft,
     )
 
 

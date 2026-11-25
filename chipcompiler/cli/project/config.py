@@ -303,7 +303,7 @@ def validate_project_config(
             errors.append(str(exc))
 
     if "flow.max_parallel_steps" in cfg._explicit_keys:
-        problem = _max_parallel_steps_problem(cfg.flow_max_parallel_steps)
+        problem = max_parallel_steps_problem(cfg.flow_max_parallel_steps)
         if problem:
             errors.append(problem)
 
@@ -312,7 +312,7 @@ def validate_project_config(
     return errors
 
 
-def _max_parallel_steps_problem(value: object) -> str | None:
+def max_parallel_steps_problem(value: object) -> str | None:
     # bool is an int subclass: ``max_parallel_steps = true`` is not a count.
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return f"flow.max_parallel_steps must be an integer >= 1, got {value!r}"
@@ -332,7 +332,7 @@ def resolve_max_parallel_steps(cfg: ProjectConfig | None) -> int:
     declared = None if cfg is None else cfg.flow_max_parallel_steps
     if declared is None:
         return DEFAULT_MAX_PARALLEL_STEPS
-    problem = _max_parallel_steps_problem(declared)
+    problem = max_parallel_steps_problem(declared)
     if problem:
         raise ValueError(problem)
     return declared

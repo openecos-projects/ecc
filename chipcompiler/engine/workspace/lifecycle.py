@@ -408,7 +408,9 @@ def _update_workspace_from_spec(
                 },
             },
         )
-        _rewrite_workspace_paths(staging, target)
+        from chipcompiler.engine.workspace.paths import rewrite_workspace_paths
+
+        rewrite_workspace_paths(staging, target)
         exchange_directories(target, staging)
         try:
             workspace = _load_committed_workspace(target)
@@ -662,31 +664,6 @@ def _copy_workspace_commands(source: Path, destination: Path) -> None:
     source_path = source / "home" / "workspace-commands.json"
     if source_path.is_file():
         shutil.copy2(source_path, destination / "home" / "workspace-commands.json")
-
-
-def _rewrite_workspace_paths(source_root: Path, target_root: Path) -> None:
-    from chipcompiler.utility import json_write
-
-    source = str(source_root)
-    target = str(target_root)
-    for path in source_root.rglob("*.json"):
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        rewritten = _replace_string_prefix(value, source, target)
-        if rewritten != value and not json_write(path, rewritten):
-            raise OSError(f"Failed to rewrite staged Workspace path: {path}")
-
-
-def _replace_string_prefix(value: Any, source: str, target: str) -> Any:
-    if isinstance(value, str):
-        return target + value[len(source) :] if value.startswith(source) else value
-    if isinstance(value, list):
-        return [_replace_string_prefix(item, source, target) for item in value]
-    if isinstance(value, dict):
-        return {key: _replace_string_prefix(item, source, target) for key, item in value.items()}
-    return value
 
 
 def exchange_directories(left: Path, right: Path) -> None:

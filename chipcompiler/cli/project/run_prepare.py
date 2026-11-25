@@ -12,10 +12,26 @@ lazily by the run handler, so module-level imports here must stay cheap
 import contextlib
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
+
+
+class WorkspaceBuildError(RuntimeError):
+    """Raised when constructing a fresh Workspace fails before commit."""
+
+    def __init__(self, reason: str | None) -> None:
+        super().__init__(reason or "")
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class BuiltWorkspace:
+    workspace: Any
+    engine_flow: Any
 
 
 def invalid_workspace_name(workspace_name: str) -> bool:
@@ -191,6 +207,221 @@ def _mark_explicit_frequency(resolved, parameters: dict) -> None:
         parameters[EXPLICIT_FREQUENCY_KEY] = True
 
 
+def build_fresh_workspace(
+    command_input,
+    ctx,
+    cfg,
+    *,
+    build_dir: str | Path,
+    run_dir: str,
+    run_name: str,
+    cli_overrides: dict,
+    flow_config,
+    backup_path: str | None = None,
+    record_create_command: bool = False,
+) -> BuiltWorkspace:
+    """Construct, seed, project, and snapshot one fresh Workspace tree."""
+    import shutil
+
+    from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.cli.project.config import (
+        resolve_max_parallel_steps,
+        resolve_pdk_overrides,
+        resolve_pdk_root,
+        resolve_rtl,
+        to_parameters,
+    )
+    from chipcompiler.cli.project.design_inputs import resolve_design_inputs
+    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
+    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
+    from chipcompiler.data import create_workspace
+    from chipcompiler.data.flow.options import sync_flow_options_projection
+    from chipcompiler.data.parameter import save_parameter, update_parameters
+    from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
+    from chipcompiler.engine import EngineFlow
+    from chipcompiler.engine.snapshot.store import create_engineering_snapshot
+
+    project_dir = ctx.project_dir
+    inputs = resolve_design_inputs(cfg)
+    _, origin_verilog, input_filelist = resolve_rtl(cfg)
+
+    # The declared netlist is the synthesis OUTPUT consumed by a
+    # post-synthesis entry step. A flow entering at Synthesis must use the
+    # declared RTL, even when a netlist is also present in ecc.toml.
+    entry_step = fresh_entry_step(cfg, flow_config)
+    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
+    if uses_netlist_input:
+        origin_verilog = inputs.netlist
+        input_filelist = ""
+    generated_filelist = None
+    if len(cfg.design_rtl) > 1 and not uses_netlist_input:
+        try:
+            generated_filelist = _materialize_rtl_filelist(cfg)
+        except Exception as exc:
+            raise WorkspaceBuildError(str(exc)) from exc
+        input_filelist = generated_filelist
+        origin_verilog = ""
+    parameters = to_parameters(cfg)
+    if uses_netlist_input:
+        # Preserve the creator's input role for Studio/CLI reopen symmetry.
+        parameters["_input_mode"] = "postSynthesis"
+    pdk_root = resolve_pdk_root(cfg)
+
+    if cfg.params_overrides or cli_overrides:
+        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
+        from chipcompiler.params import (
+            build_backend_overrides,
+            build_config_overrides,
+            build_pdk_overrides,
+            build_step_params,
+            resolve_parameters,
+        )
+
+        resolved, _ = resolve_parameters(
+            toml_overrides=cfg.params_overrides,
+            cli_overrides=cli_overrides,
+            pdk=cfg.pdk_name or None,
+        )
+        update_parameters(build_backend_overrides(resolved), parameters)
+        _mark_explicit_frequency(resolved, parameters)
+        config_overrides = build_config_overrides(resolved)
+        if config_overrides:
+            update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
+        pdk_cli_overrides = build_pdk_overrides(resolved)
+        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
+        step_params = build_step_params(resolved)
+        if step_params:
+            parameters[STEP_PARAMS_KEY] = step_params
+    else:
+        pdk_cli_overrides = {}
+        param_sources = {}
+    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
+        explicit = "design.frequency_mhz" in cfg._explicit_keys
+        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
+    if param_sources:
+        from chipcompiler.params import PARAM_SOURCES_KEY
+
+        parameters[PARAM_SOURCES_KEY] = param_sources
+
+    target_dir = str(build_dir)
+    try:
+        workspace = create_workspace(
+            directory=target_dir,
+            origin_def=inputs.workspace_def,
+            origin_verilog=origin_verilog,
+            pdk=cfg.pdk_name,
+            parameters=parameters,
+            input_filelist=input_filelist,
+            pdk_root=pdk_root,
+            pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+            flow_config=flow_config,
+            sdc=inputs.sdc,
+            spef=inputs.spef,
+            golden_verilog=inputs.golden_netlist,
+        )
+        if workspace is not None:
+            workspace.__dict__["_ecc_project_dir"] = project_dir
+    except Exception as exc:
+        raise WorkspaceBuildError(str(exc)) from exc
+    finally:
+        if generated_filelist is not None:
+            with contextlib.suppress(OSError):
+                shutil.rmtree(os.path.dirname(generated_filelist))
+
+    if workspace is None:
+        raise WorkspaceBuildError(None)
+
+    try:
+        if cli_overrides:
+            import json
+
+            provenance_path = os.path.join(target_dir, "home", "cli-param-overrides.json")
+            os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+            with open(provenance_path, "w") as _f:
+                json.dump(cli_overrides, _f)
+
+        if not flow_config_selects_steps(flow_config):
+            workspace_parameters = getattr(workspace, "parameters", None)
+            if workspace_parameters is not None:
+                from chipcompiler.data.workspace.config import (
+                    FLOW_POLICY_KEYS,
+                    validate_flow_config,
+                )
+
+                flow_section: dict = {"preset": cfg.flow_preset}
+                policies = (
+                    {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
+                    if isinstance(flow_config, dict)
+                    else {}
+                )
+                if policies:
+                    flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
+                workspace_parameters.data["_flow"] = flow_section
+                if not save_parameter(workspace_parameters):
+                    raise WorkspaceBuildError("failed to persist the flow target in params.toml")
+    except WorkspaceBuildError:
+        raise
+    except Exception as exc:
+        raise WorkspaceBuildError(str(exc)) from exc
+
+    engine_flow = EngineFlow(workspace=workspace)
+    engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
+    flow_builders = rtl2gds_api.get_flow_builders()
+    if not engine_flow.has_init():
+        lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
+        seeded = rtl2gds_api.substitute_lec_engine(flow_builders[cfg.flow_preset](), lec_engine)
+        for step, tool, state in rtl2gds_api.insert_flow_steps(
+            rtl2gds_api.filter_flow_steps(seeded, rtl2gds_api.resolve_skip_steps(flow_config)),
+            rtl2gds_api.resolve_insert_steps(flow_config),
+            lec_engine,
+        ):
+            engine_flow.add_step(step=step, tool=tool, state=state)
+
+    engine_flow.create_step_workspaces()
+
+    flow_ledger = getattr(getattr(engine_flow, "workspace", None), "flow", None)
+    persisted_steps = flow_ledger.data.get("steps", []) if flow_ledger else []
+    created_steps = getattr(engine_flow, "workspace_steps", None) or []
+    if len(created_steps) < len(persisted_steps):
+        missing = persisted_steps[len(created_steps)].get("name")
+        raise WorkspaceBuildError(f"step workspace creation failed at {missing}")
+
+    sync_flow_options_projection(workspace, persist=True)
+
+    if getattr(workspace, "directory", None):
+        snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
+        if record_create_command and command_input.command_id:
+            from chipcompiler.cli.project.creation import create_command_spec
+            from chipcompiler.engine.workspace.lifecycle import (
+                workspace_command_fingerprint,
+                write_workspace_command,
+            )
+            from chipcompiler.project.manifest import load_manifest
+
+            command_spec = create_command_spec(command_input, run_name)
+            write_workspace_command(
+                Path(target_dir),
+                command_input.command_id,
+                workspace_command_fingerprint(
+                    "create" if backup_path is None else "refresh",
+                    command_spec,
+                    None,
+                    command_input.expected_revision,
+                ),
+                snapshot["workspaceId"],
+                snapshot["workspaceRevision"],
+                metadata={
+                    "operation": "create" if backup_path is None else "refresh",
+                    "projectId": load_manifest(project_dir).project_id,
+                    "workspaceId": run_name,
+                    "workspacePath": str(Path(run_dir).resolve()),
+                    "request": command_spec,
+                    "expectedRevision": command_input.expected_revision,
+                },
+            )
+    return BuiltWorkspace(workspace=workspace, engine_flow=engine_flow)
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -208,8 +439,6 @@ def execute_fresh_run(
     ws_locks=None,
     registration_created: bool = False,
     execute_flow: bool = True,
-    draft=None,
-    build_dir: Path | None = None,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
 
@@ -225,20 +454,6 @@ def execute_fresh_run(
     rename); when None this function takes the lock itself.
     """
     import shutil
-
-    from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.project.config import (
-        resolve_max_parallel_steps,
-        resolve_pdk_overrides,
-        resolve_pdk_root,
-        resolve_rtl,
-        to_parameters,
-    )
-    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
-    from chipcompiler.data import create_workspace
-    from chipcompiler.data.parameter import save_parameter, update_parameters
-    from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
-    from chipcompiler.engine import EngineFlow
 
     project = ctx.project
     project_dir = ctx.project_dir
@@ -337,84 +552,8 @@ def execute_fresh_run(
             remove_workspace_registration(project_dir, run_name)
         return _workspace_failed_result(run_name, run_dir, reason)
 
-    from chipcompiler.cli.project.design_inputs import resolve_design_inputs
-
-    inputs = resolve_design_inputs(cfg)
-    _, origin_verilog, input_filelist = resolve_rtl(cfg)
-
-    # The declared netlist is the synthesis OUTPUT consumed by a
-    # post-synthesis entry step. A flow entering at Synthesis must use the
-    # declared RTL, even when a netlist is also present in ecc.toml.
-    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
-
-    entry_step = fresh_entry_step(cfg, flow_config)
-    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
-    if uses_netlist_input:
-        origin_verilog = inputs.netlist
-        input_filelist = ""
-    generated_filelist = None
-    if len(cfg.design_rtl) > 1 and not uses_netlist_input:
-        # Manifest-backed projects may declare several RTL sources;
-        # materialize them as one generated filelist for creation. A failure
-        # here must not strand a partial run target for the next run.
-        try:
-            generated_filelist = _materialize_rtl_filelist(cfg)
-        except Exception as exc:
-            return failed_workspace(str(exc))
-        input_filelist = generated_filelist
-        origin_verilog = ""
-    parameters = to_parameters(cfg)
-    if uses_netlist_input:
-        # Preserve the creator's input role for Studio/CLI reopen symmetry.
-        parameters["_input_mode"] = "postSynthesis"
-    pdk_root = resolve_pdk_root(cfg)
-
-    if cfg.params_overrides or cli_overrides:
-        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
-        from chipcompiler.params import (
-            build_backend_overrides,
-            build_config_overrides,
-            build_pdk_overrides,
-            build_step_params,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(
-            toml_overrides=cfg.params_overrides,
-            cli_overrides=cli_overrides,
-            pdk=cfg.pdk_name or None,
-        )
-        update_parameters(build_backend_overrides(resolved), parameters)
-        _mark_explicit_frequency(resolved, parameters)
-        config_overrides = build_config_overrides(resolved)
-        if config_overrides:
-            update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
-        pdk_cli_overrides = build_pdk_overrides(resolved)
-        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
-        step_params = build_step_params(resolved)
-        if step_params:
-            parameters[STEP_PARAMS_KEY] = step_params
-    else:
-        pdk_cli_overrides = {}
-        param_sources = {}
-    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
-        # [design] frequency_mhz is not a [params] key; a value ecc.toml leaves
-        # unset was filled from project.json.
-        explicit = "design.frequency_mhz" in cfg._explicit_keys
-        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
-    if param_sources:
-        from chipcompiler.params import PARAM_SOURCES_KEY
-
-        parameters[PARAM_SOURCES_KEY] = param_sources
-
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    # The workspace lock is taken BEFORE the target becomes discoverable
-    # (flow.json appears in create_workspace), so a concurrent `ecc run` cannot
-    # classify this target as existing and win the race to execute it. The lock
-    # stays held through seeding and engine execution. The caller's stack
-    # already holds it after an overwrite rename, so only a self-owned stack
-    # enters it here.
     caller_locks = ws_locks is not None
     if ws_locks is None:
         ws_locks = contextlib.ExitStack()
@@ -424,163 +563,24 @@ def execute_fresh_run(
                 workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
             )
         try:
-            workspace = create_workspace(
-                directory=str(build_dir) if build_dir is not None else run_dir,
-                origin_def=inputs.workspace_def,
-                origin_verilog=origin_verilog,
-                pdk=cfg.pdk_name,
-                parameters=parameters,
-                input_filelist=input_filelist,
-                pdk_root=pdk_root,
-                pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+            built = build_fresh_workspace(
+                command_input,
+                ctx,
+                cfg,
+                build_dir=run_dir,
+                run_dir=run_dir,
+                run_name=run_name,
+                cli_overrides=cli_overrides,
                 flow_config=flow_config,
-                sdc=inputs.sdc,
-                spef=inputs.spef,
-                golden_verilog=inputs.golden_netlist,
+                backup_path=backup_path,
+                record_create_command=bool(command_input.command_id and not execute_flow),
             )
-            if workspace is not None:
-                workspace.__dict__["_ecc_project_dir"] = project_dir
-        except Exception as exc:
-            return failed_workspace(str(exc))
-        finally:
-            if generated_filelist is not None:
-                with contextlib.suppress(OSError):
-                    shutil.rmtree(os.path.dirname(generated_filelist))
+        except WorkspaceBuildError as exc:
+            return failed_workspace(exc.reason)
 
-        if workspace is None:
-            return failed_workspace(None)
-
-        # Seeding writes are part of the replacement construction: they run
-        # before the commit point inside the recovery boundary, so a write
-        # failure restores the renamed-aside previous workspace.
+        workspace = built.workspace
+        engine_flow = built.engine_flow
         try:
-            if cli_overrides:
-                import json
-
-                provenance_path = os.path.join(
-                    build_dir or run_dir, "home", "cli-param-overrides.json"
-                )
-                os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-                with open(provenance_path, "w") as _f:
-                    json.dump(cli_overrides, _f)
-
-            if not flow_config_selects_steps(flow_config):
-                # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy, LEC engine or inserted
-                # steps ride along, normalized (validate_flow_config is the
-                # normalizer).
-                workspace_parameters = getattr(workspace, "parameters", None)
-                if workspace_parameters is not None:
-                    from chipcompiler.data.workspace.config import (
-                        FLOW_POLICY_KEYS,
-                        validate_flow_config,
-                    )
-
-                    flow_section: dict = {"preset": cfg.flow_preset}
-                    policies = (
-                        {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
-                        if isinstance(flow_config, dict)
-                        else {}
-                    )
-                    if policies:
-                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
-                    workspace_parameters.data["_flow"] = flow_section
-                    if not save_parameter(workspace_parameters):
-                        return failed_workspace("failed to persist the flow target in params.toml")
-        except Exception as exc:
-            return failed_workspace(str(exc))
-
-        # Engine execution still holds the workspace lock taken before
-        # creation: a second `ecc run` taking the existing-workspace path
-        # can never race this ledger or its outputs.
-        try:
-            engine_flow = EngineFlow(workspace=workspace)
-            engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
-            flow_builders = rtl2gds_api.get_flow_builders()
-            if not engine_flow.has_init():
-                # No-arg preset builders stay canonical; the configured LEC
-                # engine, skip policy and inserted steps apply to their output
-                # so every ledger-creation path filters through the same
-                # resolvers.
-                lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
-                seeded = rtl2gds_api.substitute_lec_engine(
-                    flow_builders[cfg.flow_preset](), lec_engine
-                )
-                for step, tool, state in rtl2gds_api.insert_flow_steps(
-                    rtl2gds_api.filter_flow_steps(
-                        seeded, rtl2gds_api.resolve_skip_steps(flow_config)
-                    ),
-                    rtl2gds_api.resolve_insert_steps(flow_config),
-                    lec_engine,
-                ):
-                    engine_flow.add_step(step=step, tool=tool, state=state)
-
-            engine_flow.create_step_workspaces()
-
-            # create_step_workspaces marks a failed dependency Incomplete and
-            # stops: a ranged workspace can end up only partially constructed,
-            # which is a failed run/refresh, never a success. The ledger read
-            # tolerates stub flows so test doubles stay minimal.
-            flow_ledger = getattr(getattr(engine_flow, "workspace", None), "flow", None)
-            persisted_steps = flow_ledger.data.get("steps", []) if flow_ledger else []
-            created_steps = getattr(engine_flow, "workspace_steps", None) or []
-            if len(created_steps) < len(persisted_steps):
-                missing = persisted_steps[len(created_steps)].get("name")
-                return failed_workspace(f"step workspace creation failed at {missing}")
-
-            # add_step saves the ledger without the options projection.
-            # Write it once here, so the first workspace load finds a
-            # complete flow.json and has nothing to rewrite.
-            from chipcompiler.data.flow.options import (
-                sync_flow_options_projection,
-            )
-
-            sync_flow_options_projection(workspace, persist=True)
-
-            # The replacement is fully constructed and verified: commit it.
-            # The previous workspace's backup is obsolete (or retained as an
-            # archived replace-backup under --keep-backup), the new tree owns
-            # the target, and later failures are a normal failed run.
-            from chipcompiler.engine.snapshot.store import create_engineering_snapshot
-
-            if getattr(workspace, "directory", None):
-                snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
-                if command_input.command_id and not execute_flow:
-                    from chipcompiler.cli.project.creation import create_command_spec
-                    from chipcompiler.engine.workspace.lifecycle import (
-                        workspace_command_fingerprint,
-                        write_workspace_command,
-                    )
-                    from chipcompiler.project.manifest import load_manifest
-
-                    command_spec = create_command_spec(command_input, run_name)
-                    write_workspace_command(
-                        build_dir or Path(run_dir),
-                        command_input.command_id,
-                        workspace_command_fingerprint(
-                            "create" if backup_path is None else "refresh",
-                            command_spec,
-                            None,
-                            command_input.expected_revision,
-                        ),
-                        snapshot["workspaceId"],
-                        snapshot["workspaceRevision"],
-                        metadata={
-                            "operation": "create" if backup_path is None else "refresh",
-                            "projectId": load_manifest(project_dir).project_id,
-                            "workspaceId": run_name,
-                            "workspacePath": str(Path(run_dir).resolve()),
-                            "request": command_spec,
-                            "expectedRevision": command_input.expected_revision,
-                        },
-                    )
-            if draft is not None:
-                from chipcompiler.cli.project.creation import publish_workspace_creation
-
-                return publish_workspace_creation(
-                    draft, cfg, flow_config, command_input, ctx, run_dir, run_name, warning_records
-                )
-
             retained_backup = commit_replacement()
 
             if not workspace_registered:
@@ -683,8 +683,6 @@ def execute_fresh_run(
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 
-            if draft is not None and isinstance(exc, BlockingIOError):
-                raise
             if isinstance(exc, RuntimeProcessError):
                 from chipcompiler.cli.project.run_process import runtime_process_error_result
 
