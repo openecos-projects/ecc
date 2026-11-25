@@ -8,6 +8,7 @@ otherwise the first workspace load, even from a query, rewrites flow.json.
 import json
 import os
 import signal
+from multiprocessing import Event, Process
 
 import pytest
 
@@ -189,8 +190,13 @@ def test_failed_draft_publication_rolls_back_project_config_and_rtl(
     assert not (fresh_project / "rejected").exists()
 
 
-@pytest.mark.parametrize("registered", [False, True])
-def test_killed_draft_publication_is_recovered(fresh_project, monkeypatch, tmp_path, registered):
+@pytest.mark.parametrize(
+    ("registered", "edit_after_crash"),
+    [(False, None), (True, None), (False, "set"), (False, "restore")],
+)
+def test_killed_draft_publication_is_recovered(
+    fresh_project, monkeypatch, tmp_path, registered, edit_after_crash
+):
     from chipcompiler.cli.project import draft
 
     rtl = tmp_path / "new.v"
@@ -226,16 +232,85 @@ def test_killed_draft_publication_is_recovered(fresh_project, monkeypatch, tmp_p
         assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
 
     assert config.read_bytes() != original_config
+    if edit_after_crash == "set":
+        assert (
+            cli_main.run(
+                ["project", "set", "design.frequency_mhz", "99", "--project", str(fresh_project)]
+            )
+            == 0
+        )
+    elif edit_after_crash == "restore":
+        config.write_bytes(original_config)
+    expected_config = config.read_bytes()
     for _ in range(2):
         assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    assert config.read_bytes() == expected_config
     manifest = json.loads((fresh_project / "project.json").read_text())
     assert [item["workspace_id"] for item in manifest["workspaces"]] == ["interrupted"]
     assert (fresh_project / "rtl" / "new.v").read_bytes() == rtl.read_bytes()
 
 
-@pytest.mark.parametrize("reuse_empty", [False, True])
+def test_reconcile_discards_unpublished_draft_if_target_was_populated(
+    fresh_project, monkeypatch, capsys
+):
+    from chipcompiler.cli.project import draft
+
+    target = fresh_project / "interrupted"
+    target.mkdir()
+    args = [
+        "workspace",
+        "create",
+        str(target),
+        "--project",
+        str(fresh_project),
+        "--draft",
+        '{"maxParallelSteps":2}',
+    ]
+    config = fresh_project / "ecc.toml"
+    original_config = config.read_bytes()
+    write = draft.write_text_atomic
+
+    def kill_after_journal(path, text):
+        write(path, text)
+        if path == fresh_project / ".workspace-draft-publish.json":
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    with monkeypatch.context() as child:
+        child.setattr(draft, "write_text_atomic", kill_after_journal)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                cli_main.run(args)
+            finally:
+                os._exit(1)
+        _, status = os.waitpid(pid, 0)
+        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+
+    assert not list(target.iterdir())
+    capsys.readouterr()
+    assert (
+        cli_main.run(
+            ["run", "--workspace", str(target), "--project", str(fresh_project), "--plain"]
+        )
+        == 1
+    )
+    assert "error=workspace_draft_pending" in capsys.readouterr().out
+
+    note = target / "notes.txt"
+    note.write_text("added after workspace creation stopped")
+    assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+    assert config.read_bytes() == original_config
+    assert note.read_text() == "added after workspace creation stopped"
+    assert not (fresh_project / ".workspace-draft-publish.json").exists()
+    note.unlink()
+    assert cli_main.run(args) == 0
+
+
+@pytest.mark.parametrize(
+    ("reuse_empty", "add_user_file"), [(False, False), (True, False), (True, True)]
+)
 def test_killed_draft_build_is_discarded_and_can_be_retried(
-    fresh_project, monkeypatch, capsys, reuse_empty
+    fresh_project, monkeypatch, reuse_empty, add_user_file
 ):
     from chipcompiler.cli.project.draft import CreationDraft
 
@@ -271,18 +346,64 @@ def test_killed_draft_build_is_discarded_and_can_be_retried(
         _, status = os.waitpid(pid, 0)
         assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
 
-    assert (target / "home" / "flow.json").is_file()
-    capsys.readouterr()
-    assert (
-        cli_main.run(
-            ["run", "--project", str(fresh_project), "--workspace", target.name, "--plain"]
-        )
-        == 1
-    )
-    assert "error=workspace_draft_pending" in capsys.readouterr().out
+    notes = target / "notes.txt"
+    if add_user_file:
+        notes.write_text("written after the crash")
     assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
     assert target.exists() == reuse_empty
-    assert not reuse_empty or not list(target.iterdir())
     assert config.read_bytes() == original
+    if add_user_file:
+        assert notes.read_text() == "written after the crash"
+        notes.unlink()
+    assert not reuse_empty or not list(target.iterdir())
     assert cli_main.run(args) == 0
     assert (target / "home" / "flow.json").is_file()
+
+
+def test_draft_no_wait_does_not_block_during_publication_or_cleanup(fresh_project, monkeypatch):
+    from chipcompiler.cli.project.draft import CreationDraft
+    from chipcompiler.project.manifest_write import manifest_lock
+
+    before_publish, locked, release = Event(), Event(), Event()
+    publish = CreationDraft.publish
+
+    def publish_while_contended(self, *args, **kwargs):
+        before_publish.set()
+        assert locked.wait(10)
+        return publish(self, *args, **kwargs)
+
+    def hold_manifest_lock():
+        assert before_publish.wait(10)
+        with manifest_lock(fresh_project):
+            locked.set()
+            assert release.wait(10)
+
+    def create():
+        raise SystemExit(
+            cli_main.run(
+                [
+                    "workspace",
+                    "create",
+                    "contended",
+                    "--project",
+                    str(fresh_project),
+                    "--draft",
+                    "{}",
+                    "--no-wait",
+                ]
+            )
+        )
+
+    monkeypatch.setattr(CreationDraft, "publish", publish_while_contended)
+    holder, worker = Process(target=hold_manifest_lock), Process(target=create)
+    holder.start()
+    worker.start()
+    try:
+        assert locked.wait(10)
+        worker.join(3)
+        assert worker.exitcode == 20
+        assert not (fresh_project / "contended").exists()
+    finally:
+        release.set()
+        holder.join(10)
+        worker.join(10)

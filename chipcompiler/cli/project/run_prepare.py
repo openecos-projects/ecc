@@ -209,6 +209,7 @@ def execute_fresh_run(
     registration_created: bool = False,
     execute_flow: bool = True,
     draft=None,
+    build_dir: Path | None = None,
 ) -> CommandResult:
     """Create the workspace, seed it, execute the flow, and map the result.
 
@@ -425,7 +426,7 @@ def execute_fresh_run(
             )
         try:
             workspace = create_workspace(
-                directory=run_dir,
+                directory=str(build_dir) if build_dir is not None else run_dir,
                 origin_def=origin_def,
                 origin_verilog=origin_verilog,
                 pdk=cfg.pdk_name,
@@ -457,7 +458,9 @@ def execute_fresh_run(
             if cli_overrides:
                 import json
 
-                provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
+                provenance_path = os.path.join(
+                    build_dir or run_dir, "home", "cli-param-overrides.json"
+                )
                 os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
                 with open(provenance_path, "w") as _f:
                     json.dump(cli_overrides, _f)
@@ -553,7 +556,7 @@ def execute_fresh_run(
 
                     command_spec = create_command_spec(command_input, run_name)
                     write_workspace_command(
-                        Path(run_dir),
+                        build_dir or Path(run_dir),
                         command_input.command_id,
                         workspace_command_fingerprint(
                             "create" if backup_path is None else "refresh",
@@ -574,7 +577,11 @@ def execute_fresh_run(
                     )
             if draft is not None:
                 draft.publish(
-                    cfg, flow_config, run_name, run_dir, blocking=not command_input.no_wait
+                    cfg,
+                    flow_config,
+                    Path(run_dir),
+                    reuse_empty=ctx.workspace_path_explicit,
+                    blocking=not command_input.no_wait,
                 )
                 workspace_registered = True
 
@@ -680,6 +687,8 @@ def execute_fresh_run(
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 
+            if draft is not None and isinstance(exc, BlockingIOError):
+                raise
             if isinstance(exc, RuntimeProcessError):
                 from chipcompiler.cli.project.run_process import runtime_process_error_result
 

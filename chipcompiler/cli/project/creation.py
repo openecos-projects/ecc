@@ -43,6 +43,10 @@ def prepare_workspace_creation(
     )
     if raw_draft is None or ctx.manifest_error:
         return run_input, ctx, None
+    if target.name != ctx.run_id:
+        return CommandResult.err(
+            [error_record("workspace_conflict", reason="Draft Workspace path must match its ID")]
+        )
     if (target / "home" / "flow.json").is_file():
         return existing_draft_workspace(
             run_input, ctx, str(target), ctx.run_id or target.name, preview=command_input.preview

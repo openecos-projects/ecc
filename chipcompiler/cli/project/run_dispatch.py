@@ -96,10 +96,19 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     instead of deleted, so a failed creation can put it back; the backup is
     discarded once the replacement is fully constructed.
     """
+    from chipcompiler.cli.project.draft import require_draft_published
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = ctx.project_dir
     backup_path = None
+    # The target lock serializes both the pending-journal check and all target
+    # creates or replacements. Its sibling lock survives a directory rename.
+    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+    try:
+        require_draft_published(Path(project_dir), Path(run_dir))
+    except OSError as exc:
+        return CommandResult.err([error_record("workspace_draft_pending", reason=str(exc))])
+
     empty_target = False
     if os.path.isdir(run_dir) and not os.path.islink(run_dir):
         try:
@@ -119,20 +128,7 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
                     )
                 ]
             )
-        # Serialize the rename with an active execution of this workspace:
-        # flock blocks until the running engine releases the sibling lock
-        # (<run_dir>.lock, which survives the rename), and the fresh engine
-        # re-acquires it on the recreated tree, so two runs never execute
-        # against the same paths. The lock stays entered in *ws_locks* until
-        # the replacement is built.
-        ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
-        from chipcompiler.cli.project.draft import require_draft_published
         from chipcompiler.cli.project.revision import expected_revision_error
-
-        try:
-            require_draft_published(Path(project_dir), Path(run_dir))
-        except OSError as exc:
-            return CommandResult.err([error_record("workspace_draft_pending", reason=str(exc))])
 
         conflict = expected_revision_error(
             run_dir,
@@ -156,14 +152,6 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         # An atomic rename, not a delete: until the replacement is fully
         # constructed the old tree stays on disk and recoverable.
         os.replace(run_dir, backup_path)
-
-    # Every fresh run holds the workspace lock from before the target is
-    # created through engine execution (see execute_fresh_run): a live run
-    # must hold the sibling lock, or `ecc process inspect` reports it dead
-    # and project reconcile flags it as an inconsistent runtime process.
-    # The overwrite branch entered the lock above the rename; entering it
-    # again here is a same-thread reentrant no-op.
-    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
 
     if command_input.expected_revision is not None and not os.path.lexists(run_dir):
         from chipcompiler.cli.project.revision import expected_revision_error
@@ -297,6 +285,8 @@ def dispatch_project_run(
     def fresh_run(
         *,
         owns_target: bool,
+        run_config=cfg,
+        build_dir: Path | None = None,
         backup_path: str | None = None,
         ws_locks=None,
         registration_created: bool = False,
@@ -304,7 +294,7 @@ def dispatch_project_run(
         return execute_fresh_run(
             command_input,
             ctx,
-            cfg,
+            run_config,
             run_dir,
             run_name,
             cli_overrides,
@@ -318,6 +308,7 @@ def dispatch_project_run(
             registration_created=registration_created,
             execute_flow=execute_flow,
             draft=draft,
+            build_dir=build_dir,
         )
 
     project_dir = ctx.project_dir
@@ -351,10 +342,13 @@ def dispatch_project_run(
                     command_input, ctx, run_dir, run_name, preview=False
                 )
             try:
-                with draft.build_target(
-                    target, reuse_empty=ctx.workspace_path_explicit, blocking=blocking
+                with draft.build_target(target, cfg, reuse_empty=ctx.workspace_path_explicit) as (
+                    built,
+                    build_cfg,
                 ):
-                    return fresh_run(owns_target=False, ws_locks=ws_locks)
+                    return fresh_run(
+                        owns_target=False, run_config=build_cfg, build_dir=built, ws_locks=ws_locks
+                    )
             except BlockingIOError:
                 raise
             except OSError as exc:
