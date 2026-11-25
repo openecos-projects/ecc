@@ -22,6 +22,8 @@ from chipcompiler.cli.project.flow_selection import (
 from chipcompiler.cli.project.project_application import (
     ProjectApplicationError,
     apply_settings_text,
+    parse_project_settings,
+    read_project_settings,
 )
 from chipcompiler.cli.project.rtl_import import (
     RtlImportError,
@@ -161,7 +163,7 @@ class CreationDraft:
             write_text_atomic(journal, json.dumps(record))
             try:
                 result = _publish_locked(self.project, record)
-            except (OSError, ValueError) as exc:
+            except (OSError, ProjectApplicationError, ValueError) as exc:
                 raise DraftPublicationPending(
                     f"{exc}. Run ecc project reconcile to finish."
                 ) from exc
@@ -430,8 +432,12 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
     staging = workspace / "home" / _LEGACY_RTL if legacy else _staging(project, workspace)
     config = project / CONFIG_FILENAME
     next_config = staging / _CONFIG_STAGE
-    current = config.read_text(encoding="utf-8")
+    current = read_project_settings(project)
     original, updated = record["original"], record["updated"]
+    current_config = parse_project_settings(project, current)
+    draft_config = (
+        current_config if current == updated else parse_project_settings(project, updated)
+    )
     # The atomic move consumes ecc.toml.next. Later Project edits then win,
     # including an edit that restores the original bytes.
     pending_config = current != updated if legacy else next_config.is_file()
@@ -472,12 +478,7 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
             # The filesystem may change after checking all targets.
             skipped = str(exc)
 
-    draft_config = parse_project_config(updated, str(config))
-    cfg = (
-        draft_config
-        if pending_config and not skipped
-        else parse_project_config(current, str(config))
-    )
+    cfg = draft_config if pending_config and not skipped else current_config
     if skipped:
         if DRAFT_PROJECT_CHANGES_SKIPPED not in record:
             record = {**record, DRAFT_PROJECT_CHANGES_SKIPPED: skipped}

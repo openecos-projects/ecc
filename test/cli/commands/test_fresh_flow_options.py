@@ -280,6 +280,8 @@ def test_config_edit_serializes_with_draft_publication(
         (None, True),
         ("netlist", False),
         ("golden_netlist", False),
+        ("malformed_config", False),
+        ("invalid_encoding", False),
     ],
 )
 def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
@@ -322,7 +324,26 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
 
     assert first.is_file()
     second.write_text("user-owned second file")
-    if user_change == "content":
+    config = fresh_project / "ecc.toml"
+    manifest = fresh_project / "project.json"
+    if user_change in {"malformed_config", "invalid_encoding"}:
+        original = config.read_bytes()
+        invalid = original + (b"\n[\n" if user_change == "malformed_config" else b"\xff")
+        config.write_bytes(invalid)
+        expected_manifest = manifest.read_bytes()
+        journal = fresh_project / ".workspace-draft-publish.json"
+        expected_journal = journal.read_bytes()
+        capsys.readouterr()
+        assert (
+            cli_main.run(["project", "reconcile", "--project", str(fresh_project), "--plain"]) == 1
+        )
+        assert "error=invalid_project_config" in capsys.readouterr().out
+        assert config.read_bytes() == invalid
+        assert manifest.read_bytes() == expected_manifest
+        assert journal.read_bytes() == expected_journal
+        assert first.read_bytes() == files[0].read_bytes()
+        config.write_bytes(original)
+    elif user_change == "content":
         first.write_text("user edit to the first file")
     elif user_change:
         # Resolve declarations the same way the flow does, including environment variables.
@@ -340,7 +361,7 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
             )
             == 0
         )
-    expected_config = (fresh_project / "ecc.toml").read_bytes()
+    expected_config = config.read_bytes()
     if registration_fails_once:
         with monkeypatch.context() as failed:
             failed.setattr(
@@ -350,14 +371,14 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
         second.unlink()
     assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
     assert (target / "home" / "flow.json").is_file()
-    assert (fresh_project / "ecc.toml").read_bytes() == expected_config
+    assert config.read_bytes() == expected_config
     if registration_fails_once:
         assert not second.exists()
     else:
         assert second.read_text() == "user-owned second file"
     if user_change == "content":
         assert first.read_text() == "user edit to the first file"
-    elif user_change:
+    elif user_change in {"netlist", "golden_netlist"}:
         assert first.read_bytes() == files[0].read_bytes()
     else:
         assert not first.exists()

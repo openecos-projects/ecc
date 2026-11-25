@@ -116,7 +116,9 @@ def project_reconcile(args, ctx: CommandContext) -> CommandResult:
         report = reconcile_project_state(ctx.project_dir, blocking=not args.no_wait)
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
-    except (ProjectApplicationError, ManifestError, OSError) as exc:
+    except ProjectApplicationError as exc:
+        return CommandResult.err([error_record(exc.code, reason=str(exc))])
+    except (ManifestError, OSError) as exc:
         return CommandResult.err([error_record("project_reconcile_failed", reason=str(exc))])
     record = {
         "project": "reconcile",

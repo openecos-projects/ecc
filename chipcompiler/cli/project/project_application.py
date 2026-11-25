@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from chipcompiler.cli.project.config import (
-    load_project_config,
+    ProjectConfig,
     parse_project_config,
     resolve_pdk_root,
     validate_project_config,
@@ -91,10 +91,9 @@ def apply_project(
 
 def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> bool:
     project = Path(project_dir).expanduser().resolve()
-    config_path = project / CONFIG_FILENAME
     with manifest_lock(project, blocking=blocking):
         load_manifest(str(project))
-        cfg = load_project_config(str(config_path))
+        cfg = parse_project_settings(project, read_project_settings(project))
         errors = validate_project_config(cfg)
         if errors:
             raise ProjectApplicationError("invalid_project_config", errors[0])
@@ -737,13 +736,27 @@ def apply_settings_text(text: str, sets: tuple[str, ...]) -> str:
     return updated
 
 
-def _validate_text(project: Path, text: str, *, validate: bool = True):
+def read_project_settings(project: Path) -> str:
     try:
-        cfg = parse_project_config(text, str(project / CONFIG_FILENAME))
+        return (project / CONFIG_FILENAME).read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ProjectApplicationError(
+            "invalid_project_config", f"unreadable ecc.toml: {exc}"
+        ) from exc
+
+
+def parse_project_settings(project: Path, text: str) -> ProjectConfig:
+    """Parse Project TOML and attach a structured error to syntax failures."""
+    try:
+        return parse_project_config(text, str(project / CONFIG_FILENAME))
     except tomllib.TOMLDecodeError as exc:
-        if validate:
-            raise ProjectApplicationError("invalid_project_config", str(exc)) from exc
-        raise
+        raise ProjectApplicationError(
+            "invalid_project_config", f"malformed ecc.toml: {exc}"
+        ) from exc
+
+
+def _validate_text(project: Path, text: str, *, validate: bool = True):
+    cfg = parse_project_settings(project, text)
     if validate:
         errors = validate_project_config(cfg)
         if errors:
