@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-MODEL_PATH = Path(__file__).parents[1] / "nix" / "export" / "frequency_model.py"
+MODEL_PATH = Path(__file__).parents[1] / "nix" / "scripts" / "signoff_csv" / "frequency_model.py"
 SPEC = importlib.util.spec_from_file_location("frequency_model_lite", MODEL_PATH)
 assert SPEC is not None
 frequency_model = importlib.util.module_from_spec(SPEC)

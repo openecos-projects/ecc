@@ -5,7 +5,7 @@ workspace (`home/flow.json`, `home/checklist.json`, `*/analysis/qor_*.json`),
 projects it to CSV tables plus a FileCheck-friendly text projection, evaluates
 the gates declared in a profile YAML, and writes a `run_manifest.json`.
 
-Entry point: `nix/export/signoff_package.sh --workspace WS --out-dir DIR
+Entry point: `nix/scripts/export-signoff-csv.sh --workspace WS --out-dir DIR
 --spec SPEC` (thin wrapper over `csv_gates.cli`).
 
 Status: **v0 / trial** — this is a CI contract, not product signoff truth.

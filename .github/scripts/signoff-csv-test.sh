@@ -5,8 +5,8 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "${here}/../.." && pwd)"
-fixture_sh="${root}/nix/lit/signoff/fixture.sh"
-export_sh="${root}/nix/export/signoff_csv.sh"
+fixture_sh="${root}/nix/scripts/signoff-csv-fixture.sh"
+export_sh="${root}/nix/scripts/signoff_csv/export.sh"
 summary_js="${root}/.github/scripts/signoff-csv-summary.js"
 
 tmp="$(mktemp -d)"

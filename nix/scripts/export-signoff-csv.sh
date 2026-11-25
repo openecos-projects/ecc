@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# CI/lit wrapper → signoff_package.py (test/lit/csv_gates).
-# Usage: signoff_package.sh --workspace DIR --out-dir DIR --spec FILE
+# CI/lit wrapper → export-signoff-csv.py (test/lit/csv_gates).
+# Usage: export-signoff-csv.sh --workspace DIR --out-dir DIR --spec FILE
 # Env: ECC_REPO_ROOT, PYTHON, ECC_SIGNOFF_CSV_SPEC, ECC_SIGNOFF_RUN_ID
 
 set -euo pipefail
@@ -26,5 +26,5 @@ if [[ -n "${ECC_SIGNOFF_CSV_SPEC:-}" ]]; then
   fi
 fi
 
-echo "signoff-package: ${args[*]-}"
-exec "$py" "$here/signoff_package.py" "${args[@]+"${args[@]}"}"
+echo "export-signoff-csv: ${args[*]-}"
+exec "$py" "$here/export-signoff-csv.py" "${args[@]+"${args[@]}"}"

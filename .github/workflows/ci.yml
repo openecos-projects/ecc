@@ -890,7 +890,7 @@ jobs:
         id: design-flow
         run: |
           echo "::warning::ICS55 v2 EMIR uses ECC's bundled synthetic model for flow testing, not signoff."
-          bash nix/run-designs.sh \
+          bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir "$RUNNER_TEMP/e2e-design-input" \
             --design "${{ matrix.design }}" \
@@ -900,7 +900,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
-          bash nix/export/signoff_csv.sh \
+          bash nix/scripts/signoff_csv/export.sh \
             --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
             --out-dir "$RUNNER_TEMP/e2e-product-csv/${{ matrix.design }}"
 
@@ -913,7 +913,7 @@ jobs:
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}:$PWD/test/lit"
           nix shell \
             --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.packaging ps.pydantic ps.pyyaml ps.typing-extensions ps.tomli-w])" \
-            -c bash nix/export/signoff_package.sh \
+            -c bash nix/scripts/export-signoff-csv.sh \
             --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
             --out-dir "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}" \
             --spec "$E2E_DESIGNS_DIR/profiles/signoff.yml"
@@ -928,7 +928,7 @@ jobs:
             "${nixpkgs}#lit" \
             "${nixpkgs}#llvmPackages_21.libllvm" \
             "${nixpkgs}#jq" \
-            -c bash nix/lit/signoff/run.sh designs --filter "${{ matrix.design }}"
+            -c bash nix/scripts/signoff-lit.sh designs --filter "${{ matrix.design }}"
 
       - name: Upload signoff product CSVs
         if: always()

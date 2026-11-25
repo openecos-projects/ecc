@@ -9,11 +9,11 @@ let
 
   filecheck = pkgs.llvmPackages_21.libllvm;
 
-  exportCsvSh = ./export/signoff_package.sh;
-  signoffCsvExportSh = ./export/signoff_csv.sh;
-  frequencyModelPy = ./export/frequency_model.py;
-  signoffCsvFixtureSh = ./lit/signoff/fixture.sh;
-  signoffLitSh = ./lit/signoff/run.sh;
+  exportCsvSh = ./scripts/export-signoff-csv.sh;
+  signoffCsvExportSh = ./scripts/signoff_csv/export.sh;
+  frequencyModelPy = ./scripts/signoff_csv/frequency_model.py;
+  signoffCsvFixtureSh = ./scripts/signoff-csv-fixture.sh;
+  signoffLitSh = ./scripts/signoff-lit.sh;
 
   signoff-lit = writeShellApplication {
     name = "signoff-lit";
