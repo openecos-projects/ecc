@@ -273,18 +273,23 @@ def test_config_edit_serializes_with_draft_publication(
 
 
 @pytest.mark.parametrize(
-    ("user_edited_first_link", "registration_fails_once"),
-    [(False, False), (True, False), (False, True)],
+    ("user_change", "registration_fails_once"),
+    [
+        (None, False),
+        ("content", False),
+        (None, True),
+        ("netlist", False),
+        ("golden_netlist", False),
+    ],
 )
 def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
-    fresh_project, monkeypatch, tmp_path, capsys, user_edited_first_link, registration_fails_once
+    fresh_project, monkeypatch, tmp_path, capsys, user_change, registration_fails_once
 ):
     target = fresh_project / "draft"
     files = [tmp_path / "first.v", tmp_path / "second.v"]
     for source, module in zip(files, ("gcd", "other"), strict=True):
         source.write_text(f"module {module}; endmodule\n")
     first, second = (fresh_project / "rtl" / source.name for source in files)
-    original_config = (fresh_project / "ecc.toml").read_bytes()
     args = [
         "workspace",
         "create",
@@ -317,8 +322,25 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
 
     assert first.is_file()
     second.write_text("user-owned second file")
-    if user_edited_first_link:
+    if user_change == "content":
         first.write_text("user edit to the first file")
+    elif user_change:
+        # Resolve declarations the same way the flow does, including environment variables.
+        monkeypatch.setenv("ECC_TEST_IMPORT_DIR", str(first.parent))
+        assert (
+            cli_main.run(
+                [
+                    "project",
+                    "set",
+                    f"design.{user_change}",
+                    "$ECC_TEST_IMPORT_DIR/first.v",
+                    "--project",
+                    str(fresh_project),
+                ]
+            )
+            == 0
+        )
+    expected_config = (fresh_project / "ecc.toml").read_bytes()
     if registration_fails_once:
         with monkeypatch.context() as failed:
             failed.setattr(
@@ -328,13 +350,15 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
         second.unlink()
     assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
     assert (target / "home" / "flow.json").is_file()
-    assert (fresh_project / "ecc.toml").read_bytes() == original_config
+    assert (fresh_project / "ecc.toml").read_bytes() == expected_config
     if registration_fails_once:
         assert not second.exists()
     else:
         assert second.read_text() == "user-owned second file"
-    if user_edited_first_link:
+    if user_change == "content":
         assert first.read_text() == "user edit to the first file"
+    elif user_change:
+        assert first.read_bytes() == files[0].read_bytes()
     else:
         assert not first.exists()
 
@@ -343,6 +367,83 @@ def test_recovery_records_skipped_project_changes_after_partial_rtl_publication(
     (record,) = json.loads(capsys.readouterr().out)
     assert record["error"] == "workspace_draft_project_changes_skipped"
     assert record["workspace_created"] is True
+
+
+@pytest.mark.parametrize("when", ["before_build", "before_link", "after_crash"])
+def test_draft_rtl_parent_conflict_does_not_block_the_project(
+    fresh_project, monkeypatch, tmp_path, capsys, when
+):
+    source_dir = tmp_path / "sources"
+    (source_dir / "nested").mkdir(parents=True)
+    (source_dir / "nested/top.v").write_text("module gcd; endmodule\n")
+    filelist = source_dir / "draft.f"
+    filelist.write_text("nested/top.v\n")
+    parent = fresh_project / "rtl/nested"
+    first = fresh_project / "rtl/draft.f"
+    args = [
+        "workspace",
+        "create",
+        "nested",
+        "--project",
+        str(fresh_project),
+        "--draft",
+        json.dumps({"filelist": str(filelist), "maxParallelSteps": 2}),
+        "--command-id",
+        "parent-conflict",
+        "--json",
+    ]
+    original = (fresh_project / "ecc.toml").read_bytes()
+    link = Path.hardlink_to
+
+    def occupy_parent():
+        parent.parent.mkdir(exist_ok=True)
+        parent.write_text("user-owned file")
+
+    def link_and_interrupt(path, source):
+        link(path, source)
+        if path == first:
+            if when == "after_crash":
+                os.kill(os.getpid(), signal.SIGKILL)
+            else:
+                occupy_parent()
+
+    capsys.readouterr()
+    if when == "before_build":
+        occupy_parent()
+        assert cli_main.run(args) == 1
+        assert not (fresh_project / "nested").exists()
+    elif when == "before_link":
+        with monkeypatch.context() as child:
+            child.setattr(Path, "hardlink_to", link_and_interrupt)
+            assert cli_main.run(args) == 1
+        assert (fresh_project / "nested/home/flow.json").is_file()
+        assert "workspace_draft_project_changes_skipped" in capsys.readouterr().out
+    else:
+        with monkeypatch.context() as child:
+            child.setattr(Path, "hardlink_to", link_and_interrupt)
+            pid = os.fork()
+            if pid == 0:
+                try:
+                    cli_main.run(args)
+                finally:
+                    os._exit(1)
+            _, status = os.waitpid(pid, 0)
+            assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGKILL
+        assert first.is_file()
+        occupy_parent()
+        assert cli_main.run(["project", "reconcile", "--project", str(fresh_project)]) == 0
+        assert (fresh_project / "nested/home/flow.json").is_file()
+
+    assert not first.exists()
+    assert not (fresh_project / ".workspace-draft-publish.json").exists()
+    assert parent.read_text() == "user-owned file"
+    assert (fresh_project / "ecc.toml").read_bytes() == original
+    assert (
+        cli_main.run(
+            ["workspace", "create", "next", "--project", str(fresh_project), "--draft", "{}"]
+        )
+        == 0
+    )
 
 
 @pytest.mark.parametrize(

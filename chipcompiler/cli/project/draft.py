@@ -12,6 +12,7 @@ from tempfile import mkdtemp
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
 from chipcompiler.cli.project.config import ProjectConfig, parse_project_config, resolve_pdk_root
+from chipcompiler.cli.project.design_inputs import resolve_design_inputs
 from chipcompiler.cli.project.flow_selection import (
     changed_insert_steps,
     effective_insert_steps,
@@ -22,7 +23,12 @@ from chipcompiler.cli.project.project_application import (
     ProjectApplicationError,
     apply_settings_text,
 )
-from chipcompiler.cli.project.rtl_import import RtlImportError, RtlImportPlan, plan_project_rtl
+from chipcompiler.cli.project.rtl_import import (
+    RtlImportError,
+    RtlImportPlan,
+    plan_project_rtl,
+    require_rtl_target_parents,
+)
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.api import project_manifest_mutator
 from chipcompiler.project.manifest import CONFIG_FILENAME, ManifestError, load_manifest
@@ -346,6 +352,7 @@ def _rtl_links(paths: list[tuple[Path, Path]], digests: dict[Path, str]) -> list
     for source, destination in paths:
         if destination.resolve() != destination:
             raise FileExistsError(f"RTL target is a symbolic link: {destination}")
+        require_rtl_target_parents(destination)
         if destination.exists():
             if destination.is_file() and destination.samefile(source):
                 expected = digests.get(destination)
@@ -362,17 +369,19 @@ def _matches_digest(source: Path, expected: str) -> bool:
 
 
 def _discard_partial_rtl(
-    project: Path,
     cfg: ProjectConfig,
     paths: list[tuple[Path, Path]],
     digests: dict[Path, str],
 ) -> None:
-    selected = {(project / path).resolve() for path in cfg.design_rtl}
+    inputs = resolve_design_inputs(cfg)
+    selected = {Path(path).resolve() for path in inputs.paths()}
     # A selected filelist can refer to other files in the same import.
-    if any(path.suffix.lower() in FILELIST_SUFFIXES for path in selected):
+    filelists = [
+        Path(path) for path in inputs.rtl if Path(path).suffix.lower() in FILELIST_SUFFIXES
+    ]
+    if filelists:
         from chipcompiler.utility.filelist import parse_filelist, parse_incdir_directives
 
-        filelists = {path for path in selected if path.suffix.lower() in FILELIST_SUFFIXES}
         include_dirs = set()
         for path in filelists:
             try:
@@ -454,6 +463,15 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
             built.chmod(mode)
         built.rename(workspace)
 
+    if pending_config and not skipped:
+        try:
+            for source, destination in links:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.hardlink_to(source)
+        except (FileExistsError, NotADirectoryError, IsADirectoryError) as exc:
+            # The filesystem may change after checking all targets.
+            skipped = str(exc)
+
     draft_config = parse_project_config(updated, str(config))
     cfg = (
         draft_config
@@ -464,11 +482,8 @@ def _publish_locked(project: Path, record: dict) -> PublicationResult:
         if DRAFT_PROJECT_CHANGES_SKIPPED not in record:
             record = {**record, DRAFT_PROJECT_CHANGES_SKIPPED: skipped}
             write_text_atomic(project / _JOURNAL, json.dumps(record))
-        _discard_partial_rtl(project, cfg, paths, digests)
+        _discard_partial_rtl(cfg, paths, digests)
     elif pending_config:
-        for source, destination in links:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.hardlink_to(source)
         if legacy:
             write_text_atomic(config, updated)
         else:

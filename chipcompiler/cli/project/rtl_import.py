@@ -263,6 +263,13 @@ def _include_files(
     return files
 
 
+def require_rtl_target_parents(target: Path) -> None:
+    """A target can only create directories through missing path components."""
+    for parent in target.parents:
+        if (parent.exists() or parent.is_symlink()) and not parent.is_dir():
+            raise FileExistsError(f"RTL target parent is not a directory: {parent}")
+
+
 def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
     targets = set()
     for _source, target in copied:
@@ -278,6 +285,10 @@ def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -
     # A file cannot be written where another input needs a directory: a listed
     # source named like an include directory would stop the copy half-way.
     for target in sorted(targets):
+        try:
+            require_rtl_target_parents(target)
+        except FileExistsError as exc:
+            raise RtlImportError("rtl_target_collision", str(exc), str(target)) from exc
         if any(parent in targets for parent in target.parents):
             raise RtlImportError(
                 "rtl_target_collision", "one input maps into the target of another", str(target)

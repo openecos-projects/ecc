@@ -24,6 +24,21 @@ class ResolvedDesignInputs:
     sdc: str = ""
     spef: str = ""
 
+    def paths(self) -> tuple[str, ...]:
+        """All declared design input paths, including inputs for other steps."""
+        return tuple(
+            path
+            for path in (
+                *self.rtl,
+                self.netlist,
+                self.golden_netlist,
+                self.def_,
+                self.sdc,
+                self.spef,
+            )
+            if path
+        )
+
 
 _PHYSICAL_STEPS = frozenset(
     {
