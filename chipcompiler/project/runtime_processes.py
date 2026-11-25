@@ -21,6 +21,8 @@ from chipcompiler.project.manifest_write import manifest_lock, update_manifest_l
 RUNTIME_PROCESS_SCHEMA_VERSION = 1
 MAX_RUNTIME_PROCESSES = 4096
 _SAFE_TOKEN = re.compile(r"[A-Za-z0-9._:@+-]{1,128}\Z")
+_RUN_RESULT_SUFFIX = ".run.json"
+_RUN_LOG_SUFFIX = ".log"
 
 
 class RuntimeProcessError(RuntimeError):
@@ -60,7 +62,20 @@ def normalize_runtime_id(value: str | None, *, default: str) -> str:
 
 
 def default_log_path(run_id: str) -> str:
-    return f"log/{run_id}.log"
+    return f"log/{run_id}{_RUN_LOG_SUFFIX}"
+
+
+def is_run_history_file(name: str) -> bool:
+    """Recognize per-run logs and receipts in a Workspace's log directory."""
+    for suffix in (_RUN_RESULT_SUFFIX, _RUN_LOG_SUFFIX):
+        run_id = name.removesuffix(suffix)
+        if run_id and run_id != name:
+            try:
+                normalize_run_id(run_id)
+            except RuntimeProcessError:
+                return False
+            return True
+    return False
 
 
 def normalize_log_path(value: str | None, run_id: str) -> str:
@@ -79,7 +94,8 @@ def require_unused_run_id(workspace: str | Path, run_id: str) -> None:
     directory = Path(workspace).resolve() / "log"
     if directory.is_symlink():
         raise RuntimeProcessError("invalid_log_path", "The Workspace log directory is a symlink.")
-    for path in (directory / f"{run_id}.run.json", directory / f"{run_id}.log"):
+    for suffix in (_RUN_RESULT_SUFFIX, _RUN_LOG_SUFFIX):
+        path = directory / f"{run_id}{suffix}"
         try:
             info = path.lstat()
         except (FileNotFoundError, NotADirectoryError):
@@ -87,7 +103,7 @@ def require_unused_run_id(workspace: str | Path, run_id: str) -> None:
         except OSError as exc:
             raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
         # Studio opens an empty log for the detached process before launching ECC.
-        if path.suffix == ".log" and stat.S_ISREG(info.st_mode) and info.st_size == 0:
+        if suffix == _RUN_LOG_SUFFIX and stat.S_ISREG(info.st_mode) and info.st_size == 0:
             continue
         raise RuntimeProcessError(
             "run_id_already_used",
@@ -135,7 +151,7 @@ def write_run_result(
     if directory.resolve() != directory:
         raise OSError("The Workspace log directory must not be a symbolic link.")
     run_id = normalize_run_id(entry["run_id"])
-    path = directory / f"{run_id}.run.json"
+    path = directory / f"{run_id}{_RUN_RESULT_SUFFIX}"
     try:
         existing_mode = path.lstat().st_mode
     except FileNotFoundError:

@@ -20,6 +20,7 @@ from chipcompiler.engine.workspace.lifecycle import (
     workspace_command_fingerprint,
     write_workspace_command,
 )
+from chipcompiler.project.runtime_processes import is_run_history_file
 from chipcompiler.utility.path import path_is_within
 
 _RUNTIME_COMMANDS_FILENAME = "runtime-commands.json"
@@ -108,10 +109,15 @@ def derive_workspace(
         staging.rmdir()
         try:
 
-            def ignore_source_agent(path: str, _names: list[str]) -> list[str]:
-                return [".agent"] if Path(path) == source else []
+            def ignore_source_history(path: str, names: list[str]) -> list[str]:
+                directory = Path(path)
+                if directory == source:
+                    return [".agent"]
+                if directory == source / "log":
+                    return [name for name in names if is_run_history_file(name)]
+                return []
 
-            shutil.copytree(source, staging, ignore=ignore_source_agent)
+            shutil.copytree(source, staging, ignore=ignore_source_history)
             home = staging / "home"
             for name in (
                 STALE_SNAPSHOT_FILENAME,
@@ -135,10 +141,7 @@ def derive_workspace(
                     "workspace_invalid", f"Workspace cannot be opened: {source}"
                 )
 
-            if retained_candidate_sha256:
-                for result in (staging / "log").glob("*.run.json"):
-                    result.unlink()
-            else:
+            if not retained_candidate_sha256:
                 _prepare_derived_flow(workspace, reset_from_step, through_step)
 
             snapshot = create_engineering_snapshot(
