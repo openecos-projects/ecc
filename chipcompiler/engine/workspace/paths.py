@@ -99,12 +99,7 @@ def finalize_staged_workspace_configs(workspace: "Workspace", target_root: Path)
         raise OSError(f"Failed to record derived Workspace configuration: {source_root}")
 
 
-def relocate_staged_workspace_metadata(
-    source_root: Path,
-    target_root: Path,
-    *,
-    include_tcl_scripts: bool = False,
-) -> None:
+def relocate_staged_workspace_metadata(source_root: Path, target_root: Path) -> None:
     """Relocate the rest of the tree after its configs and snapshot are complete."""
     source = str(source_root)
     target = str(target_root)
@@ -113,11 +108,10 @@ def relocate_staged_workspace_metadata(
         lambda item: target + item[len(source) :] if item.startswith(source) else item,
         skip_paths=frozenset({Path("config")}),
     )
-    if include_tcl_scripts:
-        rewrite_workspace_tcl_paths(
-            source_root,
-            lambda text: text.replace(f"{source}/", f"{target}/"),
-        )
+    rewrite_workspace_tcl_paths(
+        source_root,
+        lambda text: text.replace(f"{source}/", f"{target}/"),
+    )
 
 
 def rewrite_workspace_params_toml(root: Path, relocate: Callable[[str], str]) -> None:

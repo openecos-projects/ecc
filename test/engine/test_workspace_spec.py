@@ -448,6 +448,11 @@ def test_workspace_spec_update_keeps_generated_filelist_relocatable(
     assert (target / persisted).is_file()
     assert reopened.design.input_filelist == target / persisted
 
+    synthesis = next(target.glob("*_synthesis_yosys"))
+    script = (synthesis / "data" / "global_var.tcl").read_text(encoding="utf-8")
+    assert str(synthesis / "output") + "/" in script
+    assert f".{target.name}.staging-" not in script
+
 
 def test_workspace_spec_update_retain_backup_preserves_replaced_generation(
     tmp_path, minimal_ics55_pdk_factory

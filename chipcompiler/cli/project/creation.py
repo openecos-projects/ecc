@@ -226,7 +226,6 @@ def _create_from_draft(
                     relocate_staged_workspace_metadata(
                         constructed.workspace.directory,
                         Path(setup.run_dir),
-                        include_tcl_scripts=True,
                     )
                 except Exception as exc:
                     return workspace_failed_result(setup.run_name, setup.run_dir, str(exc) or None)
