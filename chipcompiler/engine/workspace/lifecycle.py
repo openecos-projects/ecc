@@ -326,6 +326,10 @@ def _update_workspace_from_spec(
         ensure_engineering_snapshot,
         read_engineering_snapshot,
     )
+    from chipcompiler.engine.workspace.paths import (
+        finalize_staged_workspace_configs,
+        relocate_staged_workspace_metadata,
+    )
 
     target = Path(target_directory).expanduser().resolve()
     # Crash recovery: a hard-killed update can strand its staging sibling; the
@@ -382,6 +386,7 @@ def _update_workspace_from_spec(
             bindings,
             carried_parameters=carried,
         )
+        finalize_staged_workspace_configs(staged, target)
         _preserve_workspace_config_extensions(target, staging)
         create_engineering_snapshot(
             staged,
@@ -408,9 +413,7 @@ def _update_workspace_from_spec(
                 },
             },
         )
-        from chipcompiler.engine.workspace.paths import finalize_staged_workspace
-
-        finalize_staged_workspace(staged, target)
+        relocate_staged_workspace_metadata(staging, target)
         exchange_directories(target, staging)
         try:
             workspace = _load_committed_workspace(target)

@@ -181,7 +181,10 @@ def _create_from_draft(
     from chipcompiler.cli.project.draft import prepare_creation_draft
     from chipcompiler.cli.project.rtl_import import RtlImportError
     from chipcompiler.cli.project.run_prepare import build_fresh_workspace, workspace_failed_result
-    from chipcompiler.engine.workspace.paths import finalize_staged_workspace
+    from chipcompiler.engine.workspace.paths import (
+        finalize_staged_workspace_configs,
+        relocate_staged_workspace_metadata,
+    )
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     run_name = ctx.run_id or target.name
@@ -219,8 +222,11 @@ def _create_from_draft(
                         flow_config=setup.flow_config,
                         record_create_command=bool(run_input.command_id),
                     )
-                    finalize_staged_workspace(
-                        constructed.workspace, Path(setup.run_dir), include_tcl_scripts=True
+                    finalize_staged_workspace_configs(constructed.workspace, Path(setup.run_dir))
+                    relocate_staged_workspace_metadata(
+                        constructed.workspace.directory,
+                        Path(setup.run_dir),
+                        include_tcl_scripts=True,
                     )
                 except Exception as exc:
                     return workspace_failed_result(setup.run_name, setup.run_dir, str(exc) or None)

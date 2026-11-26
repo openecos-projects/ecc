@@ -323,20 +323,23 @@ def test_workspace_spec_update_retry_without_a_named_revision_is_replayed(
     assert read_engineering_snapshot(repeated.workspace) == after
 
 
+@pytest.mark.parametrize("filename", ["cts_ecc.json", "db_ecc.json"])
 def test_workspace_spec_update_preserves_unknown_config_extensions(
-    tmp_path, minimal_ics55_pdk_factory
+    tmp_path, minimal_ics55_pdk_factory, filename
 ):
+    from chipcompiler.data.workspace.config_manifest import modified_derived_configs
     from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
     from chipcompiler.engine.snapshot.store import read_engineering_snapshot
+    from chipcompiler.utility import json_write
 
     payload, bindings = _shared_fixture("valid.json")
     bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
     target = tmp_path / "workspace"
     created = create_workspace_from_spec(target, payload["workspaceSpec"], bindings)
-    cts_path = target / "config" / "cts_ecc.json"
-    cts = json.loads(cts_path.read_text(encoding="utf-8"))
-    cts["custom_extension"] = {"enabled": True, "label": "preserve-me"}
-    cts_path.write_text(json.dumps(cts), encoding="utf-8")
+    config_path = target / "config" / filename
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["custom_extension"] = {"enabled": True, "label": "preserve-me"}
+    assert json_write(config_path, config)
 
     update_spec = deepcopy(payload["workspaceSpec"])
     update_spec["design"]["clockPort"] = "clock"
@@ -348,8 +351,11 @@ def test_workspace_spec_update_preserves_unknown_config_extensions(
         "preserve-extension-1",
     )
 
-    updated_cts = json.loads(cts_path.read_text(encoding="utf-8"))
-    assert updated_cts["custom_extension"] == {"enabled": True, "label": "preserve-me"}
+    updated = json.loads(config_path.read_text(encoding="utf-8"))
+    assert updated.pop("custom_extension") == config["custom_extension"]
+    assert modified_derived_configs(target) == [filename]
+    assert json_write(config_path, updated)
+    assert modified_derived_configs(target) == []
 
 
 def test_workspace_spec_update_fails_when_current_config_cannot_be_read(

@@ -84,30 +84,40 @@ def rewrite_workspace_tcl_paths(
     return changed
 
 
-def finalize_staged_workspace(
-    workspace: "Workspace",
-    target_root: Path,
-    *,
-    include_tcl_scripts: bool = False,
-) -> None:
-    """Relocate a freshly built tree and record its final managed configuration."""
+def finalize_staged_workspace_configs(workspace: "Workspace", target_root: Path) -> None:
+    """Record generated configs with their published paths before carrying over edits."""
     from chipcompiler.data.workspace.config_manifest import record_derived_config
 
     source_root = workspace.directory
     source = str(source_root)
     target = str(target_root)
     rewrite_workspace_json_paths(
+        source_root / "config",
+        lambda item: target + item[len(source) :] if item.startswith(source) else item,
+    )
+    if not record_derived_config(workspace):
+        raise OSError(f"Failed to record derived Workspace configuration: {source_root}")
+
+
+def relocate_staged_workspace_metadata(
+    source_root: Path,
+    target_root: Path,
+    *,
+    include_tcl_scripts: bool = False,
+) -> None:
+    """Relocate the rest of the tree after its configs and snapshot are complete."""
+    source = str(source_root)
+    target = str(target_root)
+    rewrite_workspace_json_paths(
         source_root,
         lambda item: target + item[len(source) :] if item.startswith(source) else item,
+        skip_paths=frozenset({Path("config")}),
     )
     if include_tcl_scripts:
         rewrite_workspace_tcl_paths(
             source_root,
             lambda text: text.replace(f"{source}/", f"{target}/"),
         )
-
-    if not record_derived_config(workspace):
-        raise OSError(f"Failed to record derived Workspace configuration: {source_root}")
 
 
 def rewrite_workspace_params_toml(root: Path, relocate: Callable[[str], str]) -> None:
