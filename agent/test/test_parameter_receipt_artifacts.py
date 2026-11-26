@@ -16,6 +16,8 @@ from agent.workspace_api import (
     _parameter_receipt_context,
     _stable_hash,
 )
+from chipcompiler.data import OriginDesign
+from chipcompiler.data.parameter import load_parameter
 from test.flow_fixture import step_fields
 
 HASH = "sha256:" + "a" * 64
@@ -74,8 +76,9 @@ def _materialized_workspace(
     config.write_text(json.dumps({knob_id.removeprefix("place."): before}), encoding="utf-8")
     workspace = SimpleNamespace(
         directory=tmp_path,
+        design=OriginDesign(),
         config={"dreamplace": config},
-        parameters=SimpleNamespace(path=home / "params.toml"),
+        parameters=load_parameter(home / "params.toml"),
         pdk=SimpleNamespace(tech=tech, site_core="core7"),
         flow=SimpleNamespace(
             data={
@@ -144,7 +147,10 @@ def test_candidate_parameter_receipt_is_written_atomically(tmp_path: Path) -> No
     assert materialization_ref["receipt_sha256"] != materialization_ref["registry_sha256"]
 
 
-def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Path) -> None:
+@pytest.mark.parametrize("filelist_name", ["design.f", "filelist", None])
+def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(
+    tmp_path: Path, filelist_name: str | None
+) -> None:
     workspace, _ = _materialized_workspace(
         tmp_path,
         candidate_id="candidate-multifile",
@@ -155,7 +161,17 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
     origin = tmp_path / "origin"
     (origin / "worker.v").write_text("module worker; endmodule\n", encoding="utf-8")
     (origin / "timing.sdc").write_text("set_input_delay 1 clk\n", encoding="utf-8")
-    (origin / "filelist").write_text("top.v\nworker.v\n", encoding="utf-8")
+    rtl_paths = sorted(origin.glob("*.v"))
+    if filelist_name is None:
+        (origin / "filelist").unlink()
+        filelist_sha256 = _stable_hash({"rtl_files": [f"origin/{path.name}" for path in rtl_paths]})
+    else:
+        filelist = origin / filelist_name
+        filelist.write_text("+define+FAST\ntop.v\nworker.v\n", encoding="utf-8")
+        if filelist_name == "design.f":
+            workspace.parameters.data["file_list"] = "origin/design.f"
+            workspace.design.input_filelist = filelist
+        filelist_sha256 = sha256_path(filelist)
     request = SimpleNamespace(
         candidate_id="candidate-multifile",
         target_step="placement",
@@ -165,11 +181,11 @@ def test_parameter_receipt_context_aggregates_all_rtl_and_sdc_files(tmp_path: Pa
 
     context = _parameter_receipt_context(workspace, request, HASH)
 
-    rtl_sha256 = _stable_hash({"files": [sha256_path(path) for path in sorted(origin.glob("*.v"))]})
+    rtl_sha256 = _stable_hash({"files": [sha256_path(path) for path in rtl_paths]})
     sdc_sha256 = _stable_hash(
         {"files": [sha256_path(path) for path in sorted(origin.glob("*.sdc"))]}
     )
-    filelist_sha256 = sha256_path(origin / "filelist")
+    assert context["filelist_sha256"] == filelist_sha256
     assert context["rtl_sha256"] == rtl_sha256
     assert context["sdc_sha256"] == sdc_sha256
     assert context["design_sha256"] == _stable_hash(

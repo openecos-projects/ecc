@@ -26,7 +26,7 @@ from agent.workspace_api import (
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
 )
-from chipcompiler.data import StateEnum
+from chipcompiler.data import OriginDesign, StateEnum
 from chipcompiler.data.parameter import load_parameter, save_parameter
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.step_parameters import set_step_value
@@ -1152,7 +1152,7 @@ class _EccApi:
             directory=root,
             config={"dreamplace": root / "config" / "dreamplace.json"},
             parameters=load_parameter(root / "home" / "params.toml"),
-            design=SimpleNamespace(name="gcd"),
+            design=OriginDesign(name="gcd"),
             flow=SimpleNamespace(
                 data=json.loads(flow_path.read_text(encoding="utf-8")), path=flow_path
             ),

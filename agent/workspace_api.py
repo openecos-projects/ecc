@@ -943,15 +943,22 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         raise RuntimeApiError("command_failed", "candidate PDK fingerprint is unavailable") from exc
     rtl_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in rtl_files]
     sdc_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in sdc_files]
-    filelist = next(
-        (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()),
-        None,
+    declared = workspace.parameters.data.get("file_list") or workspace.design.input_filelist
+    filelist = (
+        root / declared
+        if declared
+        else next(
+            (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()), None
+        )
     )
-    filelist_sha256 = (
-        _stable_hash({"rtl_files": [path.relative_to(root).as_posix() for path in rtl_files]})
-        if filelist is None
-        else f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
-    )
+    if filelist is None:
+        filelist_sha256 = _stable_hash(
+            {"rtl_files": [path.relative_to(root).as_posix() for path in rtl_files]}
+        )
+    else:
+        if not path_is_within(filelist, root):
+            raise RuntimeApiError("command_failed", "candidate filelist is outside its workspace")
+        filelist_sha256 = required_file_sha256(filelist, "filelist")
     rtl_sha256 = rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
     sdc_sha256 = sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
     design_sha256 = _stable_hash(
