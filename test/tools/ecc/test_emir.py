@@ -51,9 +51,11 @@ def test_emir_input_overrides_survive_workspace_refresh(
 ):
     fixtures = Path(__file__).resolve().parents[2] / "fixtures"
     technology_path = fixtures / "emir/ics55_synthetic.tech"
-    override = {
+    template = Path(builder.__file__).parent / "configs" / "defaults" / "emir_ecc.json"
+    override = json_read(template) | {
         "technology_file_path": str(technology_path),
         "ploc_file_path": str(tmp_path / "imported grid" / "power.ploc") if external_ploc else "",
+        "supply_ground_pins": {"VDD": "VSS", "VDDD": "VSSD"},
     }
     workspace = create_workspace(
         directory=tmp_path / "workspace",
@@ -135,18 +137,20 @@ def write_native_emir_reports(step, *files: str) -> None:
 
 @pytest.mark.parametrize("external_ploc", [False, True])
 @pytest.mark.parametrize("upstream_pdn", [False, True])
+@pytest.mark.parametrize("supply_returns", [{}, {"VDD": "VSS", "VDDD": "VSSD"}])
 def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(
-    emir_case, external_ploc, upstream_pdn
+    emir_case, external_ploc, upstream_pdn, supply_returns
 ):
     workspace, step, module, save_data = emir_case
     pdn_directory = "04_post_floorplan_ecc" if upstream_pdn else "post_floorplan_ecc"
     ploc_path = workspace.directory / pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc"
+    config_path = workspace.config[StepEnum.EMIR.value]
+    config = json_read(config_path)
+    config["supply_ground_pins"] = supply_returns
     if external_ploc:
         ploc_path = str(workspace.directory.parent / "imported grid" / "power.ploc")
-        config_path = workspace.config[StepEnum.EMIR.value]
-        config = json_read(config_path)
         config["ploc_file_path"] = ploc_path
-        assert json_write(config_path, config)
+    assert json_write(config_path, config)
     write_request(_emir_request(workspace.directory, power=True, pdn=upstream_pdn))
     write_native_emir_reports(step, "ir.rpt")
 
@@ -167,6 +171,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(
             technology_file_path=str(workspace.directory / "process.tech"),
             ploc_file_path=ploc_path,
             spef_path="",
+            supply_ground_pins=supply_returns,
         ),
         call.run_emir(),
         call.destroy_emir(),
@@ -273,7 +278,8 @@ def test_emir_missing_native_reports_does_not_change_save_result(emir_case):
     ]
 
 
-def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
+@pytest.mark.parametrize("supply_returns", [{}, {"VDD": "VSS", "VDDD": "VSSD"}])
+def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path, supply_returns):
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = Mock()
     module.ecc.init_emir.return_value = True
@@ -286,6 +292,7 @@ def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
             tmp_path / "instance_power.tsv",
             tmp_path / "process.tech",
             tmp_path / "power.ploc",
+            supply_ground_pins=supply_returns,
         )
         is True
     )
@@ -298,6 +305,7 @@ def test_emir_wrapper_forwards_paths_and_uses_ifp_supply_file(tmp_path):
             instance_power_file_path=tmp_path / "instance_power.tsv",
             technology_file_path=tmp_path / "process.tech",
             ploc_file_path=tmp_path / "power.ploc",
+            supply_ground_pins=supply_returns,
         ),
         call.run_emir(),
         call.destroy_emir(),

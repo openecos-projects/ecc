@@ -20,4 +20,15 @@ SCHEMAS = (
             "empty uses the upstream post-floorplan output."
         ),
     ),
+    config_param(
+        "emir.supply_ground_pins",
+        "emir",
+        ("supply_ground_pins",),
+        {},
+        applies="emir",
+        description=(
+            "Power-pin to return-ground-pin mapping, used only when Liberty omits the return. "
+            "Confirm these connections against the chip power plan."
+        ),
+    ),
 )
