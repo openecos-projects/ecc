@@ -7,6 +7,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.workspace.config_manifest import (
+    refresh_relocated_derived_configs,
+    unmodified_derived_configs,
+)
 from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
@@ -21,6 +25,7 @@ from chipcompiler.engine.workspace.lifecycle import (
 from chipcompiler.engine.workspace.paths import (
     replace_string_prefix,
     rewrite_workspace_json_paths,
+    rewrite_workspace_tcl_paths,
 )
 from chipcompiler.project.runtime_processes import is_run_history_file
 from chipcompiler.utility.path import path_is_within
@@ -193,7 +198,8 @@ def derive_workspace(
     }
 
     def rewrite_target(staging: Path, published: Path) -> None:
-        rewrite_workspace_json_paths(
+        clean_configs = unmodified_derived_configs(staging)
+        rewritten = rewrite_workspace_json_paths(
             staging,
             lambda value: replace_string_prefix(
                 replace_string_prefix(value, str(source), str(published)),
@@ -201,6 +207,14 @@ def derive_workspace(
                 str(published),
             ),
         )
+        rewrite_workspace_tcl_paths(
+            staging,
+            lambda text: text.replace(f"{source}/", f"{published}/").replace(
+                f"{staging}/", f"{published}/"
+            ),
+        )
+        if not refresh_relocated_derived_configs(staging, clean_configs, rewritten):
+            raise OSError(f"Failed to update derived Workspace configuration: {staging}")
 
     return publish_copied_workspace(
         source,

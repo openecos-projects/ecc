@@ -18,6 +18,7 @@ from chipcompiler.data.handshake.messages import (
     StepRequest,
     StepResponse,
 )
+from chipcompiler.data.workspace.config_manifest import modified_derived_configs
 from chipcompiler.engine import create_workspace_from_spec
 from chipcompiler.project.runtime_processes import default_log_path, require_unused_run_id
 from test.conftest import create_minimal_ics55_pdk
@@ -121,3 +122,77 @@ def test_retained_workspace_rebases_inherited_paths(tmp_path):
     assert verilog is not None
     assert verilog == target / old_netlist
     assert verilog.read_bytes() == b"module gcd; endmodule\n"
+
+
+def test_retained_candidate_updates_relocated_config_baselines_and_tcl_paths(tmp_path):
+    spec, bindings = _workspace_spec_fixture(tmp_path)
+    parent = tmp_path / "baseline"
+    group = parent / ".agent" / "candidates"
+    earlier = group / "earlier"
+    candidate = group / "current"
+    create_workspace_from_spec(candidate, spec, bindings)
+    assert modified_derived_configs(candidate) == []
+
+    script_dir = candidate / "01_synthesis_yosys" / "script"
+    script_dir.mkdir(parents=True, exist_ok=True)
+    global_var = script_dir / "global_var.tcl"
+    external_keep = tmp_path / "baseline-other" / "keep.tcl"
+    global_var.write_text(
+        "\n".join(
+            [
+                f"set WORKSPACE {candidate}",
+                f"set EARLIER_OUT {earlier}/01_synthesis_yosys/result.v",
+                f"set PARENT_OUT {parent}/01_synthesis_yosys/parent.v",
+                f"set EXTERNAL {external_keep}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    evidence_rel = Path("01_synthesis_yosys") / "script" / "evidence.tcl"
+    evidence_bytes = f"set EVIDENCE {candidate}/01_synthesis_yosys/result.v\n".encode()
+    (candidate / evidence_rel).write_bytes(evidence_bytes)
+
+    target = tmp_path / "retained"
+    publish_retained_candidate(
+        candidate,
+        target,
+        parent_workspace_directory=parent,
+        original_evidence=frozenset({evidence_rel}),
+        retained_candidate_sha256="sha256:" + "a" * 64,
+    )
+
+    assert modified_derived_configs(target) == []
+    db_text = (target / "config" / "db_ecc.json").read_text(encoding="utf-8")
+    assert str(candidate) not in db_text
+    assert str(target) in db_text
+
+    relocated_tcl = (target / "01_synthesis_yosys" / "script" / "global_var.tcl").read_text(
+        encoding="utf-8"
+    )
+    assert f"set WORKSPACE {target}" in relocated_tcl
+    assert f"set EARLIER_OUT {target}/01_synthesis_yosys/result.v" in relocated_tcl
+    assert f"set PARENT_OUT {target}/01_synthesis_yosys/parent.v" in relocated_tcl
+    assert f"set EXTERNAL {external_keep}" in relocated_tcl
+    assert str(candidate) not in relocated_tcl
+    assert (target / evidence_rel).read_bytes() == evidence_bytes
+
+
+def test_retained_candidate_preserves_hand_edited_config_status(tmp_path):
+    spec, bindings = _workspace_spec_fixture(tmp_path)
+    candidate = tmp_path / "baseline" / ".agent" / "candidates" / "edited"
+    create_workspace_from_spec(candidate, spec, bindings)
+    assert modified_derived_configs(candidate) == []
+
+    floorplan = candidate / "config" / "floorplan_ecc.json"
+    floorplan.write_text(floorplan.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    assert modified_derived_configs(candidate) == ["floorplan_ecc.json"]
+
+    target = tmp_path / "retained-edited"
+    publish_retained_candidate(
+        candidate,
+        target,
+        retained_candidate_sha256="sha256:" + "b" * 64,
+    )
+
+    assert modified_derived_configs(target) == ["floorplan_ecc.json"]

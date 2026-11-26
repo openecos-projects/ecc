@@ -333,6 +333,7 @@ from types import SimpleNamespace
 from agent import tools as agent_tools
 from chipcompiler.engine.step import process as step_subprocess
 from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.utility.file import write_text_atomic
 
 
 def initialize_db(flow, step):
@@ -387,7 +388,7 @@ def run_step(workspace, step, ecc_module=None):
     candidate = Path(workspace.directory).name
     mode = os.environ.get("WORKER_TEST_MODE")
     if mode == "sleep" and step.name == "placement":
-        Path(os.environ["WORKER_TEST_PID_PATH"]).write_text(str(os.getpid()))
+        write_text_atomic(os.environ["WORKER_TEST_PID_PATH"], str(os.getpid()))
         time.sleep(60)
     if mode == "barrier" and step.name == "placement":
         ready_dir = Path(os.environ["WORKER_TEST_READY_DIR"])

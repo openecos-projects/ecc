@@ -408,9 +408,9 @@ def _update_workspace_from_spec(
                 },
             },
         )
-        from chipcompiler.engine.workspace.paths import rewrite_workspace_paths
+        from chipcompiler.engine.workspace.paths import finalize_staged_workspace
 
-        rewrite_workspace_paths(staging, target)
+        finalize_staged_workspace(staged, target)
         exchange_directories(target, staging)
         try:
             workspace = _load_committed_workspace(target)

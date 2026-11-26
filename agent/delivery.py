@@ -5,10 +5,15 @@ import stat
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
+from chipcompiler.data.workspace.config_manifest import (
+    refresh_relocated_derived_configs,
+    unmodified_derived_configs,
+)
 from chipcompiler.engine.workspace.derive import publish_copied_workspace
 from chipcompiler.engine.workspace.paths import (
     rewrite_workspace_json_paths,
     rewrite_workspace_params_toml,
+    rewrite_workspace_tcl_paths,
 )
 from chipcompiler.project.api import project_manifest_mutator
 from chipcompiler.project.manifest import load_manifest
@@ -131,19 +136,47 @@ def publish_retained_candidate(
         else candidate
     )
 
+    clean_configs: frozenset[str] = frozenset()
+    relocated: set[Path] = set()
+
     def prepare_staged(staging: Path) -> None:
+        nonlocal clean_configs
+        clean_configs = unmodified_derived_configs(staging)
+
         def relocate(value: str) -> str:
             return _relocate_candidate_path(value, candidate, parent_workspace_directory, staging)
 
-        rewrite_workspace_json_paths(staging, relocate, skip_paths=original_evidence)
+        relocated.update(
+            rewrite_workspace_json_paths(staging, relocate, skip_paths=original_evidence)
+        )
+        relocated.update(
+            rewrite_workspace_tcl_paths(
+                staging,
+                lambda text: _rewrite_candidate_text(
+                    text, candidate, parent_workspace_directory, staging
+                ),
+                skip_paths=original_evidence,
+            )
+        )
         rewrite_workspace_params_toml(staging, relocate)
 
     def rewrite_target(staging: Path, published: Path) -> None:
         def publish_path(value: str) -> str:
             return _relocate_candidate_path(value, staging, None, published)
 
-        rewrite_workspace_json_paths(staging, publish_path, skip_paths=original_evidence)
+        relocated.update(
+            rewrite_workspace_json_paths(staging, publish_path, skip_paths=original_evidence)
+        )
+        relocated.update(
+            rewrite_workspace_tcl_paths(
+                staging,
+                lambda text: _rewrite_candidate_text(text, staging, None, published),
+                skip_paths=original_evidence,
+            )
+        )
         rewrite_workspace_params_toml(staging, publish_path)
+        if not refresh_relocated_derived_configs(staging, clean_configs, relocated):
+            raise OSError(f"Failed to update derived Workspace configuration: {staging}")
 
     return publish_copied_workspace(
         candidate,
@@ -177,6 +210,18 @@ def _relocate_candidate_path(
     if parent is not None and path.is_relative_to(parent):
         return str(destination / path.relative_to(parent))
     return value
+
+
+def _rewrite_candidate_text(
+    text: str, candidate: Path, parent: Path | None, destination: Path
+) -> str:
+    patterns = [re.escape(str(candidate))]
+    if parent is not None:
+        # An inherited script can reference an earlier sibling candidate or the parent workspace.
+        patterns.append(rf"{re.escape(str(candidate.parent))}/[^/\"'\s;}})]+")
+        patterns.append(re.escape(str(parent)))
+    pattern = re.compile(rf"(?:{'|'.join(patterns)})(?=/|[\"' \t\r\n;}})]|$)")
+    return pattern.sub(lambda _match: str(destination), text)
 
 
 def _verify_completed_candidate(
