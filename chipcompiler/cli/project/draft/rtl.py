@@ -33,14 +33,17 @@ def rtl_digests(project: Path, paths: list[tuple[Path, Path]]) -> dict[str, str]
     return digests
 
 
-def rtl_links(paths: list[tuple[Path, Path]], digests: dict[Path, str]) -> list[tuple[Path, Path]]:
+def rtl_links(
+    paths: list[tuple[Path, Path]], digests: dict[Path, str] | None = None
+) -> list[tuple[Path, Path]]:
+    """Check new targets, accepting already installed links only during recovery."""
     links = []
     for source, destination in paths:
         if destination.resolve() != destination:
             raise FileExistsError(f"RTL target is a symbolic link: {destination}")
         require_rtl_target_parents(destination)
         if destination.exists():
-            if destination.is_file() and destination.samefile(source):
+            if digests is not None and destination.is_file() and destination.samefile(source):
                 expected = digests.get(destination)
                 if expected is None or _matches_digest(source, expected):
                     continue

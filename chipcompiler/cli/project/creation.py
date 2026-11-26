@@ -2,6 +2,7 @@
 
 import hashlib
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -67,7 +68,25 @@ def create_draft_or_preview_workspace(
             [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
         )
 
-    target = Path(ctx.run_dir).expanduser().absolute()
+    # The Project may be reached through an alias. Keep the Workspace leaf
+    # intact so a link there cannot be mistaken for a reusable directory.
+    project = Path(ctx.project_dir).resolve()
+    target = Path(ctx.run_dir)
+    target = target.parent.resolve() / target.name
+    supplied = project / (command_input.path or command_input.workspace)
+    if supplied.is_symlink() or target.is_symlink():
+        link = supplied if supplied.is_symlink() else target
+        return CommandResult.err(
+            [
+                error_record(
+                    "run_exists",
+                    workspace_id=ctx.run_id,
+                    workspace=str(link),
+                    reason=f"Workspace is a symbolic link: {link}",
+                )
+            ]
+        )
+    ctx = replace(ctx, project_dir=str(project), run_dir=str(target))
     raw_draft = command_input.draft
     if raw_draft is not None and target.name != ctx.run_id:
         return CommandResult.err(
@@ -110,15 +129,14 @@ def _preview_creation(
     target: Path,
     raw_draft: str | None,
 ) -> CommandResult:
-    project = Path(ctx.project_dir).expanduser().resolve()
-    canonical_target = target.parent.resolve() / target.name
+    project = Path(ctx.project_dir)
     run_name = ctx.run_id or target.name
-    if (canonical_target / "home" / "flow.json").is_file():
+    if (target / "home" / "flow.json").is_file():
         return CommandResult.err(
             [error_record("workspace_conflict", reason=f"Workspace already exists: {target}")]
         )
     destination_error = _preview_destination_error(
-        project, canonical_target, run_name, reuse_empty=ctx.workspace_path_explicit
+        project, target, run_name, reuse_empty=ctx.workspace_path_explicit
     )
     if destination_error is not None:
         return destination_error
@@ -142,7 +160,7 @@ def _preview_creation(
         )
     resolved_target = Path(setup.run_dir).expanduser().absolute()
     canonical_resolved = resolved_target.parent.resolve() / resolved_target.name
-    if canonical_resolved != canonical_target:
+    if canonical_resolved != target:
         destination_error = _preview_destination_error(
             project, canonical_resolved, setup.run_name, reuse_empty=ctx.workspace_path_explicit
         )

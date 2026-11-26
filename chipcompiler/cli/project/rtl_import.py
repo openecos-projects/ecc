@@ -100,11 +100,12 @@ def plan_project_rtl(
     *,
     filelist: str | None = None,
     verilog: tuple[str, ...] = (),
+    allow_dangling_links: bool = True,
 ) -> RtlImportPlan:
     if filelist and verilog:
         raise RtlImportError("rtl_inputs_exclusive", "use --filelist or --verilog, not both")
 
-    rtl_root = root / "rtl"
+    targets = _RtlTargets(root / "rtl", allow_dangling_links)
     copied: list[tuple[Path, Path]] = []
     include_dirs: dict[Path, Path] = {}
     source_list: Path | None = None
@@ -120,7 +121,7 @@ def plan_project_rtl(
             raise RtlImportError(
                 "filelist_empty", "filelist contains no source files", str(source_list)
             )
-        list_target = _target_for(source_list, source_list.parent, rtl_root)
+        list_target = targets.for_source(source_list, source_list.parent)
         copied.append((source_list, list_target))
         for entry in entries:
             source = (source_list.parent / entry).resolve()
@@ -128,11 +129,11 @@ def plan_project_rtl(
                 raise RtlImportError(
                     "rtl_source_not_found", "filelist source was not found", str(source)
                 )
-            copied.append((source, _target_for(source, source_list.parent, rtl_root)))
+            copied.append((source, targets.for_source(source, source_list.parent)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied[1:]]
         rtl_config = [str(list_target.relative_to(root))]
-        include_dirs = _include_directories(source_list, rtl_root)
-        copied.extend(_include_files(include_dirs, root, rtl_root, copied))
+        include_dirs = _include_directories(source_list, targets)
+        copied.extend(_include_files(include_dirs, root, targets, copied))
     else:
         if not verilog:
             raise RtlImportError("rtl_inputs_missing", "no RTL input was provided")
@@ -142,7 +143,7 @@ def plan_project_rtl(
                 raise RtlImportError(
                     "rtl_source_not_found", "Verilog source was not found", str(source)
                 )
-            copied.append((source, _target_for(source, source.parent, rtl_root)))
+            copied.append((source, targets.for_source(source, source.parent)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
@@ -150,29 +151,30 @@ def plan_project_rtl(
     return RtlImportPlan(copied, source_list, rtl_config, rtl_entries, include_dirs)
 
 
-def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
-    try:
-        relative = source.relative_to(base)
-    except ValueError:
-        relative = Path(source.name)
-    return _contained(rtl_root / relative, rtl_root, source)
+@dataclass(frozen=True)
+class _RtlTargets:
+    root: Path
+    allow_dangling_links: bool
+
+    def for_source(self, source: Path, base: Path) -> Path:
+        relative = source.relative_to(base) if source.is_relative_to(base) else Path(source.name)
+        return self.contained(self.root / relative, source)
+
+    def contained(self, target: Path, source: Path) -> Path:
+        resolved = target.resolve()
+        if not resolved.is_relative_to(self.root):
+            raise RtlImportError(
+                "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
+            )
+        if not self.allow_dangling_links and resolved != target:
+            # A dangling link occupies its name even though its referent is absent.
+            require_rtl_target_parents(target)
+            if target.is_symlink() and not target.exists():
+                raise FileExistsError(f"RTL target is a symbolic link: {target}")
+        return resolved
 
 
-def _contained(target: Path, rtl_root: Path, source: Path) -> Path:
-    """The resolved *target*, refused when it is not below the project's ``rtl/``.
-
-    Resolving follows the symlinks already present under ``rtl/``, so a link
-    that points out of the project cannot redirect a copy.
-    """
-    target = target.resolve()
-    if target != rtl_root and rtl_root not in target.parents:
-        raise RtlImportError(
-            "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
-        )
-    return target
-
-
-def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
+def _include_directories(source_list: Path, layout: _RtlTargets) -> dict[Path, Path]:
     """Map each ``+incdir+`` directory of the filelist to its place below ``rtl/``.
 
     A directory below the filelist's own directory keeps its relative path,
@@ -188,7 +190,7 @@ def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
             raise RtlImportError(
                 "rtl_incdir_not_found", "filelist include directory was not found", str(source_dir)
             )
-        target = _target_for(source_dir, source_list.parent, rtl_root)
+        target = layout.for_source(source_dir, source_list.parent)
         if target in targets.values():
             raise RtlImportError(
                 "rtl_target_collision",
@@ -202,7 +204,7 @@ def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
 def _include_files(
     include_dirs: dict[Path, Path],
     project_root: Path,
-    rtl_root: Path,
+    layout: _RtlTargets,
     copied: list[tuple[Path, Path]],
 ) -> list[tuple[Path, Path]]:
     """The files below the include directories that still have to be copied.
@@ -231,14 +233,14 @@ def _include_files(
             kept = []
             for name in sorted(directories):
                 resolved = (Path(current) / name).resolve()
-                if resolved in (project_root, rtl_root) or resolved in entered:
+                if resolved in (project_root, layout.root) or resolved in entered:
                     continue
                 kept.append(name)
                 ancestry[os.path.join(current, name)] = entered | {resolved}
             directories[:] = kept
             for name in sorted(names):
                 source = Path(current) / name
-                target = _contained(target_dir / source.relative_to(source_dir), rtl_root, source)
+                target = layout.contained(target_dir / source.relative_to(source_dir), source)
                 pair = (source, target)
                 if pair in known or source.resolve() == pair[1]:
                     continue

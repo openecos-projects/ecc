@@ -707,3 +707,90 @@ def test_workspace_preview_rejects_occupied_target_like_create(fresh_project, ca
     )
     (preview,) = json.loads(capsys.readouterr().out)
     assert preview["record"] == "workspace_preview"
+
+
+@pytest.mark.parametrize("import_rtl", [False, True])
+def test_draft_via_project_symlink_can_publish_and_retry(fresh_project, tmp_path, import_rtl):
+    alias = tmp_path / "project-link"
+    alias.symlink_to(fresh_project, target_is_directory=True)
+    rtl = tmp_path / "top.v"
+    rtl.write_text("module gcd; endmodule\n")
+    args = [
+        "workspace",
+        "create",
+        "draft",
+        "--draft",
+        json.dumps({"rtl": [str(rtl)]} if import_rtl else {}),
+        "--command-id",
+        "linked-project",
+        "--project",
+    ]
+    assert cli_main.run([*args, str(alias), "--preview"]) == 0
+    assert cli_main.run([*args, str(alias)]) == 0
+    assert (fresh_project / "draft/home/flow.json").is_file()
+    if import_rtl:
+        assert (fresh_project / "rtl/top.v").read_bytes() == rtl.read_bytes()
+    assert cli_main.run([*args, str(fresh_project)]) == 0
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_draft_workspace_symlink_is_rejected(fresh_project, explicit):
+    empty = fresh_project / "empty"
+    empty.mkdir()
+    link = fresh_project / "linked"
+    link.symlink_to(empty, target_is_directory=True)
+    args = [
+        "workspace",
+        "create",
+        str(link) if explicit else link.name,
+        "--draft",
+        "{}",
+        "--project",
+        str(fresh_project),
+    ]
+    assert cli_main.run([*args, "--preview"]) == 1
+    assert cli_main.run(args) == 1
+    assert link.is_symlink() and list(empty.iterdir()) == []
+
+
+@pytest.mark.parametrize("occupied", ["file", "parent", "dangling_link", "same_source"])
+def test_draft_rtl_preview_reports_same_conflict_as_create(
+    fresh_project, tmp_path, capsys, occupied
+):
+    source = tmp_path / "top.v"
+    source.write_text("module gcd; endmodule\n")
+    target = fresh_project / "rtl/top.v"
+    conflict = target.parent if occupied == "parent" else target
+    conflict.parent.mkdir(exist_ok=True)
+    if occupied == "dangling_link":
+        conflict.symlink_to("missing.v")
+    elif occupied == "same_source":
+        conflict.hardlink_to(source)
+    else:
+        conflict.write_text("existing project input\n")
+    args = [
+        "workspace",
+        "create",
+        "draft",
+        "--project",
+        str(fresh_project),
+        "--draft",
+        json.dumps({"rtl": [str(source)]}),
+        "--json",
+    ]
+    capsys.readouterr()
+    assert cli_main.run([*args, "--preview"]) == 1
+    (preview,) = json.loads(capsys.readouterr().out)
+    assert not (fresh_project / ".workspace-draft-builds").exists()
+    assert cli_main.run(args) == 1
+    (creation,) = json.loads(capsys.readouterr().out)
+    assert creation == preview
+    assert creation["error"] == "run_exists"
+    assert str(conflict) in creation["reason"]
+    if occupied == "dangling_link":
+        assert conflict.is_symlink() and not conflict.exists()
+    else:
+        assert conflict.read_text() == (
+            source.read_text() if occupied == "same_source" else "existing project input\n"
+        )
+    assert not (fresh_project / "draft").exists()

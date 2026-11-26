@@ -157,7 +157,7 @@ class CreationDraft:
             empty_mode = check_destination(workspace, reuse_empty=reuse_empty)
             next_config.chmod(stat.S_IMODE(config.stat().st_mode))
             staged_rtl = rtl_paths(self.project, staging, targets)
-            rtl_links(staged_rtl, {})
+            rtl_links(staged_rtl)
             digests = rtl_digests(self.project, staged_rtl)
             record = DraftJournal(
                 project_id=self.project_id,
@@ -442,17 +442,28 @@ def prepare_creation_draft(ctx, raw: str):
         if filelist is not None and (not isinstance(filelist, str) or not filelist):
             raise ValueError("filelist must be a nonempty path")
         rtl = (
-            plan_project_rtl(project, filelist=filelist, verilog=verilog)
+            plan_project_rtl(
+                project, filelist=filelist, verilog=verilog, allow_dangling_links=False
+            )
             if filelist or verilog
             else None
         )
         if rtl:
+            rtl_links(rtl.copied)
             updated = set_scoped_key(updated, "design", "rtl", rtl.configured_paths)
         cfg = parse_project_config(updated, str(path))
         if rtl:
             cfg.design_rtl = rtl.source_paths
         draft = CreationDraft(project, manifest.project_id, original, updated, rtl)
         return replace(ctx, config=cfg, config_error=None), draft
+    except FileExistsError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "run_exists", workspace_id=ctx.run_id, workspace=ctx.run_dir, reason=str(exc)
+                )
+            ]
+        )
     except (ProjectApplicationError, RtlImportError, ManifestError, OSError, ValueError) as exc:
         return CommandResult.err(
             [error_record(getattr(exc, "code", "invalid_workspace_draft"), reason=str(exc))]
