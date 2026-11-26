@@ -4,7 +4,8 @@
 file, ``handoff.json``. That file is all this module reads of ECC-FE: the
 sources and headers it lists are copied below ``rtl/`` and a filelist that
 carries its include directories, defines and parameter overrides is written
-beside them.
+beside them. Timing constraints it names become the project's ``design.sdc``
+when they are a timing input ECC reads.
 """
 
 import hashlib
@@ -29,6 +30,7 @@ HANDOFF_KIND = "ecc-fe-handoff"
 HANDOFF_SCHEMA_VERSION = 1
 MANIFEST_NAME = "handoff.json"
 FILELIST_NAME = "design.f"
+CONSTRAINTS_DIR = "constraints"
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ class Handoff:
     incdirs: tuple[Path, ...]
     defines: tuple[str, ...]
     parameters: tuple[str, ...]
+    sdc: Path | None
 
 
 def read_handoff(manifest: str) -> Handoff:
@@ -73,6 +76,8 @@ def read_handoff(manifest: str) -> Handoff:
         )
     try:
         design, rtl, flow = document["design"], document["rtl"], document["flow"]
+        # Added to version 1 manifests later: an older one has no constraints.
+        sdc = (document.get("constraints") or {}).get("sdc")
         if flow["status"] != "complete":
             reasons = ", ".join(f"{item['step']}: {item['reason']}" for item in flow["blockers"])
             raise RtlImportError(
@@ -97,8 +102,9 @@ def read_handoff(manifest: str) -> Handoff:
             incdirs=tuple((path.parent / entry).resolve() for entry in rtl["incdirs"]),
             defines=tuple(rtl["defines"]),
             parameters=tuple(design["parameters"]),
+            sdc=_verified(path.parent, [sdc])[0] if sdc else None,
         )
-    except (KeyError, TypeError) as exc:
+    except (AttributeError, KeyError, TypeError) as exc:
         raise RtlImportError(
             "fe_handoff_invalid", f"handoff manifest is missing a field: {exc}", str(path)
         ) from exc
@@ -150,14 +156,15 @@ def import_fe_handoff(project_dir: str, manifest: str, *, force: bool = False) -
 
     filelist = contained_target(rtl_root / FILELIST_NAME, rtl_root, handoff.path)
     copied = [(path, target(path)) for path in inputs]
-    ensure_targets_available([(handoff.path, filelist), *copied], force=force)
+    timing, warnings = _timing_input(root, handoff.sdc)
+    ensure_targets_available([(handoff.path, filelist), *copied, *timing], force=force)
     include_dirs = [
         target(directory)
         for directory in handoff.incdirs
         if directory == base or base in directory.parents
     ]
 
-    for source, destination in copied:
+    for source, destination in [*copied, *timing]:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
     for directory in include_dirs:
@@ -176,6 +183,8 @@ def import_fe_handoff(project_dir: str, manifest: str, *, force: bool = False) -
     design: dict[str, object] = {"rtl": [str(filelist.relative_to(root))], "top": handoff.top}
     if handoff.clock_port:
         design["clock_port"] = handoff.clock_port
+    if timing:
+        design["sdc"] = str(timing[0][1].relative_to(root))
     register_rtl(root, design, rtl_entries, origin_filelist=str(filelist.relative_to(root)))
     result = {
         "project": str(root),
@@ -185,10 +194,35 @@ def import_fe_handoff(project_dir: str, manifest: str, *, force: bool = False) -
         "include_dirs": [str(path.relative_to(root)) for path in include_dirs] or None,
         "top": handoff.top,
         "clock_port": handoff.clock_port,
+        "sdc": design.get("sdc"),
         "handoff": str(handoff.path),
         "frontend": handoff.generator,
     }
-    return [*_clock_warnings(root, handoff.clock_port), result]
+    return [*warnings, *_clock_warnings(root, handoff.clock_port), result]
+
+
+def _timing_input(root: Path, sdc: Path | None) -> tuple[list[tuple[Path, Path]], list[dict]]:
+    """Where the handed-off constraints go in the project, or why they are left out.
+
+    ECC reads timing constraints as five TOML strings and never as a Tcl
+    script. A file in that form is copied and becomes ``design.sdc``; any
+    other, an ordinary SDC script among them, is not translated: the design
+    is imported without it and the project's ``design.sdc`` stays as it was.
+    """
+    from chipcompiler.data.workspace.sdc_inputs import SdcInputs
+
+    if sdc is None:
+        return [], []
+    try:
+        SdcInputs.from_file(sdc)
+    except (OSError, ValueError) as exc:
+        warning = warning_record(
+            "fe_handoff_sdc_not_imported",
+            path=str(sdc),
+            reason=f"{exc} The project's design.sdc is unchanged.",
+        )
+        return [], [warning]
+    return [(sdc, root / CONSTRAINTS_DIR / sdc.name)], []
 
 
 def _clock_warnings(root: Path, clock_port: str | None) -> list[dict]:

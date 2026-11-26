@@ -120,6 +120,7 @@ def test_import_copies_what_the_manifest_lists_and_declares_it(tmp_path):
             "include_dirs": ["rtl/a", "rtl/b", "rtl/inc"],
             "top": "core",
             "clock_port": "clock",
+            "sdc": None,
             "handoff": str(manifest),
             "frontend": "ecc-fe 0.1.0",
         }
@@ -194,6 +195,74 @@ def test_import_warns_when_the_timing_input_constrains_another_port(tmp_path):
         "reason": "the timing input declares the primary clock on another port "
         "than the clock of the imported design; edit its primary_clocks",
     }
+
+
+def _constraints(directory: Path, text: str) -> dict:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "core.sdc"
+    path.write_text(text, encoding="utf-8")
+    return {"sdc": _entry(path, str(path))}
+
+
+def test_import_takes_the_timing_input_the_manifest_names(tmp_path):
+    project = _project(tmp_path / "project", _TOML + f'sdc = "{SDC_INPUT_FILENAME}"\n')
+    (project / SDC_INPUT_FILENAME).write_text(SDC_INPUT_TEMPLATE, encoding="utf-8")
+    timing = SDC_INPUT_TEMPLATE.replace("[get_ports clk]", "[get_ports clock]")
+    manifest = _handoff(
+        tmp_path / "handoff",
+        _design(tmp_path / "design"),
+        constraints=_constraints(tmp_path / "fe", timing),
+    )
+
+    records = import_fe_handoff(str(project), str(manifest))
+
+    # The timing input now constrains the clock of the design: no warning.
+    assert [record.get("sdc") for record in records] == ["constraints/core.sdc"]
+    assert (project / "constraints/core.sdc").read_text() == timing
+    assert 'sdc = "constraints/core.sdc"' in (project / "ecc.toml").read_text()
+    base_design = json.loads((project / "project.json").read_text())["base_design"]
+    assert base_design["sdc"] == "constraints/core.sdc"
+    # A second import replaces it only when told to.
+    with pytest.raises(RtlImportError) as raised:
+        import_fe_handoff(str(project), str(manifest))
+    assert raised.value.code == "rtl_target_exists"
+    import_fe_handoff(str(project), str(manifest), force=True)
+
+
+def test_import_leaves_out_constraints_that_are_an_sdc_script(tmp_path):
+    project = _project(tmp_path / "project", _TOML + f'sdc = "{SDC_INPUT_FILENAME}"\n')
+    (project / SDC_INPUT_FILENAME).write_text(SDC_INPUT_TEMPLATE, encoding="utf-8")
+    script = "create_clock -name CLK -period 10 [get_ports clock]\n"
+    manifest = _handoff(
+        tmp_path / "handoff",
+        _design(tmp_path / "design"),
+        constraints=_constraints(tmp_path / "fe", script),
+    )
+
+    warning, _mismatch, result = import_fe_handoff(str(project), str(manifest))
+
+    assert warning["warning"] == "fe_handoff_sdc_not_imported"
+    assert warning["path"] == str(tmp_path / "fe/core.sdc")
+    assert "not a full SDC/Tcl script" in warning["reason"]
+    assert warning["reason"].endswith("The project's design.sdc is unchanged.")
+    # The design is imported all the same, and the project keeps its timing input.
+    assert result["status"] == "rtl_imported"
+    assert result["sdc"] is None
+    assert not (project / "constraints").exists()
+    assert f'sdc = "{SDC_INPUT_FILENAME}"' in (project / "ecc.toml").read_text()
+
+
+def test_import_refuses_constraints_that_changed_after_the_handoff(tmp_path):
+    project = _project(tmp_path / "project")
+    constraints = _constraints(tmp_path / "fe", SDC_INPUT_TEMPLATE)
+    manifest = _handoff(tmp_path / "handoff", _design(tmp_path / "design"), constraints=constraints)
+    (tmp_path / "fe/core.sdc").write_text("edited\n", encoding="utf-8")
+
+    with pytest.raises(RtlImportError) as raised:
+        import_fe_handoff(str(project), str(manifest))
+
+    assert raised.value.code == "fe_handoff_file_changed"
+    assert not (project / "rtl").exists()
 
 
 def _changed(design: Path) -> None:

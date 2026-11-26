@@ -887,6 +887,15 @@ the target frequency is not imported. The import is refused when:
 | `fe_handoff_file_missing`, `fe_handoff_file_changed` | A listed file is gone, or no longer the content the frontend checked; run `ecc-fe handoff` again. |
 | `fe_handoff_unsupported` | The design uses library directories (`-y`). |
 
+Timing constraints the manifest names (`ecc-fe handoff --sdc`, or the
+frontend project's `design.sdc`) are imported when they are an ECC timing
+input, the five TOML strings of `timing_constraints_template.tcl`: the file
+is copied to `<project>/constraints/` and becomes `design.sdc`. ECC does not
+read a full SDC/Tcl script, so one is not translated: the design is imported
+without it, the project's `design.sdc` stays as it was, and the import warns
+with `fe_handoff_sdc_not_imported`. Put its commands into the five fields of
+the project's timing input.
+
 A project whose `design.sdc` timing input declares the primary clock takes
 the clock port from there. When that port is not the clock of the imported
 design, the import warns with `clock_port_mismatch`; edit `primary_clocks`

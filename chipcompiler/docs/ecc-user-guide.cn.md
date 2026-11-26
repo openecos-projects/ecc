@@ -946,6 +946,13 @@ ecc rtl import \
 | `fe_handoff_file_missing`、`fe_handoff_file_changed` | 清单列出的文件已不存在，或内容与前端检查时不同；请重新执行 `ecc-fe handoff`。 |
 | `fe_handoff_unsupported` | 设计使用了库目录（`-y`）。 |
 
+清单给出的时序约束（`ecc-fe handoff --sdc`，或前端工程的 `design.sdc`）
+是 ECC 时序输入文件时会一并导入，即 `timing_constraints_template.tcl` 那样的
+五个 TOML 字符串：文件复制到 `<project>/constraints/`，并写入 `design.sdc`。
+ECC 不读取完整的 SDC/Tcl 脚本，因此不会转换这类文件：设计照常导入，项目的
+`design.sdc` 保持不变，并给出 `fe_handoff_sdc_not_imported` 警告；请把其中的
+命令填入项目时序输入的五个字段。
+
 如果项目的 `design.sdc` 时序输入声明了主时钟，时钟端口以它为准。它与导入
 设计的时钟端口不一致时，导入会给出 `clock_port_mismatch` 警告；请修改
 时序输入里的 `primary_clocks`。

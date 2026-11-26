@@ -103,7 +103,7 @@ def import_project_rtl(
 
 
 #: ``[design]`` keys of ``ecc.toml`` that ``project.json`` keeps under another name.
-_BASE_DESIGN_KEYS = {"top": "top_module", "clock_port": "clock"}
+_BASE_DESIGN_KEYS = {"top": "top_module", "clock_port": "clock", "sdc": "sdc"}
 
 
 def project_root(project_dir: str) -> Path:
