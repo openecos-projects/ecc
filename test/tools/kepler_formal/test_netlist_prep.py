@@ -3,6 +3,8 @@
 import gzip
 from types import SimpleNamespace
 
+import pytest
+
 from chipcompiler.tools.kepler_formal.netlist_prep import (
     liberty_supply_pins,
     physical_cell_names,
@@ -174,3 +176,68 @@ def test_prepare_netlist_preserves_functional_supply_named_ports(tmp_path):
 
     assert prepared == netlist
     assert ".VDD(VDD)" in netlist.read_text()
+
+
+def test_prepare_netlist_filters_lef_physical_classes_without_name_assumptions(tmp_path):
+    physical = {
+        "PCORNER": "ENDCAP BOTTOMLEFT",
+        "PFILL10": "PAD SPACER",
+        "PFILL0001": "PAD SPACER",
+        "well_contact": "CORE WELLTAP",
+        "core_gap": "CORE SPACER",
+        "edge_cap": "ENDCAP TOPRIGHT",
+        "diode": "CORE ANTENNACELL",
+    }
+    functional = {
+        "PCORNER_LOGIC": "CORE",
+        "PFILL10_BUF": "CORE",
+        "signal_pad": "PAD INPUT",
+        "power_pad": "PAD POWER",
+        "tie_high": "CORE TIEHIGH",
+        "tie_low": "CORE TIELOW",
+        "memory": "BLOCK",
+        "pll": "BLOCK",
+    }
+    lef = tmp_path / "cells.lef"
+    lef.write_text(
+        "# MACRO commented_out CLASS CORE SPACER ; END commented_out\n"
+        + "".join(
+            f"MACRO {name}\n"
+            f"  CLASS {cell_class} ;\n"
+            '  PROPERTY note "CLASS CORE SPACER ;" ;\n'
+            "  PIN VDD\n    USE POWER ;\n    PORT\n"
+            "      CLASS CORE ;\n    END\n  END VDD\n"
+            f"END {name}\n"
+            for name, cell_class in (physical | functional).items()
+        )
+    )
+    pdk = SimpleNamespace(lefs=[lef], fillers=[], tap_cell="", end_cap="")
+    names = physical_cell_names(pdk)
+    assert names == set(physical)
+
+    retained = "".join(f"  {name} u_{name} (.A(a), .Y(y));\n" for name in functional)
+    # Check multiple lines and an escaped instance name as well as empty cells.
+    removed = "".join(f"  {name} u_{name} ();\n" for name in physical)
+    original = (
+        "module top(input a, output y);\n"
+        + retained
+        + removed
+        + "  PFILL10 \\ring/fill[0] (\n    .VDD(VDD)\n  );\n"
+        + "endmodule\n"
+    )
+    source = tmp_path / "routed.v"
+    source.write_text(original)
+    target = tmp_path / "gate_compare.v"
+
+    assert prepare_netlist(source, target, names) == target
+    assert [line for line in target.read_text().splitlines() if line.strip()] == (
+        "module top(input a, output y);\n" + retained + "endmodule\n"
+    ).splitlines()
+    assert source.read_text() == original
+
+
+def test_physical_cell_names_requires_configured_lef_to_exist(tmp_path):
+    pdk = SimpleNamespace(lefs=[tmp_path / "missing.lef"])
+
+    with pytest.raises(FileNotFoundError):
+        physical_cell_names(pdk)

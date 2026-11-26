@@ -434,10 +434,16 @@ def test_the_synthesis_lec_fails_when_the_files_its_rtl_reads_cannot_be_identifi
     )
 
 
-def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
+def test_prepare_compare_netlists_uses_liberty_supplies_and_lef_physical_classes(tmp_path):
     from chipcompiler.tools.kepler_formal import builder, runner
 
     workspace = _workspace(tmp_path)
+    lef = tmp_path / "io.lef"
+    lef.write_text(
+        "MACRO PCORNER\n  CLASS ENDCAP BOTTOMLEFT ;\nEND PCORNER\n"
+        "MACRO PFILL10\n  CLASS PAD SPACER ;\nEND PFILL10\n"
+    )
+    workspace.pdk.lefs = [lef]
     workspace.pdk.libs[0].write_text(
         "library(test) {\n"
         "  cell (BUFX20H7L) {\n"
@@ -449,6 +455,8 @@ def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
     netlist_text = (
         "module gcd(input a, output y);\n"
         "  BUFX20H7L u0 (.A(a), .VDD(VDD), .VSS(VSS), .Y(y));\n"
+        "  PCORNER corner ();\n"
+        "  PFILL10 filler ();\n"
         "endmodule\n"
     )
     gate = tmp_path / "Synthesis_yosys" / "output" / "gcd_Synthesis.v"
@@ -467,8 +475,10 @@ def test_prepare_compare_netlists_uses_liberty_supply_pins(tmp_path):
 
     prepared_golden, prepared_gate = runner._prepare_compare_netlists(workspace, step)
 
-    assert "BUFX20H7L u0 (.A(a), .Y(y));" in prepared_golden.read_text()
-    assert "BUFX20H7L u0 (.A(a), .Y(y));" in prepared_gate.read_text()
+    expected = ["module gcd(input a, output y);", "  BUFX20H7L u0 (.A(a), .Y(y));", "endmodule"]
+    for prepared in (prepared_golden, prepared_gate):
+        assert [line for line in prepared.read_text().splitlines() if line.strip()] == expected
+    assert (golden.read_text(), gate.read_text()) == (netlist_text, netlist_text)
 
 
 @pytest.mark.parametrize("filelist", [False, True], ids=["rtl file", "filelist"])
