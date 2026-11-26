@@ -12,22 +12,19 @@ if TYPE_CHECKING:
 _TCL_SCRIPT_PATTERNS = ("*/data/*.tcl", "*/script/*.tcl")
 
 
-def replace_string_prefix(value: Any, source: str, target: str) -> Any:
-    """Replace *source* prefix with *target* recursively across JSON-like data."""
-    return rewrite_json_value(
-        value,
-        lambda item: target + item[len(source) :] if item.startswith(source) else item,
-    )
+def replace_path_prefix(value: str, source: str, target: str) -> str:
+    """Replace leading *source* prefix with *target* in a single path string."""
+    return target + value[len(source) :] if value.startswith(source) else value
 
 
-def rewrite_json_value(value: Any, relocate: Callable[[str], str]) -> Any:
+def _rewrite_json_value(value: Any, relocate: Callable[[str], str]) -> Any:
     """Apply *relocate* to every string leaf in a JSON-compatible structure."""
     if isinstance(value, str):
         return relocate(value)
     if isinstance(value, list):
-        return [rewrite_json_value(item, relocate) for item in value]
+        return [_rewrite_json_value(item, relocate) for item in value]
     if isinstance(value, dict):
-        return {key: rewrite_json_value(item, relocate) for key, item in value.items()}
+        return {key: _rewrite_json_value(item, relocate) for key, item in value.items()}
     return value
 
 
@@ -53,7 +50,7 @@ def rewrite_workspace_json_paths(
             value = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        rewritten = rewrite_json_value(value, relocate)
+        rewritten = _rewrite_json_value(value, relocate)
         if rewritten != value:
             if not json_write(path, rewritten):
                 raise OSError(f"Failed to rewrite staged Workspace path: {path}")
@@ -93,7 +90,7 @@ def finalize_staged_workspace_configs(workspace: "Workspace", target_root: Path)
     target = str(target_root)
     rewrite_workspace_json_paths(
         source_root / "config",
-        lambda item: target + item[len(source) :] if item.startswith(source) else item,
+        lambda item: replace_path_prefix(item, source, target),
     )
     if not record_derived_config(workspace):
         raise OSError(f"Failed to record derived Workspace configuration: {source_root}")
@@ -105,7 +102,7 @@ def relocate_staged_workspace_metadata(source_root: Path, target_root: Path) -> 
     target = str(target_root)
     rewrite_workspace_json_paths(
         source_root,
-        lambda item: target + item[len(source) :] if item.startswith(source) else item,
+        lambda item: replace_path_prefix(item, source, target),
         skip_paths=frozenset({Path("config")}),
     )
     rewrite_workspace_tcl_paths(
@@ -122,6 +119,6 @@ def rewrite_workspace_params_toml(root: Path, relocate: Callable[[str], str]) ->
 
     path = root / "home" / "params.toml"
     params = tomllib.loads(path.read_text(encoding="utf-8"))
-    rewritten = rewrite_json_value(params, relocate)
+    rewritten = _rewrite_json_value(params, relocate)
     if params != rewritten:
         write_text_atomic(path, tomli_w.dumps(rewritten))

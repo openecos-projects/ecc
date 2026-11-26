@@ -50,30 +50,21 @@ class ManagedWorkspace:
     ):
         self.project = project.resolve()
         self.workspace_id = workspace
-        self.project_id = load_manifest(str(self.project)).project_id
-        self.directory = self.registered_directory()
-        self.operations = operations
-        self.expected_revision: int | None = None
-
-    def registered_directory(self) -> Path:
         manifest = load_manifest(str(self.project))
-        if manifest.project_id != self.project_id:
-            raise AgentApplicationError("revision_conflict", "Project identity changed")
+        self.project_id = manifest.project_id
         entry = manifest.find_workspace(self.workspace_id)
         if entry is None:
             raise AgentApplicationError("workspace_not_declared", "Source Workspace is unavailable")
         path = Path(entry.workspace_path)
-        if path.is_symlink() or not path.is_dir():
+        if not path.is_dir():
             raise AgentApplicationError("workspace_unavailable", "Source Workspace is unavailable")
-        return path.resolve()
+        self.directory = path.resolve()
+        self.operations = operations
+        self.expected_revision: int | None = None
 
     def _get_session(self, workspace_id: str) -> ManagedSession:
         if workspace_id != self.workspace_id:
             raise AgentApplicationError("workspace_unavailable", "Source Workspace is unavailable")
-        if self.registered_directory() != self.directory:
-            raise AgentApplicationError(
-                "revision_conflict", "Source Workspace registration changed"
-            )
         return ManagedSession(
             workspace_revision=read_engineering_snapshot_from_directory(self.directory)[
                 "workspaceRevision"
@@ -171,7 +162,7 @@ def run_status(project: Path, workspace_id: str, candidate_id: str) -> None:
 def run_cleanup(project: Path, workspace_id: str, prefix: str) -> None:
     source = ManagedWorkspace(project, workspace_id)
     try:
-        removed = cleanup_candidates(source.directory, prefix, source.registered_directory)
+        removed = cleanup_candidates(source.directory, prefix)
     except BlockingIOError as exc:
         raise AgentApplicationError(
             "workspace_busy", "Workspace already has an active operation"
@@ -210,8 +201,6 @@ def run_operation(project: Path, workspace_id: str, operation_id: str, *, cancel
     if re.fullmatch(r"operation-[0-9a-f]{32}", operation_id) is None:
         raise ValueError("Invalid candidate operation ID")
     directory = source.directory / ".agent" / "operations"
-    if directory.resolve() != directory:
-        raise ValueError("Candidate directory is a symbolic link")
     for ledger in sorted(directory.glob("*.json")):
         candidate = validate_candidate_id(ledger.stem)
         snapshot = _candidate_snapshot(source, directory, candidate)
@@ -277,12 +266,6 @@ def _run_candidate_operation(
         if source.expected_revision is None:
             raise AgentApplicationError("invalid_request", "Workspace Revision is required")
         directory = source.directory / ".agent" / "operations"
-        candidate_root = source.directory / ".agent" / "candidates"
-        for path in (directory, candidate_root):
-            if path.resolve() != path:
-                raise AgentApplicationError(
-                    "invalid_request", "Candidate directory is a symbolic link"
-                )
         candidates = {candidate_id}
         if parent_ref is not None:
             parent = Path(parent_ref).name
@@ -295,8 +278,7 @@ def _run_candidate_operation(
             ledger = directory / f"{candidate_id}.json"
             operation_workspace = candidate_operation_workspace_id(workspace_id, candidate_id)
             operations.load_workspace_ledger(operation_workspace, ledger)
-            # Reject an active source before accepting the operation. The executor
-            # also checks the source again under its lock when cloning.
+            # Reject an active source before accepting the operation.
             with workspace_lock(source.directory, blocking=False):
                 session = source._get_session(workspace_id)
                 source._validate_workspace_revision(session, source.expected_revision)
@@ -310,13 +292,11 @@ def _run_candidate_operation(
         raise AgentApplicationError("idempotency_conflict", str(exc)) from exc
 
 
-def cleanup_candidates(source: Path, prefix: str, registered_directory: Callable[[], Path]) -> int:
+def cleanup_candidates(source: Path, prefix: str) -> int:
     if re.fullmatch(r"candidate-[0-9a-f]{16}-", prefix) is None:
         raise ValueError("Invalid candidate cleanup prefix")
     artifacts = source / ".agent" / "candidates"
     ledgers = source / ".agent" / "operations"
-    if any(path.resolve() != path for path in (artifacts, ledgers)):
-        raise ValueError("Candidate directory is a symbolic link")
 
     paths = sorted(artifacts.glob(f"{prefix}*"))
     ids = {validate_candidate_id(path.name) for path in paths}
@@ -330,18 +310,9 @@ def cleanup_candidates(source: Path, prefix: str, registered_directory: Callable
         for candidate in sorted(ids):
             locks.enter_context(candidate_lock(ledgers, candidate))
         locks.enter_context(workspace_lock(source, blocking=False))
-        if registered_directory() != source:
-            raise AgentApplicationError(
-                "revision_conflict", "Source Workspace registration changed"
-            )
-        if any(path.is_symlink() or not path.is_dir() for path in paths):
-            raise ValueError("Candidate artifact path is not a regular directory")
         for path in paths:
             shutil.rmtree(path)
     return len(paths)
-
-
-_cleanup_candidates = cleanup_candidates
 
 
 def _candidate_snapshot(source: ManagedWorkspace, directory: Path, candidate: str) -> dict:

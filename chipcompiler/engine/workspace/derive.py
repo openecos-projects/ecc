@@ -23,7 +23,7 @@ from chipcompiler.engine.workspace.lifecycle import (
     write_workspace_command,
 )
 from chipcompiler.engine.workspace.paths import (
-    replace_string_prefix,
+    replace_path_prefix,
     rewrite_workspace_json_paths,
     rewrite_workspace_tcl_paths,
 )
@@ -46,7 +46,6 @@ def publish_copied_workspace(
     source_workspace_id: str = "",
     target_workspace_id: str = "",
     source_lock: Path | None = None,
-    prepare_staged: Callable[[Path], None] | None = None,
     prepare_workspace: Callable[[Any], None] | None = None,
     rewrite_target: Callable[[Path, Path], None] | None = None,
 ) -> Any:
@@ -105,8 +104,6 @@ def publish_copied_workspace(
             ):
                 (home / name).unlink(missing_ok=True)
 
-            if prepare_staged is not None:
-                prepare_staged(staging)
             workspace = load_workspace(staging)
             if workspace is None:
                 raise WorkspaceLifecycleError(
@@ -181,10 +178,6 @@ def derive_workspace(
     """
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
-    if path_is_within(target, source):
-        raise WorkspaceLifecycleError(
-            "workspace_invalid", f"Target directory is inside the source Workspace: {target}"
-        )
     if not (source / "home" / SNAPSHOT_FILENAME).is_file():
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
@@ -201,8 +194,8 @@ def derive_workspace(
         clean_configs = unmodified_derived_configs(staging)
         rewritten = rewrite_workspace_json_paths(
             staging,
-            lambda value: replace_string_prefix(
-                replace_string_prefix(value, str(source), str(published)),
+            lambda value: replace_path_prefix(
+                replace_path_prefix(value, str(source), str(published)),
                 str(staging),
                 str(published),
             ),

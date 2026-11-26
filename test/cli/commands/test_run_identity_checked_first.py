@@ -160,7 +160,7 @@ def test_repeated_run_id_preserves_the_original_log_and_result(
 
 
 def test_run_accepts_an_empty_log_preopened_by_the_launcher(tmp_path):
-    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.cli.project.run_process import locked_run_session
 
     log_path = f"log/{RUN_ID}.log"
     log = tmp_path / log_path
@@ -168,7 +168,7 @@ def test_run_accepts_an_empty_log_preopened_by_the_launcher(tmp_path):
     log.touch()
     request = SimpleNamespace(run_id=RUN_ID, log_file=log_path, no_wait=True)
 
-    with run_log_stdio(request, tmp_path) as fd:
+    with locked_run_session(request, tmp_path) as fd:
         assert fd is not None
         os.write(fd, b"run output\n")
 

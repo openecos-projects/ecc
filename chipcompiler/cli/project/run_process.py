@@ -56,7 +56,7 @@ def locked_run_session(command_input, workspace_path):
 
     with workspace_lock(path, blocking=not command_input.no_wait):
         require_unused_run_id(path, run_id)
-        if not command_input.log_file or not path.is_dir():
+        if not command_input.log_file:
             yield None
             return
         with _open_run_log_stdio(path, log_path) as log_descriptor:
@@ -71,9 +71,6 @@ def _open_run_log_stdio(workspace_path: Path, log_path: str):
             yield log_descriptor
     finally:
         os.close(log_descriptor)
-
-
-run_log_stdio = locked_run_session
 
 
 @contextmanager
@@ -94,7 +91,7 @@ def managed_run_process(
         log_descriptor = create_run_log(workspace_path, log_path)
         close_log = True
     else:
-        # Explicit --log-file: run_log_stdio already opened the log and
+        # Explicit --log-file: locked_run_session already opened the log and
         # redirected stdio before preflight; this context only registers.
         log_descriptor = run_log
         close_log = False
@@ -134,7 +131,7 @@ def managed_run_process(
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
         os.write(log_descriptor, f"ECC run {run_id} started\n".encode())
-        # The existing-run paths redirect from run_log_stdio before preflight;
+        # The existing-run paths redirect from locked_run_session before preflight;
         # the fresh-run path (workspace created above this context) redirects
         # here, only when --log-file is explicit.
         with _redirect_stdio_to_descriptor(

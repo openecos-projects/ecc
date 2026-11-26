@@ -38,10 +38,10 @@ from .workspace_api import (
     _parent_workspace_root,
     _prepare_candidate_rerun,
     _reapply_candidate_input,
-    _required_file_sha256,
     _run_candidate_steps,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
+    required_file_sha256,
 )
 
 
@@ -248,7 +248,7 @@ def validate_candidate_resume_manifest(
         "terminal_state": terminal_state,
         "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
-        "candidate_flow_sha256": _required_file_sha256(
+        "candidate_flow_sha256": required_file_sha256(
             candidate_root / "home" / "flow.json", "resume flow"
         ),
         "candidate_state_sha256": _workspace_state_sha256(candidate_root),
@@ -290,7 +290,7 @@ def _validate_candidate_resume_artifacts(candidate_root: Path, artifacts: object
             not isinstance(ref, str)
             or Path(ref).is_absolute()
             or not path_is_within(path.resolve(), candidate_root)
-            or artifact.get("sha256") != _required_file_sha256(path, "resume artifact")
+            or artifact.get("sha256") != required_file_sha256(path, "resume artifact")
         ):
             raise RuntimeApiError("command_failed", "candidate resume artifact binding is invalid")
 
@@ -469,7 +469,3 @@ def _notify_candidate_resume_prepared(observer, steps: list, target_step: str) -
             scope="full_flow",
             target_step=target_step,
         )
-
-
-_validate_candidate_resume_request = validate_candidate_resume_request
-_validate_candidate_resume_manifest = validate_candidate_resume_manifest

@@ -96,18 +96,13 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     instead of deleted, so a failed creation can put it back; the backup is
     discarded once the replacement is fully constructed.
     """
-    from chipcompiler.cli.project.draft import require_draft_published
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = ctx.project_dir
     backup_path = None
-    # The target lock serializes both the pending-journal check and all target
-    # creates or replacements. Its sibling lock survives a directory rename.
+    # The target lock serializes all target creates or replacements.
+    # Its sibling lock survives a directory rename.
     ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
-    try:
-        require_draft_published(Path(project_dir), Path(run_dir))
-    except OSError as exc:
-        return CommandResult.err([error_record("workspace_draft_pending", reason=str(exc))])
 
     empty_target = False
     if os.path.isdir(run_dir) and not os.path.islink(run_dir):
@@ -296,7 +291,6 @@ def dispatch_project_run(
             run_name,
             cli_overrides,
             flow_config,
-            project_state,
             warning_records,
             workspace_registered=workspace_registered,
             owns_target=owns_target,

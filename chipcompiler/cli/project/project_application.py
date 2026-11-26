@@ -123,7 +123,13 @@ def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> boo
     project = Path(project_dir).expanduser().resolve()
     with manifest_lock(project, blocking=blocking):
         manifest = load_manifest(str(project))
-        cfg = parse_project_settings(project, read_project_settings(project))
+        try:
+            text = (project / CONFIG_FILENAME).read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ProjectApplicationError(
+                "invalid_project_config", f"unreadable ecc.toml: {exc}"
+            ) from exc
+        cfg = parse_project_settings(project, text)
         name, base = project_manifest_summary(cfg, manifest)
         apply_manifest_defaults(cfg, assemble_config(manifest, None), str(project))
         _validate_settings(cfg)
@@ -136,14 +142,10 @@ def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> boo
 
 def reconcile_project_state(project_dir: str | Path, *, blocking: bool) -> ProjectReconcileReport:
     """Repair provable Project and Workspace intermediate states."""
-    from chipcompiler.cli.project.draft import reconcile_creation_draft
-
     project = Path(project_dir).expanduser().resolve()
     repairs: list[str] = []
     busy: list[str] = []
     errors: list[str] = []
-    if draft_workspace := reconcile_creation_draft(project, blocking=blocking):
-        repairs.append(f"workspace_draft:{draft_workspace}")
     try:
         if reconcile_project_summary(project, blocking=blocking):
             repairs.append("base_design")
@@ -759,15 +761,6 @@ def apply_settings_text(text: str, sets: tuple[str, ...]) -> str:
         text, parsed_sets=_parse_sets(sets), unsets=(), add_rtl=(), remove_rtl=()
     )
     return updated
-
-
-def read_project_settings(project: Path) -> str:
-    try:
-        return (project / CONFIG_FILENAME).read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        raise ProjectApplicationError(
-            "invalid_project_config", f"unreadable ecc.toml: {exc}"
-        ) from exc
 
 
 def parse_project_settings(project: Path, text: str) -> ProjectConfig:

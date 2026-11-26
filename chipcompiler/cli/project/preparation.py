@@ -100,8 +100,7 @@ def resolve_run_setup(
         cfg, flow_config, entry_warnings = resolved_cfg
         layer_warnings.extend(entry_warnings)
     else:
-        if cfg is None:
-            return CommandResult.err([error_record("missing_config")])
+        assert cfg is not None
         from chipcompiler.cli.project.effective_config import (
             _attach_lec_engine,
             _attach_skip_steps,
@@ -124,9 +123,6 @@ def resolve_run_setup(
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
         flow_config = attach_insert_steps(flow_config, declared_insert_steps(cfg))
-
-    if cfg is None:
-        return CommandResult.err([error_record("missing_config")])
 
     flow_builders = rtl2gds_api.get_flow_builders()
     effective_preset = command_input.preset or cfg.flow_preset
@@ -175,9 +171,7 @@ def resolve_run_setup(
     if raw_sets:
         from chipcompiler.params import parse_cli_overrides
 
-        cli_overrides, set_errors = parse_cli_overrides(
-            list(raw_sets), (cfg.pdk_name if cfg is not None else "") or None
-        )
+        cli_overrides, set_errors = parse_cli_overrides(list(raw_sets), cfg.pdk_name or None)
         if set_errors:
             return CommandResult.err(
                 [

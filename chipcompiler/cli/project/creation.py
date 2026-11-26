@@ -4,7 +4,6 @@ import hashlib
 import uuid
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.inputs import RunInput, WorkspaceCreateInput
 from chipcompiler.cli.core.output import disclosure_cmd
@@ -15,11 +14,6 @@ from chipcompiler.cli.project.preparation import (
     resolve_run_setup,
     validate_run_setup,
 )
-
-if TYPE_CHECKING:
-    from chipcompiler.cli.project.config import ProjectConfig
-    from chipcompiler.cli.project.draft import CreationDraft
-    from chipcompiler.cli.project.flow_selection import FlowConfig
 
 
 def build_create_run_input(
@@ -68,21 +62,18 @@ def create_draft_or_preview_workspace(
             [error_record(ctx.manifest_error.split(":", 1)[0], reason=ctx.manifest_error)]
         )
 
-    # The Project may be reached through an alias. Keep the Workspace leaf
-    # intact so a link there cannot be mistaken for a reusable directory.
     project = Path(ctx.project_dir).resolve()
     target = Path(ctx.run_dir)
     target = target.parent.resolve() / target.name
     supplied = project / (command_input.path or command_input.workspace)
-    if supplied.is_symlink() or target.is_symlink():
-        link = supplied if supplied.is_symlink() else target
+    if supplied.is_symlink():
         return CommandResult.err(
             [
                 error_record(
                     "run_exists",
                     workspace_id=ctx.run_id,
-                    workspace=str(link),
-                    reason=f"Workspace is a symbolic link: {link}",
+                    workspace=str(supplied),
+                    reason=f"Workspace is a symbolic link: {supplied}",
                 )
             ]
         )
@@ -116,9 +107,15 @@ def _preview_destination_error(
             ]
         )
     except OSError as exc:
-        code = "workspace_draft_pending" if "reconcile" in str(exc) else "workspace_failed"
         return CommandResult.err(
-            [error_record(code, workspace_id=run_name, workspace=str(target), reason=str(exc))]
+            [
+                error_record(
+                    "workspace_failed",
+                    workspace_id=run_name,
+                    workspace=str(target),
+                    reason=str(exc),
+                )
+            ]
         )
     return None
 
@@ -158,18 +155,10 @@ def _preview_creation(
                 )
             ]
         )
-    resolved_target = Path(setup.run_dir).expanduser().absolute()
-    canonical_resolved = resolved_target.parent.resolve() / resolved_target.name
-    if canonical_resolved != target:
-        destination_error = _preview_destination_error(
-            project, canonical_resolved, setup.run_name, reuse_empty=ctx.workspace_path_explicit
-        )
-        if destination_error is not None:
-            return destination_error
     validation_error = validate_run_setup(setup, ctx, check_pdk_files=False)
     if validation_error is not None:
         return validation_error
-    return preview_workspace_creation(setup.cfg, setup.flow_config)
+    return _preview_workspace_creation(setup.cfg, setup.flow_config)
 
 
 def _create_from_draft(
@@ -229,15 +218,24 @@ def _create_from_draft(
                     )
                 except Exception as exc:
                     return workspace_failed_result(setup.run_name, setup.run_dir, str(exc) or None)
-                return publish_workspace_creation(
-                    draft,
+                draft.publish(
                     setup.cfg,
                     setup.flow_config,
-                    run_input,
-                    ctx,
-                    setup.run_dir,
-                    setup.run_name,
-                    warnings,
+                    Path(setup.run_dir),
+                    built=built,
+                    reuse_empty=ctx.workspace_path_explicit,
+                    blocking=not run_input.no_wait,
+                )
+                return CommandResult.ok(
+                    [
+                        *warnings,
+                        {
+                            "workspace_id": setup.run_name,
+                            "workspace": setup.run_dir,
+                            "status": "refreshed",
+                            "run": disclosure_cmd("ecc run", ctx.project, setup.run_name),
+                        },
+                    ]
                 )
         except BlockingIOError:
             raise
@@ -266,10 +264,6 @@ def _create_from_draft(
 def _existing_draft_workspace_locked(
     command_input: RunInput, ctx: CommandContext, run_dir: str, run_name: str
 ) -> CommandResult:
-    from chipcompiler.cli.project.draft import (
-        DRAFT_PROJECT_CHANGES_SKIPPED,
-        require_draft_published,
-    )
     from chipcompiler.project.manifest import load_manifest
 
     target = Path(run_dir)
@@ -279,83 +273,15 @@ def _existing_draft_workspace_locked(
         and Path(entry.workspace_path).resolve() == target.resolve()
         and repeats_recorded_create(command_input, run_dir, run_name)
     ):
-        skipped = entry.raw.get(DRAFT_PROJECT_CHANGES_SKIPPED)
-        if isinstance(skipped, str):
-            return draft_project_changes_error(run_dir, run_name, skipped)
         return CommandResult.ok(
             [{"workspace_id": run_name, "workspace": run_dir, "status": "created"}]
         )
-    try:
-        require_draft_published(Path(ctx.project_dir), target)
-    except OSError as exc:
-        return CommandResult.err([error_record("workspace_draft_pending", reason=str(exc))])
     return CommandResult.err(
         [error_record("workspace_conflict", reason=f"Workspace already exists: {target}")]
     )
 
 
-def draft_project_changes_error(run_dir: str, run_name: str, reason: str) -> CommandResult:
-    return CommandResult.err(
-        [
-            error_record(
-                "workspace_draft_project_changes_skipped",
-                reason=reason,
-                workspace_id=run_name,
-                workspace=run_dir,
-                workspace_created=True,
-            )
-        ]
-    )
-
-
-def publish_workspace_creation(
-    draft: "CreationDraft",
-    cfg: "ProjectConfig",
-    flow_config: "FlowConfig | None",
-    command_input: RunInput,
-    ctx: CommandContext,
-    run_dir: str,
-    run_name: str,
-    warnings: list[dict],
-) -> CommandResult:
-    from chipcompiler.cli.project.draft import DraftPublicationPending
-
-    fields = {"workspace_id": run_name, "workspace": run_dir}
-    try:
-        publication = draft.publish(
-            cfg,
-            flow_config,
-            Path(run_dir),
-            reuse_empty=ctx.workspace_path_explicit,
-            blocking=not command_input.no_wait,
-        )
-    except DraftPublicationPending as exc:
-        return CommandResult.err(
-            [error_record("workspace_draft_pending", reason=str(exc), **fields)]
-        )
-    if not publication.workspace_created:
-        return CommandResult.err(
-            [
-                error_record(
-                    "workspace_conflict", reason=publication.project_changes_skipped, **fields
-                )
-            ]
-        )
-    if publication.project_changes_skipped:
-        return draft_project_changes_error(run_dir, run_name, publication.project_changes_skipped)
-    return CommandResult.ok(
-        [
-            *warnings,
-            {
-                **fields,
-                "status": "refreshed",
-                "run": disclosure_cmd("ecc run", ctx.project, run_name),
-            },
-        ]
-    )
-
-
-def preview_workspace_creation(cfg, flow_config) -> CommandResult:
+def _preview_workspace_creation(cfg, flow_config) -> CommandResult:
     from chipcompiler.cli.project.config import resolve_max_parallel_steps
     from chipcompiler.cli.project.flow_selection import project_flow_plan, selection_warnings
 

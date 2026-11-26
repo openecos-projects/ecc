@@ -92,14 +92,7 @@ def workspace_analysis_path(workspace_directory: str | Path, filename: str) -> P
 
 
 def candidate_lock(directory: Path, candidate: str):
-    """Acquire a non-blocking lock on one candidate operation ledger without following symlinks."""
-    from agent.runtime_support import AgentApplicationError
+    """Acquire a non-blocking lock on one candidate operation ledger."""
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    if directory.resolve() != directory or any(
-        (directory / f"{candidate}.{suffix}").is_symlink() for suffix in ("lock", "json")
-    ):
-        raise AgentApplicationError(
-            "invalid_request", "Candidate operation path is a symbolic link"
-        )
     return workspace_lock(directory / candidate, blocking=False)

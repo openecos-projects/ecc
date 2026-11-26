@@ -8,7 +8,6 @@ import math
 import os
 import re
 import signal
-import stat
 import time
 import uuid
 from dataclasses import dataclass
@@ -92,18 +91,12 @@ def normalize_log_path(value: str | None, run_id: str) -> str:
 def require_unused_run_id(workspace: str | Path, run_id: str) -> None:
     """Check for a previous run while holding the Workspace lock."""
     directory = Path(workspace).resolve() / "log"
-    if directory.is_symlink():
-        raise RuntimeProcessError("invalid_log_path", "The Workspace log directory is a symlink.")
     for suffix in (_RUN_RESULT_SUFFIX, _RUN_LOG_SUFFIX):
         path = directory / f"{run_id}{suffix}"
-        try:
-            info = path.lstat()
-        except (FileNotFoundError, NotADirectoryError):
+        if not path.exists():
             continue
-        except OSError as exc:
-            raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
         # Studio opens an empty log for the detached process before launching ECC.
-        if suffix == _RUN_LOG_SUFFIX and stat.S_ISREG(info.st_mode) and info.st_size == 0:
+        if suffix == _RUN_LOG_SUFFIX and path.is_file() and path.stat().st_size == 0:
             continue
         raise RuntimeProcessError(
             "run_id_already_used",
@@ -148,17 +141,9 @@ def write_run_result(
 
     root = Path(workspace).resolve()
     directory = root / "log"
-    if directory.resolve() != directory:
-        raise OSError("The Workspace log directory must not be a symbolic link.")
     run_id = normalize_run_id(entry["run_id"])
     path = directory / f"{run_id}{_RUN_RESULT_SUFFIX}"
-    try:
-        existing_mode = path.lstat().st_mode
-    except FileNotFoundError:
-        pass
-    else:
-        if not stat.S_ISREG(existing_mode):
-            raise OSError("The ECC run result must be a regular file.")
+    if path.exists():
         if state == "interrupted":
             return
         raise FileExistsError(f"Run result already exists: {path.name}")

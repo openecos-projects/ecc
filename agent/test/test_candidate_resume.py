@@ -7,7 +7,7 @@ import pytest
 from agent.candidate_resume import (
     _candidate_resume_steps,
     _validate_candidate_resume_binding,
-    _validate_candidate_resume_manifest,
+    validate_candidate_resume_manifest,
 )
 from agent.data.candidate_artifacts import sha256_path
 from agent.data.candidate_materialization import materialize_candidate_config
@@ -191,21 +191,21 @@ def test_candidate_resume_manifest_rejects_illegal_state_missing_receipt_and_sta
             },
         },
     }
-    _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
+    validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
 
     with pytest.raises(RuntimeApiError, match="manifest binding"):
-        _validate_candidate_resume_manifest(
+        validate_candidate_resume_manifest(
             tmp_path, candidate, candidate_ref, {**manifest, "terminal_state": "succeeded"}
         )
 
     input_binding.unlink()
     with pytest.raises(RuntimeApiError, match="missing or unsafe"):
-        _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
+        validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
     input_binding.write_text("{}", encoding="utf-8")
 
     config.write_text('{"random_seed": 18}', encoding="utf-8")
     with pytest.raises(RuntimeApiError, match="manifest binding"):
-        _validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
+        validate_candidate_resume_manifest(tmp_path, candidate, candidate_ref, manifest)
 
 
 def test_candidate_resume_restores_drifted_step_values_and_rejects_a_seed_mismatch(

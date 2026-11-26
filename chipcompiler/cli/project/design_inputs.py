@@ -29,21 +29,6 @@ class ResolvedDesignInputs:
     def workspace_def(self) -> str:
         return self.def_ or self.manifest_origin_def
 
-    def paths(self) -> tuple[str, ...]:
-        """All declared design input paths, including inputs for other steps."""
-        return tuple(
-            path
-            for path in (
-                *self.rtl,
-                self.netlist,
-                self.golden_netlist,
-                self.workspace_def,
-                self.sdc,
-                self.spef,
-            )
-            if path
-        )
-
 
 _PHYSICAL_STEPS = frozenset(
     {

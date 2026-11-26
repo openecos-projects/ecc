@@ -450,7 +450,6 @@ def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRe
 
 _CANDIDATE_WORKSPACE_SCHEMA = "ecc.workspace.candidate_workspace.v1"
 _CANDIDATE_WORKSPACE_MANIFEST = CANDIDATE_WORKSPACE_MANIFEST
-_validate_candidate_rerun_request = validate_candidate_rerun_request
 
 
 def _create_candidate_workspace(
@@ -504,7 +503,7 @@ def _workspace_state_sha256(root: Path) -> str:
         "config/dreamplace.json",
     )
     hashes = {
-        relative: _required_file_sha256(root / relative, relative)
+        relative: required_file_sha256(root / relative, relative)
         for relative in relative_files
         if (root / relative).is_file() and not (root / relative).is_symlink()
     }
@@ -551,7 +550,7 @@ def _candidate_parent_root(workspace_root: Path, candidate_root_ref: str | None)
 
 def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | None) -> dict:
     source = _candidate_parent_root(workspace_root, candidate_root_ref)
-    flow_sha256 = _required_file_sha256(source / "home" / "flow.json", "parent flow")
+    flow_sha256 = required_file_sha256(source / "home" / "flow.json", "parent flow")
     state_sha256 = _workspace_state_sha256(source)
     binding = {
         "root": source,
@@ -565,7 +564,7 @@ def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | No
         return binding
     manifest_ref = f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}"
     manifest_path = workspace_root / manifest_ref
-    manifest_sha256 = _required_file_sha256(manifest_path, "parent manifest")
+    manifest_sha256 = required_file_sha256(manifest_path, "parent manifest")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -622,9 +621,6 @@ def required_file_sha256(path: Path, label: str) -> str:
     return digest
 
 
-_required_file_sha256 = required_file_sha256
-
-
 def _remove_failed_candidate_workspace(candidate_root: Path) -> None:
     if candidate_root.is_dir() and not candidate_root.is_symlink():
         shutil.rmtree(candidate_root)
@@ -645,7 +641,7 @@ def _candidate_workspace_receipt(
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
     if manifest_path.parent.is_symlink():
         raise RuntimeApiError("command_failed", "candidate manifest path is unsafe")
-    candidate_flow_sha256 = _required_file_sha256(candidate_root / "home" / "flow.json", "flow")
+    candidate_flow_sha256 = required_file_sha256(candidate_root / "home" / "flow.json", "flow")
     candidate_state_sha256 = _workspace_state_sha256(candidate_root)
     manifest = {
         "schema": _CANDIDATE_WORKSPACE_SCHEMA,
@@ -676,7 +672,7 @@ def _candidate_workspace_receipt(
         if artifact.is_file() and not artifact.is_symlink():
             artifacts[key] = {
                 "ref": relative,
-                "sha256": _required_file_sha256(artifact, key),
+                "sha256": required_file_sha256(artifact, key),
             }
     if terminal_state == "succeeded":
         design_name = getattr(getattr(workspace, "design", None), "name", None)
@@ -704,14 +700,14 @@ def _candidate_workspace_receipt(
             artifact = candidate_root / relative
             artifacts[key] = {
                 "ref": relative,
-                "sha256": _required_file_sha256(artifact, key),
+                "sha256": required_file_sha256(artifact, key),
             }
     manifest["artifacts"] = artifacts
     try:
         write_json_atomic(manifest_path, manifest)
     except OSError as exc:
         raise RuntimeApiError("command_failed", f"candidate manifest write failed: {exc}") from exc
-    manifest_sha256 = _required_file_sha256(manifest_path, "manifest")
+    manifest_sha256 = required_file_sha256(manifest_path, "manifest")
     replay_path = candidate_root / "analysis" / "candidate_execution_receipt.v1.json"
     replay = {
         "schema": "ecc.candidate_execution_receipt.v1",

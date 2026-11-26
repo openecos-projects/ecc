@@ -98,9 +98,6 @@ def invoke_and_record(workspace, invoke, build_report):
     return result
 
 
-_invoke_and_record = invoke_and_record
-
-
 def _persist_report(workspace, build_report, *, engine_succeeded):
     try:
         write_json_atomic(

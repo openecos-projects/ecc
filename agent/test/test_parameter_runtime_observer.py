@@ -9,11 +9,11 @@ from agent.data.floorplan_parameter_observer import build_floorplan_report
 from agent.data.parameter_runtime_observer import (
     DreamplaceRecorder,
     _build_dreamplace_report,
-    _invoke_and_record,
     _observe_cell_padding,
     _observe_native_model,
     _observe_placement_call,
     _patch_method,
+    invoke_and_record,
 )
 
 
@@ -264,7 +264,7 @@ def test_report_failure_does_not_change_tool_result(monkeypatch, tmp_path):
         raise OSError("read-only analysis directory")
 
     monkeypatch.setattr("agent.data.parameter_runtime_observer.write_json_atomic", fail_write)
-    assert _invoke_and_record(workspace, lambda: True, lambda _ok: {}) is True
+    assert invoke_and_record(workspace, lambda: True, lambda _ok: {}) is True
     assert failures == ["Failed to persist parameter runtime evidence"]
 
 

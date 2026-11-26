@@ -1,7 +1,6 @@
 """Publish a completed candidate as a managed Workspace without rerunning it."""
 
 import re
-import stat
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -11,6 +10,7 @@ from chipcompiler.data.workspace.config_manifest import (
 )
 from chipcompiler.engine.workspace.derive import publish_copied_workspace
 from chipcompiler.engine.workspace.paths import (
+    replace_path_prefix,
     rewrite_workspace_json_paths,
     rewrite_workspace_params_toml,
     rewrite_workspace_tcl_paths,
@@ -50,8 +50,6 @@ def retain_candidate(
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", target_id):
         raise ValueError("Workspace name must use letters, digits, underscores or hyphens")
     target = project / target_id
-    if target.is_symlink() or target.with_suffix(".lock").is_symlink():
-        raise ValueError("Target Workspace path is a symbolic link")
     ref = f".agent/candidates/{candidate_id}"
     candidate = source / ref
     ledgers = source / ".agent" / "operations"
@@ -63,15 +61,9 @@ def retain_candidate(
         workspace_lock(source, blocking=False),
         workspace_lock(target, blocking=False),
     ):
-        if target.resolve() != target:
-            raise ValueError("Target Workspace path is a symbolic link")
         current = load_manifest(str(project))
         entry = current.find_workspace(workspace_id)
-        if (
-            current.project_id != project_id
-            or entry is None
-            or Path(entry.workspace_path).resolve() != source
-        ):
+        if entry is None or Path(entry.workspace_path).resolve() != source:
             raise ValueError("Source Workspace registration changed")
         existing = current.find_workspace(target_id)
         if existing is not None and Path(existing.workspace_path).resolve() != target:
@@ -100,8 +92,6 @@ def retain_candidate(
         }
         # Only Workspace contention is nonblocking; Project registration writes must serialize.
         with manifest_lock(project, blocking=True):
-            if load_manifest(str(project)).project_id != project_id:
-                raise ValueError("Project identity changed")
             if not update_manifest_locked(project, project_manifest_mutator(project, mutation)):
                 raise OSError("Could not register the retained Workspace")
     return {"workspaceId": target_id, "directory": str(target)}
@@ -136,45 +126,24 @@ def publish_retained_candidate(
         else candidate
     )
 
-    clean_configs: frozenset[str] = frozenset()
-    relocated: set[Path] = set()
-
-    def prepare_staged(staging: Path) -> None:
-        nonlocal clean_configs
+    def rewrite_target(staging: Path, published: Path) -> None:
         clean_configs = unmodified_derived_configs(staging)
 
         def relocate(value: str) -> str:
-            return _relocate_candidate_path(value, candidate, parent_workspace_directory, staging)
-
-        relocated.update(
-            rewrite_workspace_json_paths(staging, relocate, skip_paths=original_evidence)
-        )
-        relocated.update(
-            rewrite_workspace_tcl_paths(
-                staging,
-                lambda text: _rewrite_candidate_text(
-                    text, candidate, parent_workspace_directory, staging
-                ),
-                skip_paths=original_evidence,
+            relocated = _relocate_candidate_path(
+                value, candidate, parent_workspace_directory, published
             )
+            return replace_path_prefix(relocated, str(staging), str(published))
+
+        relocated = rewrite_workspace_json_paths(staging, relocate, skip_paths=original_evidence)
+        relocated |= rewrite_workspace_tcl_paths(
+            staging,
+            lambda text: _rewrite_candidate_text(
+                text, candidate, parent_workspace_directory, staging, published
+            ),
+            skip_paths=original_evidence,
         )
         rewrite_workspace_params_toml(staging, relocate)
-
-    def rewrite_target(staging: Path, published: Path) -> None:
-        def publish_path(value: str) -> str:
-            return _relocate_candidate_path(value, staging, None, published)
-
-        relocated.update(
-            rewrite_workspace_json_paths(staging, publish_path, skip_paths=original_evidence)
-        )
-        relocated.update(
-            rewrite_workspace_tcl_paths(
-                staging,
-                lambda text: _rewrite_candidate_text(text, staging, None, published),
-                skip_paths=original_evidence,
-            )
-        )
-        rewrite_workspace_params_toml(staging, publish_path)
         if not refresh_relocated_derived_configs(staging, clean_configs, relocated):
             raise OSError(f"Failed to update derived Workspace configuration: {staging}")
 
@@ -189,7 +158,6 @@ def publish_retained_candidate(
         source_workspace_id=source_workspace_id,
         target_workspace_id=target_workspace_id,
         source_lock=source_lock,
-        prepare_staged=prepare_staged,
         rewrite_target=rewrite_target,
     )
 
@@ -213,9 +181,9 @@ def _relocate_candidate_path(
 
 
 def _rewrite_candidate_text(
-    text: str, candidate: Path, parent: Path | None, destination: Path
+    text: str, candidate: Path, parent: Path | None, staging: Path, destination: Path
 ) -> str:
-    patterns = [re.escape(str(candidate))]
+    patterns = [re.escape(str(candidate)), re.escape(str(staging))]
     if parent is not None:
         # An inherited script can reference an earlier sibling candidate or the parent workspace.
         patterns.append(rf"{re.escape(str(candidate.parent))}/[^/\"'\s;}})]+")
@@ -232,12 +200,8 @@ def _verify_completed_candidate(
     workspace_id: str,
     candidate_id: str,
 ) -> frozenset[Path]:
-    if not candidate.is_dir() or candidate.resolve() != candidate:
+    if not candidate.is_dir():
         raise ValueError("Candidate artifacts are unavailable")
-    for path in candidate.rglob("*"):
-        mode = path.lstat().st_mode
-        if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
-            raise ValueError("Candidate contains an unsupported filesystem entry")
 
     manifest_path = candidate / "analysis" / CANDIDATE_WORKSPACE_MANIFEST
     if required_file_sha256(manifest_path, "manifest") != digest:

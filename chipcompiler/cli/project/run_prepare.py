@@ -416,7 +416,6 @@ def execute_fresh_run(
     run_name: str,
     cli_overrides: dict,
     flow_config,
-    project_state: str | None,
     warning_records: list[dict],
     *,
     workspace_registered: bool,
@@ -619,8 +618,7 @@ def execute_fresh_run(
                     ]
                 )
 
-            from contextlib import nullcontext
-
+            from chipcompiler.cli.project.run_process import managed_run_process
             from chipcompiler.cli.rendering.progress import (
                 preserve_cli_stdio,
                 run_progress_event_sink,
@@ -628,19 +626,13 @@ def execute_fresh_run(
             )
             from chipcompiler.engine import ExecutionPlan, execute
 
-            if workspace_registered:
-                from chipcompiler.cli.project.run_process import managed_run_process
-
-                process_context = managed_run_process(
-                    command_input,
-                    project_dir,
-                    run_name,
-                    workspace,
-                    workspace_path=run_dir,
-                )
-            else:
-                process_context = nullcontext()
-            with process_context as outcome:
+            with managed_run_process(
+                command_input,
+                project_dir,
+                run_name,
+                workspace,
+                workspace_path=run_dir,
+            ) as outcome:
                 plan = ExecutionPlan(intent="run")
                 if should_enable_run_progress(ctx, sys.stderr):
                     with (
@@ -650,10 +642,9 @@ def execute_fresh_run(
                         result = execute(engine_flow, plan, event_sink=sink)
                 else:
                     result = execute(engine_flow, plan)
-                if outcome is not None:
-                    outcome.record_execution(
-                        succeeded=result.succeeded, failed_step_error=result.failed_step_error
-                    )
+                outcome.record_execution(
+                    succeeded=result.succeeded, failed_step_error=result.failed_step_error
+                )
 
             if not result.succeeded:
                 failure_records = [
