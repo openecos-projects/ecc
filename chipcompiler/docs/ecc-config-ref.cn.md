@@ -1003,7 +1003,8 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 
 ### 13.5 emir（iEMIR）
 
-`emir_ecc.json` 提供 `technology_file_path` 和 `ploc_file_path` 两个公开字段。工艺路径为空时，
+`emir_ecc.json` 提供 `technology_file_path`、`ploc_file_path` 和
+`supply_ground_pins`。工艺路径为空时，
 workspace 刷新会填入 workspace 内的 `config/ics55_synthetic.tech`（创建
 workspace 时从打包资源复制）。旧 workspace 中指向打包路径的默认值会在刷新时
 迁移到该副本。选择 `emir` 步骤时，预检要求配置的路径实际存在。修改方式：
@@ -1013,6 +1014,8 @@ ecc param list --step emir
 ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 # 从 floorplan 之后开始的新流程，需要显式提供对应的 PLOC。
 ecc param set emir.ploc_file_path /path/to/power.ploc --workspace NAME
+# 仅在核实本设计的电源方案后，填写相应的电源/地引脚配对：
+ecc param set emir.supply_ground_pins '{"VDD":"VSS","VDDD":"VSSD"}' --workspace NAME
 ```
 
 iEMIR 读取前序流程产生的已布线数据库、post-floorplan 的 PDN 位置文件
@@ -1023,6 +1026,14 @@ EMIR 输出目录之外的绝对路径；ECC 原样传递，不复制或重新�
 必须与输入电源网格匹配。只修改项目参数不会更新已有 workspace，需要指定
 `--workspace NAME`，然后执行 `ecc run --workspace NAME --only emir`。
 打包的 synthetic 工艺仅用于流程测试，不是 foundry 签核数据。
+
+`supply_ground_pins` 默认 `{}`，只补齐 Liberty 未指定的返回地**引脚名**，
+不会覆盖已知的 Liberty 配对，也不改变电压、功耗或 DEF 连接。
+非零分电源电流没有明确返回地时会报错。iPW 的原生 V2 TSV 保留每个电源
+的电压和功耗，ECC 原样传递。iEMIR 通过
+`emir_ecc/data/emir/ir_analyzer/supply_coverage.tsv` 记录各电源/地是否具有
+已分析的图接点。PLOC 未覆盖全部电源域时，即使执行成功也不代表全芯片电源签核通过。
+
 子阶段为 load data → run EMIR → save data。原生报告位于
 `emir_ecc/data/emir/emir_reporter/`，并会复制到 `emir_ecc/report/`。
 `emir` 是 advisory 步骤：分析未完成会被记录，但不会单独阻断后续流程。
