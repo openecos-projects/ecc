@@ -406,7 +406,7 @@ class TestFlowMismatchZeroMutation:
         run_dir = os.path.join(project_dir, "ws_0001")
         # The persisted ledger diverges from the configured preset at step one
         # (every preset chain starts with Synthesis).
-        _write_existing_workspace(run_dir, ["placement"])
+        _write_existing_workspace(run_dir, ["placement"], pdk_root=pdk_root)
         output_path = os.path.join(run_dir, "synthesis_yosys", "output", "gcd.v")
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w") as f:
@@ -466,7 +466,7 @@ class TestFlowMismatchZeroMutation:
         os.makedirs(home)
         # Current config with a ledger that diverges from the project preset.
         Path(home, "params.toml").write_text(
-            """schema_version = 4
+            f"""schema_version = 4
 [design]
 name = "gcd"
 top = "gcd"
@@ -474,6 +474,7 @@ clock_port = "clk"
 frequency_mhz = 250.0
 [pdk]
 name = "ics55"
+root = "{pdk_root}"
 [params]
 """
         )

@@ -166,12 +166,15 @@ def _resume_existing_workspace(
                 "the workspace reuses its persisted home/params.toml",
             ),
         ]
-    from chipcompiler.cli.project.pdk_root_fallback import pdk_root_env_fallback_warning
+    from chipcompiler.cli.core.records import error_record
+    from chipcompiler.cli.project.pdk_root_persistence import missing_pdk_root_reason
     from chipcompiler.cli.project.spec_drift import workspace_spec_drift_warning
 
-    pdk_root_warning = pdk_root_env_fallback_warning(run_dir)
-    if pdk_root_warning is not None:
-        warning_records = [*warning_records, pdk_root_warning]
+    pdk_root_reason = missing_pdk_root_reason(run_dir)
+    if pdk_root_reason is not None:
+        return CommandResult.err(
+            [error_record("pdk_root_not_persisted", workspace=run_dir, reason=pdk_root_reason)]
+        )
     spec_drift = workspace_spec_drift_warning(run_dir)
     if spec_drift is not None:
         warning_records = [*warning_records, spec_drift]

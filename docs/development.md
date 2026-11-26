@@ -736,7 +736,7 @@ uv run ecc doctor --project gcd --plain
 `ecc pdk set-root <path>` wires an already-ready ics55 PDK into the
 project (writes `[pdk] root` in `ecc.toml` as an absolute path; incomplete
 contents are advisory). `ecc pdk show` reports the effective root, which
-resolver won (ecc.toml / `CHIPCOMPILER_ICS55_PDK_ROOT` / `ICS55_PDK_ROOT` /
+resolver won (ecc.toml / `ECC_PDK_ROOT` /
 repo default), and a contents check; `ecc pdk unset` clears the override:
 
 ```bash
@@ -801,10 +801,12 @@ after a successful save, every file under `data/emir/emir_reporter/` is publishe
 to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
 is logged without changing the save result.
 
-CI explicitly selects `test/fixtures/emir/ics55_synthetic.tech`. Its resistance
-and EM limits are invented test data, **not foundry data**. A successful CI run
-with this fixture verifies execution and data handoff only; its IR/EM numbers
-must not be used for signoff. Normal projects do not select it automatically.
+Every workspace gets `config/ics55_synthetic.tech`, copied from the packaged
+`chipcompiler/tools/ecc/configs/defaults/`, and EMIR falls back to it whenever
+`technology_file_path` is empty. Its resistance and EM limits are invented test
+data, **not foundry data**: a successful run on it verifies execution and data
+handoff only, and its IR/EM numbers must not be used for signoff. Point
+`emir.technology_file_path` at real foundry data before trusting any number.
 
 Any step of the rtl2gds chain can be excluded from a workspace at creation
 time, not only the three optional steps — placement-parasitic optimization
@@ -1017,7 +1019,7 @@ Runtime handling:
 If Yosys is not found, install the managed toolchain with the ECC installer
 `--with-toolchain` flag (see the [README](../README.md#installation)). The
 installer wrapper exports `CHIPCOMPILER_OSS_CAD_DIR` and
-`CHIPCOMPILER_ICS55_PDK_ROOT`. To point at an existing OSS CAD Suite instead:
+`ECC_PDK_ROOT`. To point at an existing OSS CAD Suite instead:
 
 ```bash
 export CHIPCOMPILER_OSS_CAD_DIR=/path/to/oss-cad-suite
@@ -1124,35 +1126,18 @@ For the ICS55 GCD tool integration test:
 ```bash
 nix develop
 export PATH=/path/to/ecc-sizer/build/src:$PATH
-export CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/ics55-pdk
+export ECC_PDK_ROOT=/path/to/ics55-pdk
 .venv/bin/python -m pytest test/integration/test_rtl2gds_flow.py::test_ics55_gcd -q -s
 ```
 
 ### PDK
 
-Resolution priority for `get_pdk("ics55")` in `chipcompiler/data/pdk.py`:
+See [PDK Selection and Configuration](pdk.md) for `ECC_PDK_ROOT`, ICS55
+`VERSION` release selection, and point-tool `configs/defaults` +
+`configs/pdk/<variant>` overrides.
 
-1. Explicit `pdk_root` argument.
-2. `CHIPCOMPILER_ICS55_PDK_ROOT` environment variable.
-3. Legacy `ICS55_PDK_ROOT` environment variable.
-4. Default: `../pdk/icsprout55-pdk` next to the ecc checkout (the ecos-studio
-   workspace location).
-
-The runtime path is carried by the manifest project's PDK bindings
-(`pdk_root` in `base_design`) and, for CLI projects, by `ecc pdk set-root`.
-Workspace creation persists the resolved root in `home/params.toml` as `pdk_root`
-(under `[pdk] root`), so a workspace resolves identically on every machine.
-Loading an existing workspace whose persisted root is empty/missing still
-falls back to the environment variables, but `ecc run` then emits a
-`pdk_root_env_fallback` warning naming the variable it resolved from — the
-warning only fires when the workspace names the ics55 PDK (or no PDK at all),
-since those environment variables only apply to ics55. Run
-`ecc run --overwrite` to pin the root into the workspace.
-
-Example:
-
-```bash
-CHIPCOMPILER_ICS55_PDK_ROOT=/path/to/pdk uv run ecc
+```sh
+ECC_PDK_ROOT=/path/to/pdk ecc init /path/to/project
 ```
 
 ## Common Workflows

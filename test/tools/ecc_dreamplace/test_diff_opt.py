@@ -157,3 +157,39 @@ def test_diff_opt_module_uses_placement_rc_and_own_result_directory(
     )
     assert params.timing_sizing_action == overrides.get("timing_sizing_action", "quad")
     assert params.result_dir == str(result_dir)
+
+
+def test_diff_opt_config_build_writes_the_pdk_buffer_drive_table(
+    tmp_path, make_ics55_parameters, minimal_ics55_pdk_factory
+):
+    """diff_opt's config build generates the candidate drive table the backend
+    requires, taking the strengths from the PDK that declares the buffers."""
+    from pathlib import Path
+
+    from chipcompiler.data.pdk import get_pdk
+    from chipcompiler.data.workspace import init_workspace_config
+    from chipcompiler.tools.ecc_dreamplace import builder
+    from chipcompiler.utility import json_read
+
+    workspace = Workspace(
+        directory=tmp_path / "workspace",
+        design=OriginDesign(name="gcd"),
+        pdk=get_pdk("ics55", pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk")),
+        parameters=make_ics55_parameters(),
+    )
+    init_workspace_config(workspace)
+    result_dir = tmp_path / "data" / "diff_opt"
+    step = EccStep(
+        name=SkippableStepEnum.DIFF_OPT.value,
+        data=EccData(dir=tmp_path / "data", steps={SkippableStepEnum.DIFF_OPT.value: result_dir}),
+        directory=tmp_path / "diff_opt",
+    )
+
+    config = json_read(builder.write_step_config(workspace, step))
+
+    table = json_read(Path(config["buffering_candidate_drive_strength_table"]))
+    assert workspace.pdk.buffers, "the ICS55 PDK declares buffers to tabulate"
+    assert [row["master_name"] for row in table["buffers"]] == workspace.pdk.buffers
+    assert [row["drive_strength"] for row in table["buffers"]] == [
+        workspace.pdk.buffer_drive_strengths[master] for master in workspace.pdk.buffers
+    ]

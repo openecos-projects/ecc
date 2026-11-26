@@ -28,6 +28,8 @@ def _workspace(tmp_path):
         directory=directory,
         design=OriginDesign(name="gcd", top_module="gcd"),
         pdk=PDK(
+            name="ics55",
+            version="v1",
             tech=Path("tech.lef"),
             lefs=[Path("std.lef")],
             libs=[Path("slow.lib")],

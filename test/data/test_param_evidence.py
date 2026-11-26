@@ -83,7 +83,7 @@ def test_record_covers_only_parameters_applicable_to_the_step(
     params = {item["param"] for item in record["parameters"]}
     assert "cts.max_fanout" in params
     assert "place.target_density" not in params
-    assert record["config"]["cts"]["max_fanout"] == 32
+    assert record["config"]["cts"]["max_fanout"] == "32"
 
 
 def test_evidence_file_is_written_beside_the_step_files(

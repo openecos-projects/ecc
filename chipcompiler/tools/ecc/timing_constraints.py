@@ -32,10 +32,20 @@ def step_tcl_path(
     post_cts = _reads_clock_tree(step)
     if not is_generated_sdc(source):
         return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
-    scenario = next(
-        (item for item in timing_scenarios(workspace) if (item.corner, item.rc) == (corner, rc)),
-        None,
-    )
+    scenarios = timing_scenarios(workspace)
+    if (corner, rc) == ("TYP", "TYPICAL"):
+        # Default consumers follow the workspace's default entry point, which
+        # generate_timing_scripts resolves the same way: TYP when declared,
+        # otherwise the workspace's first scenario.
+        scenario = next(
+            (item for item in scenarios if (item.corner, item.rc) == (corner, rc)),
+            scenarios[0] if scenarios else None,
+        )
+    else:
+        scenario = next(
+            (item for item in scenarios if (item.corner, item.rc) == (corner, rc)),
+            None,
+        )
     if scenario is None:
         raise ValueError(f"No configured timing scenario for {corner}/{rc}")
     return scenario_tcl_path(workspace.directory, scenario, post_cts=post_cts)

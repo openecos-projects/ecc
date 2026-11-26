@@ -9,12 +9,12 @@ sha256 = "a6ccc6b96b2d985336a1061c78b2fd2bdd73e0f68690da17db88e00457881a11"
 [sizer]
 repo = "openecos-projects/ecc-sizer"
 workflow = "ci.yml"
-run_id = 38876272896
-git_commit = "05e19e75a7172c14df81a06e3375820c5a696cd2"
+run_id = 44663746004
+git_commit = "2a5daeb5b75de644b5b2cf3593f3ec218b5c7086"
 artifact = "ecc-sizer-linux-x64"
 archive = "ecc-sizer-linux-x64.tar.gz"
 root_marker = "src/sizer_os.tcl"
-sha256 = "2f08f4c1d91343bd9379f8f0690a7464ae0dad97a3c0e45382970c3d6fb5a4f7"
+sha256 = "eb708584839068c86927bd3ff560192608a7998071e0586693da7b002c2b5f06"
 
 [kepler-formal]
 repo = "openecos-projects/kepler-formal"
@@ -28,11 +28,12 @@ root_marker = "bin/kepler-formal"
 sha256 = "f8e0e728c23d5eff49a6eb89a9f5e0e8b17274dc07c09042dccd16cceb411bfa"
 
 [pdk]
+# Public source commit and matching supplemental assets.
 repo = "openecos-projects/icsprout55-pdk"
-release = "v1.10.103"
-git_commit = "4f0a4124e3528163f6805e464a0f2fc4587549ec"
+release = "v2-2026.10.28"
+git_commit = "10054695f86cf26a96ea8aba69f7ec414afde593"
 
 [e2e-designs]
 repo = "openecos-projects/ecc-ci-designs"
-git_commit = "9b6f5a1965d2d56f68ddf696836aacd46f34509b"
-sha256 = "7cb4da243eb11ba5c5eb1ea44ea69baf83fab31b6debe7f37f92198d5159d196"
+git_commit = "ddb4ef5856a726e647e57886b97df6979c6f6a6b"
+sha256 = "f57321d1cdf7af41d51712d60797f763d061132e5b9f295c12ed8bc564f13f81"

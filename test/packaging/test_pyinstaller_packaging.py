@@ -78,8 +78,8 @@ def test_pyinstaller_payload_filter_excludes_oversized_paths():
             "PYMODULE",
         ),
         (
-            "/repo/chipcompiler/tools/ecc/configs/cts_ecc.json",
-            "chipcompiler/tools/ecc/configs/cts_ecc.json",
+            "/repo/chipcompiler/tools/ecc/configs/defaults/cts_ecc.json",
+            "chipcompiler/tools/ecc/configs/defaults/cts_ecc.json",
             "DATA",
         ),
     ]
@@ -96,8 +96,8 @@ def test_pyinstaller_payload_filter_excludes_agent_instruction_files():
         ),
         ("/repo/chipcompiler/data/flow/AGENTS.md", "chipcompiler/data/flow"),
         (
-            "/repo/chipcompiler/tools/ecc/configs/cts_ecc.json",
-            "chipcompiler/tools/ecc/configs/cts_ecc.json",
+            "/repo/chipcompiler/tools/ecc/configs/defaults/cts_ecc.json",
+            "chipcompiler/tools/ecc/configs/defaults/cts_ecc.json",
             "DATA",
         ),
     ]
