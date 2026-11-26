@@ -80,15 +80,47 @@ Per-project one-offs still belong in `config_overrides`.
 
 `rcx_ecc.json` supplies native iRCX with a `mapping_file` and a nonempty
 `corners` list. Each corner declares its `name`, `temperature` values,
-`process_file` (ITF), and `captab_file`. The native interface also accepts
+`process_file` (ITF or `.tech`), and `captab_file`. The native interface also accepts
 the legacy `itf_file` spelling. Relative process, capacitance-table and
 mapping paths are resolved against the PDK root; absolute paths are preserved.
 
-The ICS55 profiles use the files under `<root>/corners/`. Their layer map,
-`ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map`, maps design layer names to process
-layer names; it is **not** the GDS stream-out `techfile/icsprout55.layermap`.
+The ICS55 v2 profile uses the public `techfile/ICsprout55_<corner>.tech` and
+`.captab` files (PDK commit `daa0e7a246a81aac8c7cdc4eeb2bd4eacac7452e` or later).
+ECC copies the profile's layer-name map to `config/rcx_layers.map` unless an
+explicit `mapping_file` is supplied. These process files use the same layer
+names as the design, so the mapping is an identity mapping, not process data.
+The legacy v1 profile instead expects the external files under `<root>/corners/`
+and `ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map` there.
+Neither map is the numeric GDS stream-out `techfile/icsprout55.layermap`.
 Custom PDKs supply the same schema through `ecc-configs/ecc/rcx_ecc.json`.
 Clock-tree capture reuses these inputs with a separate output directory.
+
+ECC passes the complete configuration through `init_rcx(config)`, `run_rcx()`
+and `destroy_rcx()`. Native iRCX reads each corner's **paired** process and
+capacitance files; it does not reuse a typical table for other RC corners.
+For example, the v2 Cbest entry is:
+
+```json
+{
+  "name": "Cbest",
+  "temperature": [-40, 125],
+  "process_file": "techfile/ICsprout55_Cbest.tech",
+  "captab_file": "techfile/ICsprout55_Cbest.captab"
+}
+```
+
+iRCX requires P-format tables and uses its
+independent nearest-neighbor grid for capacitance. The corresponding `.tech`
+still supplies process geometry and resistance. All configured RC/temperature
+pairs are extracted in one native lifecycle, each with its own SPEF. ECC does
+not set `IRCX_MULTI_*` environment variables or split the run in Python.
+Legacy A/B capacitance tables are not accepted by the current native extractor;
+custom and legacy PDK profiles must provide compatible P-grid tables.
+
+P-table layer names must match the process model; ECC does not rename them or
+rewrite the PDK. Each native P corner writes `cap_extractor/<index>/multi_stats.txt`.
+Missing grid contexts fail extraction instead of silently omitting capacitance.
+Native etch-geometry errors remain errors; switching tables does not bypass them.
 
 ## Cell-name overrides
 

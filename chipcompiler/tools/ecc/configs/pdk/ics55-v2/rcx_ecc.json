@@ -1,13 +1,13 @@
 {
-    "mapping_file": "corners/ICsprout_55LLULP_1P6M_5lc_V1p1_cell.map",
+    "mapping_file": "",
     "corners": [
         {
             "name": "TYPICAL",
             "temperature": [
                 25
             ],
-            "process_file": "corners/TYP.itf",
-            "captab_file": "corners/TYP.captab"
+            "process_file": "techfile/ICsprout55_TYP.tech",
+            "captab_file": "techfile/ICsprout55_TYP.captab"
         },
         {
             "name": "RCbest",
@@ -15,8 +15,8 @@
                 -40,
                 125
             ],
-            "process_file": "corners/RCbest.itf",
-            "captab_file": "corners/RCbest.captab"
+            "process_file": "techfile/ICsprout55_RCbest.tech",
+            "captab_file": "techfile/ICsprout55_RCbest.captab"
         },
         {
             "name": "RCworst",
@@ -24,8 +24,8 @@
                 -40,
                 125
             ],
-            "process_file": "corners/RCworst.itf",
-            "captab_file": "corners/RCworst.captab"
+            "process_file": "techfile/ICsprout55_RCworst.tech",
+            "captab_file": "techfile/ICsprout55_RCworst.captab"
         },
         {
             "name": "Cbest",
@@ -33,8 +33,8 @@
                 -40,
                 125
             ],
-            "process_file": "corners/Cbest.itf",
-            "captab_file": "corners/Cbest.captab"
+            "process_file": "techfile/ICsprout55_Cbest.tech",
+            "captab_file": "techfile/ICsprout55_Cbest.captab"
         },
         {
             "name": "Cworst",
@@ -42,8 +42,8 @@
                 -40,
                 125
             ],
-            "process_file": "corners/Cworst.itf",
-            "captab_file": "corners/Cworst.captab"
+            "process_file": "techfile/ICsprout55_Cworst.tech",
+            "captab_file": "techfile/ICsprout55_Cworst.captab"
         }
     ]
 }
