@@ -369,8 +369,6 @@ def _execute(operations, start, terminal: threading.Event, directory: Path) -> N
     try:
         operation = start()
         operation_id = operation["operationId"]
-        if operation["state"] == "interrupted":
-            operation = {**operation, "state": "failed"}
         _record("candidate_accepted", operation=operation)
         cancelled = False
         cancel_path = directory / f"{operation_id}.cancel"
