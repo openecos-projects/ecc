@@ -1,6 +1,7 @@
 """Resolve native RCX process inputs without conflating RC and GDS layer maps."""
 
 from pathlib import Path
+from shutil import copyfile
 from typing import TYPE_CHECKING
 
 from chipcompiler.data.parameter import update_parameters
@@ -21,6 +22,13 @@ def refresh_rcx_config(workspace: "Workspace") -> None:
     # Existing configs from the former built-in backend lack process inputs.
     # Fill absent keys from the PDK profile, preserving explicit overrides.
     config = update_parameters(current, tool_config(configs_dir, config_path.name, workspace.pdk))
+
+    bundled_map = configs_dir / "pdk" / workspace.pdk.config_variant / "rcx_layers.map"
+    workspace_map = config_path.with_name("rcx_layers.map")
+    if config.get("mapping_file", "") in ("", str(workspace_map)) and bundled_map.is_file():
+        if not workspace_map.is_file() or workspace_map.read_bytes() != bundled_map.read_bytes():
+            copyfile(bundled_map, workspace_map)
+        config["mapping_file"] = str(workspace_map)
 
     def resolve_path(record: dict, key: str) -> None:
         if not record.get(key):

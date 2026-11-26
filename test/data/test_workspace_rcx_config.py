@@ -26,7 +26,10 @@ def test_refresh_adds_process_inputs_to_existing_config(tmp_path, version):
     current: dict = tool_config(CONFIGS, "rcx_ecc.json", PDK()) | {"thread_num": 3}
     workspace = _workspace(tmp_path, pdk, current)
     expected: dict = tool_config(CONFIGS, "rcx_ecc.json", pdk) | current
-    expected["mapping_file"] = str(pdk_root / expected["mapping_file"])
+    if version == "v2":
+        expected["mapping_file"] = str(tmp_path / "rcx_layers.map")
+    else:
+        expected["mapping_file"] = str(pdk_root / expected["mapping_file"])
     for corner in expected["corners"]:
         for key in ("process_file", "captab_file"):
             corner[key] = str(pdk_root / corner[key])
@@ -34,12 +37,17 @@ def test_refresh_adds_process_inputs_to_existing_config(tmp_path, version):
     for _ in range(2):
         refresh_rcx_config(workspace)
         assert json.loads(workspace.config["rcx"].read_text()) == expected
+    if version == "v2":
+        assert (tmp_path / "rcx_layers.map").read_bytes() == (
+            CONFIGS / "pdk/ics55-v2/rcx_layers.map"
+        ).read_bytes()
 
 
 @pytest.mark.parametrize("process_key", ["process_file", "itf_file"])
-def test_refresh_preserves_explicit_corner_and_absolute_files(tmp_path, process_key):
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_refresh_preserves_explicit_corner_and_absolute_files(tmp_path, process_key, version):
     pdk_root = tmp_path / "pdk"
-    pdk = PDK(name="ics55", version="v1", root=pdk_root)
+    pdk = PDK(name="ics55", version=version, root=pdk_root)
     current = tool_config(CONFIGS, "rcx_ecc.json", PDK()) | {
         "mapping_file": str(tmp_path / "external layers.map"),
         "corners": [
