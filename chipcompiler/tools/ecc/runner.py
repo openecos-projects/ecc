@@ -157,6 +157,7 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
+                        "min_liberty_files": liberty.get("min_path", []),
                         "spef_file": spef_file,
                     }
                 )
@@ -1190,6 +1191,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         temperature = signoff_item["temperature"]
         rcx_corner_name = signoff_item["rcx_corner"]
         liberty_files = signoff_item["liberty_files"]
+        min_liberty_files = signoff_item.get("min_liberty_files", [])
         spef_file = signoff_item["spef_file"]
 
         if not os.path.exists(spef_file):
@@ -1204,7 +1206,9 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         missing_liberty_files = [
-            lib_path for lib_path in liberty_files if not os.path.exists(lib_path)
+            lib_path
+            for lib_path in [*liberty_files, *min_liberty_files]
+            if not os.path.exists(lib_path)
         ]
         if len(liberty_files) <= 0 or missing_liberty_files:
             workspace.logger.error(
@@ -1252,6 +1256,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             report_dir=report_dir,
             feature_dir=feature_dir,
             lib_paths=liberty_files,
+            min_lib_paths=min_liberty_files,
             sdc_path=sdc_path,
             spef_path=spef_file,
             output_modes=("report", "structured"),

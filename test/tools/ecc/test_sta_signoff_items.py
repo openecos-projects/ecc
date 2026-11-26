@@ -164,6 +164,7 @@ def test_sta_uses_macro_library_for_the_same_rc_corner(tmp_path):
                         **common,
                         "rc_corner": "Cbest",
                         "path": ["std.lib", "io.lib", "macro_cbest.lib"],
+                        "min_path": ["macro_cbest_min.lib"],
                     },
                 ],
                 "signoff": [{"MIN": ["Cbest", "RCworst"]}],
@@ -178,6 +179,7 @@ def test_sta_uses_macro_library_for_the_same_rc_corner(tmp_path):
             "temperature": -40,
             "rcx_corner": "Cbest",
             "liberty_files": ["std.lib", "io.lib", "macro_cbest.lib"],
+            "min_liberty_files": ["macro_cbest_min.lib"],
             "spef_file": str(tmp_path / "rcx_ecc/output/top_Cbest_m40C.spef"),
         },
         {
@@ -185,6 +187,7 @@ def test_sta_uses_macro_library_for_the_same_rc_corner(tmp_path):
             "temperature": -40,
             "rcx_corner": "RCworst",
             "liberty_files": ["std.lib", "io.lib"],
+            "min_liberty_files": [],
             "spef_file": str(tmp_path / "rcx_ecc/output/top_RCworst_m40C.spef"),
         },
     ]

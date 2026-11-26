@@ -298,19 +298,21 @@ def test_run_timing_forwards_path_arguments(tmp_path):
         report_dir=tmp_path / "sta_report",
         feature_dir=tmp_path / "sta_feature",
         lib_paths=[Path("/pdk/lib.lib")],
+        min_lib_paths=["/macro/core_min.lib"],
         sdc_path=Path("/ws/design.sdc"),
         spef_path=Path("/ws/design.spef"),
         corner="MAX_125/RCworst",
     )
 
     assert module.ecc.calls == [
-        ("lib_init", {"lib_paths": [Path("/pdk/lib.lib")]}),
+        ("lib_init", {"lib_paths": [Path("/pdk/lib.lib"), "/macro/core_min.lib"]}),
         ("sdc_init", Path("/ws/design.sdc")),
         ("spef_init", Path("/ws/design.spef")),
         (
             "init_sta",
             {
                 "config": Path("/ws/config/sta_ecc.json"),
+                "min_lib_paths": ["/macro/core_min.lib"],
                 "config_dict": {
                     "-temp_directory_path": str(tmp_path / "sta_work"),
                     "-output_timing_reports": "1",

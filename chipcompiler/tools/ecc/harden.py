@@ -42,19 +42,23 @@ def export_harden_views(
         if work_dir.exists():
             shutil.rmtree(work_dir)
         model_path = model_dir / f"{workspace.design.top_module or workspace.design.name}.lib"
+        min_model_path = model_path.with_name(f"{model_path.stem}_min.lib")
         sdc = step_tcl_path(workspace, step, corner=corner, rc=rc)
         assert sdc is not None
         ecc_module.write_timing_model(
             output_lib_path=model_path,
+            output_min_lib_path=min_model_path,
             config=sta_config,
             output_dir=work_dir,
             lib_paths=item["liberty_files"],
+            min_lib_paths=item.get("min_liberty_files", []),
             sdc_path=sdc,
             spef_path=item["spef_file"],
             design_name=workspace.design.top_module or workspace.design.name,
         )
-        if not model_path.is_file() or model_path.stat().st_size == 0:
-            raise RuntimeError(f"Harden did not produce a timing model: {model_path}")
+        for path in (model_path, min_model_path):
+            if not path.is_file() or path.stat().st_size == 0:
+                raise RuntimeError(f"Harden did not produce a timing model: {path}")
         models.append(
             {
                 "corner": corner,
@@ -62,7 +66,9 @@ def export_harden_views(
                 "rc_corner": rc,
                 "analysis_mode": "max",
                 "path": str(model_path.relative_to(model_root)),
+                "min_path": str(min_model_path.relative_to(model_root)),
                 "source_libraries": item["liberty_files"],
+                "source_min_libraries": item.get("min_liberty_files", []),
                 "sdc": str(sdc),
                 "spef": item["spef_file"],
             }
@@ -76,5 +82,5 @@ def export_harden_views(
     )
     assert typical_model is not None
     shutil.copyfile(typical_model, default_lib)
-    if not json_write(model_root / "manifest.json", {"schema_version": 1, "models": models}):
+    if not json_write(model_root / "manifest.json", {"schema_version": 2, "models": models}):
         raise RuntimeError("Failed to publish Harden timing-model manifest")
