@@ -216,12 +216,13 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
                 )
             ]
         )
+    rtl_paths = tuple(values)
     config_path = _require_config_path(ctx)
     if ctx.project_state == "manifest":
         applied = _apply_manifest_change(
             ctx,
-            add_rtl=tuple(values) if add else (),
-            remove_rtl=() if add else tuple(values),
+            add_rtl=rtl_paths if add else (),
+            remove_rtl=() if add else rtl_paths,
         )
         if isinstance(applied, CommandResult):
             raise CommandError.from_result(applied)
@@ -244,9 +245,9 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
                     ]
                 )
             if add:
-                updated = [*current, *(value for value in values if value not in current)]
+                updated = [*current, *(value for value in rtl_paths if value not in current)]
             else:
-                updated = [value for value in current if value not in values]
+                updated = [value for value in current if value not in rtl_paths]
             return set_scoped_key(text, field.table, field.name, updated)
 
         try:

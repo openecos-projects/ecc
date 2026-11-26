@@ -12,6 +12,7 @@ from chipcompiler.data.flow.policy import (
     FlowInputResolver,
     FlowInputStepError,
     analysis_wave_end,
+    is_skipped_record,
 )
 from chipcompiler.data.types import inserted_step_kind
 
@@ -60,7 +61,7 @@ def plan_records(records: list[dict]) -> list[dict]:
             PlannedStep(
                 name=row["name"],
                 tool=row["tool"],
-                enabled=True,
+                enabled=not is_skipped_record(row),
                 optional=False,
                 inserted=inserted_step_kind(row["name"]) is not None,
             )

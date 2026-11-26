@@ -28,6 +28,7 @@ from chipcompiler.cli.project.draft.journal import (
     prepare_staging_root,
     read_journal,
     staging_dir,
+    validate_draft_destination,
 )
 from chipcompiler.cli.project.draft.rtl import (
     discard_partial_rtl,
@@ -80,6 +81,7 @@ __all__ = [
     "prepare_creation_draft",
     "reconcile_creation_draft",
     "require_draft_published",
+    "validate_draft_destination",
 ]
 
 
@@ -104,12 +106,7 @@ class CreationDraft:
     @contextmanager
     def build_target(self, workspace: Path, cfg: ProjectConfig, *, reuse_empty: bool):
         """Build privately under the caller's lock on the final Workspace."""
-        if workspace.parent != self.project or workspace.resolve() != workspace:
-            raise OSError("Draft Workspace is outside the Project.")
-        if workspace.name == STAGING_ROOT:
-            raise FileExistsError(f"Workspace path is reserved: {workspace}")
-        require_draft_published(self.project, workspace)
-        check_destination(workspace, reuse_empty=reuse_empty)
+        validate_draft_destination(self.project, workspace, reuse_empty=reuse_empty)
         prepare_staging_root(self.project)
         staging = staging_dir(self.project, workspace)
         discard_staging(staging)
@@ -130,12 +127,9 @@ class CreationDraft:
         self, cfg: ProjectConfig, flow_config, workspace: Path, *, reuse_empty: bool, blocking: bool
     ) -> PublicationResult:
         """Publish a completed staging tree, or leave enough evidence to resume."""
-        from chipcompiler.engine.workspace.paths import rewrite_workspace_paths
-
         journal = self.project / JOURNAL_FILENAME
         staging = staging_dir(self.project, workspace)
         built = staging / "workspace"
-        rewrite_workspace_paths(built, workspace, include_tcl_scripts=True)
         targets = (
             tuple(target.relative_to(self.project).as_posix() for _, target in self.rtl.copied)
             if self.rtl is not None

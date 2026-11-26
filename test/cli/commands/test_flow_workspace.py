@@ -57,3 +57,17 @@ def test_workspace_flow_plan_rejects_malformed_step_records(fresh_project, capsy
     )
     (record,) = json.loads(capsys.readouterr().out)
     assert record["error"] in {"workspace_flow_invalid", "workspace_flow_unavailable"}
+
+
+def test_skipped_step_remains_visible_and_supplies_no_design_inputs():
+    from chipcompiler.cli.inspection.flow import plan_records
+
+    steps = plan_records(
+        [
+            {"name": "legalization", "tool": "ecc", "category": "PNR", "state": "Success"},
+            {"name": "timing_optimization", "tool": "sizer", "category": "PNR", "state": "Skipped"},
+            {"name": "routing", "tool": "ecc", "category": "PNR", "state": "Unstart"},
+        ]
+    )
+    assert [step["step"] for step in steps] == ["legalization", "timing_optimization", "routing"]
+    assert steps[-1]["design_source"] == steps[-1]["needs"]["legal"] == "legalization"

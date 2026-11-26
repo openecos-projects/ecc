@@ -2,14 +2,18 @@
 
 import hashlib
 import uuid
-from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.inputs import RunInput, WorkspaceCreateInput
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
+from chipcompiler.cli.project.preparation import (
+    preflight_fresh_setup,
+    resolve_run_setup,
+    validate_run_setup,
+)
 
 if TYPE_CHECKING:
     from chipcompiler.cli.project.config import ProjectConfig
@@ -50,10 +54,6 @@ def build_create_run_input(
 def create_draft_or_preview_workspace(
     command_input: WorkspaceCreateInput,
     ctx: CommandContext,
-    *,
-    resolve_setup: Callable[..., Any],
-    validate_setup: Callable[..., CommandResult | None],
-    preflight_fresh: Callable[..., tuple[CommandResult | None, list[dict]]],
 ) -> CommandResult:
     run_input = build_create_run_input(command_input, ctx)
     if isinstance(run_input, CommandResult):
@@ -75,25 +75,33 @@ def create_draft_or_preview_workspace(
         )
 
     if command_input.preview:
-        return _preview_creation(
-            run_input,
-            ctx,
-            target,
-            raw_draft,
-            resolve_setup=resolve_setup,
-            validate_setup=validate_setup,
-        )
+        return _preview_creation(run_input, ctx, target, raw_draft)
 
     assert raw_draft is not None
-    return _create_from_draft(
-        run_input,
-        ctx,
-        target,
-        raw_draft,
-        resolve_setup=resolve_setup,
-        validate_setup=validate_setup,
-        preflight_fresh=preflight_fresh,
-    )
+    return _create_from_draft(run_input, ctx, target, raw_draft)
+
+
+def _preview_destination_error(
+    project: Path, target: Path, run_name: str, *, reuse_empty: bool
+) -> CommandResult | None:
+    from chipcompiler.cli.project.draft import validate_draft_destination
+
+    try:
+        validate_draft_destination(project, target, reuse_empty=reuse_empty)
+    except FileExistsError as exc:
+        return CommandResult.err(
+            [
+                error_record(
+                    "run_exists", workspace_id=run_name, workspace=str(target), reason=str(exc)
+                )
+            ]
+        )
+    except OSError as exc:
+        code = "workspace_draft_pending" if "reconcile" in str(exc) else "workspace_failed"
+        return CommandResult.err(
+            [error_record(code, workspace_id=run_name, workspace=str(target), reason=str(exc))]
+        )
+    return None
 
 
 def _preview_creation(
@@ -101,14 +109,19 @@ def _preview_creation(
     ctx: CommandContext,
     target: Path,
     raw_draft: str | None,
-    *,
-    resolve_setup: Callable[..., Any],
-    validate_setup: Callable[..., CommandResult | None],
 ) -> CommandResult:
-    if (target / "home" / "flow.json").is_file():
+    project = Path(ctx.project_dir).expanduser().resolve()
+    canonical_target = target.parent.resolve() / target.name
+    run_name = ctx.run_id or target.name
+    if (canonical_target / "home" / "flow.json").is_file():
         return CommandResult.err(
             [error_record("workspace_conflict", reason=f"Workspace already exists: {target}")]
         )
+    destination_error = _preview_destination_error(
+        project, canonical_target, run_name, reuse_empty=ctx.workspace_path_explicit
+    )
+    if destination_error is not None:
+        return destination_error
     if raw_draft is not None:
         from chipcompiler.cli.project.draft import prepare_creation_draft
 
@@ -116,7 +129,7 @@ def _preview_creation(
         if isinstance(prepared, CommandResult):
             return prepared
         ctx, _draft = prepared
-    setup = resolve_setup(run_input, ctx, execute_flow=False)
+    setup = resolve_run_setup(run_input, ctx, execute_flow=False)
     if isinstance(setup, CommandResult):
         return setup
     if not setup.fresh_target:
@@ -127,7 +140,15 @@ def _preview_creation(
                 )
             ]
         )
-    validation_error = validate_setup(setup, ctx, check_pdk_files=False)
+    resolved_target = Path(setup.run_dir).expanduser().absolute()
+    canonical_resolved = resolved_target.parent.resolve() / resolved_target.name
+    if canonical_resolved != canonical_target:
+        destination_error = _preview_destination_error(
+            project, canonical_resolved, setup.run_name, reuse_empty=ctx.workspace_path_explicit
+        )
+        if destination_error is not None:
+            return destination_error
+    validation_error = validate_run_setup(setup, ctx, check_pdk_files=False)
     if validation_error is not None:
         return validation_error
     return preview_workspace_creation(setup.cfg, setup.flow_config)
@@ -138,13 +159,11 @@ def _create_from_draft(
     ctx: CommandContext,
     target: Path,
     raw_draft: str,
-    *,
-    resolve_setup: Callable[..., Any],
-    validate_setup: Callable[..., CommandResult | None],
-    preflight_fresh: Callable[..., tuple[CommandResult | None, list[dict]]],
 ) -> CommandResult:
     from chipcompiler.cli.project.draft import prepare_creation_draft
-    from chipcompiler.cli.project.run_prepare import WorkspaceBuildError, build_fresh_workspace
+    from chipcompiler.cli.project.rtl_import import RtlImportError
+    from chipcompiler.cli.project.run_prepare import build_fresh_workspace, workspace_failed_result
+    from chipcompiler.engine.workspace.paths import finalize_staged_workspace
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     run_name = ctx.run_id or target.name
@@ -155,32 +174,38 @@ def _create_from_draft(
         if isinstance(prepared, CommandResult):
             return prepared
         ctx, draft = prepared
-        setup = resolve_setup(run_input, ctx, execute_flow=False)
+        setup = resolve_run_setup(run_input, ctx, execute_flow=False)
         if isinstance(setup, CommandResult):
             return setup
         if not setup.fresh_target:
             return _existing_draft_workspace_locked(run_input, ctx, setup.run_dir, setup.run_name)
-        validation_error = validate_setup(setup, ctx, check_pdk_files=True)
+        validation_error = validate_run_setup(setup, ctx, check_pdk_files=True)
         if validation_error is not None:
             return validation_error
-        preflight, warnings = preflight_fresh(setup, ctx.project)
+        preflight, warnings = preflight_fresh_setup(setup, ctx.project)
         if preflight is not None:
             return preflight
         try:
             with draft.build_target(
                 Path(setup.run_dir), setup.cfg, reuse_empty=ctx.workspace_path_explicit
             ) as (built, build_cfg):
-                build_fresh_workspace(
-                    run_input,
-                    ctx,
-                    build_cfg,
-                    build_dir=built,
-                    run_dir=setup.run_dir,
-                    run_name=setup.run_name,
-                    cli_overrides=setup.cli_overrides,
-                    flow_config=setup.flow_config,
-                    record_create_command=bool(run_input.command_id),
-                )
+                try:
+                    constructed = build_fresh_workspace(
+                        run_input,
+                        ctx,
+                        build_cfg,
+                        build_dir=built,
+                        run_dir=setup.run_dir,
+                        run_name=setup.run_name,
+                        cli_overrides=setup.cli_overrides,
+                        flow_config=setup.flow_config,
+                        record_create_command=bool(run_input.command_id),
+                    )
+                    finalize_staged_workspace(
+                        constructed.workspace, Path(setup.run_dir), include_tcl_scripts=True
+                    )
+                except Exception as exc:
+                    return workspace_failed_result(setup.run_name, setup.run_dir, str(exc) or None)
                 return publish_workspace_creation(
                     draft,
                     setup.cfg,
@@ -193,13 +218,17 @@ def _create_from_draft(
                 )
         except BlockingIOError:
             raise
-        except WorkspaceBuildError as exc:
-            record = error_record(
-                "workspace_failed", workspace_id=setup.run_name, workspace=setup.run_dir
+        except RtlImportError as exc:
+            return CommandResult.err(
+                [
+                    error_record(
+                        exc.code,
+                        workspace_id=setup.run_name,
+                        workspace=setup.run_dir,
+                        reason=str(exc),
+                    )
+                ]
             )
-            if exc.reason is not None:
-                record["reason"] = exc.reason
-            return CommandResult.err([record])
         except (OSError, ValueError) as exc:
             code = "run_exists" if isinstance(exc, FileExistsError) else "workspace_failed"
             return CommandResult.err(

@@ -47,6 +47,16 @@ _DESIGN_PATH_FIELDS = {
     "spef": "spef",
 }
 
+_MANIFEST_SUMMARY_FIELDS = {
+    **{f"design.{field}": (key,) for field, key in _DESIGN_PATH_FIELDS.items()},
+    "design.rtl": ("rtl_list", "origin_verilog"),
+    "design.top": ("top_module",),
+    "design.clock_port": ("clock",),
+    "design.frequency_mhz": ("frequency_mhz",),
+    "pdk.name": ("pdk",),
+    "pdk.root": ("pdk_root",),
+}
+
 
 def _resolve_entry(manifest, run_name: str | None):
     """The declared workspace for a run id; auto-selects a single active one."""
@@ -309,24 +319,30 @@ def project_manifest_summary(
         frequency = assemble_config(manifest, None)["frequency_mhz"]
         if frequency is not None:
             base["frequency_mhz"] = frequency
-    fields = {
-        **{f"design.{field}": (key,) for field, key in _DESIGN_PATH_FIELDS.items()},
-        "design.rtl": ("rtl_list", "origin_verilog"),
-        "design.top": ("top_module",),
-        "design.clock_port": ("clock",),
-        "design.frequency_mhz": ("frequency_mhz",),
-        "pdk.name": ("pdk",),
-        "pdk.root": ("pdk_root",),
-    }
     changed = cfg._explicit_keys.union(unsets)
     # The timing file supplies the clock and frequency whenever it loads.
     if cfg.design_sdc and cfg._timing_input_error is None:
         changed = changed.union(("design.clock_port", "design.frequency_mhz"))
-    for field in fields.keys() & changed:
-        for key in fields[field]:
+    for field in _MANIFEST_SUMMARY_FIELDS.keys() & changed:
+        for key in _MANIFEST_SUMMARY_FIELDS[field]:
             base[key] = declared[key]
     name = cfg.design_name if "design.name" in changed else manifest.design_name
     return name, base
+
+
+def manifest_field_changed(
+    field: str, manifest: "ProjectManifest", name: str, base: Mapping[str, Any]
+) -> bool:
+    """True when *field* had a non-empty Manifest value that changed in *name* / *base*."""
+    if field == "design.name":
+        return bool(manifest.design_name) and manifest.design_name != name
+    keys = _MANIFEST_SUMMARY_FIELDS.get(field)
+    if not keys:
+        return False
+    return any(
+        bool(manifest.base_design.get(key)) and manifest.base_design.get(key) != base.get(key)
+        for key in keys
+    )
 
 
 def validate_effective(

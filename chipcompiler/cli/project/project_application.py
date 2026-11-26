@@ -15,6 +15,7 @@ from chipcompiler.cli.project.config import (
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.effective_config import (
     apply_manifest_defaults,
+    manifest_field_changed,
     project_manifest_summary,
 )
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
@@ -92,6 +93,9 @@ def apply_project_with_config(
         )
         cfg = parse_project_settings(project, updated)
         name, base = project_manifest_summary(cfg, manifest, unsets=unsets)
+        for key in unsets:
+            if key not in changed and manifest_field_changed(key, manifest, name, base):
+                changed.append(key)
         if validate:
             candidate = replace(manifest, design_name=name, base_design=base)
             apply_manifest_defaults(cfg, assemble_config(candidate, None), str(project))
@@ -714,7 +718,7 @@ def _apply_text(
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         if result is not None:
             updated = result
-        changed.append(key)
+            changed.append(key)
     if add_rtl or remove_rtl:
         try:
             data = tomllib.loads(updated)

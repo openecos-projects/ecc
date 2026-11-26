@@ -151,8 +151,8 @@ def test_invalid_timing_file_fails_before_workspace_creation(
 def test_existing_workspace_can_resume_without_valid_project_timing_source(
     tmp_path, minimal_ics55_pdk_factory, monkeypatch, remove_source
 ):
-    from chipcompiler.cli.command_handlers import project as project_commands
     from chipcompiler.cli.core.types import CommandResult
+    from chipcompiler.cli.project import run_workspace
 
     project = tmp_path / "project"
     assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
@@ -170,10 +170,10 @@ def test_existing_workspace_can_resume_without_valid_project_timing_source(
         source.write_text("not a valid timing file anymore\n")
     resumed = []
 
-    def run_existing(command_input, ctx):
-        resumed.append(load_workspace(ctx.run_dir).parameters.data["sdc"])
+    def run_existing(command_input, workspace_path, workspace_id, **kwargs):
+        resumed.append(load_workspace(workspace_path).parameters.data["sdc"])
         return CommandResult.ok([])
 
-    monkeypatch.setattr(project_commands, "_run_workspace", run_existing)
+    monkeypatch.setattr(run_workspace, "execute_workspace_run", run_existing)
     assert cli_main.run(["run", "--project", str(project), "--resume"]) == 0
     assert resumed == [before]

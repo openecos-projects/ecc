@@ -168,30 +168,6 @@ def _execute_workspace_run(
         reconcile_result = reconcile_workspace_locked(workspace_path)
         if not reconcile_result.ok:
             return mismatch_error(reconcile_result.error or "")
-        if (
-            reconcile_result.outcome == "no_op"
-            and reconcile_result.persisted
-            and command_input.from_step is None
-            and command_input.only is None
-        ):
-            # The persisted flow already covers the target and finished;
-            # resume has nothing to do. Explicit selectors (--from/--only)
-            # still re-execute on request. The flow is complete, so the
-            # manifest entry reads success even if a previous failed state
-            # is stale.
-            return CommandResult.ok(
-                warnings
-                + [
-                    {
-                        "workspace_id": workspace_id or "default",
-                        "status": "success",
-                        "workspace": workspace_path,
-                        "executed_steps": [],
-                        "no_op": True,
-                    }
-                ]
-            )
-
         outcome = None
 
         def run_failed(
@@ -234,6 +210,27 @@ def _execute_workspace_run(
             else:
                 process_context = nullcontext()
             with process_context as outcome:
+                if (
+                    reconcile_result.outcome == "no_op"
+                    and reconcile_result.persisted
+                    and command_input.from_step is None
+                    and command_input.only is None
+                ):
+                    if outcome is not None:
+                        outcome.record_execution(succeeded=True)
+                    return CommandResult.ok(
+                        warnings
+                        + [
+                            {
+                                "workspace_id": workspace_id or "default",
+                                "status": "success",
+                                "workspace": workspace_path,
+                                "executed_steps": [],
+                                "no_op": True,
+                            }
+                        ]
+                    )
+
                 engine_flow = EngineFlow(workspace=workspace)
                 engine_flow.max_parallel_steps = max_parallel_steps
                 if not engine_flow.has_init():

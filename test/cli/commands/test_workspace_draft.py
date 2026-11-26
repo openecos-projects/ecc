@@ -593,3 +593,117 @@ def test_draft_no_wait_does_not_block_during_publication_or_cleanup(fresh_projec
         release.set()
         holder.join(10)
         worker.join(10)
+
+
+def test_published_draft_can_refresh_until_a_managed_file_is_edited(fresh_project, capsys):
+    project = ["--project", str(fresh_project), "--plain"]
+    assert cli_main.run(["workspace", "create", "draft", "--draft", "{}", *project]) == 0
+    refresh = ["workspace", "refresh", "draft", *project]
+    assert cli_main.run(refresh) == 0
+    config = fresh_project / "draft" / "config" / "db_ecc.json"
+    config.write_text(config.read_text() + "\n")
+    capsys.readouterr()
+    assert cli_main.run(refresh) == 1
+    message = capsys.readouterr().out
+    assert "derived_configs_modified" in message
+    assert "files=db_ecc.json" in message
+
+
+def test_unrecorded_config_baseline_cannot_be_published(fresh_project, monkeypatch, capsys):
+    args = [
+        "workspace",
+        "create",
+        "draft",
+        "--draft",
+        '{"maxParallelSteps":2}',
+        "--project",
+        str(fresh_project),
+        "--plain",
+    ]
+    files = [fresh_project / name for name in ("ecc.toml", "project.json")]
+    before = [path.read_bytes() for path in files]
+    with monkeypatch.context() as failed:
+        failed.setattr(
+            "chipcompiler.data.workspace.config_manifest.record_derived_config",
+            lambda _workspace: False,
+        )
+        assert cli_main.run(args) == 1
+    assert "error=workspace_failed" in capsys.readouterr().out
+    assert [path.read_bytes() for path in files] == before
+    assert not (fresh_project / "draft").exists()
+    assert cli_main.run(args) == 0
+
+
+def test_draft_duplicate_rtl_basenames_fail_cleanly_in_preview_and_create(
+    fresh_project, tmp_path, capsys
+):
+    left = tmp_path / "left" / "top.v"
+    right = tmp_path / "right" / "top.v"
+    left.parent.mkdir()
+    right.parent.mkdir()
+    left.write_text("module gcd; endmodule\n")
+    right.write_text("module gcd; endmodule\n")
+    args = [
+        "workspace",
+        "create",
+        "draft",
+        "--project",
+        str(fresh_project),
+        "--draft",
+        json.dumps({"rtl": [str(left), str(right)]}),
+        "--json",
+    ]
+
+    for extra in (["--preview"], []):
+        capsys.readouterr()
+        assert cli_main.run([*args, *extra]) == 1
+        (record,) = json.loads(capsys.readouterr().out)
+        assert record["kind"] == "error"
+        assert record["error"] == "rtl_target_collision"
+        assert not (fresh_project / "draft").exists()
+
+
+def test_workspace_preview_rejects_occupied_target_like_create(fresh_project, capsys):
+    occupied = fresh_project / "occupied"
+    occupied.mkdir()
+    (occupied / "notes.txt").write_text("existing user note\n")
+
+    for selector in (occupied.name, str(occupied)):
+        args = [
+            "workspace",
+            "create",
+            selector,
+            "--project",
+            str(fresh_project),
+            "--draft",
+            "{}",
+            "--json",
+        ]
+        for extra in (["--preview"], []):
+            capsys.readouterr()
+            assert cli_main.run([*args, *extra]) == 1
+            (record,) = json.loads(capsys.readouterr().out)
+            assert record["kind"] == "error"
+            assert record["error"] == "run_exists"
+
+    empty = fresh_project / "empty_explicit"
+    empty.mkdir()
+    capsys.readouterr()
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "create",
+                str(empty),
+                "--project",
+                str(fresh_project),
+                "--draft",
+                "{}",
+                "--preview",
+                "--json",
+            ]
+        )
+        == 0
+    )
+    (preview,) = json.loads(capsys.readouterr().out)
+    assert preview["record"] == "workspace_preview"

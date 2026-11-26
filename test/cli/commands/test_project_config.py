@@ -268,3 +268,53 @@ def test_project_set_does_not_warn_without_a_timing_input(
 
     assert rc == 0
     assert [record.get("kind") for record in _records(capsys, plain_records)] == [None]
+
+
+def test_project_unset_reports_no_value_when_field_is_absent(
+    tmp_path, monkeypatch, capsys, plain_records
+):
+    project_dir = _manifest_project(tmp_path, monkeypatch)
+    capsys.readouterr()
+
+    for _ in range(2):
+        rc = cli_main.run(
+            ["project", "unset", "design.netlist", "--project", str(project_dir), "--plain"]
+        )
+        assert rc == 0
+        assert _records(capsys, plain_records) == [
+            {"project_field": "design.netlist", "status": "no_value", "source": "ecc.toml"}
+        ]
+
+    document = _manifest(project_dir)
+    document["base_design"]["netlist"] = "inputs/top.v"
+    (project_dir / "project.json").write_text(json.dumps(document))
+
+    rc = cli_main.run(
+        ["project", "unset", "design.netlist", "--project", str(project_dir), "--plain"]
+    )
+    assert rc == 0
+    assert _records(capsys, plain_records) == [
+        {"project_field": "design.netlist", "status": "unset", "source": "ecc.toml"}
+    ]
+
+    rc = cli_main.run(
+        ["project", "unset", "design.netlist", "--project", str(project_dir), "--plain"]
+    )
+    assert rc == 0
+    assert _records(capsys, plain_records) == [
+        {"project_field": "design.netlist", "status": "no_value", "source": "ecc.toml"}
+    ]
+
+    _run_project(project_dir, "set", "design.def", "inputs/top.def")
+    capsys.readouterr()
+    rc = cli_main.run(["project", "unset", "design.def", "--project", str(project_dir), "--plain"])
+    assert rc == 0
+    assert _records(capsys, plain_records) == [
+        {"project_field": "design.def", "status": "unset", "source": "ecc.toml"}
+    ]
+
+    rc = cli_main.run(["project", "unset", "design.def", "--project", str(project_dir), "--plain"])
+    assert rc == 0
+    assert _records(capsys, plain_records) == [
+        {"project_field": "design.def", "status": "no_value", "source": "ecc.toml"}
+    ]

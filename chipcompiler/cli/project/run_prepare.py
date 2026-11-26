@@ -14,24 +14,20 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
 
-
-class WorkspaceBuildError(RuntimeError):
-    """Raised when constructing a fresh Workspace fails before commit."""
-
-    def __init__(self, reason: str | None) -> None:
-        super().__init__(reason or "")
-        self.reason = reason
+if TYPE_CHECKING:
+    from chipcompiler.data import Workspace
+    from chipcompiler.engine import EngineFlow
 
 
 @dataclass(frozen=True)
 class BuiltWorkspace:
-    workspace: Any
-    engine_flow: Any
+    workspace: "Workspace"
+    engine_flow: "EngineFlow"
 
 
 def invalid_workspace_name(workspace_name: str) -> bool:
@@ -142,7 +138,7 @@ def resolve_manifest_run_target(command_input, ctx):
     return (candidate_path, workspace_name, False, [])
 
 
-def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
+def workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
     from chipcompiler.cli.core.records import error_record
 
     record = error_record("workspace_failed", workspace_id=run_name, workspace=run_dir)
@@ -253,14 +249,6 @@ def build_fresh_workspace(
     if uses_netlist_input:
         origin_verilog = inputs.netlist
         input_filelist = ""
-    generated_filelist = None
-    if len(cfg.design_rtl) > 1 and not uses_netlist_input:
-        try:
-            generated_filelist = _materialize_rtl_filelist(cfg)
-        except Exception as exc:
-            raise WorkspaceBuildError(str(exc)) from exc
-        input_filelist = generated_filelist
-        origin_verilog = ""
     parameters = to_parameters(cfg)
     if uses_netlist_input:
         # Preserve the creator's input role for Studio/CLI reopen symmetry.
@@ -304,7 +292,12 @@ def build_fresh_workspace(
         parameters[PARAM_SOURCES_KEY] = param_sources
 
     target_dir = str(build_dir)
+    generated_filelist = None
     try:
+        if len(cfg.design_rtl) > 1 and not uses_netlist_input:
+            generated_filelist = _materialize_rtl_filelist(cfg)
+            input_filelist = generated_filelist
+            origin_verilog = ""
         workspace = create_workspace(
             directory=target_dir,
             origin_def=inputs.workspace_def,
@@ -321,48 +314,41 @@ def build_fresh_workspace(
         )
         if workspace is not None:
             workspace.__dict__["_ecc_project_dir"] = project_dir
-    except Exception as exc:
-        raise WorkspaceBuildError(str(exc)) from exc
     finally:
         if generated_filelist is not None:
             with contextlib.suppress(OSError):
                 shutil.rmtree(os.path.dirname(generated_filelist))
 
     if workspace is None:
-        raise WorkspaceBuildError(None)
+        raise RuntimeError()
 
-    try:
-        if cli_overrides:
-            import json
+    if cli_overrides:
+        import json
 
-            provenance_path = os.path.join(target_dir, "home", "cli-param-overrides.json")
-            os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-            with open(provenance_path, "w") as _f:
-                json.dump(cli_overrides, _f)
+        provenance_path = os.path.join(target_dir, "home", "cli-param-overrides.json")
+        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+        with open(provenance_path, "w") as _f:
+            json.dump(cli_overrides, _f)
 
-        if not flow_config_selects_steps(flow_config):
-            workspace_parameters = getattr(workspace, "parameters", None)
-            if workspace_parameters is not None:
-                from chipcompiler.data.workspace.config import (
-                    FLOW_POLICY_KEYS,
-                    validate_flow_config,
-                )
+    if not flow_config_selects_steps(flow_config):
+        workspace_parameters = getattr(workspace, "parameters", None)
+        if workspace_parameters is not None:
+            from chipcompiler.data.workspace.config import (
+                FLOW_POLICY_KEYS,
+                validate_flow_config,
+            )
 
-                flow_section: dict = {"preset": cfg.flow_preset}
-                policies = (
-                    {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
-                    if isinstance(flow_config, dict)
-                    else {}
-                )
-                if policies:
-                    flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
-                workspace_parameters.data["_flow"] = flow_section
-                if not save_parameter(workspace_parameters):
-                    raise WorkspaceBuildError("failed to persist the flow target in params.toml")
-    except WorkspaceBuildError:
-        raise
-    except Exception as exc:
-        raise WorkspaceBuildError(str(exc)) from exc
+            flow_section: dict = {"preset": cfg.flow_preset}
+            policies = (
+                {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
+                if isinstance(flow_config, dict)
+                else {}
+            )
+            if policies:
+                flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
+            workspace_parameters.data["_flow"] = flow_section
+            if not save_parameter(workspace_parameters):
+                raise RuntimeError("failed to persist the flow target in params.toml")
 
     engine_flow = EngineFlow(workspace=workspace)
     engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
@@ -384,7 +370,7 @@ def build_fresh_workspace(
     created_steps = getattr(engine_flow, "workspace_steps", None) or []
     if len(created_steps) < len(persisted_steps):
         missing = persisted_steps[len(created_steps)].get("name")
-        raise WorkspaceBuildError(f"step workspace creation failed at {missing}")
+        raise RuntimeError(f"step workspace creation failed at {missing}")
 
     sync_flow_options_projection(workspace, persist=True)
 
@@ -458,10 +444,6 @@ def execute_fresh_run(
     project = ctx.project
     project_dir = ctx.project_dir
     write_back_repair = disclosure_cmd("ecc run", project, run_name)
-    # Commit point: once the replacement is verified and the backup is
-    # discarded, execution failures are a normal failed run — the new tree
-    # stays, and cleanup must no longer touch it.
-    committed_state = {"value": False}
 
     def commit_replacement() -> str | None:
         """Commit the verified replacement and dispose of the renamed-aside tree.
@@ -473,7 +455,6 @@ def execute_fresh_run(
         replaced generation follow the registered backup entry or clear when
         none was retained. Returns the retained backup path.
         """
-        committed_state["value"] = True
         if backup_path is None:
             return None
         if not command_input.keep_backup:
@@ -530,7 +511,7 @@ def execute_fresh_run(
         workspace back, so the previous artifacts survive the failure.
         Returns problems encountered while rolling back."""
         problems: list[str] = []
-        if not owns_target or committed_state["value"]:
+        if not owns_target:
             return problems
         shutil.rmtree(run_dir, ignore_errors=True)
         if os.path.lexists(run_dir):
@@ -541,16 +522,6 @@ def execute_fresh_run(
             except OSError as exc:
                 problems.append(f"previous workspace left at {backup_path}: {exc}")
         return problems
-
-    def failed_workspace(reason: str | None) -> CommandResult:
-        rollback_problems = cleanup_failed_target()
-        if rollback_problems:
-            reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
-        if registration_created:
-            from chipcompiler.project.manifest_write import remove_workspace_registration
-
-            remove_workspace_registration(project_dir, run_name)
-        return _workspace_failed_result(run_name, run_dir, reason)
 
     from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -575,8 +546,23 @@ def execute_fresh_run(
                 backup_path=backup_path,
                 record_create_command=bool(command_input.command_id and not execute_flow),
             )
-        except WorkspaceBuildError as exc:
-            return failed_workspace(exc.reason)
+        except BaseException as exc:
+            # This invocation owns the target until construction finishes. Undo
+            # its writes under the lock, including when interrupted by Ctrl-C.
+            problems = cleanup_failed_target()
+            if registration_created:
+                from chipcompiler.project.manifest_write import remove_workspace_registration
+
+                if not remove_workspace_registration(project_dir, run_name):
+                    problems.append(f"could not remove workspace registration: {run_name}")
+            if not isinstance(exc, Exception):
+                for problem in problems:
+                    exc.add_note(problem)
+                raise
+            reason = str(exc)
+            if problems:
+                reason += f"; rollback incomplete: {'; '.join(problems)}"
+            return workspace_failed_result(run_name, run_dir, reason or None)
 
         workspace = built.workspace
         engine_flow = built.engine_flow
@@ -689,14 +675,6 @@ def execute_fresh_run(
                 return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
             from chipcompiler.cli.core.records import error_record
 
-            rollback_problems = cleanup_failed_target()
-            reason = str(exc)
-            if rollback_problems:
-                reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
-            if registration_created:
-                from chipcompiler.project.manifest_write import remove_workspace_registration
-
-                remove_workspace_registration(project_dir, run_name)
             return CommandResult.err(
                 warning_records
                 + [
@@ -704,7 +682,7 @@ def execute_fresh_run(
                         "flow_failed",
                         workspace_id=run_name,
                         workspace=run_dir,
-                        reason=reason,
+                        reason=str(exc),
                     )
                 ]
             )

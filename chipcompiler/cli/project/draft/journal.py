@@ -194,3 +194,16 @@ def check_destination(workspace: Path, *, reuse_empty: bool) -> int | None:
     if not (reuse_empty and workspace.is_dir() and not any(workspace.iterdir())):
         raise FileExistsError(f"Workspace already exists: {workspace}")
     return stat.S_IMODE(workspace.stat().st_mode)
+
+
+def validate_draft_destination(project: Path, workspace: Path, *, reuse_empty: bool) -> int | None:
+    """Read-only destination check shared by draft preview and locked draft builds."""
+    if workspace.is_symlink():
+        raise FileExistsError(f"Workspace is a symbolic link: {workspace}")
+    if workspace.parent != project or workspace.resolve() != workspace:
+        raise OSError("Draft Workspace is outside the Project.")
+    if workspace.name == STAGING_ROOT:
+        raise FileExistsError(f"Workspace path is reserved: {workspace}")
+    if has_pending_draft(project, workspace):
+        raise OSError("An unfinished Workspace draft requires project reconcile.")
+    return check_destination(workspace, reuse_empty=reuse_empty)

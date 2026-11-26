@@ -146,6 +146,7 @@ def plan_project_rtl(
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
+    _validate_plan_targets(copied)
     return RtlImportPlan(copied, source_list, rtl_config, rtl_entries, include_dirs)
 
 
@@ -253,29 +254,36 @@ def require_rtl_target_parents(target: Path) -> None:
             raise FileExistsError(f"RTL target parent is not a directory: {parent}")
 
 
-def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
-    targets = set()
+def _validate_plan_targets(copied: list[tuple[Path, Path]]) -> set[Path]:
+    targets: set[Path] = set()
     for _source, target in copied:
         if target in targets:
             raise RtlImportError(
                 "rtl_target_collision", "multiple inputs map to the same target", str(target)
             )
         targets.add(target)
+    # A file cannot be written where another input needs a directory: a listed
+    # source named like an include directory would stop the copy half-way.
+    for target in sorted(targets):
+        if any(parent in targets for parent in target.parents):
+            raise RtlImportError(
+                "rtl_target_collision", "one input maps into the target of another", str(target)
+            )
+    return targets
+
+
+def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
+    targets = _validate_plan_targets(copied)
+    for _source, target in copied:
         if target.exists() and not force:
             raise RtlImportError(
                 "rtl_target_exists", "target exists; use --force to replace it", str(target)
             )
-    # A file cannot be written where another input needs a directory: a listed
-    # source named like an include directory would stop the copy half-way.
     for target in sorted(targets):
         try:
             require_rtl_target_parents(target)
         except FileExistsError as exc:
             raise RtlImportError("rtl_target_collision", str(exc), str(target)) from exc
-        if any(parent in targets for parent in target.parents):
-            raise RtlImportError(
-                "rtl_target_collision", "one input maps into the target of another", str(target)
-            )
 
 
 def _write_filelist(

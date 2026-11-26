@@ -60,3 +60,38 @@ def test_run_receipt_uses_the_blocking_step_error(
                 "message": f"{failed_step}: {failed_step} tool failed",
             },
         )
+
+
+def test_finished_resume_records_success_and_consumes_run_id(fresh_project, capsys):
+    project = ["--project", str(fresh_project), "--plain"]
+    assert (
+        cli_main.run(
+            [
+                "workspace",
+                "create",
+                "finished",
+                "--from",
+                "synthesis",
+                "--to",
+                "synthesis",
+                *project,
+            ]
+        )
+        == 0
+    )
+    workspace = fresh_project / "finished"
+    ledger = workspace / "home/flow.json"
+    flow = json.loads(ledger.read_text())
+    flow["steps"][0]["state"] = "Success"
+    ledger.write_text(json.dumps(flow))
+    run_id = str(uuid.uuid4())
+    resume = ["run", "--workspace", "finished", "--resume", "--run-id", run_id, *project]
+    capsys.readouterr()
+    assert cli_main.run(resume) == 0
+    assert "no_op=True" in capsys.readouterr().out
+    receipt = workspace / "log" / f"{run_id}.run.json"
+    original = receipt.read_bytes()
+    assert json.loads(original)["state"] == "succeeded"
+    assert cli_main.run(resume) == 1
+    assert "run_id_already_used" in capsys.readouterr().out
+    assert receipt.read_bytes() == original
