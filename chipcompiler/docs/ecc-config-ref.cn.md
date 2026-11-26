@@ -1023,14 +1023,16 @@ insert_steps = ["lec@synthesis"]
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | 时序 corner 类型（慢/最差低温/典型/快/快高温库组） |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
 | `liberty[].path` | SVT + LVT + HVT | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
+| `liberty[].rc_corner` | `Cbest`（可选） | 对该 PVT/RC 组合使用此完整库组，优先于不带该字段的 PVT 默认组；同一 PVT 各组温度必须一致 |
 | `signoff[0]` | TYP:[TYPICAL]；MIN:[Cworst,RCworst,Cbest,RCbest] | 默认签核要跑的「liberty corner × RC corner」组合，共 5 个分析 corner |
 
 默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
 `liberty` 中保留 MAX/WCL/ML 库组，供显式覆盖 `sta.signoff` 时选择；这不会让最终 STA
 自动检查这些库组，也不改变综合、CTS、Sizer 等前序阶段的用库。
-Harden 与 power_analysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
-`signoff` 列表顺序不会改变该选择。若覆盖 `sta.signoff` 后不含 TYP/TYPICAL，
-这两个步骤会失败，而不会静默改用其他 corner。
+power_analysis 使用 TYP/TYPICAL 签核项对应的 Liberty、SPEF 和 SDC；
+Harden 导出所有选中的组合，并保留 TYP/TYPICAL 作为默认模型入口。
+若覆盖 `sta.signoff` 后不含 TYP/TYPICAL，这两个步骤会失败，
+不会静默改用其他 corner；列表顺序不影响默认模型选择。
 
 ics55 的 corner 命名：`Cworst/Cbest`=电容最差/最好，`RCworst/RCbest`=RC 均最差/最好，`TYPICAL`=典型。
 
@@ -1042,6 +1044,30 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 温度不同，例如 MIN 的标准单元用 -40°C 库，IO 用 0°C 库；标准单元库、SPEF 温度及
 已配置的签核 corner 不受影响。`sta.liberty` 设置会替换整份默认列表，需同时列出
 标准单元库。
+
+拼片顶层还需把子宏 Liberty 加入 `sta.liberty`，仅设置 `pdk.overrides.libs`
+不会自动补入最终 STA。Harden 按 `sta.signoff` 的每个 PVT/RC 组合，以对应
+Liberty、约束和 SPEF 导出
+`output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib`；
+`timing_models/manifest.json` 记录模型及输入来源。原来的
+`output/<design>_harden.lib` 仍为 TYP/TYPICAL 模型。
+
+此导出沿用现有 `max` 模型选择，manifest 中以 `analysis_mode` 明示。
+PVT/RC 覆盖不代表宏 setup/hold 检查完整：原生提取的 `min` 模型含独立
+hold 约束，目前不能把 max 模型当成完整的双模型签核交接。
+
+同一 PVT 的子宏因 RC corner 不同而有不同模型时，为每个 RC 添加带
+`rc_corner` 的完整库组。例如以下片段中的 `path` 必须包含该组的全部
+标准单元、IO 和宏库，不能只列宏库，也不能把 TYP 宏库重命名后用于 MIN：
+
+```json
+{"corner":"MIN", "temperature":-40, "rc_corner":"Cbest",
+ "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"]}
+```
+
+将完整列表用 `ecc param set sta.liberty '<JSON列表>'` 配置；已有 workspace
+需要同时指定 `--workspace`。没有精确 RC 组时，沿用该 PVT 的无 `rc_corner`
+默认组；同一 PVT/RC 的重复组会报错，不按列表顺序任选一组。
 
 每个 corner 的报告由 ecc-tools 按路径类型拆分输出（`sta_ecc/report/<lib_corner>_<温度>/<RCcorner>/`）：
 
