@@ -48,6 +48,7 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             ploc_file_path=config.get("ploc_file_path")
             or pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
             spef_path=spef_path,
+            supply_ground_pins=config.get("supply_ground_pins", {}),
         )
         if not initialized:
             workspace.logger.error("Failed to initialize EMIR")

@@ -1,4 +1,5 @@
 {
     "technology_file_path": "",
-    "ploc_file_path": ""
+    "ploc_file_path": "",
+    "supply_ground_pins": {}
 }

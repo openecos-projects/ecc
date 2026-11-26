@@ -1129,7 +1129,8 @@ present, the signoff package includes the report once at
 
 ### 13.5 emir (iEMIR)
 
-`emir_ecc.json` exposes `technology_file_path` and `ploc_file_path`. When the
+`emir_ecc.json` exposes `technology_file_path`, `ploc_file_path`, and
+`supply_ground_pins`. When the
 technology path is empty, workspace refresh fills it with the workspace-local
 `config/ics55_synthetic.tech` copy created from the packaged resource. Explicit
 paths are preserved. Preflight for an `emir` selection requires the configured
@@ -1140,6 +1141,8 @@ ecc param list --step emir
 ecc param set emir.technology_file_path /path/to/process.tech --workspace NAME
 # For a flow entered after floorplanning, supply its matching PLOC explicitly.
 ecc param set emir.ploc_file_path /path/to/power.ploc --workspace NAME
+# Only after confirming these pin pairs against the design's power plan:
+ecc param set emir.supply_ground_pins '{"VDD":"VSS","VDDD":"VSSD"}' --workspace NAME
 ```
 
 iEMIR consumes the routed database from the preceding flow, the post-floorplan
@@ -1152,6 +1155,16 @@ does not copy or regenerate it. The PLOC must match the input power grid.
 Changing project parameters alone does not update an existing workspace:
 select it with `--workspace NAME`, then run `ecc run --workspace NAME --only emir`.
 The bundled synthetic technology is flow-test data, not foundry signoff data.
+
+`supply_ground_pins` defaults to `{}`. It supplies return-ground **pin names**
+only where Liberty leaves them unspecified; it neither overrides a known
+Liberty association nor changes voltages, power, or DEF connectivity. Nonzero
+per-supply current without a known return is rejected. iPW's native V2 TSV
+preserves each supply's voltage and power; ECC forwards it without conversion.
+iEMIR writes `emir_ecc/data/emir/ir_analyzer/supply_coverage.tsv` to show which
+rails have analyzed power and ground contacts. A successful run with omitted
+PLOC domains is not a full-chip power signoff.
+
 Sub-phases are load data → run
 EMIR → save data. Native reports under
 `emir_ecc/data/emir/emir_reporter/` are copied into `emir_ecc/report/`.
