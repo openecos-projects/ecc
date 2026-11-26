@@ -299,6 +299,13 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
     monkeypatch.setattr(runner, "get_eda_instance", lambda **_: native_module)
     monkeypatch.setattr(runner, "run_analysis", lambda **_: None)
 
+    def write_model(**kwargs):
+        path = kwargs["output_lib_path"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(gcd) {}")
+
+    native_module.write_timing_model.side_effect = write_model
+
     assert runner.run_harden(workspace, step) is True
 
     typical = next(item for item in config["liberty"] if item["corner"] == "TYP")

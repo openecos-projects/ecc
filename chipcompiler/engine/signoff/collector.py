@@ -306,6 +306,17 @@ class SignoffPackageCollector(CollectorAnalysisMixin, CollectorDiscoveryMixin):
             destination=f"harden/{design}.lib",
             required=True,
         )
+        self._copy_tree_files(
+            workspace_dir=workspace_dir,
+            package_dir=package_dir,
+            source_dir=harden_output / "timing_models",
+            destination_dir="harden/timing_models",
+            role="harden.timing_model",
+            copied=copied,
+            missing_optional=missing_optional,
+            issues=issues,
+            materialize=options.materialize,
+        )
         add_file(
             role="harden.image",
             source=harden_output / f"{design}_harden.png",

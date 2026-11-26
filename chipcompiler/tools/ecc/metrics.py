@@ -18,6 +18,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import StepDirectories, recorded_step_directory
+from chipcompiler.data.workspace.sta_liberty import select_liberty_group
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -1616,11 +1617,6 @@ def _sta_signoff_metrics(
 ) -> dict:
     sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
     sta_data = sta_data if isinstance(sta_data, dict) else {}
-    liberty_by_role = {
-        liberty.get("corner"): liberty
-        for liberty in sta_data.get("liberty", [])
-        if isinstance(liberty, dict) and isinstance(liberty.get("corner"), str)
-    }
     expected_paths_by_corner = dict(qor_paths)
     summaries_by_corner = {summary.corner: summary for summary in summaries}
     corners = []
@@ -1628,23 +1624,25 @@ def _sta_signoff_metrics(
         if not isinstance(signoff_group, dict):
             continue
         for configured_role, rc_corners in signoff_group.items():
-            liberty = liberty_by_role.get(configured_role)
-            if liberty is None:
-                continue
             if isinstance(rc_corners, str):
                 rc_corners = [rc_corners]
             if not isinstance(rc_corners, list):
                 continue
-            temperature_c = _qor_number(liberty.get("temperature"))
-            liberty_paths = liberty.get("path", [])
-            if isinstance(liberty_paths, str):
-                liberty_paths = [liberty_paths]
-            liberty_paths = liberty_paths if isinstance(liberty_paths, list) else []
-            process_corner = _liberty_process_corner(liberty_paths)
-            voltage_v = _liberty_voltage(liberty_paths)
             for rc_corner in rc_corners:
                 if not isinstance(rc_corner, str) or not rc_corner:
                     continue
+                liberty = select_liberty_group(
+                    sta_data.get("liberty", []), configured_role, rc_corner
+                )
+                if liberty is None:
+                    continue
+                temperature_c = _qor_number(liberty.get("temperature"))
+                liberty_paths = liberty.get("path", [])
+                if isinstance(liberty_paths, str):
+                    liberty_paths = [liberty_paths]
+                liberty_paths = liberty_paths if isinstance(liberty_paths, list) else []
+                process_corner = _liberty_process_corner(liberty_paths)
+                voltage_v = _liberty_voltage(liberty_paths)
                 sta_corner = (
                     f"{configured_role}_{temperature_token(liberty.get('temperature'))}/{rc_corner}"
                 )

@@ -288,12 +288,14 @@ def _has_new_floorplan_schema(config: dict) -> bool:
 
 
 def _refresh_sta_config(workspace: Workspace) -> None:
+    from chipcompiler.data.workspace.sta_liberty import validate_liberty_groups
     from chipcompiler.utility import json_read_strict, json_write
 
     sta_path = workspace.config[f"{StepEnum.STA.value}"]
     sta = json_read_strict(sta_path)
     if not isinstance(sta, dict):
         raise TypeError(f"STA config must be a JSON object: {sta_path}")
+    validate_liberty_groups(sta.get("liberty", []))
     for liberty in sta.get("liberty", []):
         # /IP/... is the legacy PDK-relative spelling in STA templates.
         # Preserve other absolute paths, including external macro libraries.
