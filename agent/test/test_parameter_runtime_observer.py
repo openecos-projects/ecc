@@ -273,23 +273,40 @@ def test_report_failure_does_not_change_tool_result(monkeypatch, tmp_path):
     [
         ("route.thread_number", 4, "thread_number", "4", 4),
         ("route.enable_timing", True, "enable_timing", "1", True),
-        ("route.bottom_layer", "M2", "bottom_routing_layer", "M2", "M2"),
+        ("route.bottom_layer", "MET3", "bottom_routing_layer", "MET2", "MET2"),
         ("route.top_layer", "M5", "top_routing_layer", "M5", "M5"),
     ],
 )
 def test_routing_observer_reports_effective_values_from_print_config(
     tmp_path, knob_id, written, native_key, native_value, expected
 ):
+    from agent.data.candidate_materialization import materialize_candidate_config
     from agent.data.parameter_runtime_observer import (
         RUNTIME_REPORT_REF,
         run_with_parameter_observation,
     )
+    from agent.test.data import candidate_workspace
+    from agent.workspace_api import _candidate_parameter_receipt
 
+    workspace = candidate_workspace.workspace(tmp_path)
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "top.v").write_text("module top; endmodule\n")
+    (origin / "constraints.sdc").write_text("create_clock clk\n")
     log_path = tmp_path / "routing.log"
     log_path.write_text("[RT 00:00 printConfig] prior_run\n", encoding="utf-8")
-    workspace = SimpleNamespace(directory=tmp_path, logger=None)
     step = SimpleNamespace(name="routing", log=SimpleNamespace(file=str(log_path)))
-    materialization = {"patch": [{"knob_id": knob_id, "value": written}]}
+    request = SimpleNamespace(
+        candidate_id="routing-1",
+        target_step="routing",
+        patch=[{"knob_id": knob_id, "value": written}],
+        context_sha256="sha256:" + "a" * 64,
+        parameter_card_sha256="sha256:" + "b" * 64,
+        seed=17,
+    )
+    materialization = materialize_candidate_config(
+        workspace, "routing", request.patch, request.candidate_id
+    )
 
     def fake_route():
         with log_path.open("a", encoding="utf-8") as stream:
@@ -303,3 +320,15 @@ def test_routing_observer_reports_effective_values_from_print_config(
     assert report["status"] == "effective"
     assert report["actual_value"] == expected
     assert report["reason"] is None
+
+    analysis = tmp_path / "analysis"
+    receipt = _candidate_parameter_receipt(
+        workspace,
+        request,
+        ".agent/candidates/routing-1",
+        analysis / "candidate_materialization.v1.json",
+        parent_flow_sha256="sha256:" + "c" * 64,
+    )
+    assert json.loads((analysis / "parameter_application_receipt.v2.json").read_text()) == receipt
+    assert receipt["actual_value"] == expected
+    assert receipt["materialization"]["written_value"] == written
