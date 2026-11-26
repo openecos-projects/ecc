@@ -2,14 +2,14 @@
 """Prepare netlists for the kepler-formal comparison.
 
 kepler-formal reads plain Verilog and requires every instantiated cell to be
-modeled by the loaded Liberty libraries. Two gap-filling transforms live here:
+modeled by the loaded Liberty libraries. The input transforms live here:
 
 - gzip decompression: physical steps emit ``.v.gz`` netlists; kepler-formal
   has no compressed-input support.
-- physical-cell stripping: FILLER/FILLTAP/FILLCAP instances are inserted
-  during implementation, carry no function model in Liberty, and would abort
-  netlist loading. Removing them is standard LEC practice; the reference
-  (golden) side never contains them.
+- physical-cell stripping: fillers, taps, endcaps/corners and antenna cells
+  have no Boolean function to compare. Their masters come from PDK declarations
+  and LEF classes, with legacy name fallbacks for older inputs. Remove them
+  only from the comparison copies, never from the physical/LVS netlists.
 - empty port-connection stripping: ``.PIN()`` leaves a port unconnected, but
   kepler-formal rejects it when the Liberty model does not declare that pin
   (common on power/ground pad cells). Removing the explicit empty connection
@@ -39,8 +39,15 @@ from pathlib import Path
 # (P65_1233_CORNER), plus tap and decap cells that no Liberty models.
 _PHYSICAL_CELL_PREFIXES = ("FILLER", "FILLTAP", "FILLCAP", "CORNER")
 
+# Only inspect the macro header: a PIN's PORT can also declare CLASS CORE.
+_LEF_MACRO_HEADER = re.compile(r"\bMACRO\s+(\S+)(.*?)(?=\b(?:PIN|OBS|END)\b)", re.DOTALL)
+_LEF_PHYSICAL_CLASS = re.compile(
+    r"\bCLASS\s+(?:CORE\s+(?:SPACER|WELLTAP|ANTENNACELL)|PAD\s+SPACER|"
+    r"ENDCAP(?:\s+[A-Z]+)?)\s*;"
+)
+
 _INSTANCE_NAME = r"(?:\\[^\s]+(?=\s)|[A-Za-z_][A-Za-z0-9_$]*)"
-_INSTANCE_LINE = rf"^\s*(?:%s)\S*\s+{_INSTANCE_NAME}\s*\([^;]*\)\s*;[ \t]*$"
+_INSTANCE_LINE = rf"^\s*(?:%s)\s+{_INSTANCE_NAME}\s*\([^;]*\)\s*;[ \t]*$"
 
 # These patterns target instance text in netlists prepared for LEC. String and
 # comment literals are not semantic inputs to the comparison, but callers
@@ -58,7 +65,7 @@ _VERILOG_INSTANCE = re.compile(
 
 
 def physical_cell_names(pdk) -> set[str]:
-    """Explicit physical-cell masters declared by the workspace PDK."""
+    """Physical-only masters declared by the workspace PDK and its LEFs."""
     names = set()
     for attr in ("fillers",):
         values = getattr(pdk, attr, None) or []
@@ -67,6 +74,15 @@ def physical_cell_names(pdk) -> set[str]:
         value = getattr(pdk, attr, None)
         if value:
             names.add(str(value))
+    for path in getattr(pdk, "lefs", ()):
+        text = Path(path).read_text(encoding="utf-8")
+        # Ignore comments and quoted property values, not cell-name prefixes.
+        text = re.sub(r'"(?:\\.|[^"\\])*"|#[^\n]*', "", text)
+        names.update(
+            name
+            for name, header in _LEF_MACRO_HEADER.findall(text)
+            if _LEF_PHYSICAL_CLASS.search(header)
+        )
     return names
 
 
