@@ -1024,6 +1024,7 @@ insert_steps = ["lec@synthesis"]
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | 标准单元库组温度（℃），用于选择对应温度的 SPEF，不覆盖 IO 库的表征温度 |
 | `liberty[].path` | SVT + LVT + HVT | 该 corner 的 liberty 文件（PDK 相对路径自动展开） |
 | `liberty[].rc_corner` | `Cbest`（可选） | 对该 PVT/RC 组合使用此完整库组，优先于不带该字段的 PVT 默认组；同一 PVT 各组温度必须一致 |
+| `liberty[].min_path` | `[]`（可选） | 子宏 early/min 模型路径；同名 late/max 模型放在 `path` 中，不重复加载普通标准单元库 |
 | `signoff[0]` | TYP:[TYPICAL]；MIN:[Cworst,RCworst,Cbest,RCbest] | 默认签核要跑的「liberty corner × RC corner」组合，共 5 个分析 corner |
 
 默认最终 STA 只检查 TYP（TT、1.2 V、25°C）和 MIN（FF、1.32 V、-40°C）的上述组合。
@@ -1048,13 +1049,15 @@ corner 加入 PDK `IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/` 下的 IO 库�
 拼片顶层还需把子宏 Liberty 加入 `sta.liberty`，仅设置 `pdk.overrides.libs`
 不会自动补入最终 STA。Harden 按 `sta.signoff` 的每个 PVT/RC 组合，以对应
 Liberty、约束和 SPEF 导出
-`output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib`；
+`output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib`（max）和 `<top>_min.lib`；
 `timing_models/manifest.json` 记录模型及输入来源。原来的
 `output/<design>_harden.lib` 仍为 TYP/TYPICAL 模型。
 
-此导出沿用现有 `max` 模型选择，manifest 中以 `analysis_mode` 明示。
-PVT/RC 覆盖不代表宏 setup/hold 检查完整：原生提取的 `min` 模型含独立
-hold 约束，目前不能把 max 模型当成完整的双模型签核交接。
+manifest 的 `path` 和 `min_path` 分别记录两份模型。最终 iSTA 按分析类型
+选择 max/min 延迟，setup/recovery 检查来自 max，hold/removal 来自 min；
+没有 min 覆盖的单元仍共用普通库。只有 max 模型不能代表子宏的 hold 检查完整。
+此接口用于最终 STA 和 Harden；暂不向不支持双模型的优化快照传递 `min_path`。
+模型交接完整不等于证明宏提取与展平设计完全等价，仍需检查原始约束及路径覆盖。
 
 同一 PVT 的子宏因 RC corner 不同而有不同模型时，为每个 RC 添加带
 `rc_corner` 的完整库组。例如以下片段中的 `path` 必须包含该组的全部
@@ -1062,7 +1065,8 @@ hold 约束，目前不能把 max 模型当成完整的双模型签核交接。
 
 ```json
 {"corner":"MIN", "temperature":-40, "rc_corner":"Cbest",
- "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"]}
+ "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"],
+ "min_path":["/core/timing_models/MIN_m40/Cbest/core_min.lib"]}
 ```
 
 将完整列表用 `ecc param set sta.liberty '<JSON列表>'` 配置；已有 workspace

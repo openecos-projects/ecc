@@ -179,6 +179,7 @@ class _ParallelTiming(ECCToolsModule):
         max_paths_per_analysis: int = 20,
         max_paths: int = 1000,
         corner: str = "",
+        min_lib_paths: list[str] | None = None,
     ) -> None:
         # The last call is the barrier: generic run_sta cannot mark success early.
         self.jobs.append(
@@ -188,6 +189,7 @@ class _ParallelTiming(ECCToolsModule):
                 "report_dir": report_dir,
                 "feature_dir": feature_dir,
                 "lib_paths": lib_paths if lib_paths is not None else [],
+                "min_lib_paths": min_lib_paths if min_lib_paths is not None else [],
                 "sdc_path": sdc_path,
                 "spef_path": spef_path,
                 "output_modes": output_modes,

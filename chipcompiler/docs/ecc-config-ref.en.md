@@ -1100,6 +1100,7 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
 | `liberty[].path` | H7CR + H7CL + H7CH | Liberty files for this corner (PDK-relative paths auto-expanded) |
 | `liberty[].rc_corner` | `Cbest` (optional) | Select this complete library group for the PVT/RC pair ahead of the PVT-only default; groups for one PVT must have the same temperature |
+| `liberty[].min_path` | `[]` (optional) | Early/min macro models paired with late/max models in `path`; do not repeat ordinary standard-cell libraries |
 | `signoff[0]` | TYP:[TYPICAL]; MIN:[Cworst,RCworst,Cbest,RCbest] | Default "liberty corner × RC corner" combinations for signoff — 5 analysis corners in total |
 
 Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
@@ -1127,20 +1128,24 @@ list, so the standard-cell libraries must be listed as well.
 An assembled top also needs its macro libraries in `sta.liberty`; listing them
 in `pdk.overrides.libs` does not populate final STA. Harden characterizes each
 selected PVT/RC scenario using its actual libraries, timing constraints and SPEF,
-then writes `output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib`.
+then writes `output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib` (max) and `<top>_min.lib`.
 `timing_models/manifest.json` records the models and their input provenance.
 The existing `output/<design>_harden.lib` remains the TYP/TYPICAL model.
 
-Exports retain the existing `max` model selection, recorded as `analysis_mode`
-in the manifest. PVT/RC coverage is not proof of complete macro setup/hold
-coverage: native extraction places separate hold checks in the `min` model.
-The max-only handoff must not be treated as complete dual-model signoff.
+The manifest records both `path` and `min_path`. Native STA selects delay
+families by analysis type, retaining setup/recovery from max and hold/removal
+from min. Cells without an explicit min override keep their ordinary library
+for both analyses. A max-only macro model does not establish hold coverage.
+This interface covers final STA and Harden, not optimization snapshots, which
+do not yet support paired models. Complete handoff is not proof of equivalence
+to flattened timing; review the source constraints and extracted path coverage.
 
 For RC-specific macro models, add complete groups with `rc_corner`, for example:
 
 ```json
 {"corner":"MIN", "temperature":-40, "rc_corner":"Cbest",
- "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"]}
+ "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"],
+ "min_path":["/core/timing_models/MIN_m40/Cbest/core_min.lib"]}
 ```
 
 Set the full list with `ecc param set sta.liberty '<JSON-list>'`; select

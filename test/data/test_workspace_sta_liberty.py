@@ -33,3 +33,10 @@ def test_ambiguous_selected_rc_group_is_not_resolved_by_list_order():
     group = {"corner": "MIN", "rc_corner": "Cbest", "temperature": -40, "path": ["std.lib"]}
     with pytest.raises(ValueError, match="Ambiguous"):
         select_liberty_group([group, group], "MIN", "Cbest")
+
+
+@pytest.mark.parametrize("paths", ["macro.lib", [""], [1], ["std.lib"], ["min.lib", "min.lib"]])
+def test_min_models_must_be_explicit_distinct_paths(paths):
+    group = {"corner": "MIN", "temperature": -40, "path": ["std.lib"], "min_path": paths}
+    with pytest.raises(ValueError, match="min_path"):
+        validate_liberty_groups([group])
