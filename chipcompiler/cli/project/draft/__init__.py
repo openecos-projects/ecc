@@ -62,6 +62,7 @@ from chipcompiler.project.api import project_manifest_mutator
 from chipcompiler.project.manifest import (
     CONFIG_FILENAME,
     ManifestError,
+    ProjectManifest,
     assemble_config,
     load_manifest,
 )
@@ -152,8 +153,7 @@ class CreationDraft:
                     "Project configuration changed during Workspace creation. "
                     "Retry with the current settings."
                 )
-            if manifest.find_workspace(workspace.name) is not None:
-                raise FileExistsError(f"Workspace already registered: {workspace.name}")
+            _require_unregistered_name(manifest, workspace.name)
             empty_mode = check_destination(workspace, reuse_empty=reuse_empty)
             next_config.chmod(stat.S_IMODE(config.stat().st_mode))
             staged_rtl = rtl_paths(self.project, staging, targets)
@@ -389,6 +389,11 @@ def _finish(project: Path, record: DraftJournal, journal: Path) -> None:
     discard_staging(staging_dir(project, workspace))
 
 
+def _require_unregistered_name(manifest: ProjectManifest, name: str) -> None:
+    if manifest.find_workspace(name) is not None:
+        raise FileExistsError(f"Workspace already registered: {name}")
+
+
 def prepare_creation_draft(ctx, raw: str):
     """Produce the config used by both preview and creation, without writing."""
     project = Path(ctx.project_dir)
@@ -417,6 +422,7 @@ def prepare_creation_draft(ctx, raw: str):
             return tuple(value)
 
         manifest = load_manifest(str(project))
+        _require_unregistered_name(manifest, ctx.run_id)
         original = path.read_text(encoding="utf-8")
         updated = apply_settings_text(original, strings("settings"))
         cfg = parse_project_config(updated, str(path))
