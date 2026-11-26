@@ -2,14 +2,17 @@
 
 from copy import deepcopy
 
+import pytest
+
 from chipcompiler.data import StepEnum, create_workspace
 from chipcompiler.data.workspace import refresh_workspace_config, update_step_config
 from chipcompiler.tools.ecc.builder import build_step
 from chipcompiler.utility import json_read
 
 
+@pytest.mark.parametrize("rc_corner", [None, "Cworst"])
 def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
-    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file, rc_corner
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "pdk")
     external = pdk_root / "macro libraries" / "sram.lib"
@@ -28,6 +31,8 @@ def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
             ],
         }
     ]
+    if rc_corner is not None:
+        liberty[0]["rc_corner"] = rc_corner
     expected = deepcopy(liberty)
     expected[0]["path"] = [
         str(external),
