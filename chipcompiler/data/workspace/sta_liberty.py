@@ -5,6 +5,14 @@ def validate_liberty_groups(groups: list[dict]) -> None:
     temperatures = {}
     keys = set()
     for group in groups:
+        if "min_path" in group:
+            paths = group["min_path"]
+            if not isinstance(paths, list) or any(
+                not isinstance(path, str) or not path for path in paths
+            ):
+                raise ValueError("STA Liberty min_path must be a list of nonempty paths")
+            if len(set(paths)) != len(paths) or set(paths).intersection(group["path"]):
+                raise ValueError("STA Liberty min_path must be unique and separate from path")
         corner = group["corner"]
         rc = group.get("rc_corner")
         if "rc_corner" in group and (not isinstance(rc, str) or not rc):

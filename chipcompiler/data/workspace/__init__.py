@@ -299,15 +299,20 @@ def _refresh_sta_config(workspace: Workspace) -> None:
     for liberty in sta.get("liberty", []):
         # /IP/... is the legacy PDK-relative spelling in STA templates.
         # Preserve other absolute paths, including external macro libraries.
-        liberty["path"] = [
-            str(
-                (workspace.pdk.root or Path(""))
-                / (path.lstrip("/") if path.startswith("/IP/") else path)
-            )
-            for path in liberty.get("path", [])
-        ]
+        for path_key in ("path", "min_path"):
+            if path_key in liberty:
+                liberty[path_key] = [
+                    str(
+                        (workspace.pdk.root or Path(""))
+                        / (path.lstrip("/") if path.startswith("/IP/") else path)
+                    )
+                    for path in liberty[path_key]
+                ]
     errors = invalid_io_liberty_errors(
-        path for liberty in sta.get("liberty", []) for path in liberty["path"]
+        path
+        for liberty in sta.get("liberty", [])
+        for path_key in ("path", "min_path")
+        for path in liberty.get(path_key, [])
     )
     if errors:
         raise ValueError("STA liberty validation failed:\n  " + "\n  ".join(errors))

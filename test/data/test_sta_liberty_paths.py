@@ -29,6 +29,7 @@ def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
                 "IP/relative.lib",
                 "/IP/legacy.lib",
             ],
+            "min_path": [str(external.with_name("sram_min.lib")), "IP/min.lib"],
         }
     ]
     if rc_corner is not None:
@@ -40,7 +41,11 @@ def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
         str(pdk_root / "IP/relative.lib"),
         str(pdk_root / "IP/legacy.lib"),
     ]
-    for value in expected[0]["path"]:
+    expected[0]["min_path"] = [
+        str(external.with_name("sram_min.lib")),
+        str(pdk_root / "IP/min.lib"),
+    ]
+    for value in expected[0]["path"] + expected[0]["min_path"]:
         path = type(tmp_path)(value)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("library(fixture) {}")

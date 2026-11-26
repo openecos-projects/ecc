@@ -43,9 +43,14 @@ def model_export(tmp_path, monkeypatch):
     native = Mock(spec=ECCToolsModule)
 
     def write_model(**kwargs):
-        path = kwargs["output_lib_path"]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"libraries": kwargs["lib_paths"], "spef": kwargs["spef_path"]}))
+        for key in ("output_lib_path", "output_min_lib_path"):
+            path = kwargs[key]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(
+                    {"libraries": kwargs["lib_paths"], "spef": kwargs["spef_path"], "mode": key}
+                )
+            )
 
     native.write_timing_model.side_effect = write_model
     monkeypatch.setattr(runner, "EccSubFlow", Mock())
@@ -73,9 +78,11 @@ def test_harden_extracts_each_scenario_and_keeps_typical_entry(model_export):
         sdc = workspace.directory / f"{item['corner']}_{item['rcx_corner']}.tcl"
         assert call.kwargs == {
             "output_lib_path": model,
+            "output_min_lib_path": model.with_name("core_min.lib"),
             "config": str(workspace.directory / "config/sta_ecc.json"),
             "output_dir": Path(step.data.steps["sta"]) / scenario,
             "lib_paths": item["liberty_files"],
+            "min_lib_paths": [],
             "sdc_path": sdc,
             "spef_path": item["spef_file"],
             "design_name": "core",
@@ -87,12 +94,14 @@ def test_harden_extracts_each_scenario_and_keeps_typical_entry(model_export):
                 "rc_corner": item["rcx_corner"],
                 "analysis_mode": "max",
                 "path": f"{scenario}/core.lib",
+                "min_path": f"{scenario}/core_min.lib",
                 "source_libraries": item["liberty_files"],
+                "source_min_libraries": [],
                 "sdc": str(sdc),
                 "spef": item["spef_file"],
             }
         )
-    assert manifest == {"schema_version": 1, "models": expected}
+    assert manifest == {"schema_version": 2, "models": expected}
     assert default_lib.read_bytes() == (root / "TYP_25/TYPICAL/core.lib").read_bytes()
     assert default_lib.read_bytes() != (root / "MIN_m40/Cbest/core.lib").read_bytes()
 
@@ -115,7 +124,8 @@ def test_narrowed_rerun_removes_unselected_models(model_export):
     assert runner.run_harden(workspace, step)
     root = Path(step.output.lib).parent / "timing_models"
     assert sorted(path.relative_to(root).as_posix() for path in root.rglob("*.lib")) == [
-        "TYP_25/TYPICAL/core.lib"
+        "TYP_25/TYPICAL/core.lib",
+        "TYP_25/TYPICAL/core_min.lib",
     ]
 
 

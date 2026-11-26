@@ -23,6 +23,8 @@ SCHEMAS = (
             "Liberty corner groups analyzed by STA. Each entry is "
             "{corner, temperature, path}; optional rc_corner selects a complete "
             "group for that PVT/RC pair instead of the PVT-only default. "
+            "Optional min_path lists explicit early macro models paired with the "
+            "late models in path; other cells share their ordinary libraries. "
             "Relative paths are expanded "
             "against the PDK root on config refresh. ICS55 IO libraries are "
             "not included by default. The v2 standard-cell corners use the "
