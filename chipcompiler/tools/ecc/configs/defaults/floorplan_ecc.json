@@ -62,6 +62,9 @@
   "pdn_generator": {
         "core_power_net": "",
         "core_ground_net": "",
+    "io_core_connect": {
+      "enable": false
+    },
     "global_connect": [
       {
         "net_name": "VDD",

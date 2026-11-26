@@ -155,10 +155,17 @@ def test_io_cell_parameters_reach_both_floorplan_stages(floorplan_workspace, nat
         "floorplan.io_placer.io_cell.auto_resize.enable": False,
         "floorplan.pdn_generator.core_power_net": "VDD_CORE",
         "floorplan.pdn_generator.core_ground_net": "VSS_CORE",
+        "floorplan.pdn_generator.io_core_connect": {
+            "enable": True,
+            "nets": ["VDD_CORE", "VSS_CORE"],
+            "pin_layers": ["MET4"],
+            "fail_on_unresolved": True,
+        },
     }
     expected_pdn = json_read(workspace.config[StepEnum.FLOORPLAN.value])["pdn_generator"]
     expected_pdn.update(pdn_defaults("ics55", "io_cell"))
     expected_pdn.update({"core_power_net": "VDD_CORE", "core_ground_net": "VSS_CORE"})
+    expected_pdn["io_core_connect"] = overrides["floorplan.pdn_generator.io_core_connect"]
     expected = json_read(workspace.config[StepEnum.FLOORPLAN.value])["io_placer"]
     expected.update(
         {

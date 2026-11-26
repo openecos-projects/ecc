@@ -21,6 +21,9 @@ def test_io_cell_parameter_batch_round_trip(ready_project):
         f"{prefix}.io_cell.auto_resize.enable": "false",
         "floorplan.pdn_generator.core_power_net": "VDD_CORE",
         "floorplan.pdn_generator.core_ground_net": "VSS_CORE",
+        "floorplan.pdn_generator.io_core_connect": json.dumps(
+            {"enable": True, "fail_on_unresolved": True, "nets": ["VDD_CORE", "VSS_CORE"]}
+        ),
     }
     command = ["param", "apply", "--project", str(ready_project)]
     for key, value in values.items():
@@ -39,6 +42,11 @@ def test_io_cell_parameter_batch_round_trip(ready_project):
     assert config["params"]["floorplan"]["pdn_generator"] == {
         "core_power_net": "VDD_CORE",
         "core_ground_net": "VSS_CORE",
+        "io_core_connect": {
+            "enable": True,
+            "fail_on_unresolved": True,
+            "nets": ["VDD_CORE", "VSS_CORE"],
+        },
     }
 
     assert (

@@ -147,6 +147,18 @@ SCHEMAS = (
         ),
     ),
     config_param(
+        "floorplan.pdn_generator.io_core_connect",
+        "floorplan",
+        ("pdn_generator", "io_core_connect"),
+        {"enable": False},
+        applies="pre_floorplan",
+        description=(
+            "IO-to-core power connection options. Set enable and fail_on_unresolved to true "
+            "for pad-based designs; omitted nets/layers follow the core supplies and stripes."
+        ),
+        type="json",
+    ),
+    config_param(
         "floorplan.pdn_generator.global_connect",
         "floorplan",
         ("pdn_generator", "global_connect"),
