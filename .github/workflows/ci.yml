@@ -63,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check version
         uses: ./.github/actions/check-version
@@ -103,7 +103,7 @@ jobs:
       e2e_smoke_designs: ${{ steps.policy.outputs.smoke }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -145,7 +145,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup OSS CAD Suite
         uses: ./.github/actions/setup-oss-cad-suite-cached
@@ -180,7 +180,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -289,7 +289,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -848,7 +848,7 @@ jobs:
 
       - name: Checkout designs on cache miss
         if: steps.source.outputs.hit == 'false'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ needs.list-versions.outputs.e2e_designs_repo }}
           ref: ${{ needs.list-versions.outputs.e2e_designs_git_commit }}
@@ -913,16 +913,16 @@ jobs:
     steps:
       - name: Checkout
         id: checkout-try1
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         continue-on-error: true
       - name: Checkout (retry 1/2)
         id: checkout-try2
         if: steps.checkout-try1.outcome == 'failure'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         continue-on-error: true
       - name: Checkout (retry 2/2)
         if: steps.checkout-try1.outcome == 'failure' && steps.checkout-try2.outcome == 'failure'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Link E2E designs
         run: |
@@ -1058,7 +1058,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Verify signoff CSV failure modes
         run: bash .github/scripts/signoff-csv-test.sh
@@ -1129,7 +1129,7 @@ jobs:
     container: quay.io/pypa/manylinux_2_34_x86_64
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -1171,7 +1171,7 @@ jobs:
     timeout-minutes: 240
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
