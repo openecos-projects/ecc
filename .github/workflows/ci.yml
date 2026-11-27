@@ -132,7 +132,7 @@ jobs:
           EOF
 
       - name: Upload CI actions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -263,7 +263,7 @@ jobs:
 
       - name: Upload integration flow logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-flow-logs
           if-no-files-found: ignore
@@ -318,7 +318,7 @@ jobs:
 
       - name: Upload PyInstaller artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ecc-cli-linux-x86_64
           if-no-files-found: ignore
@@ -401,7 +401,7 @@ jobs:
           echo "sha256=${archive_sha256%% *}" >> "$GITHUB_OUTPUT"
 
       - name: Upload PDK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: icsprout55-pdk
           path: icsprout55-pdk.tar.bz2
@@ -466,7 +466,7 @@ jobs:
           tar -czf ecc-sizer.tar.gz -C "$sizer_root" .
 
       - name: Upload Sizer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ecc-sizer
           path: ecc-sizer.tar.gz
@@ -1034,7 +1034,7 @@ jobs:
       - name: Upload signoff product CSVs
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-signoff-csv-${{ matrix.design }}
           path: ${{ runner.temp }}/e2e-product-csv/${{ matrix.design }}/
@@ -1043,7 +1043,7 @@ jobs:
 
       - name: Upload e2e workspaces on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-flow-workspace-${{ matrix.design }}
           if-no-files-found: ignore
@@ -1116,7 +1116,7 @@ jobs:
       - name: Upload CSV evidence
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ecc-signoff-csv
           path: signoff-artifacts/
