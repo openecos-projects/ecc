@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import os
-import shutil
 from pathlib import Path
 
 from chipcompiler.data import (
@@ -23,6 +22,12 @@ from chipcompiler.tools.ecc.clock_tree import (
 )
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
 from chipcompiler.tools.ecc.harden import export_harden_views
+from chipcompiler.tools.ecc.lvs_artifacts import (
+    copy_lvs_outputs as copy_lvs_outputs,
+)
+from chipcompiler.tools.ecc.lvs_artifacts import (
+    wipe_stale_lvs_outputs,
+)
 from chipcompiler.tools.ecc.metrics import (
     build_step_metrics,
     save_cts_timing_feature_facts,
@@ -93,26 +98,6 @@ def temperature_token(temperature) -> str:
 def _workspace_sta_config_path(workspace: Workspace) -> str | None:
     config_path = workspace_config_key_path(workspace.directory, StepEnum.STA.value)
     return os.fspath(config_path) if config_path is not None else None
-
-
-def copy_lvs_outputs(workspace: Workspace, step: EccStep):
-    output_dir_text = os.fspath((step.data.steps or {}).get(StepEnum.LVS.value, ""))
-    if not output_dir_text:
-        return
-
-    reporter_dir = Path(output_dir_text) / "lvs_reporter"
-    if not reporter_dir.is_dir():
-        return
-
-    for source_path, target_path in (
-        (reporter_dir / "ilvs.rpt", Path(step.report.step or "")),
-        (reporter_dir / "ilvs.json", Path(step.feature.step or "")),
-    ):
-        if not source_path.is_file():
-            continue
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, target_path)
-        workspace.logger.info("Copied LVS %s to %s", source_path, target_path)
 
 
 def has_parasitics(workspace: Workspace, step: EccStep) -> bool:
@@ -759,11 +744,10 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
 
         sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
 
+        wipe_stale_lvs_outputs(step)
         ecc_module.init_lvs(output_dir=(step.data.steps or {}).get(StepEnum.LVS.value, ""))
         ecc_module.run_lvs()
         ecc_module.destroy_lvs()
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_LVS.value, state=StateEnum.Success)
 
         reslut = save_data(
             workspace=workspace,
@@ -774,8 +758,15 @@ def run_lvs(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         if not reslut:
             return False
 
-        copy_lvs_outputs(workspace=workspace, step=step)
+        if not copy_lvs_outputs(workspace=workspace, step=step):
+            sub_flow.update_step(step_name=EccSubFlowEnum.run_LVS.value, state=StateEnum.Imcomplete)
+            sub_flow.update_step(
+                step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Imcomplete
+            )
+            workspace.logger.error("LVS produced no report (ilvs.json): %s", step.feature.step)
+            return False
 
+        sub_flow.update_step(step_name=EccSubFlowEnum.run_LVS.value, state=StateEnum.Success)
         sub_flow.update_step(step_name=EccSubFlowEnum.save_data.value, state=StateEnum.Success)
 
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)

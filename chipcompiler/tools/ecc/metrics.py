@@ -3730,8 +3730,11 @@ def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None
     json_path = getattr(step.feature, "step", "") or ""
     data = json_read(json_path)
     if isinstance(data, dict):
-        violations = data.get("violations", [])
-        metrics["lvs_count"] = len(violations) if isinstance(violations, list) else 0
+        violations = data.get("violations")
+        # No violations list means no usable LVS report: leave the metric
+        # unavailable instead of reporting a clean 0.
+        if isinstance(violations, list):
+            metrics["lvs_count"] = len(violations)
 
     return _finish_step_metrics(workspace, step, step_metrics, metrics)
 

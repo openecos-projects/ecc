@@ -14,7 +14,7 @@ from chipcompiler.cli.core.inputs import (
     project_options,
 )
 from chipcompiler.cli.core.invocation import execute_command
-from chipcompiler.cli.core.options import PlainOption, ProjectOption, WorkspaceOption
+from chipcompiler.cli.core.options import JsonOption, PlainOption, ProjectOption, WorkspaceOption
 
 process_app = create_app(help="Inspect, cancel, or reconcile ECC run processes")
 
@@ -26,11 +26,12 @@ def inspect_cmd(
     project: ProjectOption = None,
     run_id: Annotated[str | None, typer.Option("--run-id")] = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
 ) -> None:
     execute_command(
         "process",
         ProcessInspectInput(
-            output=output_options(plain=plain),
+            output=output_options(plain=plain, json_output=json_output),
             project=project_options(project),
             workspace=workspace,
             run_id=run_id,
