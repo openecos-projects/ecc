@@ -1,8 +1,12 @@
 #!/usr/bin/env python
+import gzip
 import importlib
 import json
 import os
 import shutil
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +42,35 @@ def _positive_int(value: object, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+@contextmanager
+def _uncompressed_spef_path(spef_path: PathArg, work_dir: PathArg = "") -> Iterator[PathArg]:
+    text = os.fspath(spef_path)
+    if not text.endswith(".gz"):
+        yield spef_path
+        return
+    scratch_parent = Path(work_dir).parent if work_dir else None
+    if scratch_parent is not None:
+        scratch_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="wb",
+        prefix=f"{Path(text).stem}.",
+        suffix=".tmp",
+        dir=scratch_parent,
+        delete=False,
+    ) as handle:
+        temp_path = Path(handle.name)
+        try:
+            with gzip.open(text, "rb") as source:
+                shutil.copyfileobj(source, handle)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            raise
+    try:
+        yield os.fspath(temp_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
@@ -118,7 +151,10 @@ class ECCToolsModule:
         include_m2_pg_rail_blockage: bool = False,  # noqa: FBT001, FBT002
         include_m2_pg_rail_density: bool = True,  # noqa: FBT001, FBT002
         timing_model_only: bool = False,  # noqa: FBT001, FBT002
+        *,
+        timing_metadata_only: bool = False,  # noqa: FBT001, FBT002
     ):
+        metadata_options = {"timing_metadata_only": True} if timing_metadata_only else {}
         return self.ecc.pydb(
             dm_inst_ptr,
             route_num_bins_x,
@@ -128,6 +164,7 @@ class ECCToolsModule:
             include_m2_pg_rail_blockage,
             include_m2_pg_rail_density,
             timing_model_only,
+            **metadata_options,
         )
 
     def _place_timing_config(
@@ -195,8 +232,10 @@ class ECCToolsModule:
                 "status": "skipped",
                 "reason": "no_rcx_config",
             }
-        if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
-            raise RuntimeError("ECC placement timing SPEF initialization failed")
+        if normalized_spef:
+            with _uncompressed_spef_path(normalized_spef, work_dir=work_dir) as plain_spef:
+                if self.ecc.spef_init(plain_spef) is not True:
+                    raise RuntimeError("ECC placement timing SPEF initialization failed")
         config_dict = self._place_timing_config(
             config=config,
             work_dir=work_dir,
@@ -300,6 +339,11 @@ class ECCToolsModule:
             "spef_path": str(selected),
             "candidate_count": len(candidates),
         }
+
+    def prepare_placement_metadata(self, inputs: dict[str, object]) -> dict[str, object]:
+        from chipcompiler.tools.ecc.placement_metadata import prepare_placement_metadata
+
+        return prepare_placement_metadata(self, inputs)
 
     def prepare_place_timing(self, inputs: dict[str, object]) -> dict[str, object]:
         """Initialize current-main iSTA for an ECC DreamPlace session."""

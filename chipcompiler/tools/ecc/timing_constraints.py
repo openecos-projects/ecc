@@ -29,7 +29,12 @@ def step_tcl_path(
     source = workspace.pdk.sdc
     if source is None:
         return None
-    post_cts = _reads_clock_tree(step)
+    if step.name == StepEnum.DIFF_SIZING.value:
+        from chipcompiler.tools.ecc_dreamplace.builder import diff_sizing_rc_mode
+
+        post_cts = diff_sizing_rc_mode(workspace, step) == "spef" or _reads_clock_tree(step)
+    else:
+        post_cts = _reads_clock_tree(step)
     if not is_generated_sdc(source):
         return custom_step_sdc_path(source, workspace.directory, post_cts=post_cts)
     scenarios = timing_scenarios(workspace)

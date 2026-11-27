@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import gzip
 import shutil
 from pathlib import Path
 
@@ -38,6 +39,10 @@ class FakeStaEcc:
 
     def spef_init(self, spef_path):
         self.calls.append(("spef_init", spef_path))
+        if spef_path and Path(spef_path).is_file():
+            resolved = Path(spef_path)
+            self.spef_payloads = getattr(self, "spef_payloads", [])
+            self.spef_payloads.append((resolved, resolved.read_text(encoding="utf-8")))
         return True
 
     def init_sta(self, **kwargs):
@@ -343,3 +348,41 @@ def test_place_timing_defaults_to_model_only_preparation(tmp_path, inputs, opera
 
     assert [call[0] for call in module.ecc.calls][-1] == operation
     assert summary["mode"] == mode
+
+
+def test_place_timing_gunzips_spef_gz_transiently_and_preserves_spef_path(tmp_path):
+    module = make_module()
+    module._place_timing_active = False
+    spef_text = '*SPEF "IEEE 1481-1999"\n*DESIGN "gcd"\n'
+    spef_gz = tmp_path / "inputs" / "gcd.spef.gz"
+    spef_gz.parent.mkdir()
+    with gzip.open(spef_gz, "wt", encoding="utf-8") as stream:
+        stream.write(spef_text)
+    work_dir = tmp_path / "result" / "native_sta"
+
+    summary = module.prepare_place_timing(
+        {
+            "lib": ["/pdk/lib.lib"],
+            "sdc": "/ws/design.sdc",
+            "spef": str(spef_gz),
+            "work_dir": str(work_dir),
+            "timing_mode": "complete",
+        }
+    )
+    refreshed = module.refresh_place_timing()
+
+    assert summary == {
+        "status": "ok",
+        "mode": "complete",
+        "lib_count": 1,
+        "sdc_path": "/ws/design.sdc",
+        "spef_path": str(spef_gz),
+        "parasitics_initialization": "spef",
+        "rcx": {"status": "skipped", "reason": "no_rcx_config"},
+    }
+    assert refreshed == summary
+    assert len(module.ecc.spef_payloads) == 2
+    for temp_path, payload in module.ecc.spef_payloads:
+        assert payload == spef_text
+        assert temp_path.parent == work_dir.parent
+        assert not temp_path.exists()

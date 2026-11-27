@@ -348,6 +348,31 @@ def test_post_synthesis_sta_receives_pre_cts_typical(timing_workspace, native_mo
     )
 
 
+@pytest.mark.parametrize("custom", [False, True])
+@pytest.mark.parametrize(
+    ("dreamplace_overrides", "phase"),
+    [
+        ({}, "pre_CTS"),
+        ({"diff_sizing_timing_rc_mode": "gr"}, "pre_CTS"),
+        ({"diff_sizing_timing_rc_mode": "placement"}, "pre_CTS"),
+        ({"diff_sizing_timing_rc_mode": "spef"}, "post_CTS"),
+    ],
+)
+def test_diff_sizing_selects_post_cts_constraints_only_in_spef_mode(
+    timing_workspace, custom, dreamplace_overrides, phase
+):
+    workspace = timing_workspace
+    filename = "TYP_25_TYPICAL.tcl"
+    if custom:
+        workspace.pdk.sdc = workspace.directory / "user.sdc"
+        workspace.pdk.sdc.write_text("create_clock -period 10 [get_ports clk]\n")
+        generate_timing_scripts(workspace)
+        filename = "user.sdc.ecc.tcl"
+    workspace.parameters.data["config_overrides"] = {"dreamplace": dreamplace_overrides}
+    step = build_step(workspace, StepEnum.DIFF_SIZING.value, input_def=None, input_verilog=None)
+    assert step_tcl_path(workspace, step) == workspace.directory / "origin" / phase / filename
+
+
 @pytest.mark.parametrize(
     ("source_states", "phase"),
     [
