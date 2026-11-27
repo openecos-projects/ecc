@@ -108,7 +108,7 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
+        uses: DeterminateSystems/nix-installer-action@v23
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summarize: false
@@ -972,7 +972,7 @@ jobs:
           "${CHIPCOMPILER_KEPLER_FORMAL_ROOT}/bin/kepler-formal" --version
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
+        uses: DeterminateSystems/nix-installer-action@v23
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summarize: false
@@ -1176,7 +1176,7 @@ jobs:
           submodules: recursive
 
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v22
+        uses: DeterminateSystems/nix-installer-action@v23
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           summarize: false
