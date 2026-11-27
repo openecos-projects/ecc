@@ -552,6 +552,33 @@ class TestMetricRangeValidation:
         assert inputs.value("sta_setup_wns") == -2.5
         assert inputs.config_warnings == []
 
+    @pytest.mark.parametrize("pair", [(2.0, 0.5), (0.5, 2.0)])
+    def test_out_of_range_and_valid_duplicate_in_same_step_conflicts(self, pair):
+        from chipcompiler.analysis.qor.loader import _select_metrics
+
+        records = [
+            {"id": "core_utilization", "value": pair[0], "project_role": "final"},
+            {"id": "core_utilization", "value": pair[1], "project_role": "final"},
+        ]
+        warnings = []
+        selected = _select_metrics([("post_floorplan", records)], warnings)
+        assert "core_utilization" not in selected
+        assert any("out of range" in w for w in warnings)
+        assert any("conflicting" in w for w in warnings)
+
+    def test_identical_out_of_range_duplicates_emit_single_range_warning(self):
+        from chipcompiler.analysis.qor.loader import _select_metrics
+
+        records = [
+            {"id": "core_utilization", "value": 2.0, "project_role": "final"},
+            {"id": "core_utilization", "value": 2.0, "project_role": "final"},
+        ]
+        warnings = []
+        selected = _select_metrics([("post_floorplan", records)], warnings)
+        assert "core_utilization" not in selected
+        assert len(warnings) == 1
+        assert "out of range" in warnings[0]
+
 
 class TestDesignResolution:
     def test_design_falls_back_to_parameters(self, tmp_path):

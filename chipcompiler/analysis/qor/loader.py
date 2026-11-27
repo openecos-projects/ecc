@@ -212,6 +212,11 @@ def _select_metrics(step_payloads: list, warnings: list | None = None) -> dict:
             if not isinstance(metric_id, str) or not metric_id or num is None:
                 continue
             value = float(num)
+            # Track duplicates before range filtering so an invalid entry
+            # still conflicts with any differing record in the same step.
+            first = step_values.setdefault(metric_id, value)
+            if value != first and metric_id not in step_conflicts:
+                step_conflicts[metric_id] = (first, value)
             violation = metric_range_violation(metric_id, value)
             if violation is not None:
                 message = (
@@ -221,9 +226,6 @@ def _select_metrics(step_payloads: list, warnings: list | None = None) -> dict:
                 if warnings is not None and message not in warnings:
                     warnings.append(message)
                 continue
-            first = step_values.setdefault(metric_id, value)
-            if value != first and metric_id not in step_conflicts:
-                step_conflicts[metric_id] = (first, value)
             role = raw.get("project_role")
             if role not in _ROLE_PRIORITY or role == "none":
                 continue
