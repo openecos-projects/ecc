@@ -304,3 +304,74 @@ def test_run_step_dispatches_macro_placement(monkeypatch, tmp_path):
         )
         is True
     )
+
+
+def test_diff_sizing_saves_committed_db_before_feature_placement_map(monkeypatch, tmp_path):
+    calls = []
+    subflow = FakeSubFlow()
+
+    class FakeDreamplaceModule:
+        def __init__(self, **_kwargs):
+            calls.append("init")
+
+        def run_diff_sizing(self):
+            calls.append("run_diff_sizing")
+            return True
+
+    class FakeEccModule:
+        def __init__(self, tag: str, *, routed_wires: int):
+            self.tag = tag
+            self.routed_wires = routed_wires
+
+        def close(self):
+            calls.append(("close", self.tag))
+
+        def feature_placement_map(self, json_path):
+            # Native EarlyRouter clears regular-net wire lists during map eval.
+            self.routed_wires = 0
+            calls.append(("feature_placement_map", self.tag, str(json_path)))
+
+    initial_module = FakeEccModule("initial", routed_wires=42)
+    reloaded_module = FakeEccModule("reloaded", routed_wires=42)
+    step = EccStep(name=StepEnum.DIFF_SIZING.value)
+
+    monkeypatch.setattr(dreamplace_runner, "EccSubFlow", lambda **_kwargs: subflow)
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "get_eda_instance",
+        lambda **_kwargs: initial_module,
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "create_db_engine",
+        lambda _ws, _step: calls.append("reload_committed_db") or reloaded_module,
+    )
+    monkeypatch.setattr(
+        dreamplace_runner.ecc_runner,
+        "save_data",
+        lambda **kwargs: (
+            calls.append(("save_data", kwargs["ecc_module"].tag, kwargs["ecc_module"].routed_wires))
+            or True
+        ),
+    )
+    monkeypatch.setattr(dreamplace_runner, "DreamplaceModule", FakeDreamplaceModule)
+
+    assert dreamplace_runner.run_diff_sizing(Workspace(directory=tmp_path), step) is True
+    assert calls == [
+        "init",
+        "run_diff_sizing",
+        ("close", "initial"),
+        "reload_committed_db",
+        ("save_data", "reloaded", 42),
+        ("feature_placement_map", "reloaded", ""),
+    ]
+    assert [update["step_name"] for update in subflow.updates] == [
+        "load data",
+        "run diff sizing",
+        "save data",
+    ]
+    assert [update["state"] for update in subflow.updates] == [
+        StateEnum.Success,
+        StateEnum.Success,
+        StateEnum.Success,
+    ]

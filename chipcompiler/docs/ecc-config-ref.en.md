@@ -746,7 +746,7 @@ single metric. The parameter affects action ranking only, not the terminal STA
 evaluation after commit.
 
 `place.timing_coeff_growth_factor` multiplies both WNS/TNS coefficients at each
-GP density-weight update. The default `1.01` increases the coefficients;
+GP density-weight update. The default `1.0` disables growth; values like `1.01` increase the coefficients;
 `1.0` disables growth and `0.99` decays them. The factor must be
 positive and finite, and cumulative growth is capped at 1000 times the
 placement's starting WNS/TNS coefficients. Slew/cap and the outer norm weight
@@ -789,7 +789,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `density_weight` | 8e-05 | Initial weight of the density term (starting point of auto-adjustment) |
 | `inflation_density_weight_scale` | 0.001 | Scale on the Xplace-style `||grad wirelength||_1 / ||grad density||_1` restart ratio after inflation; the default keeps the restarted density force small, `1.0` uses the normalized ratio directly, and `0.1` reproduces the historical DreamPlace restart scale |
 | `inflation_filler_consumption_mode` | `filler_first` | How routability inflation consumes whitespace: `filler_first` shrinks filler before raising target density, `proportional` shrinks filler and other whitespace together, and `capacity_only` preserves filler until the placement-area limit |
-| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
+| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | Multiplier for both WNS/TNS coefficients at each GP density-weight update; 1.0 disables growth; skipped in `size_only` |
 | `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | Initial timing / wirelength gradient L1 norm ratio in direct-loss placement; 0.0 disables balancing |
 | `timing_grad_balance_reset_on_restart` | 0 `*place.timing_grad_balance_reset_on_restart` | Reinitialize the timing balance weight after inflation/GP restart; 1 reinitializes, 0 preserves the current weight |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT propagation aggregation: `hard` or `smooth` (LSE) |

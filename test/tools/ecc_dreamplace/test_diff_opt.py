@@ -16,7 +16,7 @@ from chipcompiler.utility import json_write
 def test_diff_opt_parser_preserves_configured_flows_and_uses_placement_parasitics(
     dreamplace_default_config,
 ):
-    from dreamplace.flows.diff_opt_spec import canonical_diff_opt_flows
+    from dreamplace.flows.config.specs import canonical_diff_opt_flows
 
     mode, flows = canonical_diff_opt_flows(
         dreamplace_default_config["diff_optimization_mode"],

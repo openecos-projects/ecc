@@ -57,10 +57,13 @@ SCHEMAS = (
         "place.buffering_candidate_drive_type_mode",
         "dreamplace",
         ("buffering_candidate_drive_type_mode",),
-        "single_fixed",
+        "fast_buffers",
         applies="placement",
-        choices=("single_fixed", "four_strength_table"),
-        description="candidate discrete buffer type selection, single_fixed | four_strength_table",
+        choices=("single_fixed", "four_strength_table", "fast_buffers"),
+        description=(
+            "candidate discrete buffer type selection, "
+            "single_fixed | four_strength_table | fast_buffers"
+        ),
     ),
     config_param(
         "place.buffering_candidate_drive_strength_table",

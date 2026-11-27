@@ -54,7 +54,7 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     actual = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
     assert {key: getattr(actual, key) for key in values} == {
         **values,
-        "timing_surrogate_mode": "surrogate_only",
+        "timing_surrogate_mode": "lut_only",
     }
     assert (actual.design_inputs["spef"], actual.design_inputs["rcx_config"]) == ("", "")
     geometry = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
@@ -72,7 +72,7 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     ],
 )
 def test_gr_rejects_unqualified_flows(override, dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -92,7 +92,7 @@ def test_gr_rejects_unqualified_flows(override, dreamplace_default_config):
 )
 def test_gr_routing_stays_on_cpu(requested, expected, dreamplace_default_config, monkeypatch):
     import torch
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     config = {
@@ -123,7 +123,7 @@ def test_gr_routing_stays_on_cpu(requested, expected, dreamplace_default_config,
 def test_gr_sizing_resolves_diff_sizing_continuous_steps(
     steps, parameterization, execution, dynamics, dreamplace_default_config
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -166,7 +166,7 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
     dreamplace_default_config,
     timing_device,
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -208,7 +208,7 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
 def test_gr_sizing_lut_action_rejects_continuous_warmup(
     dreamplace_default_config,
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -232,7 +232,7 @@ def test_gr_sizing_lut_action_rejects_continuous_warmup(
 
 @pytest.mark.parametrize("steps", [-1, 1001, 1.5, True])
 def test_gr_sizing_rejects_invalid_diff_sizing_continuous_steps(steps, dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
