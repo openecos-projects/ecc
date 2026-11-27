@@ -8,6 +8,9 @@ on:
         required: false
         type: boolean
         default: false
+  # Push runs on main only produce the runtime artifacts downstream repos
+  # match by head_sha (ecos-studio downloads ecc-cli/pdk/sizer from the run
+  # covering its pinned submodule commit); E2E stays on the queue and nightly.
   push:
     branches:
       - main
@@ -28,6 +31,7 @@ on:
       - '.github/workflows/**'
       - '.github/actions/**'
       - '.github/revision.toml'
+      - '.github/e2e.toml'
       - '.github/scripts/**'
       - 'deploy/arc-cache/**'
       - 'nix/**'
@@ -40,9 +44,13 @@ on:
   schedule:
     - cron: "17 18 * * *"
 
+# Only PR runs cancel older runs of the same PR. Push runs get a unique
+# group: each main commit's run is the artifact source downstream repos match
+# by head_sha and must never be cancelled — not by a newer push, not by the
+# nightly sharing the main-ref group.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   actions: read
@@ -90,6 +98,8 @@ jobs:
       e2e_designs_repo: ${{ steps.resolve.outputs.e2e_designs_repo }}
       e2e_designs_git_commit: ${{ steps.resolve.outputs.e2e_designs_git_commit }}
       e2e_designs_sha256: ${{ steps.resolve.outputs.e2e_designs_sha256 }}
+      e2e_excluded_designs: ${{ steps.policy.outputs.excluded }}
+      e2e_smoke_designs: ${{ steps.policy.outputs.smoke }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -107,6 +117,18 @@ jobs:
         run: |
           set -euo pipefail
           nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
+
+      - name: Read e2e design selection policy
+        id: policy
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, tomllib
+
+          with open(".github/e2e.toml", "rb") as f:
+              policy = tomllib.load(f)
+          print("excluded=" + json.dumps(policy["excluded"]))
+          print("smoke=" + json.dumps(policy["smoke"]))
+          EOF
 
       - name: Upload CI actions
         uses: actions/upload-artifact@v4
@@ -451,7 +473,8 @@ jobs:
   stage-e2e-tools:
     name: Stage E2E tool (${{ matrix.dependency }})
     needs: list-versions
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -461,6 +484,22 @@ jobs:
       root: ${{ steps.stage.outputs.root }}
     steps:
       - name: Download CI actions
+        id: ci-actions-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 1/2)
+        id: ci-actions-try2
+        if: steps.ci-actions-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 2/2)
+        if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-ci-actions
@@ -543,7 +582,8 @@ jobs:
   stage-e2e-artifacts:
     name: Stage E2E artifact (${{ matrix.dependency }})
     needs: [list-versions, pdk, sizer]
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -551,6 +591,22 @@ jobs:
         dependency: [pdk, sizer]
     steps:
       - name: Download CI actions
+        id: ci-actions-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 1/2)
+        id: ci-actions-try2
+        if: steps.ci-actions-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 2/2)
+        if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-ci-actions
@@ -612,10 +668,27 @@ jobs:
   stage-pyinstaller:
     name: Stage PyInstaller artifact
     needs: build-pyinstaller
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 10
     steps:
       - name: Download PyInstaller artifact
+        id: pyi-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+        continue-on-error: true
+      - name: Download PyInstaller artifact (retry 1/2)
+        id: pyi-try2
+        if: steps.pyi-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+        continue-on-error: true
+      - name: Download PyInstaller artifact (retry 2/2)
+        if: steps.pyi-try1.outcome == 'failure' && steps.pyi-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-cli-linux-x86_64
@@ -632,7 +705,8 @@ jobs:
   verify-e2e-deps:
     name: Smoke test staged E2E dependencies
     needs: [stage-e2e-tools, stage-e2e-artifacts, stage-pyinstaller]
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 10
     outputs:
       root: ${{ needs.stage-e2e-tools.outputs.root }}
@@ -745,7 +819,8 @@ jobs:
   e2e-designs:
     name: List e2e designs
     needs: list-versions
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     outputs:
       designs: ${{ steps.list.outputs.designs }}
       designs_dir: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
@@ -795,36 +870,57 @@ jobs:
         id: list
         env:
           DESIGNS_DIR: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
+          EXCLUDED_DESIGNS: ${{ needs.list-versions.outputs.e2e_excluded_designs }}
+          SMOKE_DESIGNS: ${{ needs.list-versions.outputs.e2e_smoke_designs }}
         run: |
           set -euo pipefail
-          # xtea and usb disabled everywhere for now: real runs show hold WNS < 0,
-          # which would keep their strict signoff gates red until tuned. Re-enable
-          # usb after trying timing_opt.hold_margin=0.10 in the next PR. All other
-          # designs, including the memory-heavy BM64, run on the self-hosted runner
-          # for every event.
-          excludes=(xtea usb)
-          designs="$(find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
-            | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
-            | jq -R . | jq -cs .)"
+          # Selection policy lives in .github/e2e.toml.
+          mapfile -t all_designs < <(
+            find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
+              | xargs -n1 basename | grep -vxFf <(jq -r '.[]' <<< "$EXCLUDED_DESIGNS") | sort
+          )
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            mapfile -t selected < <(jq -r '.[]' <<< "$SMOKE_DESIGNS")
+            for design in "${selected[@]}"; do
+              test -f "$DESIGNS_DIR/$design/ecc.toml" || {
+                printf '::error::Smoke design %s not found in the design set.\n' "$design" >&2
+                exit 1
+              }
+            done
+          else
+            selected=("${all_designs[@]}")
+          fi
+          designs="$(printf '%s\n' "${selected[@]}" | jq -R . | jq -cs .)"
           jq -e 'length > 0' <<< "${designs}" >/dev/null
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
 
   e2e-packaged-flow:
     name: E2E (${{ matrix.design }})
     needs: [verify-e2e-deps, e2e-designs]
+    if: github.event_name != 'push'
     strategy:
       fail-fast: false
       matrix:
         design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
     # Bare self-hosted runner (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
-    runs-on: ecc-nightly-runner-0
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     env:
       E2E_STAGE_ROOT: ${{ needs.verify-e2e-deps.outputs.root }}
       E2E_DESIGNS_DIR: ${{ needs.e2e-designs.outputs.designs_dir }}
     timeout-minutes: 60
     steps:
       - name: Checkout
+        id: checkout-try1
+        uses: actions/checkout@v4
+        continue-on-error: true
+      - name: Checkout (retry 1/2)
+        id: checkout-try2
+        if: steps.checkout-try1.outcome == 'failure'
+        uses: actions/checkout@v4
+        continue-on-error: true
+      - name: Checkout (retry 2/2)
+        if: steps.checkout-try1.outcome == 'failure' && steps.checkout-try2.outcome == 'failure'
         uses: actions/checkout@v4
 
       - name: Link E2E designs
@@ -956,7 +1052,7 @@ jobs:
   signoff-csv:
     name: Signoff CSV collector
     needs: [e2e-packaged-flow, e2e-designs]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -1066,6 +1162,8 @@ jobs:
 
   nix-build:
     name: Nix Build (flake checks)
+    # Only the merge queue, nightly, and manual dispatch run this.
+    if: github.event_name != 'pull_request' && github.event_name != 'push'
     runs-on: ubuntu-latest
     # Cold cache builds boost, ecc-tools, dreamplace and kepler-formal/naja
     # from source; magic-nix-cache makes subsequent runs incremental.
@@ -1094,3 +1192,25 @@ jobs:
           free -h
           df -h / /nix
           nix flake check -L --max-jobs 1 --cores 2
+
+  merge-gate:
+    name: Merge Gate
+    # Aggregate check for branch protection and the merge queue: the
+    # required-check list never rots as jobs or designs change. "skipped"
+    # fails the gate, except for nix-build which is PR-skipped by design.
+    needs: [check-version, test, build-pyinstaller, e2e-packaged-flow, nix-build]
+    if: always() && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate gating job results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '
+            .["check-version"].result == "success" and
+            .["test"].result == "success" and
+            .["build-pyinstaller"].result == "success" and
+            .["e2e-packaged-flow"].result == "success" and
+            (.["nix-build"].result == "success" or .["nix-build"].result == "skipped")
+          ' <<< "$RESULTS"

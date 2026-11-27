@@ -1,0 +1,15 @@
+# E2E design selection policy for CI (.github/workflows/ci.yml).
+# xtea/usb: hold WNS < 0 fails strict signoff until tuned; re-enable usb after
+# trying timing_opt.hold_margin=0.10.
+excluded = ["xtea", "usb"]
+
+# Pull requests run only these; all other events run every non-excluded design.
+smoke = [
+  "Bstage-rv32e-64B-icache",
+  "Cstage-rv32e-axi",
+  "Dstage-rv32e",
+  "Estage-minirv",
+  "Fstage-scpu",
+  "picorv32a",
+  "gcd_icg",
+]
