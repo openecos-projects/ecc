@@ -2,8 +2,6 @@ import json
 import os
 import tomllib
 
-import pytest
-
 from chipcompiler.cli import main as cli_main
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_pdk_root, set_scoped_key
 
@@ -471,8 +469,8 @@ class TestSafeTomlSectionParsing:
         assert "target_density" in after
 
 
-def test_project_apply_checks_layer_choices_against_the_declared_pdk() -> None:
-    from chipcompiler.cli.project.project_application import ProjectApplicationError, _apply_text
+def test_project_apply_keeps_legacy_layer_choices_pdk_scoped() -> None:
+    from chipcompiler.cli.project.project_application import _apply_text
 
     def apply(pdk: str):
         return _apply_text(
@@ -484,8 +482,7 @@ def test_project_apply_checks_layer_choices_against_the_declared_pdk() -> None:
         )
 
     assert apply("sg13g2")[1] == ["route.bottom_layer"]
-    with pytest.raises(ProjectApplicationError):
-        apply("ics55")
+    assert apply("ics55")[1] == ["route.bottom_layer"]
 
 
 def test_project_apply_validates_against_the_batch_final_pdk_in_any_order() -> None:

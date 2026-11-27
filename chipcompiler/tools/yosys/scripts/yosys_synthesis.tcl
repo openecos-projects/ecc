@@ -189,7 +189,9 @@ set abc_area_recovery_3 "${abc_choice2}; ${abc_amap}; ${abc_choice}; map;"
 #===========================================================
 set abc_constr_path "${tmp_dir}/abc.constr"
 set abc_constr_file [open $abc_constr_path w]
-puts $abc_constr_file "set_driving_cell ${abc_driver_cell}"
+if {$abc_driver_cell ne ""} {
+  puts $abc_constr_file "set_driving_cell ${abc_driver_cell}"
+}
 puts $abc_constr_file "set_load ${abc_load}"
 close $abc_constr_file
 
@@ -475,121 +477,102 @@ clockgate {*}$tech_cells_args {*}$exclude_cells
 # technology mapping for flip-flops
 dfflibmap {*}$tech_cells_args {*}$exclude_cells
 
-# Follow mapped DFF cell names, not library filenames. For designs without
-# mapped ICS55 DFFs, select from the loaded latch library cells.
-set ics55_cells [tee -q -s result.string select -list-mod =*/t:DFF*H7? %M]
-if {[string trim $ics55_cells] eq ""} {
-  set ics55_cells [tee -q -s result.string select -list-mod =LATLX1H7?]
-}
-set ics55_latch_suffix ""
-regexp {H7[HLR]\M} $ics55_cells ics55_latch_suffix
+# Latch and tri-state masters are PDK facts; their pins come from the loaded
+# Liberty: the output by direction, and the enable as the input left over once
+# the PDK-named data/reset/set roles are accounted for. Only a latch may
+# resolve its output by the Q convention; every other master must have exactly
+# one output.
+if {$latch_cell_n ne "" || $latch_cell_p ne "" || $latch_cell_nn0 ne "" || $latch_cell_nn1 ne ""
+    || $latch_cell_pn0 ne "" || $latch_cell_pn1 ne "" || $tbuf_cell ne ""} {
+  set primitive_map_path "${tmp_dir}/primitive_map.v"
+  set primitive_map_file [open $primitive_map_path "w"]
 
-# Positive asynchronous controls are inverted for the active-low library pins.
-if {$ics55_latch_suffix ne ""} {
-  set ics55_latch_map "${tmp_dir}/ics55_latch_map.v"
-  set latch_map_file [open $ics55_latch_map "w"]
-  puts $latch_map_file [format {
+  if {$latch_cell_n ne ""} {
+    puts $primitive_map_file [format {
 module \$_DLATCH_N_ (E, D, Q);
   input E, D;
   output Q;
-  LATLX1%s _TECHMAP_REPLACE_ (.D(D), .GN(E), .Q(Q));
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
-
+} [verilog_id $latch_cell_n] [verilog_id $latch_pin_data] \
+        [verilog_id [liberty_enable_pin $latch_cell_n [list $latch_pin_data]]] \
+        [verilog_id [liberty_latch_output_pin $latch_cell_n]]]
+  }
+  if {$latch_cell_p ne ""} {
+    puts $primitive_map_file [format {
 module \$_DLATCH_P_ (E, D, Q);
   input E, D;
   output Q;
-  LATHX1%s _TECHMAP_REPLACE_ (.D(D), .G(E), .Q(Q));
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(Q));
 endmodule
+} [verilog_id $latch_cell_p] [verilog_id $latch_pin_data] \
+        [verilog_id [liberty_enable_pin $latch_cell_p [list $latch_pin_data]]] \
+        [verilog_id [liberty_latch_output_pin $latch_cell_p]]]
+  }
 
-module \$_DLATCH_NN0_ (E, R, D, Q);
+  # NN0/NN1/PN0/PN1 drive the reset/set pin directly. NP0/NP1/PP0/PP1 are the
+  # same master with the top-level active-high control inverted first.
+  foreach {negative_primitive positive_primitive master role_pin} {
+    NN0 NP0 $latch_cell_nn0 $latch_pin_reset
+    NN1 NP1 $latch_cell_nn1 $latch_pin_set
+    PN0 PP0 $latch_cell_pn0 $latch_pin_reset
+    PN1 PP1 $latch_cell_pn1 $latch_pin_set
+  } {
+    set master [subst $master]
+    set role_pin [subst $role_pin]
+    if {$master eq ""} {
+      continue
+    }
+    set enable_pin [liberty_enable_pin $master [list $latch_pin_data $role_pin]]
+    set q [liberty_latch_output_pin $master]
+    puts $primitive_map_file [format {
+module \$_DLATCH_%s_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .GN(E), .Q(Q));
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(R), .%s(Q));
 endmodule
+} $negative_primitive [verilog_id $master] [verilog_id $latch_pin_data] \
+        [verilog_id $enable_pin] [verilog_id $role_pin] [verilog_id $q]]
 
-module \$_DLATCH_NN1_ (E, R, D, Q);
+    if {$inverter_cell ne ""} {
+      set inverter_in [liberty_input_pin $inverter_cell]
+      set inverter_out [liberty_single_output_pin $inverter_cell]
+      puts $primitive_map_file [format {
+module \$_DLATCH_%s_ (E, R, D, Q);
   input E, R, D;
   output Q;
-  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .GN(E), .Q(Q));
+  wire rn;
+  %s inv_control (.%s(R), .%s(rn));
+  %s _TECHMAP_REPLACE_ (.%s(D), .%s(E), .%s(rn), .%s(Q));
 endmodule
+} $positive_primitive [verilog_id $inverter_cell] [verilog_id $inverter_in] \
+        [verilog_id $inverter_out] [verilog_id $master] [verilog_id $latch_pin_data] \
+        [verilog_id $enable_pin] [verilog_id $role_pin] [verilog_id $q]]
+    }
+  }
 
-module \$_DLATCH_NP0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire RN;
-  INVX1%s inv_reset (.A(R), .Y(RN));
-  LATLRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .GN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_NP1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire SN;
-  INVX1%s inv_set (.A(R), .Y(SN));
-  LATLSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .GN(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PN0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(R), .G(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PN1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(R), .G(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PP0_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire RN;
-  INVX1%s inv_reset (.A(R), .Y(RN));
-  LATHRX1%s _TECHMAP_REPLACE_ (.D(D), .RN(RN), .G(E), .Q(Q));
-endmodule
-
-module \$_DLATCH_PP1_ (E, R, D, Q);
-  input E, R, D;
-  output Q;
-  wire SN;
-  INVX1%s inv_set (.A(R), .Y(SN));
-  LATHSX1%s _TECHMAP_REPLACE_ (.D(D), .SN(SN), .G(E), .Q(Q));
-endmodule
-} $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix $ics55_latch_suffix $ics55_latch_suffix \
-  $ics55_latch_suffix]
-  close $latch_map_file
-  techmap -map $ics55_latch_map
-  opt -fast -purge
-
-  # Map Yosys tri-state buffers to the same ICS55 voltage-threshold variant
-  # selected for the sequential cells.
-  set ics55_tri_map "${tmp_dir}/ics55_tri_map.v"
-  set tri_map_file [open $ics55_tri_map "w"]
-  puts $tri_map_file [format {
+  if {$tbuf_cell ne ""} {
+    puts $primitive_map_file [format {
 (* techmap_celltype = "\$_TBUF_" *)
-module _tbuf_disabled (A, E, Y);
-  input A, E;
-  output Y;
+module _ecc_tbuf_disabled (input A, E, output Y);
   parameter _TECHMAP_CONSTMSK_E_ = 1'b0;
   parameter _TECHMAP_CONSTVAL_E_ = 1'bx;
   wire _TECHMAP_FAIL_ = !(_TECHMAP_CONSTMSK_E_ && !_TECHMAP_CONSTVAL_E_);
   wire [1023:0] _TECHMAP_DO_ = "connect -unset Y";
 endmodule
 
-(* techmap_celltype = "\$_TBUF_" *)
-module _tbuf_enabled (A, E, Y);
+module \$_TBUF_ (A, E, Y);
   input A, E;
   output Y;
-  TBUFX1%s _TECHMAP_REPLACE_ (.A(A), .OE(E), .Y(Y));
+  %s _TECHMAP_REPLACE_ (.%s(A), .%s(E), .%s(Y));
 endmodule
-} $ics55_latch_suffix]
-  close $tri_map_file
-  techmap -map $ics55_tri_map
+} [verilog_id $tbuf_cell] [verilog_id $tbuf_pin_data] \
+        [verilog_id [liberty_enable_pin $tbuf_cell [list $tbuf_pin_data]]] \
+        [verilog_id [liberty_single_output_pin $tbuf_cell]]]
+  }
+
+  close $primitive_map_file
+  techmap -map $primitive_map_path
   opt -fast -purge
 }
 
@@ -605,25 +588,27 @@ abc -D "$abc_delay_target" \
   -script "$strategy_script" \
   -showtmp
 
-# Lower existing tie cells too, so mapped-netlist inputs get the same policy.
-set tie_map "${tmp_dir}/tie_cells.v"
-set tie_map_file [open $tie_map "w"]
-foreach {cell port value} [list \
-    $tie_high_cell $tie_high_port 1 \
-    $tie_low_cell $tie_low_port 0] {
-  puts $tie_map_file [format {
+# Logical-only profiles may retain constants as wires. Physical profiles declare
+# both tie roles explicitly; never synthesize an empty module or infer masters.
+setundef -zero
+opt_clean -purge
+if {$tech_cell_tiehi ne "" && $tech_cell_tielo ne ""} {
+  set tie_map "${tmp_dir}/tie_cells.v"
+  set tie_map_file [open $tie_map "w"]
+  foreach {cell port value} [list \
+      [lindex $tech_cell_tiehi 0] [lindex $tech_cell_tiehi 1] 1 \
+      [lindex $tech_cell_tielo 0] [lindex $tech_cell_tielo 1] 0] {
+    puts $tie_map_file [format {
 module \%s (output \%s );
   assign \%s = 1'b%s;
 endmodule
 } $cell $port $port $value]
+  }
+  close $tie_map_file
+  techmap -map $tie_map
+  opt_clean -purge
+  hilomap -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 }
-close $tie_map_file
-techmap -map $tie_map
-
-# Resolve undefined bits and constant aliases before creating one tie per load.
-setundef -zero
-opt_clean -purge
-hilomap -hicell {*}$tech_cell_tiehi -locell {*}$tech_cell_tielo
 
 # Multiple clean passes to catch all redundant logic
 opt_clean -purge

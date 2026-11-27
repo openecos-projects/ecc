@@ -25,6 +25,10 @@ def _load_json(path: Path) -> object:
                 return json.load(f)
         with path.open() as f:
             return json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        # Expected for truncated or hand-edited files: one line, no traceback.
+        logger.warning("Failed to parse JSON file %s: %s", path, exc)
+        return None
     except Exception:
         logger.warning("Failed to read JSON file: %s", path, exc_info=True)
         return None

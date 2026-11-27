@@ -87,7 +87,7 @@ def build_run_manifest(
 
     ws = Path(workspace).resolve()
     spec = Path(spec_path) if spec_path else None
-    pdk = os.environ.get("ECC_PDK_ROOT") or os.environ.get("CHIPCOMPILER_PDK_ROOT")
+    pdk = os.environ.get("ECC_PDK_ROOT")
     return RunManifest(
         schema_version=MANIFEST_SCHEMA_VERSION,
         kind="signoff_csv_run",

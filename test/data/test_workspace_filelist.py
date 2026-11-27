@@ -20,8 +20,8 @@ def test_parameters():
 
 
 @pytest.fixture
-def pdk():
-    return get_pdk(pdk_name="ics55")
+def pdk(tmp_path, minimal_ics55_pdk_factory):
+    return get_pdk(pdk_name="ics55", pdk_root=minimal_ics55_pdk_factory(tmp_path / "pdk"))
 
 
 def _write_rtl_file(path, module_name):

@@ -92,10 +92,11 @@ def check_cmd(
     *,
     project: ProjectOption = None,
     plain: PlainOption = False,
+    json_output: JsonOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
     command_input = CheckInput(
-        output=output_options(plain=plain),
+        output=output_options(plain=plain, json_output=json_output),
         project=project_options(project),
         workspace=workspace,
     )

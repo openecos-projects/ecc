@@ -42,7 +42,8 @@ REQUIRED_DISTRIBUTION_METADATA = (
 ECC_PACKAGE_RESOURCES = (
     "chipcompiler/tools/ecc/configs",
     "chipcompiler/tools/yosys/scripts",
-    "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json",
+    "chipcompiler/tools/ecc_dreamplace/configs",
+    "chipcompiler/tools/ecc_sizer/configs",
 )
 
 DREAMPLACE_THIRDPARTY_FILES = (
@@ -314,7 +315,9 @@ def rich_unicode_data_hiddenimports():
     return names
 
 
-ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all("chipcompiler")
+ecc_datas, ecc_binaries, ecc_hiddenimports = collect_all(
+    "chipcompiler", exclude_datas=["thirdparty/**"]
+)
 ecc_tools_datas, ecc_tools_binaries, ecc_tools_hiddenimports = collect_all("ecc_tools_bin")
 klayout_datas, klayout_binaries, klayout_hiddenimports = collect_all("klayout")
 dreamplace_datas, dreamplace_binaries, dreamplace_hiddenimports = collect_all("dreamplace")

@@ -72,7 +72,7 @@ def emir_case(tmp_path, monkeypatch):
     workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
     workspace.config = build_workspace_config_paths(workspace)
     workspace.config["dir"].mkdir()
-    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    template = Path(builder.__file__).parent / "configs" / "defaults" / "emir_ecc.json"
     config = json_read(template)
     config["technology_file_path"] = str(tmp_path / "process.tech")
     assert json_write(workspace.config[StepEnum.EMIR.value], config)
@@ -168,7 +168,7 @@ def test_emir_dispatch_loads_ipw_power_and_preserves_downstream_outputs(emir_cas
 
 def test_emir_placeholder_does_not_run_native_analysis(emir_case):
     workspace, step, module, save_data = emir_case
-    template = Path(builder.__file__).parent / "configs" / "emir_ecc.json"
+    template = Path(builder.__file__).parent / "configs" / "defaults" / "emir_ecc.json"
     assert json_write(workspace.config[StepEnum.EMIR.value], json_read(template))
 
     assert runner.run_step(workspace, step, module) is False

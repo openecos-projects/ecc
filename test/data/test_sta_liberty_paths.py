@@ -8,11 +8,11 @@ from chipcompiler.tools.ecc.builder import build_step
 from chipcompiler.utility import json_read
 
 
-def test_sta_refresh_preserves_external_absolute_paths(
+def test_sta_refresh_preserves_declared_absolute_and_relative_paths(
     tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters, gcd_rtl_file
 ):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    external = tmp_path / "macro libraries" / "sram.lib"
+    external = pdk_root / "macro libraries" / "sram.lib"
     external.parent.mkdir()
     external.write_text("library(sram) {}\n")
     absolute_internal = pdk_root / "IP" / "absolute.lib"
@@ -35,6 +35,10 @@ def test_sta_refresh_preserves_external_absolute_paths(
         str(pdk_root / "IP/relative.lib"),
         str(pdk_root / "IP/legacy.lib"),
     ]
+    for value in expected[0]["path"]:
+        path = type(tmp_path)(value)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("library(fixture) {}")
     workspace = create_workspace(
         directory=str(tmp_path / "workspace"),
         origin_def="",

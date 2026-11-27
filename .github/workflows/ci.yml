@@ -8,6 +8,9 @@ on:
         required: false
         type: boolean
         default: false
+  # Push runs on main only produce the runtime artifacts downstream repos
+  # match by head_sha (ecos-studio downloads ecc-cli/pdk/sizer from the run
+  # covering its pinned submodule commit); E2E stays on the queue and nightly.
   push:
     branches:
       - main
@@ -28,17 +31,26 @@ on:
       - '.github/workflows/**'
       - '.github/actions/**'
       - '.github/revision.toml'
+      - '.github/e2e.toml'
       - '.github/scripts/**'
       - 'deploy/arc-cache/**'
       - 'nix/**'
+  # Merge queue entries build on the temporary gh-readonly-queue/<base>/pr-N-*
+  # ref; required checks only run there via this trigger. paths filters are
+  # not supported for merge_group, so queue entries run the full pipeline.
+  merge_group:
   # Nightly on main: same pipeline and same e2e design matrix as push/PR; it
   # exists to catch dependency drift, not to run extra designs.
   schedule:
     - cron: "17 18 * * *"
 
+# Only PR runs cancel older runs of the same PR. Push runs get a unique
+# group: each main commit's run is the artifact source downstream repos match
+# by head_sha and must never be cancelled — not by a newer push, not by the
+# nightly sharing the main-ref group.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   actions: read
@@ -86,6 +98,8 @@ jobs:
       e2e_designs_repo: ${{ steps.resolve.outputs.e2e_designs_repo }}
       e2e_designs_git_commit: ${{ steps.resolve.outputs.e2e_designs_git_commit }}
       e2e_designs_sha256: ${{ steps.resolve.outputs.e2e_designs_sha256 }}
+      e2e_excluded_designs: ${{ steps.policy.outputs.excluded }}
+      e2e_smoke_designs: ${{ steps.policy.outputs.smoke }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -103,6 +117,18 @@ jobs:
         run: |
           set -euo pipefail
           nix run .#list-versions -- --format github | tee -a "$GITHUB_OUTPUT"
+
+      - name: Read e2e design selection policy
+        id: policy
+        run: |
+          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
+          import json, tomllib
+
+          with open(".github/e2e.toml", "rb") as f:
+              policy = tomllib.load(f)
+          print("excluded=" + json.dumps(policy["excluded"]))
+          print("smoke=" + json.dumps(policy["smoke"]))
+          EOF
 
       - name: Upload CI actions
         uses: actions/upload-artifact@v4
@@ -171,7 +197,7 @@ jobs:
       - name: Extract PDK
         run: |
           mkdir -p ../pdk/icsprout55-pdk
-          tar -xzf ../pdk/icsprout55-pdk.tar.gz -C ../pdk/icsprout55-pdk
+          tar -xjf ../pdk/icsprout55-pdk.tar.bz2 -C ../pdk/icsprout55-pdk
           test -s ../pdk/icsprout55-pdk/techfile/icsprout55.layermap
 
       - name: Setup OSS CAD Suite
@@ -309,6 +335,7 @@ jobs:
     outputs:
       revision: ${{ steps.checkout.outputs.revision }}
       release: ${{ steps.unpack.outputs.release }}
+      sha256: ${{ steps.package.outputs.sha256 }}
     steps:
       - name: Checkout PDK
         id: checkout
@@ -325,19 +352,59 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           cd pdk
-          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" --pattern '*.tar.bz2'
-          make unzip
+
+          assets=()
+          for vt in HVT LVT SVT; do
+            base="ICsprout55_SC9T_BASIC_${vt}"
+            assets+=("${base}_liberty_nldm.tar.bz2" "${base}_gds.tar.bz2")
+          done
+          io_asset="ICsprout_55LLULP1225_IO_0901_gds.tar.bz2"
+          assets+=("$io_asset")
+
+          download_args=()
+          for asset in "${assets[@]}"; do
+            download_args+=(--pattern "$asset")
+          done
+          gh release download "$PDK_RELEASE" --repo "$PDK_REPO" "${download_args[@]}"
+
+          : > ci-release-assets.sha256
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+            awk -v asset="$asset" '$2 == asset {print; found = 1} END {if (!found) exit 1}' \
+              release-assets.sha256 >> ci-release-assets.sha256
+          done
+          sha256sum --check ci-release-assets.sha256
+
+          for vt in HVT LVT SVT; do
+            base="ICsprout55_SC9T_BASIC_${vt}"
+            target="IP/STD_cell/$base"
+            mkdir -p "$target"
+            tar -xjf "${base}_liberty_nldm.tar.bz2" -C "$target"
+            tar -xjf "${base}_gds.tar.bz2" -C "$target"
+          done
+          mkdir -p IP/IO
+          tar -xjf "$io_asset" -C IP/IO
+          rm -- "${assets[@]}" ci-release-assets.sha256
           echo "release=$PDK_RELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Package PDK
-        run: tar -czf icsprout55-pdk.tar.gz -C pdk .
+        id: package
+        run: |
+          printf 'repo=%s\nrevision=%s\nrelease=%s\n' \
+            "$PDK_REPO" "$PDK_GIT_COMMIT" "$PDK_RELEASE" > pdk/ci-metadata
+          tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
+            --exclude='./.git' -cjf icsprout55-pdk.tar.bz2 -C pdk .
+          archive_sha256="$(sha256sum icsprout55-pdk.tar.bz2)"
+          echo "sha256=${archive_sha256%% *}" >> "$GITHUB_OUTPUT"
 
       - name: Upload PDK
         uses: actions/upload-artifact@v4
         with:
           name: icsprout55-pdk
-          path: icsprout55-pdk.tar.gz
+          path: icsprout55-pdk.tar.bz2
+          compression-level: 0
 
   sizer:
     name: Fetch Sizer
@@ -406,7 +473,8 @@ jobs:
   stage-e2e-tools:
     name: Stage E2E tool (${{ matrix.dependency }})
     needs: list-versions
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -416,6 +484,22 @@ jobs:
       root: ${{ steps.stage.outputs.root }}
     steps:
       - name: Download CI actions
+        id: ci-actions-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 1/2)
+        id: ci-actions-try2
+        if: steps.ci-actions-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 2/2)
+        if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-ci-actions
@@ -436,9 +520,6 @@ jobs:
           oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
           kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
-          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
-          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
-          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
 
       - name: Setup OSS CAD Suite
         if: matrix.dependency == 'oss-cad-suite' && steps.cache.outputs.hit == 'false'
@@ -501,7 +582,8 @@ jobs:
   stage-e2e-artifacts:
     name: Stage E2E artifact (${{ matrix.dependency }})
     needs: [list-versions, pdk, sizer]
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -509,6 +591,22 @@ jobs:
         dependency: [pdk, sizer]
     steps:
       - name: Download CI actions
+        id: ci-actions-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 1/2)
+        id: ci-actions-try2
+        if: steps.ci-actions-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-ci-actions
+          path: .github/actions
+        continue-on-error: true
+      - name: Download CI actions (retry 2/2)
+        if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-ci-actions
@@ -529,9 +627,7 @@ jobs:
           oss-cad-suite-sha256: ${{ needs.list-versions.outputs.oss_cad_suite_sha256 }}
           sizer-sha256: ${{ needs.list-versions.outputs.sizer_sha256 }}
           kepler-formal-sha256: ${{ needs.list-versions.outputs.kepler_formal_sha256 }}
-          pdk-repo: ${{ needs.list-versions.outputs.pdk_repo }}
-          pdk-release: ${{ needs.list-versions.outputs.pdk_release }}
-          pdk-git-commit: ${{ needs.list-versions.outputs.pdk_git_commit }}
+          pdk-sha256: ${{ needs.pdk.outputs.sha256 }}
 
       - name: Download PDK artifact
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
@@ -552,14 +648,10 @@ jobs:
         uses: ./.github/actions/stage-tool
         with:
           stage-path: /mnt/arc-stage/runs/${{ github.run_id }}/pdk
-          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.gz
+          archive-path: ${{ runner.temp }}/e2e-stage-input/icsprout55-pdk.tar.bz2
           extract: "true"
           extract-subdir: icsprout55-pdk
           root-marker: icsprout55-pdk/techfile/icsprout55.layermap
-          metadata-path: icsprout55-pdk/ci-metadata
-          metadata: |
-            revision=${{ needs.pdk.outputs.revision }}
-            release=${{ needs.pdk.outputs.release }}
 
       - name: Stage Sizer on shared storage
         if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
@@ -576,10 +668,27 @@ jobs:
   stage-pyinstaller:
     name: Stage PyInstaller artifact
     needs: build-pyinstaller
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 10
     steps:
       - name: Download PyInstaller artifact
+        id: pyi-try1
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+        continue-on-error: true
+      - name: Download PyInstaller artifact (retry 1/2)
+        id: pyi-try2
+        if: steps.pyi-try1.outcome == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ecc-cli-linux-x86_64
+          path: ${{ runner.temp }}/e2e-stage-input
+        continue-on-error: true
+      - name: Download PyInstaller artifact (retry 2/2)
+        if: steps.pyi-try1.outcome == 'failure' && steps.pyi-try2.outcome == 'failure'
         uses: actions/download-artifact@v4
         with:
           name: ecc-cli-linux-x86_64
@@ -596,7 +705,8 @@ jobs:
   verify-e2e-deps:
     name: Smoke test staged E2E dependencies
     needs: [stage-e2e-tools, stage-e2e-artifacts, stage-pyinstaller]
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     timeout-minutes: 10
     outputs:
       root: ${{ needs.stage-e2e-tools.outputs.root }}
@@ -619,7 +729,7 @@ jobs:
           test -s "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz"
           test -s "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz"
           test -s "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz"
-          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"
+          test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2"
 
           archive_sha256() {
             local archive="$1"
@@ -640,6 +750,7 @@ jobs:
           sizer_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/sizer/ci-metadata")"
           kepler_head_sha="$(metadata_value head_sha "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
           kepler_run_id="$(metadata_value run_id "$E2E_STAGE_ROOT/kepler-formal/ci-metadata")"
+          pdk_repo="$(metadata_value repo "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           pdk_revision="$(metadata_value revision "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           pdk_release="$(metadata_value release "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/ci-metadata")"
           ecc_commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/"
@@ -651,7 +762,7 @@ jobs:
             "$E2E_STAGE_ROOT/oss-cad-suite/oss-cad-suite.tgz" \
             "$E2E_STAGE_ROOT/sizer/ecc-sizer.tar.gz" \
             "$E2E_STAGE_ROOT/kepler-formal/kepler-formal-linux-x64.tar.gz" \
-            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz"; do
+            "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2"; do
             checksum="$(archive_sha256 "$archive")"
             printf '%s  %s\n' "$checksum" "${archive#"$E2E_STAGE_ROOT"/}"
           done
@@ -697,17 +808,19 @@ jobs:
             printf '```text\n'
             "$E2E_STAGE_ROOT/kepler-formal/bin/kepler-formal" --version
             printf '```\n\n### PDK\n\n'
-            printf -- '- Git commit: [%s](https://github.com/openecos-projects/icsprout55-pdk/commit/%s)\n' \
-              "$pdk_revision" "$pdk_revision"
+            printf -- '- Repository: [%s](https://github.com/%s)\n' "$pdk_repo" "$pdk_repo"
+            printf -- '- Git commit: [%s](https://github.com/%s/commit/%s)\n' \
+              "$pdk_repo" "$pdk_repo" "$pdk_revision"
             printf -- '- Release: [%s](https://github.com/openecos-projects/icsprout55-pdk/releases/tag/%s)\n' \
               "$pdk_release" "$pdk_release"
-            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.gz")"
+            printf -- '- SHA-256: `%s`\n' "$(archive_sha256 "$E2E_STAGE_ROOT/pdk/icsprout55-pdk.tar.bz2")"
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
   e2e-designs:
     name: List e2e designs
     needs: list-versions
-    runs-on: ecc-nightly-runner-0
+    if: github.event_name != 'push'
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     outputs:
       designs: ${{ steps.list.outputs.designs }}
       designs_dir: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
@@ -757,35 +870,57 @@ jobs:
         id: list
         env:
           DESIGNS_DIR: ${{ steps.source.outputs.designs_dir || steps.locate.outputs.designs_dir }}
+          EXCLUDED_DESIGNS: ${{ needs.list-versions.outputs.e2e_excluded_designs }}
+          SMOKE_DESIGNS: ${{ needs.list-versions.outputs.e2e_smoke_designs }}
         run: |
           set -euo pipefail
-          # xtea disabled everywhere for now: real run shows hold WNS < 0,
-          # which would keep its strict signoff gates red until tuned. All
-          # other designs, including the memory-heavy BM64, run on the
-          # self-hosted runner for every event.
-          excludes=(xtea)
-          designs="$(find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
-            | xargs -n1 basename | grep -vxFf <(printf '%s\n' "${excludes[@]}") \
-            | jq -R . | jq -cs .)"
+          # Selection policy lives in .github/e2e.toml.
+          mapfile -t all_designs < <(
+            find "$DESIGNS_DIR" -mindepth 2 -maxdepth 2 -name ecc.toml -printf '%h\n' \
+              | xargs -n1 basename | grep -vxFf <(jq -r '.[]' <<< "$EXCLUDED_DESIGNS") | sort
+          )
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            mapfile -t selected < <(jq -r '.[]' <<< "$SMOKE_DESIGNS")
+            for design in "${selected[@]}"; do
+              test -f "$DESIGNS_DIR/$design/ecc.toml" || {
+                printf '::error::Smoke design %s not found in the design set.\n' "$design" >&2
+                exit 1
+              }
+            done
+          else
+            selected=("${all_designs[@]}")
+          fi
+          designs="$(printf '%s\n' "${selected[@]}" | jq -R . | jq -cs .)"
           jq -e 'length > 0' <<< "${designs}" >/dev/null
           echo "designs=$designs" >> "$GITHUB_OUTPUT"
 
   e2e-packaged-flow:
     name: E2E (${{ matrix.design }})
     needs: [verify-e2e-deps, e2e-designs]
+    if: github.event_name != 'push'
     strategy:
       fail-fast: false
       matrix:
         design: ${{ fromJSON(needs.e2e-designs.outputs.designs) }}
     # Bare self-hosted runner (not the manylinux container): also proves the
     # manylinux-built bundle runs on a current distro.
-    runs-on: ecc-nightly-runner-0
+    runs-on: ${{ github.event_name == 'merge_group' && 'ecc-nightly-runner-1' || 'ecc-nightly-runner-0' }}
     env:
       E2E_STAGE_ROOT: ${{ needs.verify-e2e-deps.outputs.root }}
       E2E_DESIGNS_DIR: ${{ needs.e2e-designs.outputs.designs_dir }}
     timeout-minutes: 60
     steps:
       - name: Checkout
+        id: checkout-try1
+        uses: actions/checkout@v4
+        continue-on-error: true
+      - name: Checkout (retry 1/2)
+        id: checkout-try2
+        if: steps.checkout-try1.outcome == 'failure'
+        uses: actions/checkout@v4
+        continue-on-error: true
+      - name: Checkout (retry 2/2)
+        if: steps.checkout-try1.outcome == 'failure' && steps.checkout-try2.outcome == 'failure'
         uses: actions/checkout@v4
 
       - name: Link E2E designs
@@ -804,7 +939,7 @@ jobs:
       - name: Setup PDK from shared storage
         run: |
           test -s "$E2E_STAGE_ROOT/pdk/icsprout55-pdk/techfile/icsprout55.layermap"
-          echo "CHIPCOMPILER_ICS55_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
+          echo "ECC_PDK_ROOT=$E2E_STAGE_ROOT/pdk/icsprout55-pdk" >> "$GITHUB_ENV"
 
       - name: Setup OSS CAD Suite from shared storage
         run: |
@@ -854,14 +989,7 @@ jobs:
       - name: Run design flows
         id: design-flow
         run: |
-          emir_params="$(dist/ecc-bundle/ecc param list --step emir --plain \
-            --project "$RUNNER_TEMP/e2e-design-input/${{ matrix.design }}")"
-          if [[ -n "$emir_params" ]]; then
-            echo "::warning::EMIR uses synthetic process data for flow testing, not signoff."
-            dist/ecc-bundle/ecc param set emir.technology_file_path \
-              "$PWD/test/fixtures/emir/ics55_synthetic.tech" \
-              --project "$RUNNER_TEMP/e2e-design-input/${{ matrix.design }}"
-          fi
+          echo "::warning::ICS55 v2 EMIR uses ECC's bundled synthetic model for flow testing, not signoff."
           bash nix/scripts/run-designs.sh \
             --ecc "$PWD/dist/ecc-bundle/ecc" \
             --designs-dir "$RUNNER_TEMP/e2e-design-input" \
@@ -884,7 +1012,7 @@ jobs:
           export ECC_REPO_ROOT="$PWD"
           export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}:$PWD/test/lit"
           nix shell \
-            --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.pyyaml ps.typing-extensions ps.tomli-w])" \
+            --expr "(builtins.getFlake \"$nixpkgs\").legacyPackages.x86_64-linux.python3.withPackages (ps: [ps.packaging ps.pydantic ps.pyyaml ps.typing-extensions ps.tomli-w])" \
             -c bash nix/scripts/export-signoff-csv.sh \
             --workspace "$RUNNER_TEMP/e2e/${{ matrix.design }}/default" \
             --out-dir "$RUNNER_TEMP/e2e-signoff/${{ matrix.design }}" \
@@ -924,7 +1052,7 @@ jobs:
   signoff-csv:
     name: Signoff CSV collector
     needs: [e2e-packaged-flow, e2e-designs]
-    if: always()
+    if: always() && github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -1034,6 +1162,8 @@ jobs:
 
   nix-build:
     name: Nix Build (flake checks)
+    # Only the merge queue, nightly, and manual dispatch run this.
+    if: github.event_name != 'pull_request' && github.event_name != 'push'
     runs-on: ubuntu-latest
     # Cold cache builds boost, ecc-tools, dreamplace and kepler-formal/naja
     # from source; magic-nix-cache makes subsequent runs incremental.
@@ -1062,3 +1192,25 @@ jobs:
           free -h
           df -h / /nix
           nix flake check -L --max-jobs 1 --cores 2
+
+  merge-gate:
+    name: Merge Gate
+    # Aggregate check for branch protection and the merge queue: the
+    # required-check list never rots as jobs or designs change. "skipped"
+    # fails the gate, except for nix-build which is PR-skipped by design.
+    needs: [check-version, test, build-pyinstaller, e2e-packaged-flow, nix-build]
+    if: always() && github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate gating job results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '
+            .["check-version"].result == "success" and
+            .["test"].result == "success" and
+            .["build-pyinstaller"].result == "success" and
+            .["e2e-packaged-flow"].result == "success" and
+            (.["nix-build"].result == "success" or .["nix-build"].result == "skipped")
+          ' <<< "$RESULTS"

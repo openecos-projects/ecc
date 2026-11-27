@@ -319,14 +319,17 @@ def test_macro_placement_engine_smoke_commits_candidates_as_fixed(mixed_macro_pl
         for node_id, name in enumerate(place_db.node_names)
         if place_db.macro_writeback_candidate[node_id]
     }
-    config_path = (
-        Path(__file__).resolve().parents[3]
-        / "chipcompiler/tools/ecc_dreamplace/configs/dreamplace_ecc.json"
-    )
+    from chipcompiler.data.pdk import PDK
+    from chipcompiler.data.workspace.tool_configs import tool_config
+    from chipcompiler.tools.ecc_dreamplace import builder as dreamplace_builder
+    from chipcompiler.utility import json_write
+
+    configs_dir = Path(dreamplace_builder.__file__).resolve().parent / "configs"
+    config = tool_config(configs_dir, "dreamplace_ecc.json", PDK(name="ics55", version="v1"))
     owner = StepEnum.MACRO_PLACEMENT.value
-    step_config = tmp_path / "macro_placement" / "config" / "dreamplace_ecc.json"
-    step_config.parent.mkdir(parents=True)
-    step_config.write_text(config_path.read_text())
+    config_path = tmp_path / "macro_placement" / "config" / "dreamplace_ecc.json"
+    config_path.parent.mkdir(parents=True)
+    assert json_write(config_path, config)
     module = DreamplaceModule(
         workspace=Workspace(
             directory=tmp_path,

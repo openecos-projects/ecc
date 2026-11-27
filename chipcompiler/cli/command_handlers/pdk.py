@@ -27,7 +27,7 @@ def _write_root_or_error(config_path: str, value: str, project: str | None) -> C
 
     try:
         _write_pdk_root(config_path, value)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         return CommandResult.err(
             [
                 error_record(
@@ -47,14 +47,12 @@ def _resolve_root_source(cfg, project_dir: str) -> tuple[str, str]:
         from chipcompiler.cli.project.config import _resolve_path
 
         return _resolve_path(cfg.project_dir or project_dir, cfg.pdk_root), "ecc.toml"
-    for var in ("CHIPCOMPILER_ICS55_PDK_ROOT", "ICS55_PDK_ROOT"):
-        value = os.environ.get(var, "").strip()
-        if value and os.path.isdir(os.path.abspath(value)):
-            return os.path.abspath(value), var
-    repo_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    )
-    return os.path.join(os.path.dirname(repo_root), "pdk", "icsprout55-pdk"), "repo-default"
+    from chipcompiler.cli.project.config import _pdk_root_from_env
+
+    root = _pdk_root_from_env()
+    if root:
+        return root, "ECC_PDK_ROOT"
+    return "", "unbound"
 
 
 def set_root(command_input, ctx: CommandContext) -> CommandResult:
@@ -72,10 +70,7 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                 error_record(
                     "invalid_pdk_path",
                     path=path,
-                    reason=(
-                        "not a directory (clone icsprout55-pdk first, "
-                        "then run make unzip inside it)"
-                    ),
+                    reason=("not a PDK directory"),
                 )
             ]
         )
@@ -119,7 +114,8 @@ def set_root(command_input, ctx: CommandContext) -> CommandResult:
                     "status": "incomplete",
                     "reason": problem.replace("\n", " "),
                     "hint": (
-                        "run `make unzip` inside the PDK checkout, then verify with `ecc doctor`"
+                        "populate the PDK root (e.g. `make unzip`), or override the missing "
+                        "path(s) under [pdk.overrides] in ecc.toml"
                     ),
                 }
             )
@@ -143,18 +139,21 @@ def show(command_input, ctx: CommandContext) -> CommandResult:
         )
     cfg = ctx.config if ctx.config is not None else load_run_config(ctx.project_dir)
     root, source = _resolve_root_source(cfg, ctx.project_dir)
-    if source == "repo-default" and not os.path.isdir(root):
+    if not root:
         return CommandResult.err(
             [
                 error_record(
                     "pdk_root_unavailable",
-                    reason="no PDK root is configured and the repository default is unavailable",
+                    reason=(
+                        "no PDK root is configured; set [pdk] root in ecc.toml "
+                        "or export ECC_PDK_ROOT"
+                    ),
                     set_root="ecc pdk set-root <path>",
                 )
             ]
         )
 
-    pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else "ics55"
+    pdk_name = cfg.pdk_name if cfg is not None and cfg.pdk_name else ""
     records: list[dict[str, object]] = [
         {
             "pdk": "show",
@@ -220,7 +219,7 @@ def unset(command_input, ctx: CommandContext) -> CommandResult:
             {
                 "pdk": "unset",
                 "status": "unset",
-                "source": "env CHIPCOMPILER_ICS55_PDK_ROOT / ICS55_PDK_ROOT / repo default",
+                "source": "explicit PDK environment selection",
             }
         ]
     )

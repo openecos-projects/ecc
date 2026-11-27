@@ -65,7 +65,7 @@ wrapper 默认安装到 `~/.local/bin`。该目录不在 `PATH` 中时加入（�
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `CHIPCOMPILER_ICS55_PDK_ROOT`，Yosys 与 ICS55 PDK 由 wrapper 自动配置；之后缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`（见 §2.4）。
+`--with-toolchain` 安装的 wrapper 会导出 `CHIPCOMPILER_OSS_CAD_DIR` 与 `ECC_PDK_ROOT`，Yosys 与 ICS55 PDK 由 wrapper 自动配置；之后缺工具链时重新运行安装脚本加 `--with-toolchain` 即可补齐。环境体检用 `ecc doctor`（见 §2.4）。
 
 ### 2.2 从源码运行（可选）
 
@@ -93,7 +93,7 @@ mkdir -p ~/.local/bin && ln -sf ~/.local/ecc/ecc ~/.local/bin/ecc   # ~/.local/b
 # ② PDK：icsprout55-pdk，liberty/GDS 需 make unzip（约 1 GB，来自 PDK 官方 Releases）
 git clone --depth 1 https://github.com/openecos-projects/icsprout55-pdk.git ~/.local/icsprout55-pdk
 make -C ~/.local/icsprout55-pdk unzip
-export CHIPCOMPILER_ICS55_PDK_ROOT=~/.local/icsprout55-pdk   # 建议写入 ~/.bashrc
+export ECC_PDK_ROOT=~/.local/icsprout55-pdk   # 建议写入 ~/.bashrc
 
 # ③ Yosys：OSS CAD Suite（需 yosys ≥ v0.67，内置 slang 前端）
 #    从 https://github.com/YosysHQ/oss-cad-suite-build/releases 下载 linux-x64 包后：
@@ -218,7 +218,7 @@ sdc = "timing_constraints_template.tcl" # 修改该文件设置时钟
 
 [pdk]
 name = "ics55"           # 目前支持 ics55
-root = ""                # 留空则用 CHIPCOMPILER_ICS55_PDK_ROOT 环境变量
+root = ""                # 留空则用 ECC_PDK_ROOT 环境变量
 
 [flow]
 # preset: rtl2gds | syn_sta | synthesis_lec
@@ -242,7 +242,7 @@ ecc project show                              # 查看 ecc.toml 里声明的字�
 两个要点：
 
 - **时序输入**：`ecc init` 在 `timing_constraints_template.tcl` 中生成五个 TOML 字符串，默认 `clk`/100 MHz。直接修改这个文件，不在项目 TOML 中填约束。ECC 保存输入副本，再生成 `origin/pre_CTS/` 和 `origin/post_CTS/` 下的可执行 Tcl；完整 SDC 必须先转换。详见[五组时序输入格式](ecc-config-ref.cn.md#17-用户填写的五组时序输入)；
-- **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `CHIPCOMPILER_ICS55_PDK_ROOT` > `ICS55_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
+- **PDK 解析优先级**：`ecc.toml` 的 `pdk.root` > 环境变量 `ECC_PDK_ROOT`。`ecc pdk show` 为方便查看还会显示仓库默认路径，但 `ecc check` 与 `ecc run` 必须使用前三种显式来源之一。用了一键安装脚本则环境变量已就绪，`root` 留空即可。
 
 ### 3.4 校验
 
@@ -892,7 +892,7 @@ ecc explore rank --name density         # passed 优先、QoR 降序排名
 | `[error] derived_configs_modified` | `workspace refresh` 发现受管 JSON 或 `macro_location.tcl` 在上次派生后被改过 | 通过 `ecc param`/`ecc macro`/`ecc.toml` 保留修改，或加 `--force` 明确丢弃 |
 | run 汇总带 `warning: ecc.toml values override different project.json base values`（`config_layer_diverged`） | `ecc.toml` 与首次运行记录到 `project.json` 的基线实际不一致：`pdk.root` 解析到了与首次运行不同的 PDK（如环境变量改指向），或 `flow.preset` 与 workspace 声明的范围不一致（如用 `--preset synthesis_lec` 建的 workspace 配 `rtl2gds` 的 ecc.toml） | 不影响执行结果，可忽略；对齐两边即消失（`ecc pdk set-root` 或修正 `flow.preset`） |
 | `[error] signoff_incomplete`（export 时） | 必需交付物缺失（如某步失败） | `ecc signoff inspect` 看 blocked 项；`ecc status`/`ecc log` 排查失败步骤后重跑 |
-| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk set-root <路径>` 或设 `CHIPCOMPILER_ICS55_PDK_ROOT` |
+| `ecc check` 报 `pdk.root is required` | 未找到 PDK | `ecc pdk set-root <路径>` 或设 `ECC_PDK_ROOT` |
 | PDK liberty 缺失 | 只 clone 了 PDK 没下数据 | `make -C ~/.local/icsprout55-pdk unzip`（可加 `USE_PROXY=true GH_PROXY=...`） |
 | 下载超时 | 网络受限 | 重试安装脚本；或按 §2.3 手动安装（PDK 的 `make unzip` 支持 `USE_PROXY=true GH_PROXY=...`） |
 | doctor 显示 `sizer: fail` | 必需的 Sizer 组件未安装 | `ecc doctor` 返回非零。完整 `rtl2gds` 链含 Timing optimization 步骤，运行前应安装 Sizer。按 remediation 提示源码构建 |

@@ -206,8 +206,8 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         joint_segment_virtual_density_enabled=0,
         gpu=0,
         gpugr_backend="cpu_pr_maze",
-        gpugr_bottom_routing_layer=result.get("gpugr_bottom_routing_layer") or "MET2",
-        gpugr_top_routing_layer=result.get("gpugr_top_routing_layer") or "MET5",
+        gpugr_bottom_routing_layer=result.get("gpugr_bottom_routing_layer") or "",
+        gpugr_top_routing_layer=result.get("gpugr_top_routing_layer") or "",
         gr_sizing_rrr_iters=3 if timing_rc_mode == "gr" else 0,
         enable_fillers=0,
         random_center_init_flag=0,
@@ -315,6 +315,17 @@ def write_step_config(workspace: Workspace, step: EccStep) -> Path:
 
     from dreamplace.flows.flow_config import resolve_flow_config
 
+    # Process bindings and generated candidate tables are explicit inputs;
+    # generic flow profiles must not replace them with schema placeholders.
+    explicit_keys.update(
+        {
+            "buffering_fixed_buffer_master",
+            "openroad_vt_suffixes",
+            "buffering_candidate_drive_type_mode",
+            "buffering_candidate_drive_strength_table",
+        }
+        & params.keys()
+    )
     params = resolve_flow_config(params, explicit_keys=explicit_keys)
     # Canonical profiles own defaults; explicit workspace values own the final
     # effective config and therefore must be replayed after profile expansion.

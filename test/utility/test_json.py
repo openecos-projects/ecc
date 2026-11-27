@@ -385,3 +385,14 @@ class TestFlowSetStatePersistence:
         # resume: only FLOORPLAN should be selected
         selected = rerun.selected_step_names(engine_flow)
         assert selected == ["pre_floorplan"]
+
+
+def test_json_read_corrupt_file_logs_single_line_warning(tmp_path, caplog):
+    path = tmp_path / "truncated.json"
+    path.write_text('{"a": ', encoding="utf-8")
+    with caplog.at_level("WARNING", logger="chipcompiler.utility.json"):
+        assert json_read(path) == {}
+    records = [r for r in caplog.records if r.name == "chipcompiler.utility.json"]
+    assert len(records) == 1
+    assert records[0].exc_info is None
+    assert "Failed to parse JSON file" in records[0].getMessage()

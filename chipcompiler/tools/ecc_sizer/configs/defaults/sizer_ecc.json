@@ -1,0 +1,13 @@
+{
+    "vt_suffixes": [],
+    "hold_stage": {
+        "hold_margin": 0.04,
+        "rc_mode": "global_routing",
+        "global_routing_rc": {},
+        "placement_wire_rc": {
+            "corner": "",
+            "resistance_ohm_per_um": 0.0,
+            "capacitance_pf_per_um": 0.0
+        }
+    }
+}

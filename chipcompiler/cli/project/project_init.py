@@ -200,11 +200,16 @@ def _populate(
 def _default_toml(design_name: str) -> str:
     from chipcompiler.data import DEFAULT_LEC_ENGINE, DEFAULT_SKIP_STEPS
 
+    from .toml_edit import format_toml_value
+
     skip_steps = json.dumps(list(DEFAULT_SKIP_STEPS))
     lec_engine = json.dumps(DEFAULT_LEC_ENGINE.value)
+    # The name is free text (it defaults to the directory name): write it as a
+    # TOML string, so that the file parses and holds the name as given.
+    name = format_toml_value(design_name)
     return f'''[design]
-name = "{design_name}"
-top = "{design_name}"
+name = {name}
+top = {name}
 # Set your RTL sources or filelist, e.g. rtl = ["/path/to/filelist.f"].
 rtl = []
 sdc = "{SDC_INPUT_FILENAME}"

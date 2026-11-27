@@ -16,13 +16,7 @@ inputs:
   kepler-formal-sha256:
     required: false
     default: ""
-  pdk-repo:
-    required: false
-    default: ""
-  pdk-release:
-    required: false
-    default: ""
-  pdk-git-commit:
+  pdk-sha256:
     required: false
     default: ""
 outputs:
@@ -41,9 +35,7 @@ runs:
         OSS_CAD_SUITE_SHA256: ${{ inputs.oss-cad-suite-sha256 }}
         SIZER_SHA256: ${{ inputs.sizer-sha256 }}
         KEPLER_FORMAL_SHA256: ${{ inputs.kepler-formal-sha256 }}
-        PDK_REPO: ${{ inputs.pdk-repo }}
-        PDK_RELEASE: ${{ inputs.pdk-release }}
-        PDK_GIT_COMMIT: ${{ inputs.pdk-git-commit }}
+        PDK_SHA256: ${{ inputs.pdk-sha256 }}
       run: |
         set -euo pipefail
         cache_store="${ARC_CACHE_STORE:-/mnt/arc-cache/store}"
@@ -63,9 +55,7 @@ runs:
             root_marker=bin/kepler-formal
             ;;
           pdk)
-            identity="${PDK_REPO}:${PDK_RELEASE}:${PDK_GIT_COMMIT}"
-            digest="$(printf '%s' "$identity" | sha256sum)"
-            store_path="$cache_store/${digest%% *}-icsprout55-pdk"
+            store_path="$cache_store/${PDK_SHA256}-icsprout55-pdk"
             root_marker=icsprout55-pdk/techfile/icsprout55.layermap
             ;;
           *)
