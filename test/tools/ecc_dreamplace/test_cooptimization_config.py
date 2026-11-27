@@ -47,6 +47,7 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
     )
     effective = resolve_flow_config(dreamplace_default_config)
     expected = {key: profile[key] for key in fields} | {
+        "timing_placement_carrier": "star_pin_pair",
         "timing_opt_buffering_enabled": 1,
         "timing_coeff_growth_factor": 1.0,
     }

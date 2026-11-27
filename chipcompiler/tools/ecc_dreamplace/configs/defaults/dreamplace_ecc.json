@@ -165,7 +165,7 @@
         "cap": 1.0,
         "slew": 1.0
     },
-    "timing_placement_carrier": "direct_loss",
+    "timing_placement_carrier": "star_pin_pair",
     "max_net_weight": "inf",
     "base_design_name": "",
     "buffering_continuous_steps": 120,
