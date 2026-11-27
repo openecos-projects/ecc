@@ -49,13 +49,17 @@ def _pdk_relative_liberty(entries: object, pdk_root: str) -> object:
         return entries
     rebound = deepcopy(entries)
     for entry in rebound:
-        if isinstance(entry, dict) and isinstance(entry.get("path"), list):
-            entry["path"] = [
-                path[len(root) + 1 :]
-                if isinstance(path, str) and path.startswith(f"{root}{os.sep}")
-                else path
-                for path in entry["path"]
-            ]
+        if not isinstance(entry, dict):
+            continue
+        for field in ("path", "min_path"):
+            paths = entry.get(field)
+            if isinstance(paths, list):
+                entry[field] = [
+                    path[len(root) + 1 :]
+                    if isinstance(path, str) and path.startswith(f"{root}{os.sep}")
+                    else path
+                    for path in paths
+                ]
     return rebound
 
 
