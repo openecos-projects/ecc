@@ -811,6 +811,14 @@ after a successful save, every file under `data/emir/emir_reporter/` is publishe
 to `emir_ecc/report/`, where the GUI discovers step reports. Publication failure
 is logged without changing the save result.
 
+For exploratory analysis only, `ecc param set emir.allow_unmapped_pg_pins true
+--project <project> --workspace <name>` allows individual PG pins without graph
+contacts. The default remains strict. Currents are omitted only on the missing
+contact's net, never reassigned. Review `report/supply_coverage.tsv` and
+`report/supply_coverage.rpt` for the missing power/return contacts and current
+totals. IR/EM report headers identify this mode; execution success is not
+full-chip signoff. Logical DEF connection, voltage and solver checks still apply.
+
 Every workspace gets `config/ics55_synthetic.tech`, copied from the packaged
 `chipcompiler/tools/ecc/configs/defaults/`, and EMIR falls back to it whenever
 `technology_file_path` is empty. Its resistance and EM limits are invented test

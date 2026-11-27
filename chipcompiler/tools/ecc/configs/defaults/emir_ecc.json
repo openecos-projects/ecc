@@ -1,5 +1,6 @@
 {
     "technology_file_path": "",
     "ploc_file_path": "",
-    "supply_ground_pins": {}
+    "supply_ground_pins": {},
+    "allow_unmapped_pg_pins": false
 }
