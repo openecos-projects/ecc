@@ -8,7 +8,6 @@ import pytest
 from chipcompiler.data.workspace import Workspace
 from chipcompiler.data.workspace.execution import declared_step_subprocess, save_step_subprocess
 from chipcompiler.engine import create_workspace_from_spec, update_workspace_from_spec
-from chipcompiler.engine.flow.runner import EngineFlow
 from chipcompiler.engine.snapshot.store import read_engineering_snapshot
 from chipcompiler.engine.step.process import execution_mode, is_enabled
 from chipcompiler.engine.workspace.derive import derive_workspace
@@ -55,32 +54,6 @@ def test_workspace_execution_mode_is_local_and_environment_is_a_temporary_overri
 def test_invalid_persisted_execution_values_are_rejected(value):
     with pytest.raises(ValueError, match="must be a boolean"):
         declared_step_subprocess({"options": {"execution": {"step_subprocess": value}}})
-
-
-def test_serial_workspace_disables_checker_batch(tmp_path, monkeypatch):
-    from types import SimpleNamespace
-
-    monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
-    workspace = Workspace(directory=tmp_path)
-    flow = EngineFlow(workspace)
-    options = {"execution": {"step_subprocess": False}}
-    workspace.flow.data = {
-        "steps": [
-            {
-                "name": "lvs",
-                "tool": "ecc",
-                "state": "Unstart",
-                "category": "CHECKER",
-                "directory": "lvs_ecc",
-            }
-        ],
-        "options": options,
-    }
-    step = SimpleNamespace(name="lvs", tool="ecc")
-    flow.workspace_steps = [SimpleNamespace(name="filler"), step]
-    assert not flow._can_parallelize_checker_batch(step, 1, None)
-    options["execution"]["step_subprocess"] = True
-    assert flow._can_parallelize_checker_batch(step, 1, None)
 
 
 def test_execution_setting_is_ledger_owned_and_update_preserves_results(execution_workspace):

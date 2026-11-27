@@ -39,6 +39,23 @@ def test_truncated_source_is_not_mixed_with_prior_bytes(tmp_path):
     assert "log_unavailable" in capture.finish()
 
 
+def test_known_tool_truncate_captures_new_bytes_even_if_new_log_is_longer(tmp_path):
+    from chipcompiler.tools.replay_log import active_log, open_step_log
+
+    source = tmp_path / "step.log"
+    source.write_text("old run")
+    capture = LogCapture(source, tmp_path / "attempt", time.monotonic_ns())
+    token = active_log.set(capture)
+    try:
+        with open_step_log(source) as output:
+            output.write("this attempt only")
+        capture.thread.start()
+        assert "log_index" in capture.finish()
+        assert capture.target.read_text() == "this attempt only"
+    finally:
+        active_log.reset(token)
+
+
 def test_missing_and_external_logs_are_optional(tmp_path):
     workspace = SimpleNamespace(directory=tmp_path)
     assert LogCapture.start(workspace, SimpleNamespace(), tmp_path / "a", 0) is None

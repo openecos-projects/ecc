@@ -269,8 +269,10 @@ def test_custom_sta_selection_preserves_typical_consumers_and_custom_scenarios(t
     assert config_path.read_bytes() == config_before
 
 
+@pytest.mark.parametrize("record", [False, True])
+@pytest.mark.parametrize("snapshot", ["saved", "failed", "missing", "exception"])
 def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
-    timing_workspace, native_module, monkeypatch
+    timing_workspace, native_module, monkeypatch, record, snapshot
 ):
     workspace = timing_workspace
     config_path = workspace.config[StepEnum.STA.value]
@@ -295,14 +297,59 @@ def test_harden_uses_typical_signoff_item_for_lib_spef_and_sdc(
             layout_image=False,
         )
     )
-    monkeypatch.setattr(runner, "EccSubFlow", Mock())
+    # Rerun a workspace from the version that recorded save data as mandatory.
+    runner.EccSubFlow(workspace, step)
+    subflow_path = step.subflow.path
+    assert subflow_path is not None
+    ledger = json.loads(subflow_path.read_text())
+    ledger["steps"].append({"name": "save data", "state": "Incomplete"})
+    subflow_path.write_text(json.dumps(ledger))
     monkeypatch.setattr(runner, "get_eda_instance", lambda **_: native_module)
-    monkeypatch.setattr(runner, "run_analysis", lambda **_: None)
+    analyze = Mock()
+    monkeypatch.setattr(runner, "run_analysis", analyze)
 
-    save_data = Mock(return_value=True)
-    monkeypatch.setattr(runner, "save_data", save_data)
-    assert runner.run_harden(workspace, step) is True
-    save_data.assert_called_once_with(workspace, step, native_module, feature_step=False)
+    capture = workspace.directory / "capture"
+    if record:
+        capture.mkdir()
+        monkeypatch.setenv("ECC_REPLAY_CAPTURE_DIR", str(capture))
+        monkeypatch.setenv("ECC_REPLAY_START_NS", "0")
+    else:
+        monkeypatch.delenv("ECC_REPLAY_CAPTURE_DIR", raising=False)
+    native_module.ecc = Mock()
+    native_module.ecc.replay_geometry.return_value = "{}"
+    manifest = step.output.geometry_manifest
+    assert manifest is not None
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("previous attempt")
+
+    def write_geometry(**kwargs):
+        if snapshot == "exception":
+            raise RuntimeError("test snapshot error")
+        if snapshot == "saved":
+            manifest.write_text("new snapshot")
+        return snapshot != "failed"
+
+    warning = Mock()
+    monkeypatch.setattr(workspace.logger, "warning", warning)
+    native_module.geometry_snapshot_save.side_effect = write_geometry
+    assert runner.run_harden(workspace, step)
+    analyze.assert_called_once()
+    native_module.geometry_snapshot_save.assert_called_once_with(
+        output_dir=step.output.geometry, thumbnail_path=step.output.image
+    )
+    assert manifest.is_file() == (snapshot == "saved")
+    assert warning.called == (snapshot != "saved")
+    native_module.write_abstract_lef.assert_called_once()
+    native_module.gds_save.assert_called_once()
+    final_sample = capture / "native-final.json"
+    assert final_sample.is_file() == record
+    if record:
+        assert json.loads(final_sample.read_text())["subflow"] == "run harden"
+    stages = json.loads(subflow_path.read_text())["steps"]
+    assert [(stage["name"], stage["state"]) for stage in stages] == [
+        ("load data", "Success"),
+        ("run harden", "Success"),
+    ]
 
     typical = next(item for item in config["liberty"] if item["corner"] == "TYP")
     timing_model = native_module.write_timing_model.call_args.kwargs

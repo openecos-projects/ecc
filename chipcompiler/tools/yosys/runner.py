@@ -4,6 +4,7 @@ import os
 import subprocess
 
 from chipcompiler.data import StateEnum, Workspace, YosysStep
+from chipcompiler.tools.replay_log import open_step_log
 from chipcompiler.tools.yosys.checklist import YosysChecklist
 from chipcompiler.tools.yosys.metrics import build_step_metrics
 from chipcompiler.tools.yosys.subflow import YosysSubFlow
@@ -53,7 +54,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
         sub_flow.update_step(step_name="run yosys", state=StateEnum.Invalid)
         error_msg = "Error: yosys is not available (bundled runtime or PATH)."
         try:
-            with open(log_path, "w") as log_file:
+            with open_step_log(log_path) as log_file:
                 log_file.write(error_msg + "\n")
         except Exception:
             pass
@@ -77,7 +78,7 @@ def run_step(workspace: Workspace, step: YosysStep, ecc_module=None) -> bool:
 
         cmd = yosys_cmd + ["yosys_synthesis.tcl"]
 
-        with open(log_path, "w") as log_file:
+        with open_step_log(log_path) as log_file:
             step_data = getattr(step, "data", None)
             if getattr(step_data, "requires_slang", True) and not check_slang_support(
                 yosys_cmd=yosys_cmd,

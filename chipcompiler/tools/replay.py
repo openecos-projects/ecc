@@ -75,7 +75,7 @@ def capture_subflow(name: str, state: str) -> None:
         logger.warning("Cannot capture Replay subflow timing", exc_info=True)
 
 
-def capture_native(ecc_module, *, final: bool = False) -> None:
+def capture_native(ecc_module, *, final: bool = False, subflow: str | None = None) -> None:
     """Capture the actual loaded/committed database, including no-op macro steps."""
     directory = os.environ.get("ECC_REPLAY_CAPTURE_DIR")
     if not directory:
@@ -89,7 +89,7 @@ def capture_native(ecc_module, *, final: bool = False) -> None:
                 "sequence": 0,
                 "elapsed_ns": time.monotonic_ns() - int(os.environ["ECC_REPLAY_START_NS"]),
                 "phase": "committed_database" if final else "input_database",
-                "subflow": "save data" if final else "load data",
+                "subflow": subflow or ("save data" if final else "load data"),
                 "state_domain": "native_committed" if final else "native_input",
                 "objects": objects,
             },
@@ -189,11 +189,7 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                 os.environ.update(
                     ECC_REPLAY_CAPTURE_DIR=str(capture),
                     ECC_REPLAY_START_NS=str(started),
-                    # iFP's native callback uses this one historical label to
-                    # distinguish track creation from initial floorplanning.
-                    ECC_REPLAY_STEP=(
-                        "postFloorplan" if step.name == StepEnum.POST_FLOORPLAN else step.name
-                    ),
+                    ECC_REPLAY_STEP=step.name,
                     ECC_REPLAY_SAMPLE_ITERATIONS=str(interval),
                 )
                 from chipcompiler.tools.replay_log import LogCapture
@@ -213,7 +209,13 @@ def capture_step(workspace, step, *, attempt_id: str | None = None):
                     )
                 except OSError:
                     logger.warning("Cannot record Replay setup failure", exc_info=True)
-        yield outcome
+        from chipcompiler.tools.replay_log import active_log
+
+        token = active_log.set(log_capture)
+        try:
+            yield outcome
+        finally:
+            active_log.reset(token)
     finally:
         log_result = {}
         if log_capture is not None:

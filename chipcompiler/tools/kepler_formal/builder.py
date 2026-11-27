@@ -18,7 +18,7 @@ from chipcompiler.data import (
     Workspace,
 )
 from chipcompiler.data.step import new_step_directory
-from chipcompiler.data.types import StepEnum
+from chipcompiler.data.types import SkippableStepEnum, StepEnum
 from chipcompiler.tools.lec_result import build_lec_step_space, derive_golden_path, optional_path
 from chipcompiler.utility.path import require_path
 
@@ -102,6 +102,11 @@ def build_step(
         ),
         output=OutputPaths(
             dir=output_dir,
+            image=(
+                output_dir / f"{workspace.design.name}_{step_name}.png"
+                if step_name == SkippableStepEnum.POST_ROUTE_LEC and input_def
+                else None
+            ),
             json=output_dir / f"{workspace.design.name}_{step_name}_result.json",
         ),
         data=KeplerFormalData(dir=data_dir, config=data_dir / "lec_config.yaml"),

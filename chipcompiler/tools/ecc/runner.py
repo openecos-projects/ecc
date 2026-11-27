@@ -73,7 +73,6 @@ _GEOMETRY_SNAPSHOT_STEPS = frozenset(
         StepEnum.ANTENNA_CHECK.value,
         StepEnum.POWER_ANALYSIS.value,
         StepEnum.EMIR.value,
-        StepEnum.HARDEN.value,
     }
 )
 
@@ -1003,10 +1002,11 @@ def run_harden(
 
         sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
 
-        if not save_data(workspace, step, ecc_module, feature_step=False):
-            sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Imcomplete)
-            return False
-        sub_flow.update_step(EccSubFlowEnum.save_data.value, StateEnum.Success)
+        from chipcompiler.tools.ecc.harden_layout import save_harden_layout
+        from chipcompiler.tools.replay import capture_native
+
+        capture_native(ecc_module, final=True, subflow=EccSubFlowEnum.run_harden.value)
+        save_harden_layout(workspace, step, ecc_module)
         run_analysis(workspace=workspace, step=step, subflow=sub_flow)
         reslut = True
 

@@ -152,8 +152,15 @@ def test_cap_bounds_the_wave_workers(wave_flow, monkeypatch, cap):
     assert gate.peak == cap
 
 
-def test_one_step_at_a_time_when_cap_is_one(wave_flow, monkeypatch):
-    wave_flow.max_parallel_steps = 1
+@pytest.mark.parametrize("policy", ["cap", "workspace"])
+def test_one_step_at_a_time_when_serialized(wave_flow, monkeypatch, policy):
+    monkeypatch.delenv("ECC_STEP_SUBPROCESS", raising=False)
+    if policy == "cap":
+        wave_flow.max_parallel_steps = 1
+    else:
+        wave_flow.workspace.flow.data.setdefault("options", {})["execution"] = {
+            "step_subprocess": False
+        }
     gate = _Gate(1)
     seen = _fake_run_step(wave_flow, monkeypatch, gate=gate)
     observer = _Observer()

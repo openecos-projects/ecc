@@ -34,6 +34,13 @@ This creates the Python virtual environment and installs:
 - `ecc-tools-bin` from `chipcompiler/thirdparty/ecc-tools`.
 
 `ecc` is editable, so Python source edits are picked up on the next import.
+DreamPlace also installs Python modules and native runtime files through CMake.
+After changing those files or cleaning the native build, refresh the workspace
+copy before starting Studio:
+
+```bash
+uv sync --reinstall-package ecc-dreamplace --no-build-isolation-package ecc-dreamplace --no-build-isolation-package ecc-tools-bin
+```
 
 ### Auto-load With direnv
 
@@ -72,8 +79,8 @@ requirement. `.github/scripts/install-ci-boost.sh` installs the SHA-256-verified
 1.91.0 headers and CMake package into a dedicated prefix, following ecc-tools'
 wheel build, and the action passes that prefix through `CMAKE_ARGS` to both
 native builds. Do not relax the native version check to accommodate a CI image.
-The CI action overrides DreamPlace's editable mode to `redirect`: `inplace`
-builds its Xplace external project but skips CMake's installation of the native
+The ECC workspace and its source-build CI use DreamPlace's `redirect` editable
+mode. The `inplace` build compiles Xplace but skips CMake's installation of the native
 libraries and Flute tables into the runtime package. Without that installation,
 ordinary DreamPlace imports pass but placement fails with missing `cpp_to_py`.
 The packaging smoke check and test load the CPU routing backend and resolve

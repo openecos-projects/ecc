@@ -638,17 +638,6 @@ class EngineFlow:
             end, previous = end + 1, position
         return end
 
-    def _can_parallelize_checker_batch(self, workspace_step, index, observer) -> bool:
-        """Compatibility predicate for callers that inspect checker batching."""
-        from chipcompiler.engine.step import process as step_subprocess
-
-        return (
-            index > 0
-            and self._is_checker_step(workspace_step)
-            and self.workspace_steps[index - 1].name == StepEnum.FILLER.value
-            and step_subprocess.is_enabled(self.workspace)
-        )
-
     def _checker_parallelism(self, steps: list[WorkspaceStep]) -> int:
         available_mb = read_memory_status().available_mb
         if available_mb <= 0:

@@ -207,7 +207,10 @@ class DreamplaceModule:
         os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
 
         formatter = logging.Formatter("[%(levelname)-7s] %(message)s")
-        file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+        from chipcompiler.tools.replay_log import rewriting_log
+
+        with rewriting_log(log_file):
+            file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
         file_handler.setFormatter(formatter)
         stdout_handler = logging.StreamHandler(sys.stdout)
         stdout_handler.setFormatter(formatter)

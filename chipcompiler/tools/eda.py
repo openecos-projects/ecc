@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from chipcompiler.data import StepMetrics, ToolName, Workspace, WorkspaceStep, log_workspace_step
+from chipcompiler.data.types import SkippableStepEnum
 from chipcompiler.tools.registry import checks_dependency, load_tool, tool_spec
 
 logger = logging.getLogger(__name__)
@@ -139,7 +140,7 @@ def run_step(
         display_started_ns = None
     with capture_step(workspace, step, attempt_id=replay_attempt) as outcome:
         outcome["ok"] = _run_step(workspace, step, ecc_module)
-        if outcome["ok"] and step.name == "postRouteLec":
+        if outcome["ok"] and step.name == SkippableStepEnum.POST_ROUTE_LEC:
             from .lec_layout import save_checked_layout
 
             save_checked_layout(workspace, step, ecc_module)

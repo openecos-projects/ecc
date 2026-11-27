@@ -126,7 +126,15 @@ _STAGES: dict[StepBaseEnum, tuple[EccSubFlowEnum, ...]] = {
 
 
 class EccSubFlow(SubFlow):
-    pass
+    def init_sub_flow(self) -> None:
+        super().init_sub_flow()
+        # A rerun must not report the obsolete required save-data stage.
+        if self.workspace_step.name == StepEnum.HARDEN and self.workspace_step.subflow.steps:
+            self.workspace_step.subflow.steps = [
+                stage
+                for stage in self.workspace_step.subflow.steps
+                if stage.get("name") != EccSubFlowEnum.save_data.value
+            ]
 
     def stages(self) -> tuple[str, ...]:
         step = step_from_value(self.workspace_step.name)

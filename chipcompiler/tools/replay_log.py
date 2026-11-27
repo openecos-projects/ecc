@@ -8,7 +8,8 @@ import logging
 import sys
 import threading
 import time
-from contextlib import suppress
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 from pathlib import Path
 
 from chipcompiler.tools.replay_storage import atomic_json, within
@@ -18,8 +19,27 @@ MAX_BYTES = 64 * 1024 * 1024
 POLL_SECONDS = 0.1
 
 
+@contextmanager
+def rewriting_log(path):
+    """Synchronize an intentional truncate with this worker's log reader."""
+    capture = active_log.get()
+    if capture is None or Path(path).absolute() != capture.source:
+        yield
+        return
+    with capture.lock:
+        yield
+        capture.offset = 0
+        capture.identity = None
+
+
+def open_step_log(path: str | Path, *, encoding: str | None = None):
+    with rewriting_log(path):
+        return open(path, "w", encoding=encoding)
+
+
 class LogCapture:
     def __init__(self, source: Path, directory: Path, started_ns: int):
+        self.lock = threading.Lock()
         self.source = source
         self.directory = directory
         self.started_ns = started_ns
@@ -91,8 +111,10 @@ class LogCapture:
     def _run(self):
         try:
             while not self.stop.wait(POLL_SECONDS):
+                with self.lock:
+                    self.poll()
+            with self.lock:
                 self.poll()
-            self.poll()
         except (OSError, ValueError) as error:
             self.error = str(error)
 
@@ -119,3 +141,6 @@ class LogCapture:
         }
         atomic_json(self.directory / "logs/index.json", index)
         return {"log_index": "logs/index.json"}
+
+
+active_log: ContextVar[LogCapture | None] = ContextVar("active_replay_log", default=None)

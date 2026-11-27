@@ -7,6 +7,7 @@ from chipcompiler.data import KeplerFormalStep, StateEnum, Workspace
 from chipcompiler.tools.kepler_formal.subflow import KeplerFormalSubFlow
 from chipcompiler.tools.kepler_formal.utility import get_kepler_formal_runtime
 from chipcompiler.tools.lec_result import write_step_result
+from chipcompiler.tools.replay_log import open_step_log
 from chipcompiler.utility.path import MissingPathError, require_path
 
 # kepler-formal LEC exits 0 whether the designs are equivalent or not; the
@@ -135,7 +136,8 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
     kepler_cmd, kepler_env = get_kepler_formal_runtime()
     if not kepler_cmd:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
-        Path(log_path).write_text("Error: kepler-formal is not available.\n", encoding="utf-8")
+        with open_step_log(log_path, encoding="utf-8") as log_file:
+            log_file.write("Error: kepler-formal is not available.\n")
         _write_result(workspace, step, proven=False)
         _write_status_report(step, proven=False, reason="kepler-formal is not available")
         return False
@@ -146,7 +148,8 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
     ):
         if not path or not os.path.exists(path):
             sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
-            Path(log_path).write_text(f"Error: missing {label}: {path}\n", encoding="utf-8")
+            with open_step_log(log_path, encoding="utf-8") as log_file:
+                log_file.write(f"Error: missing {label}: {path}\n")
             _write_result(workspace, step, proven=False)
             _write_status_report(step, proven=False, reason=f"missing {label}: {path}")
             return False
@@ -155,7 +158,8 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         # A proof of RTL whose files cannot be identified could never be
         # checked for freshness (lec_result.input_digest): fail up front.
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
-        Path(log_path).write_text(f"Error: {reason}\n", encoding="utf-8")
+        with open_step_log(log_path, encoding="utf-8") as log_file:
+            log_file.write(f"Error: {reason}\n")
         _write_result(workspace, step, proven=False)
         _write_status_report(step, proven=False, reason=reason)
         return False
@@ -164,7 +168,8 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
         _prepare_compare_netlists(workspace, step)
     except (OSError, MissingPathError) as exc:
         sub_flow.update_step(step_name="run lec", state=StateEnum.Invalid)
-        Path(log_path).write_text(f"Error: preparing compare netlists: {exc}\n", encoding="utf-8")
+        with open_step_log(log_path, encoding="utf-8") as log_file:
+            log_file.write(f"Error: preparing compare netlists: {exc}\n")
         _write_result(workspace, step, proven=False)
         _write_status_report(step, proven=False, reason=f"preparing netlists failed: {exc}")
         return False
@@ -181,7 +186,7 @@ def run_step(workspace: Workspace, step: KeplerFormalStep, ecc_module=None) -> b
             kepler_env.update(
                 {key: value for key, value in os.environ.items() if key.startswith("ECC_REPLAY_")}
             )
-        with open(log_path, "w", encoding="utf-8") as log_file:
+        with open_step_log(log_path, encoding="utf-8") as log_file:
             result = subprocess.run(
                 cmd,
                 cwd=str(require_path(step.directory, "step directory")),
