@@ -43,7 +43,14 @@ def inspect_cmd(
     _finish("inspect", command_input, signoff_handlers.inspect)
 
 
-@signoff_app.command("check", help="Evaluate signoff quality gates")
+@signoff_app.command(
+    "check",
+    help=(
+        "Evaluate signoff quality gates. Exit code mirrors the payload status: "
+        "0 = pass, 6 = a required gate failed, 7 = a required gate is unknown "
+        "(missing or stale evidence). The records are printed in every case."
+    ),
+)
 def check_cmd(
     *,
     profile: Annotated[str, typer.Option("--profile", help="Signoff gate profile")] = "rtl2gds",
