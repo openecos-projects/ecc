@@ -190,7 +190,7 @@ jobs:
           build-all: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs['build-all'] == 'true' && 'true' || 'false' }}
 
       - name: Setup PDK
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: icsprout55-pdk
           path: ../pdk
@@ -209,7 +209,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Sizer
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-sizer
 
@@ -486,7 +486,7 @@ jobs:
     steps:
       - name: Download CI actions
         id: ci-actions-try1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -494,14 +494,14 @@ jobs:
       - name: Download CI actions (retry 1/2)
         id: ci-actions-try2
         if: steps.ci-actions-try1.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
         continue-on-error: true
       - name: Download CI actions (retry 2/2)
         if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -593,7 +593,7 @@ jobs:
     steps:
       - name: Download CI actions
         id: ci-actions-try1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -601,14 +601,14 @@ jobs:
       - name: Download CI actions (retry 1/2)
         id: ci-actions-try2
         if: steps.ci-actions-try1.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
         continue-on-error: true
       - name: Download CI actions (retry 2/2)
         if: steps.ci-actions-try1.outcome == 'failure' && steps.ci-actions-try2.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -632,14 +632,14 @@ jobs:
 
       - name: Download PDK artifact
         if: matrix.dependency == 'pdk' && steps.cache.outputs.hit == 'false'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: icsprout55-pdk
           path: ${{ runner.temp }}/e2e-stage-input
 
       - name: Download Sizer artifact
         if: matrix.dependency == 'sizer' && steps.cache.outputs.hit == 'false'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-sizer
           path: ${{ runner.temp }}/e2e-stage-input
@@ -675,7 +675,7 @@ jobs:
     steps:
       - name: Download PyInstaller artifact
         id: pyi-try1
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-cli-linux-x86_64
           path: ${{ runner.temp }}/e2e-stage-input
@@ -683,14 +683,14 @@ jobs:
       - name: Download PyInstaller artifact (retry 1/2)
         id: pyi-try2
         if: steps.pyi-try1.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-cli-linux-x86_64
           path: ${{ runner.temp }}/e2e-stage-input
         continue-on-error: true
       - name: Download PyInstaller artifact (retry 2/2)
         if: steps.pyi-try1.outcome == 'failure' && steps.pyi-try2.outcome == 'failure'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-cli-linux-x86_64
           path: ${{ runner.temp }}/e2e-stage-input
@@ -841,7 +841,7 @@ jobs:
 
       - name: Download CI actions on cache miss
         if: steps.source.outputs.hit == 'false'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ecc-ci-actions
           path: .github/actions
@@ -1066,7 +1066,7 @@ jobs:
       - name: Download E2E signoff CSV artifacts
         if: always()
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: e2e-signoff-csv-*
           path: signoff-artifacts
