@@ -73,7 +73,7 @@ def test_no_wait_run_waits_for_project_registration_transaction(tmp_path):
             child.communicate(timeout=10)
 
 
-def test_managed_run_process_reaps_dead_local_entry_and_recovers_step(tmp_path):
+def _setup_interrupted_workspace(tmp_path: Path):
     import os
     from uuid import uuid4
 
@@ -132,6 +132,13 @@ def test_managed_run_process_reaps_dead_local_entry_and_recovers_step(tmp_path):
         started_at=1.0,
     )
     register_runtime_process(tmp_path, "baseline", dead_entry)
+    return workspace, home, flow_path, dead_entry
+
+
+def _run_managed_subprocess(
+    project: Path, *, fail_recovery: bool = False
+) -> subprocess.CompletedProcess[str]:
+    import os
 
     script = dedent("""
         import json
@@ -140,10 +147,14 @@ def test_managed_run_process_reaps_dead_local_entry_and_recovers_step(tmp_path):
         from types import SimpleNamespace
         from uuid import uuid4
 
+        import chipcompiler.engine.interrupted_run as interrupted_run
         from chipcompiler.cli.core.inputs import OutputOptions, ProjectOptions, RunInput
         from chipcompiler.cli.project.run_process import managed_run_process
 
         project = Path(sys.argv[1])
+        fail_recovery = sys.argv[2] == "1"
+        if fail_recovery:
+            interrupted_run.json_write = lambda *_args, **_kwargs: False
         workspace_dir = project / "baseline"
         request = RunInput(
             output=OutputOptions(),
@@ -158,12 +169,36 @@ def test_managed_run_process_reaps_dead_local_entry_and_recovers_step(tmp_path):
             assert "execution" not in step["info"]
     """)
     env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[3]))
-    proc = subprocess.run(
-        [sys.executable, "-c", script, str(tmp_path)],
+    return subprocess.run(
+        [sys.executable, "-c", script, str(project), "1" if fail_recovery else "0"],
         capture_output=True,
         text=True,
         start_new_session=True,
         env=env,
         timeout=10,
     )
+
+
+def test_managed_run_process_reaps_dead_local_entry_and_recovers_step(tmp_path):
+    _setup_interrupted_workspace(tmp_path)
+    proc = _run_managed_subprocess(tmp_path)
     assert (proc.returncode, proc.stdout, proc.stderr) == (0, "", "")
+
+
+def test_managed_run_process_preserves_stale_entry_when_recovery_fails(tmp_path):
+    from chipcompiler.project.runtime_processes import RuntimeProcessError, read_runtime_process
+
+    _workspace, _home, flow_path, dead_entry = _setup_interrupted_workspace(tmp_path)
+    proc_fail = _run_managed_subprocess(tmp_path, fail_recovery=True)
+    assert proc_fail.returncode != 0
+    assert "failed to save recovered flow state" in proc_fail.stderr
+    assert read_runtime_process(tmp_path, "baseline") == dead_entry
+    step_before_retry = json.loads(flow_path.read_text())["steps"][0]
+    assert step_before_retry["state"] == "Ongoing"
+    assert "execution" in step_before_retry["info"]
+
+    proc_retry = _run_managed_subprocess(tmp_path)
+    assert (proc_retry.returncode, proc_retry.stdout, proc_retry.stderr) == (0, "", "")
+    with pytest.raises(RuntimeProcessError, match="No runtime process"):
+        read_runtime_process(tmp_path, "baseline")
+    assert json.loads((tmp_path / "project.json").read_text()).get("runtime_processes", {}) == {}

@@ -253,3 +253,20 @@ def test_registration_rejects_corrupt_existing_entry_as_invalid(tmp_path):
         register_runtime_process(project, "baseline", _entry(project, workspace))
 
     assert caught.value.code == "invalid_runtime_process"
+
+
+def test_registration_preserves_stale_entry_when_before_replace_fails(tmp_path):
+    project, workspace = _project(tmp_path)
+    dead = _local_entry(project, workspace, 999999, "1")
+    register_runtime_process(project, "baseline", dead)
+
+    def fail_before_replace(reaped_run_id: str) -> None:
+        raise OSError(f"cannot recover {reaped_run_id}")
+
+    fresh = _entry(project, workspace)
+    with pytest.raises(OSError, match="cannot recover"):
+        register_runtime_process(project, "baseline", fresh, before_replace=fail_before_replace)
+
+    assert read_runtime_process(project, "baseline") == dead
+    assert register_runtime_process(project, "baseline", fresh) == dead["run_id"]
+    assert read_runtime_process(project, "baseline") == fresh
