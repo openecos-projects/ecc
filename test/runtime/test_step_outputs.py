@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from chipcompiler.data.flow.document import FlowDocument
-from chipcompiler.data.workspace import Flow
+from chipcompiler.data.pdk import PDK
+from chipcompiler.data.workspace import Flow, OriginDesign, Workspace
 from chipcompiler.engine.step.outputs import resolve_workspace_step_outputs
 
 _STEPS: list[dict[str, str]] = [
@@ -18,7 +18,7 @@ _STEPS: list[dict[str, str]] = [
 ]
 
 
-def _workspace(directory: Path, steps: list[dict[str, str]] = _STEPS) -> SimpleNamespace:
+def _workspace(directory: Path, steps: list[dict[str, str]] = _STEPS) -> Workspace:
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "home").mkdir(exist_ok=True)
     from test.flow_fixture import current_flow_document
@@ -26,16 +26,19 @@ def _workspace(directory: Path, steps: list[dict[str, str]] = _STEPS) -> SimpleN
     flow_data: FlowDocument = current_flow_document(steps)
     flow_path = directory / "home" / "flow.json"
     flow_path.write_text(json.dumps(flow_data))
-    return SimpleNamespace(
+    return Workspace(
         directory=directory.resolve(),
-        design=SimpleNamespace(name="gcd", origin_def="", origin_verilog=""),
-        pdk=SimpleNamespace(sdc=directory / "origin" / "gcd.sdc"),
+        design=OriginDesign(name="gcd"),
+        pdk=PDK(sdc=directory / "origin" / "gcd.sdc"),
         flow=Flow(path=flow_path, data=flow_data),
     )
 
 
-def test_resolves_every_committed_step_with_builder_owned_paths(tmp_path):
+@pytest.mark.parametrize("disable_snapshots", [False, True])
+def test_resolves_every_committed_step_with_builder_owned_paths(tmp_path, disable_snapshots):
     workspace = _workspace(tmp_path / "ws_0001")
+    if disable_snapshots:
+        workspace.parameters.data["geometry"] = {"snapshot": False}
 
     result = resolve_workspace_step_outputs(workspace)
 
@@ -68,8 +71,11 @@ def test_resolves_every_committed_step_with_builder_owned_paths(tmp_path):
     assert by_step["cts"]["state"] == "Unstart"
 
 
-def test_artifact_existence_reflects_the_filesystem(tmp_path):
+@pytest.mark.parametrize("disable_snapshots", [False, True])
+def test_artifact_existence_reflects_the_filesystem(tmp_path, disable_snapshots):
     workspace = _workspace(tmp_path / "ws_0001")
+    if disable_snapshots:
+        workspace.parameters.data["geometry"] = {"snapshot": False}
     output = tmp_path / "ws_0001" / "pre_floorplan_ecc" / "output"
     output.mkdir(parents=True)
     (output / "gcd_pre_floorplan.def.gz").write_bytes(b"def")
