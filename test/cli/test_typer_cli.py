@@ -484,3 +484,35 @@ def test_flow_validate_returns_validation_records(capsys):
     assert data[0]["status"] == "valid"
     assert data[0]["flow_id"] == "rtl2gds"
     assert data[0]["step_count"] > 0
+
+
+@pytest.mark.parametrize("command", [["check"], ["process", "inspect"]])
+def test_check_and_process_inspect_accept_json(command, capsys, tmp_path, monkeypatch):
+    """Both commands accept --json consistently with sibling commands."""
+    monkeypatch.chdir(tmp_path)
+
+    rc = cli_main.run([*command, "--json"])
+
+    captured = capsys.readouterr()
+    assert rc != 2, captured.err
+    assert "No such option" not in captured.err
+    assert json.loads(captured.out)  # records, even for an error, are valid JSON
+
+
+@pytest.mark.parametrize("command", [["check"], ["process", "inspect"]])
+def test_check_and_process_inspect_reject_plain_with_json(command, capsys):
+    rc = cli_main.run([*command, "--plain", "--json"])
+
+    assert rc != 0
+    assert "cannot be used together" in capsys.readouterr().err
+
+
+def test_signoff_check_help_documents_exit_codes():
+    from typer.testing import CliRunner
+
+    from chipcompiler.cli.app import app
+
+    result = CliRunner().invoke(app, ["signoff", "check", "--help"], terminal_width=200)
+
+    assert "6 = a required gate failed" in " ".join(result.output.split())
+    assert "7 = a required gate is unknown" in " ".join(result.output.split())
