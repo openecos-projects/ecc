@@ -31,6 +31,10 @@ on:
       - '.github/scripts/**'
       - 'deploy/arc-cache/**'
       - 'nix/**'
+  # Merge queue entries build on the temporary gh-readonly-queue/<base>/pr-N-*
+  # ref; required checks only run there via this trigger. paths filters are
+  # not supported for merge_group, so queue entries run the full pipeline.
+  merge_group:
   # Nightly on main: same pipeline and same e2e design matrix as push/PR; it
   # exists to catch dependency drift, not to run extra designs.
   schedule:
