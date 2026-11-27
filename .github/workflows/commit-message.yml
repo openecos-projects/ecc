@@ -34,7 +34,7 @@ jobs:
 
       - name: Setup uv
         if: github.event_name == 'pull_request'
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
         with:
           version: latest
           enable-cache: "true"
