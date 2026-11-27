@@ -94,31 +94,80 @@ class TestFeasibilityReduction:
     ],
 )
 class TestDrvGates:
-    def test_violations_fail_the_gate(self, metric_id, gate_id):
+    def test_violations_fail_the_gate_without_vetoing_feasibility(self, metric_id, gate_id):
         metrics = gcd_metrics()
         metrics[metric_id].value = 3
         feasibility = evaluate_feasibility(make_inputs(metrics, ALL_SUCCESS))
-        assert feasibility.status == "PHYSICAL_FAIL"
+        assert feasibility.status == "PASS"
         assert [gate.id for gate in feasibility.gates if gate.state == "failed"] == [gate_id]
+        gate = next(g for g in feasibility.gates if g.id == gate_id)
+        assert gate.blocks_tapeout is False
 
-    def test_missing_evidence_is_unknown_never_pass(self, metric_id, gate_id):
+    def test_missing_evidence_marks_gate_corrupt_without_vetoing_feasibility(
+        self, metric_id, gate_id
+    ):
         metrics = gcd_metrics()
         del metrics[metric_id]
         feasibility = evaluate_feasibility(make_inputs(metrics, ALL_SUCCESS))
-        assert feasibility.status == "UNKNOWN"
-        gate = next(gate for gate in feasibility.gates if gate.id == gate_id)
+        assert feasibility.status == "PASS"
+        gate = next(g for g in feasibility.gates if g.id == gate_id)
         assert gate.state == "unavailable"
         assert gate.availability == "corrupt"
+        assert gate.blocks_tapeout is False
 
     def test_unfinished_sta_is_not_verified(self, metric_id, gate_id):
         states = dict(ALL_SUCCESS)
         states["sta"] = "Unstart"
-        gate = next(
-            gate
-            for gate in evaluate_feasibility(make_inputs(gcd_metrics(), states)).gates
-            if gate.id == gate_id
-        )
+        feasibility = evaluate_feasibility(make_inputs(gcd_metrics(), states))
+        assert feasibility.status == "NOT_VERIFIED"
+        gate = next(g for g in feasibility.gates if g.id == gate_id)
         assert gate.availability == "not_verified"
+        assert gate.blocks_tapeout is False
+
+
+class TestDrvAdvisoryEndToEnd:
+    def test_drv_violation_surfaces_watch_diagnosis_and_does_not_veto_score(self):
+        from chipcompiler.analysis.qor.diagnosis import build_diagnoses
+        from chipcompiler.analysis.qor.dimensions import evaluate_dimensions
+        from chipcompiler.analysis.qor.features import compute_features
+        from chipcompiler.analysis.qor.renderer import _feasibility_line
+        from chipcompiler.analysis.qor.scoring import evaluate_scalar_summary
+
+        metrics = gcd_metrics()
+        metrics["sta_max_transition_violation_count"].value = 3
+        inputs = make_inputs(metrics, ALL_SUCCESS, tclk_ns=20.0)
+        bundle = compute_features(inputs)
+        dimensions = evaluate_dimensions(bundle, inputs)
+        feasibility = evaluate_feasibility(inputs)
+        summary = evaluate_scalar_summary(feasibility, dimensions, "balanced")
+        diagnoses = build_diagnoses(feasibility, dimensions, bundle, inputs)
+
+        assert feasibility.status == "PASS"
+        assert summary.status != "FAIL"
+        assert summary.score is not None and summary.score > 0.0
+        drv_diag = next(
+            d for d in diagnoses if d.diagnosis_id == "diag.signoff.gate_max_transition"
+        )
+        assert drv_diag.state == "WATCH"
+        assert drv_diag.severity < 0.80
+        assert drv_diag.interventions[0].tier == "TIER_2_BOTTLENECK"
+        line = _feasibility_line(feasibility)
+        assert line.startswith("PASS [All 7 Blocking Signoff Gates Clean;")
+        assert "GATE_MAX_TRANSITION" in line
+
+    def test_failed_advisory_drv_with_unverified_blocking_stage_does_not_claim_physical_fail(self):
+        from chipcompiler.analysis.qor.renderer import _feasibility_line
+
+        metrics = gcd_metrics()
+        metrics["sta_max_transition_violation_count"].value = 3
+        states = dict(ALL_SUCCESS)
+        states["drc"] = "Unstart"
+        feasibility = evaluate_feasibility(make_inputs(metrics, states))
+
+        assert feasibility.status == "NOT_VERIFIED"
+        line = _feasibility_line(feasibility)
+        assert line.startswith("NOT_VERIFIED")
+        assert "GATE_DRC(not_verified)" in line
 
 
 def _gate(inputs, gate_id):

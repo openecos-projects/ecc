@@ -115,14 +115,27 @@ def render(analysis, inputs=None) -> str:
 
 
 def _feasibility_line(feasibility) -> str:
+    blocking = [gate for gate in feasibility.gates if gate.blocks_tapeout]
     if feasibility.status == "PASS":
+        advisory_failed = [
+            gate.id
+            for gate in feasibility.gates
+            if not gate.blocks_tapeout and gate.state == "failed"
+        ]
+        if advisory_failed:
+            return (
+                f"PASS [All {len(blocking)} Blocking Signoff Gates Clean; "
+                f"Advisory warnings: {', '.join(advisory_failed)}]"
+            )
+        if any(not gate.blocks_tapeout and gate.state != "passed" for gate in feasibility.gates):
+            return f"PASS [All {len(blocking)} Blocking Signoff Gates Clean]"
         return f"PASS [All {len(feasibility.gates)} Physical Signoff Gates Clean]"
-    failed = [gate.id for gate in feasibility.gates if gate.state == "failed"]
+    failed = [gate.id for gate in blocking if gate.state == "failed"]
     if failed:
         return f"PHYSICAL_FAIL [Failed gates: {', '.join(failed)}]"
     unverified = [
         f"{gate.id}({gate.availability}{': ' + gate.reason if gate.reason else ''})"
-        for gate in feasibility.gates
+        for gate in blocking
         if gate.state == "unavailable"
     ]
     return f"{feasibility.status} [Gates awaiting evidence: {', '.join(unverified) or 'none'}]"

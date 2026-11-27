@@ -55,3 +55,14 @@ def test_step_gate_policy_comes_from_catalog():
     assert step_gate_policy("qor.sta.drv_clean", "failed") == "warn"
     assert step_gate_policy("qor.antenna.clean", "unavailable") == "warn"
     assert step_gate_policy("qor.antenna.clean", "failed") == "block"
+
+
+def test_workspace_gate_blocking_matches_advisory_policy():
+    by_id = {spec.id: spec for spec in WORKSPACE_GATES}
+    for gate_id in ("GATE_MAX_TRANSITION", "GATE_MAX_CAPACITANCE", "GATE_MAX_FANOUT"):
+        assert by_id[gate_id].blocks_tapeout is False
+    for spec in WORKSPACE_GATES:
+        expected = not spec.qor_gate_ids or any(
+            step_gate_blocking(gid) for gid in spec.qor_gate_ids
+        )
+        assert spec.blocks_tapeout is expected

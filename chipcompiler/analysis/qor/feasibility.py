@@ -1,10 +1,12 @@
 """The authoritative physical signoff gates (spec §10), including the STA DRV gates.
 
 Gate evaluation distinguishes a physical failure from missing evidence:
-a missing report or corner never becomes PHYSICAL_FAIL. Reduction order
-is strict: any failed gate vetoes everything; corrupt evidence yields
-UNKNOWN; omitted verification yields NOT_VERIFIED; only all-pass (or
-waived) yields PASS.
+a missing report or corner never becomes PHYSICAL_FAIL. Reduction is
+decided by blocking gates (``blocks_tapeout=True``): any failed blocking
+gate vetoes everything; corrupt blocking evidence yields UNKNOWN; omitted
+blocking verification yields NOT_VERIFIED; advisory gates
+(``blocks_tapeout=False``) surface findings in ``Feasibility.gates``
+without triggering PHYSICAL_FAIL or vetoing the composite score.
 """
 
 from chipcompiler.analysis.qor.gate_catalog import WORKSPACE_GATES, WorkspaceGateSpec
@@ -81,7 +83,7 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="unavailable",
             predicate=f"{spec.metric_id} >= 0.0",
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=[spec.metric_id],
             availability="not_verified",
         )
@@ -91,7 +93,7 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="unavailable",
             predicate=f"{spec.metric_id} >= 0.0",
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=[spec.metric_id],
             availability="corrupt",
         )
@@ -104,7 +106,7 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="unavailable",
             predicate=f"{spec.metric_id} >= 0.0",
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=[spec.metric_id],
             availability="corrupt",
             reason=reason,
@@ -123,7 +125,7 @@ def _slack_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
         stage=spec.stage,
         state="passed" if ws >= 0.0 else "failed",
         predicate=f"{spec.metric_id} >= 0.0",
-        blocks_tapeout=True,
+        blocks_tapeout=spec.blocks_tapeout,
         metrics=[spec.metric_id],
         reason=reason,
         timing_slack=slack,
@@ -142,7 +144,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="unavailable",
             predicate=f"{spec.metric_id} == 0",
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=[spec.metric_id],
             availability="not_verified",
         )
@@ -153,7 +155,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="unavailable",
             predicate=f"{spec.metric_id} == 0",
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=[spec.metric_id],
             availability="corrupt",
         )
@@ -163,7 +165,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
             stage=spec.stage,
             state="failed",
             predicate=predicate,
-            blocks_tapeout=True,
+            blocks_tapeout=spec.blocks_tapeout,
             metrics=gate_metrics,
         )
     for coverage_metric in spec.coverage_metrics:
@@ -174,7 +176,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
                 stage=spec.stage,
                 state="unavailable",
                 predicate=predicate,
-                blocks_tapeout=True,
+                blocks_tapeout=spec.blocks_tapeout,
                 metrics=gate_metrics,
                 availability="corrupt",
             )
@@ -186,7 +188,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
                 stage=spec.stage,
                 state="unavailable",
                 predicate=predicate,
-                blocks_tapeout=True,
+                blocks_tapeout=spec.blocks_tapeout,
                 metrics=gate_metrics,
                 availability="not_verified",
             )
@@ -195,7 +197,7 @@ def _count_gate(spec: WorkspaceGateSpec, inputs) -> FeasibilityGate:
         stage=spec.stage,
         state="passed",
         predicate=predicate,
-        blocks_tapeout=True,
+        blocks_tapeout=spec.blocks_tapeout,
         metrics=gate_metrics,
     )
 
@@ -207,11 +209,12 @@ def evaluate_feasibility(inputs) -> Feasibility:
         if not (spec.only_if_in_flow and inputs.step_state(spec.step) is None)
     ]
 
-    if any(gate.state == "failed" for gate in gates):
+    blocking_gates = [gate for gate in gates if gate.blocks_tapeout]
+    if any(gate.state == "failed" for gate in blocking_gates):
         status = _PHYSICAL_FAIL
-    elif any(gate.availability == "corrupt" for gate in gates):
+    elif any(gate.availability == "corrupt" for gate in blocking_gates):
         status = _UNKNOWN
-    elif any(gate.availability == "not_verified" for gate in gates):
+    elif any(gate.availability == "not_verified" for gate in blocking_gates):
         status = _NOT_VERIFIED
     else:
         status = _PASS

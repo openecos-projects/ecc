@@ -65,6 +65,8 @@ class WorkspaceGateSpec:
     coverage_metrics: tuple[str, ...] = ()
     # Evaluated only when the flow contains this step (older flows lack it).
     only_if_in_flow: bool = False
+    # True when failure or missing evidence blocks workspace feasibility/export.
+    blocks_tapeout: bool = True
 
 
 # Workspace feasibility may split an aggregate step gate into scoring aspects.
@@ -131,6 +133,7 @@ WORKSPACE_GATES = (
         "sta",
         "sta_max_transition_violation_count",
         ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
     ),
     WorkspaceGateSpec(
         "GATE_MAX_CAPACITANCE",
@@ -138,6 +141,7 @@ WORKSPACE_GATES = (
         "sta",
         "sta_max_capacitance_violation_count",
         ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
     ),
     WorkspaceGateSpec(
         "GATE_MAX_FANOUT",
@@ -145,6 +149,7 @@ WORKSPACE_GATES = (
         "sta",
         "sta_max_fanout_violation_count",
         ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
     ),
     WorkspaceGateSpec(
         "GATE_HARDEN_ARTIFACTS",

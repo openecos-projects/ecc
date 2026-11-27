@@ -274,7 +274,7 @@ Key points:
 - Intermediate-stage anomalies (detailed-routing violations, placement congestion overflow) only trigger feature-level WATCH/FAIL diagnoses — only **final signoff checks** that persist trigger PHYSICAL_FAIL.
 - **Setup/hold slack gates are evaluated per corner** from the per-corner `qor_summary.json` files and cross-checked against the aggregate `sta_setup/hold_wns` and violation counts: any failing corner → FAIL (the worst corner decides); fewer valid corner summaries than `sta_expected_corner_count`, or a disagreement beyond 1.5 ps (slack) / any difference (violation total) → `corrupt` (UNKNOWN) with a `reason` on the gate. A workspace with no per-corner summaries at all is still decided by the aggregate alone.
 - Timing gates carry a full slack view: `ws_ns` (signed), `wns_ns` (clamped), `tns_ns`, `nvp`, `worst_corner`.
-- In step signoff summaries and `home/checklist.json`, `qor.sta.drv_clean` is emitted with `blocking: false` / `policy: "warn"` (advisory) so DRV violations are surfaced without blocking signoff export while physical DRV repair is pending.
+- Both `qor.sta.drv_clean` (step summary / `home/checklist.json`, `blocking: false` / `policy: "warn"`) and the workspace `GATE_MAX_TRANSITION`, `GATE_MAX_CAPACITANCE`, and `GATE_MAX_FANOUT` gates (`blocks_tapeout: false`) are advisory: DRV violations are surfaced without triggering `PHYSICAL_FAIL` or vetoing the composite score while physical DRV repair is pending.
 
 ## 6. Evidence Completeness Index I_E
 
