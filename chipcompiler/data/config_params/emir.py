@@ -2,6 +2,17 @@ from .common import config_param
 
 SCHEMAS = (
     config_param(
+        "emir.allow_unmapped_pg_pins",
+        "emir",
+        ("allow_unmapped_pg_pins",),
+        default=False,
+        applies="emir",
+        description=(
+            "Allow exploratory EMIR with PG pins missing graph contacts. "
+            "Omitted currents are reported; results are not full-chip signoff."
+        ),
+    ),
+    config_param(
         "emir.technology_file_path",
         "emir",
         ("technology_file_path",),

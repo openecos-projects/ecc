@@ -37,3 +37,15 @@ def test_emir_supply_returns_round_trip(ready_project):
     assert cli_main.run(["param", "unset", "emir.supply_ground_pins", *project]) == 0
     config = tomllib.loads((ready_project / "ecc.toml").read_text())
     assert "supply_ground_pins" not in config.get("params", {}).get("emir", {})
+
+
+def test_emir_exploratory_contact_policy_round_trip(ready_project):
+    project = ["--project", str(ready_project)]
+    key = "emir.allow_unmapped_pg_pins"
+    for text, value in [("true", True), ("false", False)]:
+        assert cli_main.run(["param", "set", key, text, *project]) == 0
+        config = tomllib.loads((ready_project / "ecc.toml").read_text())
+        assert config["params"]["emir"] == {"allow_unmapped_pg_pins": value}
+    assert cli_main.run(["param", "unset", key, *project]) == 0
+    config = tomllib.loads((ready_project / "ecc.toml").read_text())
+    assert config.get("params", {}).get("emir", {}) == {}
