@@ -8,9 +8,13 @@ on:
       - reopened
       - synchronize
       - ready_for_review
+  # Required checks must also report on merge queue entries. Commit-message
+  # enforcement already happened on the PR; on merge_group the job runs no
+  # steps and reports success.
+  merge_group:
 
 concurrency:
-  group: commit-message-${{ github.event.pull_request.number }}
+  group: commit-message-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -22,18 +26,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
+        if: github.event_name == 'pull_request'
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Setup uv
+        if: github.event_name == 'pull_request'
         uses: astral-sh/setup-uv@v3
         with:
           version: latest
           enable-cache: "true"
 
       - name: Run commit-msg hooks on every commit and the PR title
+        if: github.event_name == 'pull_request'
         env:
           TITLE: ${{ github.event.pull_request.title }}
           BASE_REF: ${{ github.base_ref }}
