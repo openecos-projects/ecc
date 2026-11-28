@@ -130,7 +130,7 @@ def run_cmd(
         str | None,
         typer.Option(
             "--to",
-            help="Inclusive final step when running a bounded range",
+            help="Inclusive final step of a bounded range; requires --from",
             autocompletion=complete_flow_step,
         ),
     ] = None,
