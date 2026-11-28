@@ -13,6 +13,7 @@ from chipcompiler.data.step_parameters import (
     step_key,
     step_values,
 )
+from chipcompiler.data.workspace.parameters import workspace_param_default
 from chipcompiler.params import (
     list_schemas,
     parse_value,
@@ -424,7 +425,9 @@ def _list_row(
         status = "workspace" if edited else "base"
     if ctx.output_mode != OutputMode.PLAIN:
         return _record(ctx, _key(schema, step if qualified else None), value, status)
-    record = _line_record(ctx, schema, value, status, pdk)
+    record = _line_record(
+        ctx, schema, value, workspace_param_default(workspace, schema), status, pdk
+    )
     if step is not None:
         record["step_id"] = step
     return record
@@ -498,7 +501,7 @@ def _record(ctx: CommandContext, key: str, value: object, status: str) -> dict:
 
 
 def _line_record(
-    ctx: CommandContext, schema, value: object, status: str, pdk: str | None = None
+    ctx: CommandContext, schema, value: object, default: object, status: str, pdk: str | None = None
 ) -> dict:
     """Return the stable machine record used by GUI workspace parameter reads."""
     record: dict[str, object] = {
@@ -506,7 +509,7 @@ def _line_record(
         "id": schema.param,
         "type": schema.type,
         "value_literal": json_literal(value),
-        "default_literal": json_literal(schema.default_for(pdk)),
+        "default_literal": json_literal(default),
         "applies_to": schema.applies,
         "status": status,
         "source": status,

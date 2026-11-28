@@ -1,4 +1,21 @@
+from pathlib import Path
+
+from chipcompiler.data.pdk import PDK, get_pdk
+
 from .common import config_param
+
+
+def pdn_defaults(pdk: PDK | str | None, io_mode: object) -> dict[str, list[dict[str, object]]]:
+    """Read the versioned core/chip mesh, preserving PDK-carried overrides."""
+    from chipcompiler.data.workspace.tool_configs import tool_config
+
+    profile = pdk if isinstance(pdk, PDK) else get_pdk(pdk or "", validate=False)
+    configs = Path(__file__).resolve().parents[2] / "tools" / "ecc" / "configs"
+    config = tool_config(
+        configs, "floorplan_ecc.json", profile, mode="io_cell" if io_mode == "io_cell" else ""
+    )
+    return {name: config["pdn_generator"][name] for name in ("stripe", "connect_layers")}
+
 
 SCHEMAS = (
     config_param(
@@ -46,6 +63,44 @@ SCHEMAS = (
         range=(1, 256),
     ),
     config_param(
+        "floorplan.io_placer.mode",
+        "floorplan",
+        ("io_placer", "mode"),
+        "auto",
+        applies="pre_floorplan",
+        description=(
+            "IO placement mode: auto/file places IO pins; io_cell automatically places pad cells."
+        ),
+        choices=("auto", "file", "io_cell"),
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.definition_file_path",
+        "floorplan",
+        ("io_placer", "io_cell", "definition_file_path"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "IO cell definition JSON required in io_cell mode. Use an absolute path; "
+            "native iFP resolves relative paths against the generated floorplan config directory."
+        ),
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.power.target_group_spacing",
+        "floorplan",
+        ("io_placer", "io_cell", "power", "target_group_spacing"),
+        1000.0,
+        applies="pre_floorplan",
+        description="Target spacing between IO power groups in micrometers; must be positive.",
+    ),
+    config_param(
+        "floorplan.io_placer.io_cell.auto_resize.enable",
+        "floorplan",
+        ("io_placer", "io_cell", "auto_resize", "enable"),
+        default=True,
+        applies="pre_floorplan",
+        description="Allow iFP to enlarge the die when the IO cell ring does not fit.",
+    ),
+    config_param(
         "floorplan.io_placer.io_layer_list",
         "floorplan",
         ("io_placer", "io_layer_list"),
@@ -70,6 +125,38 @@ SCHEMAS = (
         3.0,
         applies="pre_floorplan",
         description="Routing halo around macros in micrometers where routing is prohibited.",
+    ),
+    config_param(
+        "floorplan.pdn_generator.core_power_net",
+        "floorplan",
+        ("pdn_generator", "core_power_net"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "Core POWER net for rails and stripes; required when multiple power domains exist."
+        ),
+    ),
+    config_param(
+        "floorplan.pdn_generator.core_ground_net",
+        "floorplan",
+        ("pdn_generator", "core_ground_net"),
+        "",
+        applies="pre_floorplan",
+        description=(
+            "Core GROUND net for rails and stripes; required when multiple ground domains exist."
+        ),
+    ),
+    config_param(
+        "floorplan.pdn_generator.io_core_connect",
+        "floorplan",
+        ("pdn_generator", "io_core_connect"),
+        {"enable": False},
+        applies="pre_floorplan",
+        description=(
+            "IO-to-core power connection options. Set enable and fail_on_unresolved to true "
+            "for pad-based designs; omitted nets/layers follow the core supplies and stripes."
+        ),
+        type="json",
     ),
     config_param(
         "floorplan.pdn_generator.global_connect",
@@ -101,7 +188,10 @@ SCHEMAS = (
         ("pdn_generator", "stripe"),
         [],
         applies="pre_floorplan",
-        description="Power-stripe layers, widths, pitches, and offsets in micrometers.",
+        description=(
+            "Power-stripe layers, widths, pitches, and offsets in micrometers. "
+            "ICS55 io_cell mode adds T4M2/RDL by default; an explicit list replaces the default."
+        ),
         type="json",
     ),
     config_param(
@@ -110,7 +200,10 @@ SCHEMAS = (
         ("pdn_generator", "connect_layers"),
         [],
         applies="pre_floorplan",
-        description="Adjacent routing-layer pairs connected by power-distribution vias.",
+        description=(
+            "Routing-layer pairs connected by power-distribution vias. "
+            "ICS55 io_cell mode extends MET5 through T4M2 to RDL by default."
+        ),
         type="json",
     ),
     config_param(

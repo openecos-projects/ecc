@@ -33,6 +33,14 @@ layers them in that order: dict values merge recursively, lists and scalars in
 an override replace what is under them. Any layer may be absent; a PDK with
 neither override just gets the defaults.
 
+For IO-cell floorplans, the PDN uses an additional `io_cell/<name>.json`
+override within each PDK layer. The order is shipped common, shipped
+`io_cell`, PDK-root common, then PDK-root `io_cell`. Both ICS55 profiles use
+this to extend the core mesh through T4M2/RDL. PDK-root mesh overrides and
+explicit project/workspace parameters still take precedence; other PDKs do
+not inherit these layers. Switching back to IO-pin mode restores the core
+defaults without replacing an explicitly configured or imported custom mesh.
+
 Corner names, routing layers, cell lists and VT suffixes are all PDK-specific
 and belong in an override, never in `defaults/`.
 

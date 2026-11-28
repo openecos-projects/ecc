@@ -39,7 +39,6 @@ PROTECTED_FIELDS = {
     "floorplan": {
         ("ifp", "temp_directory_path"),
         ("macro_placer", "file_path"),
-        ("io_placer", "mode"),
         ("io_placer", "file_path"),
     },
     "dreamplace": {

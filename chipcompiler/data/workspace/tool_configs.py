@@ -10,7 +10,8 @@ Two sparse override layers may sit on top, least specific first:
    instead of every project restating them under `[config_overrides]`.
 
 Objects merge recursively; arrays and scalars in an override replace what is
-under them.
+under them. An optional mode subdirectory overrides the common settings within
+each PDK layer, so PDK-carried settings still win over shipped mode defaults.
 """
 
 from pathlib import Path
@@ -38,21 +39,26 @@ def _object_from(path: Path, label: str) -> dict:
     return data
 
 
-def _override_paths(tool_configs_dir: Path, name: str, pdk: "PDK") -> list[Path]:
+def _override_paths(tool_configs_dir: Path, name: str, pdk: "PDK", mode: str) -> list[Path]:
     """Candidate override files for *name*, least specific first."""
-    paths: list[Path] = []
+    directories: list[Path] = []
     if pdk.config_variant:
-        paths.append(tool_configs_dir / "pdk" / pdk.config_variant / name)
+        directories.append(tool_configs_dir / "pdk" / pdk.config_variant)
     if pdk.root is not None:
         # tool_configs_dir is `.../tools/<tool>/configs`.
-        paths.append(pdk.root / PDK_ROOT_CONFIG_DIR / tool_configs_dir.parent.name / name)
+        directories.append(pdk.root / PDK_ROOT_CONFIG_DIR / tool_configs_dir.parent.name)
+    paths: list[Path] = []
+    for directory in directories:
+        paths.append(directory / name)
+        if mode:
+            paths.append(directory / mode / name)
     return paths
 
 
-def tool_config(tool_configs_dir: Path, name: str, pdk: "PDK") -> dict:
+def tool_config(tool_configs_dir: Path, name: str, pdk: "PDK", *, mode: str = "") -> dict:
     """Return `defaults/<name>` deep-merged with every override that exists."""
     config = _object_from(tool_configs_dir / "defaults" / name, "default config")
-    for override_path in _override_paths(tool_configs_dir, name, pdk):
+    for override_path in _override_paths(tool_configs_dir, name, pdk, mode):
         if override_path.is_file():
             config = update_parameters(_object_from(override_path, "PDK override config"), config)
     return config

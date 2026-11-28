@@ -426,13 +426,49 @@ Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `po
 | `die_util.utilization` | parameter `floorplan.core_util` → 0.4 | Core utilization (cell area / core area) |
 | `die_size.width/height_micron` | 100.1 / 246.6 | Die size when `mode=die_size` (ignored in `die_util` mode) |
 
-### io_placer (IO pin placement)
+### io_placer (IO pin or IO cell placement)
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `mode` | `auto` | `auto` places IO pins automatically; `file` reads IO pin locations from `file_path` |
+| `mode` | `auto` | `auto` places IO pins automatically; `file` reads IO pin locations from `file_path`; `io_cell` automatically places IO pad cells |
 | `file_path` | `""` | IO-pin location file used when `mode=file` |
 | `io_layer_list` | `["MET3","MET4"]` | Metal layers allowed for IO pins |
+| `io_cell.definition_file_path` | `""` | Required in `io_cell` mode: JSON defining corner, signal, power and filler cells |
+| `io_cell.power.target_group_spacing` | 1000.0 | Target spacing between IO power groups in µm; must be positive |
+| `io_cell.auto_resize.enable` | `true` | Allow iFP to enlarge the die when the IO ring does not fit |
+
+Configure a project's automatic IO-cell placement through the CLI:
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.io_placer.mode=io_cell \
+  --set "floorplan.io_placer.io_cell.definition_file_path=/absolute/path/io_cell_definition.json" \
+  --set floorplan.io_placer.io_cell.power.target_group_spacing=1000 \
+  --set floorplan.io_placer.io_cell.auto_resize.enable=true
+```
+
+These parameters are shared by `pre_floorplan` and `post_floorplan`. For an
+existing workspace, add `--workspace <name>` and rerun from `pre_floorplan`.
+Use an absolute definition path: iFP resolves relative paths against the
+generated floorplan config directory, not the project directory; ECC does not
+copy this file. Load the matching IO LEFs/Liberty files (§3), configure
+`floorplan.pdn_generator.global_connect` for the definition's power nets/pins,
+and reserve sufficient core margins for the IO ring. The definition is supplied
+by the user/PDK; ECC does not infer IO cell types or add signal pads to the RTL.
+
+With separate core and IO supplies (e.g. VDD/VSS and VDDIO/VSSIO), also identify
+which declared nets feed the core rails and stripes:
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.pdn_generator.core_power_net=VDD \
+  --set floorplan.pdn_generator.core_ground_net=VSS
+```
+
+Use the actual core net names from your `global_connect` configuration. Both
+parameters default to empty strings, retaining native inference for a single
+power/ground pair; native iFP requires explicit selection for multiple domains.
+Add `--workspace NAME` when changing an existing workspace.
 
 ### phy_placer (physical cell insertion)
 
@@ -446,6 +482,19 @@ Configuration file `floorplan_ecc.json` is shared by the `pre_floorplan` and `po
 | `boundary_tap.rule_micron` | 30.0 | Rule distance for boundary tap insertion (µm) |
 
 ### pdn_generator (power distribution network)
+
+For CX55 (`pdk.name = "ics55"`), `floorplan.io_placer.mode = "io_cell"`
+selects the chip-level PDN defaults used by MPW and assembled MPC tops. In
+addition to the MET4/MET5 mesh below, it adds T4M2 (width 6, pitch 16, offset
+0.5 µm) and RDL (width 35, pitch 90, offset 50 µm), with MET5–T4M2 and
+T4M2–RDL connections. IO-pin/MPC-core and other PDK defaults are unchanged.
+
+Explicit `floorplan.pdn_generator.stripe` or `connect_layers` lists replace
+their respective defaults; ECC does not append to user lists. `ecc param show`
+reports the mode-dependent defaults. The same policy is applied at workspace
+creation, refresh, and both floorplan stages; switching back to `auto`/`file`
+restores the core defaults unless overridden. No sub-macro LEF or internal
+power mesh is changed, and native connectivity checks remain enabled.
 
 | Parameter | Default | Meaning |
 |---|---|---|

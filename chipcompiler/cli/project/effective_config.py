@@ -531,6 +531,7 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
     """
     if not cli_overrides:
         return None
+    from chipcompiler.cli.project.params import project_parameter_pdk
     from chipcompiler.params import build_backend_overrides, resolve_parameters
 
     explicit = getattr(cfg, "_explicit_keys", frozenset())
@@ -545,13 +546,12 @@ def cli_divergence_warning(cfg, cli_overrides: dict) -> dict | None:
 
     diverging, compared = _diverging_lower_keys(cli_overrides, resolve_lower)
 
+    pdk = project_parameter_pdk(cfg)
     lower: dict = {}
     if params_overrides:
-        resolved_toml, _ = resolve_parameters(
-            toml_overrides=params_overrides, pdk=cfg.pdk_name or None
-        )
+        resolved_toml, _ = resolve_parameters(toml_overrides=params_overrides, pdk=pdk)
         lower.update(_flatten(build_backend_overrides(resolved_toml)))
-    resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides, pdk=cfg.pdk_name or None)
+    resolved_cli, _ = resolve_parameters(cli_overrides=cli_overrides, pdk=pdk)
     for key, value in _flatten(build_backend_overrides(resolved_cli)):
         if key not in compared and key in lower and lower[key] != value:
             diverging.append(key)

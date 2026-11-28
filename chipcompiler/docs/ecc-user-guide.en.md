@@ -1440,6 +1440,26 @@ Legacy semantic parameters:
 
 Priority: CLI `--set` > `ecc.toml` `[params.*]` > template defaults. `pdk.*` path parameters write to `[pdk.overrides]`: `pdk.tech`, `pdk.lefs`, `pdk.libs`, and `pdk.mapping_file` resolve relative to `pdk.root`, while `pdk.sdc` and `pdk.spef` resolve relative to the project directory; all are file-validated.
 
+### IO-to-core power connections
+
+For a pad-based top, enable the dedicated connection from IO power pins to the
+core mesh through the normal parameter interface:
+
+```bash
+ecc param set floorplan.pdn_generator.io_core_connect \
+  '{"enable":true,"fail_on_unresolved":true}' --project /path/to/project
+```
+
+This JSON object is forwarded to both floorplan stages. Omitted `nets` use the
+core POWER/GROUND pair; omitted `pin_layers` use the configured stripe layers.
+Select `core_power_net` and `core_ground_net` explicitly for multiple supply
+domains. Do not add independent IO supplies to the core connection list.
+The feature is disabled by default. With `fail_on_unresolved`, iFP reports a
+connection failure instead of leaving unresolved ports unnoticed. Check the
+physical LVS report too: correct IO filler geometry and continuous rings are
+still required. For an existing workspace, also pass `--workspace NAME` and
+rerun the affected floorplan and downstream steps.
+
 ## 9.5. macro — manual macro placement
 
 ```bash

@@ -208,6 +208,7 @@ def build_project_config_items(
     )
 
     # Parameter records with source information
+    from chipcompiler.cli.project.params import project_parameter_pdk
     from chipcompiler.params import resolve_parameters
 
     pdk = cfg.pdk_name or None
@@ -227,7 +228,7 @@ def build_project_config_items(
         toml_overrides=toml_overrides,
         cli_overrides=cli_provenance,
         manifest_overrides=_manifest_parameter_overrides(cfg),
-        pdk=pdk,
+        pdk=project_parameter_pdk(cfg),
     )
     from chipcompiler.cli.command_handlers.param_step_values import maps_to_str, record_at_step
     from chipcompiler.data.step_parameters import is_step_scoped, step_key

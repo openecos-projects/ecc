@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from chipcompiler.data import create_workspace, load_workspace, save_parameter
+from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.workspace import refresh_workspace_config
 from chipcompiler.params import (
     EVIDENCE_FILE,
@@ -84,6 +85,30 @@ def test_record_covers_only_parameters_applicable_to_the_step(
     assert "cts.max_fanout" in params
     assert "place.target_density" not in params
     assert record["config"]["cts"]["max_fanout"] == "32"
+
+
+def test_floorplan_evidence_uses_mode_dependent_pdn_defaults(
+    tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters
+) -> None:
+    workspace = _workspace(tmp_path, minimal_ics55_pdk_factory, default_ics55_parameters)
+    mode_schema = lookup_schema("floorplan.io_placer.mode")
+    stripe_schema = lookup_schema("floorplan.pdn_generator.stripe")
+    assert mode_schema is not None and stripe_schema is not None
+    update_workspace_param_value(workspace, mode_schema, "io_cell")
+    update_workspace_param_value(workspace, stripe_schema, [])
+    assert save_parameter(workspace.parameters)
+    refresh_workspace_config(workspace)
+
+    record = build_step_parameter_record(workspace, "pre_floorplan", "ecc")
+
+    for name, default in pdn_defaults("ics55", "io_cell").items():
+        key = f"floorplan.pdn_generator.{name}"
+        assert _record(record, key) == {
+            "param": key,
+            "value": [] if name == "stripe" else default,
+            "default": default,
+            "source": "workspace" if name == "stripe" else "default",
+        }
 
 
 def test_evidence_file_is_written_beside_the_step_files(

@@ -29,6 +29,15 @@
   "io_placer": {
     "mode": "auto",
     "file_path": "",
+        "io_cell": {
+            "definition_file_path": "",
+            "power": {
+                "target_group_spacing": 1000.0
+            },
+            "auto_resize": {
+                "enable": true
+            }
+        },
     "io_layer_list": []
   },
   "phy_placer": {
@@ -51,6 +60,11 @@
     }
   },
   "pdn_generator": {
+        "core_power_net": "",
+        "core_ground_net": "",
+    "io_core_connect": {
+      "enable": false
+    },
     "global_connect": [
       {
         "net_name": "VDD",

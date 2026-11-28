@@ -379,6 +379,7 @@ def execute_fresh_run(
     pdk_root = resolve_pdk_root(cfg)
 
     if cfg.params_overrides or cli_overrides:
+        from chipcompiler.cli.project.params import project_parameter_pdk
         from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
         from chipcompiler.params import (
             build_backend_overrides,
@@ -391,7 +392,7 @@ def execute_fresh_run(
         resolved, _ = resolve_parameters(
             toml_overrides=cfg.params_overrides,
             cli_overrides=cli_overrides,
-            pdk=cfg.pdk_name or None,
+            pdk=project_parameter_pdk(cfg),
         )
         update_parameters(build_backend_overrides(resolved), parameters)
         _mark_explicit_frequency(resolved, parameters)

@@ -420,13 +420,47 @@ Liberty 单元有对应的 LEF master，因此 IO 的 LEF 与 Liberty 必须同�
 | `die_util.utilization` | 参数 `floorplan.core_util` → 0.4 | core 利用率（单元面积/核心面积） |
 | `die_size.width/height_micron` | 100.1 / 246.6 | `mode=die_size` 时的 die 尺寸（`die_util` 模式下不生效） |
 
-### io_placer（IO 引脚排布）
+### io_placer（IO 引脚或 IO cell 排布）
 
 | 参数 | 默认 | 含义 |
 |---|---|---|
-| `mode` | `auto` | `auto` 自动摆放 IO 引脚；`file` 从 `file_path` 读取 IO 引脚位置 |
+| `mode` | `auto` | `auto` 自动摆放 IO 引脚；`file` 从 `file_path` 读取 IO 引脚位置；`io_cell` 自动摆放 IO pad 单元 |
 | `file_path` | `""` | `mode=file` 时使用的 IO 引脚位置文件 |
 | `io_layer_list` | `["MET3","MET4"]` | IO 引脚允许的金属层 |
+| `io_cell.definition_file_path` | `""` | `io_cell` 模式必填：定义 corner、信号、电源及 filler 单元的 JSON |
+| `io_cell.power.target_group_spacing` | 1000.0 | IO 电源组的目标间距（µm），必须大于 0 |
+| `io_cell.auto_resize.enable` | `true` | IO ring 放不下时，允许 iFP 扩大 die |
+
+通过 CLI 为项目配置自动 IO-cell 摆放：
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.io_placer.mode=io_cell \
+  --set "floorplan.io_placer.io_cell.definition_file_path=/absolute/path/io_cell_definition.json" \
+  --set floorplan.io_placer.io_cell.power.target_group_spacing=1000 \
+  --set floorplan.io_placer.io_cell.auto_resize.enable=true
+```
+
+这些参数由 `pre_floorplan` 和 `post_floorplan` 共享。修改已有 workspace 时，
+追加 `--workspace <名称>`，再从 `pre_floorplan` 重跑。定义文件请使用绝对路径：
+iFP 按生成的 floorplan 配置所在目录解析相对路径，不是项目目录；ECC 不会复制该文件。
+还需加载对应的 IO LEF/Liberty（§3）、通过
+`floorplan.pdn_generator.global_connect` 配置定义中电源网络与引脚的连接，
+并为 IO ring 留出足够的 core margin。定义文件由用户或 PDK 提供；ECC 不推测
+IO 单元类型，也不会自动往 RTL 插入信号 IO cell。
+
+核心与 IO 使用不同电源（如 VDD/VSS、VDDIO/VSSIO）时，还须明确哪组已声明的
+网络供给核心 rail 和 stripe：
+
+```bash
+ecc param apply --project "$PROJECT_DIR" \
+  --set floorplan.pdn_generator.core_power_net=VDD \
+  --set floorplan.pdn_generator.core_ground_net=VSS
+```
+
+请填写 `global_connect` 中实际的核心电源网名。两个参数默认均为空字符串，
+保留单组电源时的原生推断行为；多电源域时 iFP 要求显式指定。
+修改已有 workspace 时加 `--workspace NAME`。
 
 ### phy_placer（物理单元插入）
 
@@ -440,6 +474,16 @@ Liberty 单元有对应的 LEF master，因此 IO 的 LEF 与 Liberty 必须同�
 | `boundary_tap.rule_micron` | 30.0 | 边界 tap 插入规则距离（µm） |
 
 ### pdn_generator（电源网络）
+
+CX55（`pdk.name = "ics55"`）设置 `floorplan.io_placer.mode = "io_cell"` 时，
+默认采用拼片顶层和 MPW 的电源层配置：在下表的 MET4/MET5 网格上增加
+T4M2（线宽 6、周期 16、偏移 0.5 µm）和 RDL（线宽 35、周期 90、偏移 50 µm），
+同时增加 MET5–T4M2、T4M2–RDL 连接。IO-pin/MPC-core 和其他 PDK 的默认值不变。
+
+显式设置的 `floorplan.pdn_generator.stripe`、`connect_layers` 列表分别替换对应
+默认值，不会被自动追加。`ecc param show` 显示当前模式的默认配置；新建 workspace、
+刷新及两个 floorplan 步骤使用同一规则。切回 `auto`/`file` 时，未覆盖的字段恢复
+核心默认值。不修改子宏 LEF 或内部电源网，也不关闭原生电源连通性检查。
 
 | 参数 | 默认 | 含义 |
 |---|---|---|

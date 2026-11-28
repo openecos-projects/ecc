@@ -1416,6 +1416,23 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 优先级：CLI `--set` > `ecc.toml` `[params.*]` > 模板默认值。`pdk.*` 路径参数写入 `[pdk.overrides]`：`pdk.tech`、`pdk.lefs`、`pdk.libs`、`pdk.mapping_file` 相对 `pdk.root` 解析，`pdk.sdc` 和 `pdk.spef` 相对项目目录解析；六者都会校验文件。
 
+### IO 电源到核心电网的连接
+
+带 IO cell 的顶层可通过参数接口启用专用 IO-to-core 电源连接：
+
+```bash
+ecc param set floorplan.pdn_generator.io_core_connect \
+  '{"enable":true,"fail_on_unresolved":true}' --project /path/to/project
+```
+
+此 JSON 对象传给两个 floorplan 阶段。省略 `nets` 时使用核心 POWER/GROUND
+电源对，省略 `pin_layers` 时使用配置的 stripe 层。多电源域设计需明确设置
+`core_power_net` 和 `core_ground_net`；不要把独立 IO 电源加入核心连接列表。
+默认不启用。设置 `fail_on_unresolved` 后，无法完成连接时 iFP 会报错。
+仍需检查物理 LVS 报告：IO filler 的电源几何及电源环连续性也必须正确。
+修改已有 workspace 时加上 `--workspace NAME`，并重跑受影响的 floorplan
+和下游步骤。
+
 ## 9.5. macro — 手动宏单元摆放
 
 ```bash
