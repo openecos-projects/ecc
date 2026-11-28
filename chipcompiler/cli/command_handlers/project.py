@@ -128,6 +128,16 @@ def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:
             "inspect_cmd": disclosure_cmd("ecc status", project),
         }
     ]
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+    resolver = ProjectNoClockDecisionResolver(cfg)
+    decision = resolver.resolve()
+    if decision.enabled or resolver.declared:
+        # Ordinary clocked projects keep their established record shape. An
+        # enabled or explicitly disabled policy is effective configuration,
+        # including inference from an absent/blank clock, and is visible here.
+        records[0]["no_clock"] = decision.enabled
+        records[0]["no_clock_source"] = decision.source
 
     if cfg.design_rtl:
         # Every declared RTL source must exist and have a usable shape —
@@ -187,7 +197,12 @@ def _preflight_environment(
 
     if preset is None:
         return None
-    skip = resolve_skip_steps(flow_config)
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
+
+    skip = resolve_skip_steps(
+        flow_config,
+        materials=ProjectNoClockDecisionResolver(cfg).materials(),
+    )
     lec_engine = resolve_lec_engine(flow_config)
     insert = resolve_insert_steps(flow_config)
     probes = env_probe.probe_environment(
@@ -219,6 +234,7 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
     """
     from chipcompiler.cli.inspection import env_probe
     from chipcompiler.cli.project import run_preflight
+    from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
     from chipcompiler.rtl2gds import (
         build_flow_range,
         resolve_insert_steps,
@@ -230,7 +246,10 @@ def _preflight_flow_range(flow_config: dict, project: str | None, cfg=None) -> C
         steps = build_flow_range(
             flow_config["start_step"],
             flow_config["end_step"],
-            skip=resolve_skip_steps(flow_config),
+            skip=resolve_skip_steps(
+                flow_config,
+                materials=ProjectNoClockDecisionResolver(cfg).materials(),
+            ),
             lec_engine=resolve_lec_engine(flow_config),
             insert=resolve_insert_steps(flow_config),
         )
@@ -832,6 +851,7 @@ def _run_project(
         from chipcompiler.cli.project.effective_config import (
             _attach_lec_engine,
             _attach_skip_steps,
+            attach_project_no_clock,
         )
         from chipcompiler.cli.project.manifest_flow import (
             attach_insert_steps,
@@ -850,6 +870,7 @@ def _run_project(
             else None
         )
         flow_config = _attach_lec_engine(flow_config, lec_engine)
+        flow_config = attach_project_no_clock(flow_config, cfg)
         flow_config = attach_insert_steps(flow_config, declared_insert_steps(cfg))
 
     if cfg is None:
@@ -887,12 +908,16 @@ def _run_project(
 
     if command_input.from_step is not None and command_input.to_step is not None:
         try:
+            from chipcompiler.cli.project.config import ProjectNoClockDecisionResolver
             from chipcompiler.rtl2gds import build_flow_range, resolve_skip_steps
 
             build_flow_range(
                 command_input.from_step,
                 command_input.to_step,
-                skip=resolve_skip_steps(policies or None),
+                skip=resolve_skip_steps(
+                    policies or None,
+                    materials=ProjectNoClockDecisionResolver(cfg).materials(),
+                ),
             )
         except ValueError as exc:
             return error("flow_range_invalid", reason=str(exc))

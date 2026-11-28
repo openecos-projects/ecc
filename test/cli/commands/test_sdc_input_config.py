@@ -177,3 +177,61 @@ def test_existing_workspace_can_resume_without_valid_project_timing_source(
     monkeypatch.setattr(project_commands, "_run_workspace", run_existing)
     assert cli_main.run(["run", "--project", str(project), "--resume"]) == 0
     assert resumed == [before]
+
+
+def test_grouped_timing_inputs_freeze_under_explicit_no_clock(
+    tmp_path, flow_mocks, minimal_ics55_pdk_factory
+):
+    project = tmp_path / "project"
+    assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
+    pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
+    (project / "gcd.v").write_text("module gcd(input ref_clk); endmodule\n")
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
+    config = project / "ecc.toml"
+    config.write_text(
+        config.read_text().replace('root = ""', f'root = "{pdk}"') + "no_clock = true\n"
+    )
+    _source, values = _timing_file(
+        project,
+        primary_clocks="create_clock -name CLK_ref_clk -period 12.5 [get_ports ref_clk]\n",
+        generated_clocks="create_generated_clock -name CLK_div2 -divide_by 2 "
+        "-source [get_ports ref_clk] [get_pins u_div/Q]\n",
+        clock_groups="set_clock_groups -asynchronous -group {CLK_ref_clk} -group {CLK_div2}\n",
+        io_constraints="set_input_delay 0.3 -max -clock CLK_ref_clk [get_ports req]\n",
+        timing_exceptions="set_false_path -from [get_ports reset_n]\n",
+    )
+
+    assert cli_main.run(["run", "--project", str(project)]) == 0
+
+    arguments = flow_mocks.capture["create_kwargs"]
+    assert arguments["flow_config"]["no_clock"] is True
+    assert {key: arguments["parameters"][key] for key in ("clock", "frequency_max")} == {
+        "clock": "ref_clk",
+        "frequency_max": 80,
+    }
+    workspace = create_workspace(**{**arguments, "directory": tmp_path / "persisted"})
+    assert workspace is not None
+    frozen = SdcInputs.from_parameters(workspace.parameters.data)
+    assert frozen.primary_clocks == values["primary_clocks"]
+    assert frozen.generated_clock_txt == values["generated_clocks"]
+    assert frozen.clk_group_txt == values["clock_groups"]
+    assert frozen.io_constraint_txt == values["io_constraints"]
+    assert frozen.timing_exception_txt == values["timing_exceptions"]
+
+
+def test_no_clock_does_not_relax_the_primary_clock_requirement(tmp_path, flow_mocks, capsys):
+    project = tmp_path / "project"
+    assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
+    (project / "gcd.v").write_text("module gcd(input clk); endmodule\n")
+    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
+    config = project / "ecc.toml"
+    config.write_text(
+        config.read_text().replace('root = ""', f'root = "{tmp_path}"') + "no_clock = true\n"
+    )
+    _timing_file(project, primary_clocks="# generated clocks only\n")
+    capsys.readouterr()
+
+    assert cli_main.run(["run", "--project", str(project)]) == 1
+
+    assert "primary_clocks requires an uncommented create_clock" in capsys.readouterr().out
+    assert flow_mocks.capture["create_kwargs"] is None

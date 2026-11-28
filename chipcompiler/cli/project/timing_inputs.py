@@ -22,3 +22,5 @@ def resolve_timing_input_metadata(cfg: "ProjectConfig") -> None:
     clock = inputs.primary_clock()
     cfg.design_clock_port = clock.target
     cfg.design_frequency_mhz = clock.frequency_mhz
+    # The valid external primary clock supersedes the raw [design] material.
+    cfg._clock_material = clock.target

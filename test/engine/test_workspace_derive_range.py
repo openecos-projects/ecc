@@ -18,16 +18,19 @@ _LEDGER = [
 ]
 
 
-def _derived(tmp_path, monkeypatch) -> tuple[Any, Any]:
+def _derived(tmp_path, monkeypatch, *, ledger=_LEDGER, flow_policy=None) -> tuple[Any, Any]:
     workspace: Any = Workspace(directory=tmp_path)
     workspace.flow.data = {
         "schema_version": 3,
         "steps": [
             {"name": name, "tool": tool, "state": "Success", **step_fields(name, tool)}
-            for name, tool in _LEDGER
+            for name, tool in ledger
         ],
     }
-    workspace.parameters.data["_flow"] = {"preset": "rtl2gds", "insert_steps": ["lec@cts"]}
+    workspace.parameters.data["_flow"] = flow_policy or {
+        "preset": "rtl2gds",
+        "insert_steps": ["lec@cts"],
+    }
     flow = SimpleNamespace(
         workspace_steps=[], save=lambda: True, create_step_workspaces=lambda **_kwargs: None
     )
@@ -47,6 +50,39 @@ def test_a_range_ending_at_a_step_keeps_its_inserted_check(tmp_path, monkeypatch
     ) == (
         ["synthesis", "cts", "lec@cts"],
         {"start": "synthesis", "end": "cts", "insert_steps": ["lec@cts"]},
+    )
+
+
+def test_a_derived_range_keeps_the_effective_no_clock_policy(tmp_path, monkeypatch):
+    no_clock_skips = ["preplace", "diff_opt", "diff_sizing", "cts", "timing_optimization"]
+    workspace, flow = _derived(
+        tmp_path,
+        monkeypatch,
+        ledger=[
+            ("synthesis", "yosys"),
+            ("placement", "dreamplace"),
+            ("legalization", "dreamplace"),
+        ],
+        flow_policy={
+            "preset": "rtl2gds",
+            "no_clock": True,
+            "skip_steps": no_clock_skips,
+        },
+    )
+
+    derive_range.bound_derived_flow(workspace, flow, "", "legalization")
+
+    assert (
+        [step["name"] for step in workspace.flow.data["steps"]],
+        workspace.parameters.data["_flow"],
+    ) == (
+        ["synthesis", "placement", "legalization"],
+        {
+            "start": "synthesis",
+            "end": "legalization",
+            "no_clock": True,
+            "skip_steps": no_clock_skips,
+        },
     )
 
 

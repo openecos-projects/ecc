@@ -2,6 +2,11 @@ import logging
 import os
 import tomllib
 from dataclasses import dataclass, field
+from math import isfinite
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from chipcompiler.rtl2gds import NoClockDecision
 
 from chipcompiler.project.manifest import CONFIG_FILENAME
 from chipcompiler.utility.filelist import FILELIST_SUFFIXES, RTL_SUFFIXES
@@ -40,6 +45,10 @@ class ProjectConfig:
     # code default then applies). An explicit declaration wins over the
     # manifest's per-workspace value, like every other key.
     flow_skip_steps: list[str] | None = None
+    # Raw declared [flow] no_clock value. Presence in _explicit_keys
+    # distinguishes explicit false from an absent flag; the canonical resolver
+    # rejects non-Boolean declarations instead of coercing them.
+    flow_no_clock: object = False
     # Declared [flow] lec_engine spelling; None when the key is absent (the
     # code default engine then applies).
     flow_lec_engine: str | None = None
@@ -67,6 +76,11 @@ class ProjectConfig:
     _toml_error: str | None = field(default=None, init=False, repr=False)
     _param_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _timing_input_error: str | None = field(default=None, init=False, repr=False)
+    # Raw design.clock_port material. The display/parameter field remains a
+    # string for legacy callers, while inference must reject a declared list,
+    # number or table rather than silently turning it into an empty clock.
+    # None means a programmatically assembled config: use design_clock_port.
+    _clock_material: object = field(default=None, init=False, repr=False)
     _pdk_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     _flow_config_errors: list[str] = field(default_factory=list, init=False, repr=False)
     # Parse provenance: dotted "<section>.<key>" names of every design/pdk/
@@ -74,6 +88,36 @@ class ProjectConfig:
     # (manifest) layer; an explicit value — even an empty/invalid one —
     # stays explicit and faces validation.
     _explicit_keys: frozenset = field(default_factory=frozenset, init=False, repr=False)
+
+
+@dataclass(frozen=True)
+class ProjectNoClockDecisionResolver:
+    """Adapt project configuration to the canonical no-clock resolver."""
+
+    config: ProjectConfig | None
+
+    @property
+    def declared(self) -> bool:
+        return self.config is not None and "flow.no_clock" in self.config._explicit_keys
+
+    def flow_config(self) -> dict[str, object]:
+        if not self.declared:
+            return {}
+        assert self.config is not None
+        return {"no_clock": self.config.flow_no_clock}
+
+    def materials(self) -> dict[str, object] | None:
+        if self.config is None:
+            return None
+        clock = getattr(self.config, "_clock_material", None)
+        if clock is None:
+            clock = getattr(self.config, "design_clock_port", None)
+        return {"clock_port": clock}
+
+    def resolve(self) -> "NoClockDecision":
+        from chipcompiler.rtl2gds import resolve_no_clock
+
+        return resolve_no_clock(self.flow_config(), materials=self.materials())
 
 
 def load_project_config(config_path: str) -> ProjectConfig:
@@ -101,8 +145,10 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
 
     project_dir = os.path.dirname(os.path.abspath(config_path))
 
+    raw_frequency = design.get("frequency_mhz", 0)
     try:
-        freq = float(design.get("frequency_mhz", 0))
+        # bool is an int subclass, but a Boolean is not a clock frequency.
+        freq = 0.0 if isinstance(raw_frequency, bool) else float(raw_frequency)
     except (TypeError, ValueError):
         freq = 0.0
 
@@ -122,6 +168,7 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     # _explicit_keys, and validate_project_config surfaces invalid shapes
     # instead of silently dropping them.
     skip_steps = flow.get("skip_steps")
+    no_clock = flow.get("no_clock", False)
     lec_engine = flow.get("lec_engine")
     insert_steps = flow.get("insert_steps")
     max_parallel_steps = flow.get("max_parallel_steps")
@@ -142,12 +189,14 @@ def _parse_config(data: dict, config_path: str) -> ProjectConfig:
         pdk_overrides=pdk_overrides,
         flow_preset=_str(flow.get("preset", "")),
         flow_skip_steps=skip_steps,
+        flow_no_clock=no_clock,
         flow_lec_engine=lec_engine,
         flow_insert_steps=insert_steps,
         flow_max_parallel_steps=max_parallel_steps,
         config_path=config_path,
         project_dir=project_dir,
     )
+    cfg._clock_material = design.get("clock_port", "")
 
     if "run" in flow:
         cfg._flow_config_errors.append(_unsupported_flow_run_problem(raw_run))
@@ -236,13 +285,28 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
         errors.append("design.name is required")
     if not cfg.design_top:
         errors.append("design.top is required")
+
+    try:
+        no_clock = ProjectNoClockDecisionResolver(cfg).resolve()
+    except ValueError as exc:
+        no_clock = None
+        errors.append(str(exc))
+
     if validate_timing_input:
         if cfg._timing_input_error:
+            # Grouped timing-input semantics stay unchanged: a configured
+            # file must still contain a valid uncommented primary clock.
             errors.append(cfg._timing_input_error)
         else:
-            if not cfg.design_clock_port:
+            clock_retained = isinstance(cfg.design_clock_port, str) and bool(
+                cfg.design_clock_port.strip()
+            )
+            requires_timing = clock_retained or no_clock is None or not no_clock.enabled
+            if requires_timing and not clock_retained:
                 errors.append("design.clock_port is required")
-            if cfg.design_frequency_mhz <= 0:
+            if requires_timing and (
+                not isfinite(cfg.design_frequency_mhz) or cfg.design_frequency_mhz <= 0
+            ):
                 errors.append("design.frequency_mhz must be greater than 0")
     if not cfg.pdk_name:
         errors.append("pdk.name is required")
@@ -265,13 +329,15 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
     elif cfg.flow_preset not in _supported_flow_presets():
         errors.append(f"unsupported flow.preset: {cfg.flow_preset}")
 
-    if "flow.skip_steps" in cfg._explicit_keys:
-        from chipcompiler.rtl2gds import resolve_skip_steps
+    no_clock_enabled = no_clock is not None and no_clock.enabled
+    if cfg._explicit_keys & {"flow.skip_steps", "flow.no_clock"} or no_clock_enabled:
+        from chipcompiler.cli.project.flow_selection import effective_skip_steps
 
         try:
-            resolve_skip_steps({"skip_steps": cfg.flow_skip_steps})
+            effective_skip_steps(cfg, None)
         except ValueError as exc:
-            errors.append(str(exc))
+            if str(exc) not in errors:
+                errors.append(str(exc))
 
     if "flow.insert_steps" in cfg._explicit_keys:
         from chipcompiler.rtl2gds import resolve_insert_steps
@@ -281,10 +347,13 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
         except ValueError as exc:
             errors.append(str(exc))
 
-    if cfg._explicit_keys & {"flow.skip_steps", "flow.insert_steps"}:
+    if (
+        cfg._explicit_keys & {"flow.skip_steps", "flow.insert_steps", "flow.no_clock"}
+        or no_clock_enabled
+    ):
         from chipcompiler.cli.project.flow_selection import selection_errors
 
-        errors.extend(selection_errors(cfg, None))
+        errors.extend(error for error in selection_errors(cfg, None) if error not in errors)
 
     if "flow.lec_engine" in cfg._explicit_keys:
         from chipcompiler.rtl2gds import resolve_lec_engine
@@ -335,7 +404,7 @@ def to_parameters(cfg: ProjectConfig) -> dict:
         "pdk": cfg.pdk_name,
         "design": cfg.design_name,
         "top_module": cfg.design_top,
-        "clock": cfg.design_clock_port,
+        "clock": cfg.design_clock_port.strip(),
         "frequency_max": cfg.design_frequency_mhz,
     }
 
