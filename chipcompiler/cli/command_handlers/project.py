@@ -38,18 +38,26 @@ def init(command_input: InitInput, ctx: CommandContext) -> CommandResult:
 
 
 def import_rtl(command_input: RtlImportInput, ctx: CommandContext) -> CommandResult:
+    from chipcompiler.cli.project.fe_handoff import import_fe_handoff
     from chipcompiler.cli.project.rtl_import import RtlImportError, import_project_rtl
 
     try:
-        result = import_project_rtl(
-            ctx.project_dir,
-            filelist=command_input.filelist,
-            verilog=command_input.verilog,
-            force=command_input.force,
-        )
+        if command_input.from_fe:
+            records = import_fe_handoff(
+                ctx.project_dir, command_input.from_fe, force=command_input.force
+            )
+        else:
+            records = [
+                import_project_rtl(
+                    ctx.project_dir,
+                    filelist=command_input.filelist,
+                    verilog=command_input.verilog,
+                    force=command_input.force,
+                )
+            ]
     except RtlImportError as exc:
         return CommandResult.err([error_record(exc.code, reason=str(exc), path=exc.path)])
-    return CommandResult.ok([result])
+    return CommandResult.ok(records)
 
 
 def check(command_input: CheckInput, ctx: CommandContext) -> CommandResult:

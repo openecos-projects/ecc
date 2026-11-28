@@ -862,6 +862,45 @@ directive is rewritten; a directory that does not exist is rejected with
 Unsupported recursive/library filelist options (`-f`, `-v`, and `-y`) must be
 expanded before import.
 
+A design that passed the ECC-FE frontend flow is imported from its handoff
+manifest, the `handoff.json` that `ecc-fe handoff` writes (or the directory
+that holds it):
+
+```bash
+ecc rtl import \
+  --from-fe /designs/core/handoff/default \
+  --project /projects/core
+```
+
+The manifest is the only thing read of the ECC-FE project. The sources and
+headers it lists are copied below `<project>/rtl/` with their layout, and
+`rtl/design.f` is written with the include directories, defines (`+define+`)
+and parameter overrides (`-G NAME=value`) of the design. `design.top` and,
+when the manifest knows it, `design.clock_port` are set from the manifest;
+the target frequency is not imported. The import is refused when:
+
+| Error | Meaning |
+| --- | --- |
+| `fe_handoff_not_found`, `fe_handoff_invalid` | There is no manifest at the path, or it is not one `ecc-fe` wrote. |
+| `fe_handoff_unsupported_version` | The manifest has a schema version this ECC does not read. |
+| `fe_handoff_incomplete` | The frontend flow had not completed (`ecc-fe handoff --allow-incomplete`). |
+| `fe_handoff_file_missing`, `fe_handoff_file_changed` | A listed file is gone, or no longer the content the frontend checked; run `ecc-fe handoff` again. |
+| `fe_handoff_unsupported` | The design uses library directories (`-y`). |
+
+Timing constraints the manifest names (`ecc-fe handoff --sdc`, or the
+frontend project's `design.sdc`) are imported when they are an ECC timing
+input, the five TOML strings of `timing_constraints_template.tcl`: the file
+is copied to `<project>/constraints/` and becomes `design.sdc`. ECC does not
+read a full SDC/Tcl script, so one is not translated: the design is imported
+without it, the project's `design.sdc` stays as it was, and the import warns
+with `fe_handoff_sdc_not_imported`. Put its commands into the five fields of
+the project's timing input.
+
+A project whose `design.sdc` timing input declares the primary clock takes
+the clock port from there. When that port is not the clock of the imported
+design, the import warns with `clock_port_mismatch`; edit `primary_clocks`
+in the timing input.
+
 The command writes `design.rtl` in `ecc.toml` and updates
 `project.json.base_design.rtl_list` plus the origin input metadata. Verify the
 project before creating a Workspace:

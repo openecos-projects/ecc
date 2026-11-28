@@ -30,12 +30,7 @@ def import_project_rtl(
     verilog: tuple[str, ...] = (),
     force: bool = False,
 ) -> dict:
-    root = Path(project_dir).resolve()
-    config_path = root / CONFIG_FILENAME
-    if not config_path.is_file():
-        raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
-    if not (root / MANIFEST_FILENAME).is_file():
-        raise RtlImportError("missing_manifest", "project.json was not found", str(root))
+    root = project_root(project_dir)
     if filelist and verilog:
         raise RtlImportError("rtl_inputs_exclusive", "use --filelist or --verilog, not both")
 
@@ -84,7 +79,7 @@ def import_project_rtl(
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
-    _ensure_targets_available(copied, force=force)
+    ensure_targets_available(copied, force=force)
     for source, target in copied:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
@@ -92,19 +87,12 @@ def import_project_rtl(
         assert source_list is not None
         _write_filelist(copied[0][1], source_list, sources, include_dirs)
 
-    text = config_path.read_text(encoding="utf-8")
-    text = set_scoped_key(text, "design", "rtl", rtl_config)
-    config_path.write_text(text, encoding="utf-8")
-
-    def mutate(document: dict) -> None:
-        base = document.setdefault("base_design", {})
-        base["rtl_list"] = rtl_entries
-        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
-        if filelist:
-            base["origin_filelist"] = rtl_config[0]
-        document["design_name"] = document.get("design_name") or root.name
-
-    update_manifest(root, mutate)
+    register_rtl(
+        root,
+        {"rtl": rtl_config},
+        rtl_entries,
+        origin_filelist=rtl_config[0] if filelist else None,
+    )
     return {
         "project": str(root),
         "status": "rtl_imported",
@@ -114,15 +102,58 @@ def import_project_rtl(
     }
 
 
+#: ``[design]`` keys of ``ecc.toml`` that ``project.json`` keeps under another name.
+_BASE_DESIGN_KEYS = {"top": "top_module", "clock_port": "clock", "sdc": "sdc"}
+
+
+def project_root(project_dir: str) -> Path:
+    """The project directory, refused when it is not a manifest project."""
+    root = Path(project_dir).resolve()
+    config_path = root / CONFIG_FILENAME
+    if not config_path.is_file():
+        raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
+    if not (root / MANIFEST_FILENAME).is_file():
+        raise RtlImportError("missing_manifest", "project.json was not found", str(root))
+    return root
+
+
+def register_rtl(
+    root: Path,
+    design: dict[str, object],
+    rtl_entries: list[str],
+    *,
+    origin_filelist: str | None,
+) -> None:
+    """Declare the imported RTL: *design* in ``ecc.toml``, the sources in ``project.json``."""
+    config_path = root / CONFIG_FILENAME
+    text = config_path.read_text(encoding="utf-8")
+    for name, value in design.items():
+        text = set_scoped_key(text, "design", name, value)
+    config_path.write_text(text, encoding="utf-8")
+
+    def mutate(document: dict) -> None:
+        base = document.setdefault("base_design", {})
+        base["rtl_list"] = rtl_entries
+        for name, key in _BASE_DESIGN_KEYS.items():
+            if name in design:
+                base[key] = design[name]
+        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
+        if origin_filelist:
+            base["origin_filelist"] = origin_filelist
+        document["design_name"] = document.get("design_name") or root.name
+
+    update_manifest(root, mutate)
+
+
 def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
     try:
         relative = source.relative_to(base)
     except ValueError:
         relative = Path(source.name)
-    return _contained(rtl_root / relative, rtl_root, source)
+    return contained_target(rtl_root / relative, rtl_root, source)
 
 
-def _contained(target: Path, rtl_root: Path, source: Path) -> Path:
+def contained_target(target: Path, rtl_root: Path, source: Path) -> Path:
     """The resolved *target*, refused when it is not below the project's ``rtl/``.
 
     Resolving follows the symlinks already present under ``rtl/``, so a link
@@ -202,7 +233,9 @@ def _include_files(
             directories[:] = kept
             for name in sorted(names):
                 source = Path(current) / name
-                target = _contained(target_dir / source.relative_to(source_dir), rtl_root, source)
+                target = contained_target(
+                    target_dir / source.relative_to(source_dir), rtl_root, source
+                )
                 pair = (source, target)
                 if pair in known or source.resolve() == pair[1]:
                     continue
@@ -211,7 +244,7 @@ def _include_files(
     return files
 
 
-def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
+def ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
     targets = set()
     for _source, target in copied:
         if target in targets:
