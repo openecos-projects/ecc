@@ -243,3 +243,127 @@ class TestCreateWorkspaceIntegration:
         assert lines[1] == "+incdir+b_include"
         assert (workspace_dir / "origin" / "include" / "defs.svh").read_text() == "`define A 1\n"
         assert (workspace_dir / "origin" / "b_include" / "defs.svh").read_text() == "`define B 1\n"
+
+    def test_filelist_parent_relative_entries_stay_contained_in_origin(self, tmp_path):
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        proj_root = tmp_path / "proj"
+        (proj_root / "main" / "rtl").mkdir(parents=True)
+        (proj_root / "deps" / "a" / "include").mkdir(parents=True)
+        (proj_root / "variants" / "default").mkdir(parents=True)
+
+        (proj_root / "main" / "rtl" / "top.sv").write_text("module top; endmodule\n")
+        (proj_root / "deps" / "a" / "include" / "pkg.svh").write_text("`define PKG 1\n")
+        (proj_root / "variants" / "default" / "wrap.sv").write_text("module wrap; endmodule\n")
+
+        filelist = proj_root / "variants" / "default" / "filelist.f"
+        filelist.write_text(
+            '+incdir+"../../deps/a/include" # dep headers\n'
+            "../../main/rtl/top.sv # external source\n"
+            "wrap.sv\n"
+        )
+
+        # Workspace inside its own directory must receive zero escaped main/ or deps/ trees.
+        workspace_dir = proj_root / "ws"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        assert not (workspace_dir / "main").exists()
+        assert not (workspace_dir / "deps").exists()
+        assert not (proj_root / "ws" / "include").exists()
+        origin = workspace_dir / "origin"
+        assert (origin / "top.sv").read_text() == "module top; endmodule\n"
+        assert (origin / "include" / "pkg.svh").read_text() == "`define PKG 1\n"
+        assert (origin / "wrap.sv").read_text() == "module wrap; endmodule\n"
+        assert (origin / "filelist.f").read_text().splitlines() == [
+            '+incdir+"include" # dep headers',
+            "top.sv # external source",
+            "wrap.sv",
+        ]
+
+    def test_filelist_parent_relative_duplicate_basenames_are_disambiguated(self, tmp_path):
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        for owner in ("a", "b"):
+            (tmp_path / owner / "include").mkdir(parents=True)
+            (tmp_path / owner / "include" / "defs.svh").write_text(f"`define {owner} 1\n")
+            (tmp_path / owner / "mod.sv").write_text(f"module mod_{owner}; endmodule\n")
+
+        variant_dir = tmp_path / "pkg" / "variants" / "def"
+        variant_dir.mkdir(parents=True)
+        (variant_dir / "local.sv").write_text("module local; endmodule\n")
+        filelist = variant_dir / "design.f"
+        filelist.write_text(
+            "+incdir+../../../a/include\n"
+            "+incdir+../../../b/include\n"
+            "+incdir+../../../b/include\n"
+            "../../../a/mod.sv\n"
+            "../../../b/mod.sv\n"
+            "local.sv\n"
+        )
+
+        workspace_dir = tmp_path / "ws"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        origin = workspace_dir / "origin"
+        assert (origin / "include" / "defs.svh").read_text() == "`define a 1\n"
+        assert (origin / "b_include" / "defs.svh").read_text() == "`define b 1\n"
+        assert (origin / "mod.sv").read_text() == "module mod_a; endmodule\n"
+        assert (origin / "b_mod.sv").read_text() == "module mod_b; endmodule\n"
+        assert (origin / "design.f").read_text().splitlines() == [
+            "+incdir+include",
+            "+incdir+b_include",
+            "+incdir+b_include",
+            "mod.sv",
+            "b_mod.sv",
+            "local.sv",
+        ]
+
+    def test_filelist_external_entry_does_not_clobber_later_in_tree_entry(self, tmp_path):
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        (tmp_path / "ext" / "include").mkdir(parents=True)
+        (tmp_path / "ext" / "include" / "ext.svh").write_text("`define EXT 1\n")
+        (tmp_path / "ext" / "a.v").write_text("module a_ext; endmodule\n")
+
+        proj = tmp_path / "proj"
+        (proj / "include").mkdir(parents=True)
+        (proj / "include" / "in.svh").write_text("`define IN 1\n")
+        (proj / "a.v").write_text("module a_in; endmodule\n")
+        filelist = proj / "design.f"
+        filelist.write_text("+incdir+../ext/include\n+incdir+include\n../ext/a.v\na.v\n")
+
+        workspace_dir = tmp_path / "ws"
+        copy_filelist_with_sources(str(filelist), str(workspace_dir))
+
+        origin = workspace_dir / "origin"
+        assert (origin / "ext_a.v").read_text() == "module a_ext; endmodule\n"
+        assert (origin / "a.v").read_text() == "module a_in; endmodule\n"
+        assert (origin / "ext_include" / "ext.svh").read_text() == "`define EXT 1\n"
+        assert (origin / "include" / "in.svh").read_text() == "`define IN 1\n"
+        assert (origin / "design.f").read_text().splitlines() == [
+            "+incdir+ext_include",
+            "+incdir+include",
+            "ext_a.v",
+            "a.v",
+        ]
+
+    def test_filelist_refuses_destination_escaping_origin_via_symlink(self, tmp_path):
+        import pytest
+
+        from chipcompiler.data.workspace.filelist_copy import copy_filelist_with_sources
+
+        proj = tmp_path / "proj"
+        (proj / "rtl").mkdir(parents=True)
+        (proj / "rtl" / "a.v").write_text("module a; endmodule\n")
+        filelist = proj / "design.f"
+        filelist.write_text("rtl/a.v\n")
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        workspace_dir = tmp_path / "ws"
+        (workspace_dir / "origin").mkdir(parents=True)
+        (workspace_dir / "origin" / "rtl").symlink_to(outside, target_is_directory=True)
+
+        with pytest.raises(ValueError, match="outside workspace origin"):
+            copy_filelist_with_sources(str(filelist), str(workspace_dir))
+        assert not (outside / "a.v").exists()
