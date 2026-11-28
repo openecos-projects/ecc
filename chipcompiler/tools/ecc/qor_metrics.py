@@ -1,6 +1,10 @@
 from math import isfinite
 from pathlib import Path
 
+from chipcompiler.analysis.qor.metrics_contract import (
+    QOR_METRICS_SCHEMA_VERSION,
+    index_metric_records,
+)
 from chipcompiler.utility import json_read
 
 
@@ -11,6 +15,7 @@ class QorMetrics:
         self.path = Path(path) if path else None
         self.error: str | None = None
         self.records: dict[str, dict] = {}
+        self.conflicts: set[str] = set()
         self._load()
 
     def _load(self) -> None:
@@ -19,7 +24,7 @@ class QorMetrics:
             return
 
         data = json_read(self.path)
-        if not isinstance(data, dict) or data.get("schema_version") != 3:
+        if not isinstance(data, dict) or data.get("schema_version") != QOR_METRICS_SCHEMA_VERSION:
             self.error = "qor_metrics.json does not use schema_version 3"
             return
 
@@ -28,19 +33,19 @@ class QorMetrics:
             self.error = "qor_metrics.json is missing its metrics array"
             return
 
-        for record in metrics:
-            metric_id = record.get("id") if isinstance(record, dict) else None
-            if not isinstance(metric_id, str) or not metric_id:
-                self.error = "qor_metrics.json contains a metric without a valid id"
-                return
-            if metric_id in self.records:
-                self.error = f"qor_metrics.json contains duplicate metric id {metric_id}"
-                return
-            self.records[metric_id] = record
+        indexed = index_metric_records(metrics)
+        if indexed.error is not None:
+            self.error = indexed.error
+            return
+        self.records = indexed.records
+        self.conflicts = set(indexed.conflicts)
 
     def number(self, metric_id: str) -> tuple[float | None, str | None]:
         if self.error is not None:
             return None, self.error
+
+        if metric_id in self.conflicts:
+            return None, f"qor_metrics.json contains conflicting duplicate metric id {metric_id}"
 
         record = self.records.get(metric_id)
         if record is None:

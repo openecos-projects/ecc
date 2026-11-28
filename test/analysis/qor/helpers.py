@@ -1,8 +1,25 @@
 """Shared fixtures for the QoR engine tests."""
 
+import os
+
 from chipcompiler.analysis.qor.loader import CornerSlack, MetricRecord, QorInputs
 
 SUCCESS = "Success"
+
+
+def touch_qor_evidence(path, payload):
+    """Create each metric's evidence artifact (older than the cache written next)."""
+    if not isinstance(payload, dict):
+        return
+    step_dir = os.path.dirname(os.path.dirname(str(path)))
+    for metric in payload.get("metrics", []):
+        source = metric.get("source")
+        rel = source.get("path") if isinstance(source, dict) else None
+        if not isinstance(rel, str) or not rel or os.path.isabs(rel):
+            continue
+        os.makedirs(os.path.dirname(os.path.join(step_dir, rel)), exist_ok=True)
+        with open(os.path.join(step_dir, rel), "a"):
+            pass
 
 
 def make_metric(metric_id, value, step="sta", role="final", unit="", corner=None):

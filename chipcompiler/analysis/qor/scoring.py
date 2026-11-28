@@ -47,6 +47,7 @@ PROFILES = {
 }
 
 _PHYSICAL_FAIL = "PHYSICAL_FAIL"
+_COVERAGE_TOLERANCE = 1e-9
 
 
 def evaluate_scalar_summary(feasibility, dimensions, profile: str) -> ScalarSummary:
@@ -65,12 +66,22 @@ def evaluate_scalar_summary(feasibility, dimensions, profile: str) -> ScalarSumm
 
     # Weights re-normalize over evaluated dimensions so that a missing
     # optional coordinate (e.g. power without a declared budget) cannot
-    # silently compress the score scale.
+    # silently compress the score scale. The price is that missing evidence
+    # can raise the number, so the evaluated weight share is published as
+    # ``coverage`` and the band is marked provisional when it is below 1.
     used_weight = sum(weights[key] for key in evaluated)
     if used_weight <= 0:
         return ScalarSummary(score=None, status="NOT_RATED", profile=profile, weights=weights)
     score = sum(weights[key] * value for key, value in evaluated.items()) / used_weight
-    return ScalarSummary(score=score, status=_status(score), profile=profile, weights=weights)
+    coverage = min(used_weight / sum(weights.values()), 1.0)
+    return ScalarSummary(
+        score=score,
+        status=_status(score),
+        profile=profile,
+        weights=weights,
+        coverage=coverage,
+        band_provisional=coverage < 1.0 - _COVERAGE_TOLERANCE,
+    )
 
 
 def _status(score: float) -> str:

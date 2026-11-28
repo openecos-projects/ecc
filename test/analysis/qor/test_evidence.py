@@ -80,3 +80,41 @@ class TestEvidenceIndex:
             metrics[metric_id].value = 0
         evidence = _evidence(make_inputs(metrics))
         assert evidence.coverage == pytest.approx(1.0)  # RCX-only coverage
+
+
+class TestPerCornerConsistency:
+    @staticmethod
+    def _corners(setup_ws=16.622, setup_nvp=0):
+        return [
+            CornerSlack("a", setup_ws, 0.1, setup_nvp, 0),
+            CornerSlack("b", 18.98, 0.1, 0, 0),
+        ]
+
+    def test_consistent_corners_keep_consistency_full(self):
+        evidence = _evidence(make_inputs(gcd_metrics(), corners=self._corners()))
+        assert evidence.consistency == pytest.approx(1.0)
+
+    def test_corner_ws_nvp_contradiction_lowers_consistency(self):
+        evidence = _evidence(make_inputs(gcd_metrics(), corners=self._corners(setup_nvp=2)))
+        assert evidence.consistency is not None
+        assert evidence.consistency < 1.0
+
+    def test_hold_corner_ws_nvp_contradiction_lowers_consistency(self):
+        corners = [
+            CornerSlack("a", 16.622, -0.05, 0, 0),
+            CornerSlack("b", 18.98, 0.1, 0, 0),
+        ]
+        evidence = _evidence(make_inputs(gcd_metrics(), corners=corners))
+        assert evidence.consistency is not None
+        assert evidence.consistency < 1.0
+
+    def test_corner_vs_aggregate_disagreement_lowers_consistency(self):
+        metrics = gcd_metrics()
+        metrics["sta_hold_wns"].value = 0.5  # corners report 0.1
+        evidence = _evidence(make_inputs(metrics, corners=self._corners()))
+        assert evidence.consistency is not None
+        assert evidence.consistency < 1.0
+
+    def test_missing_corner_is_left_to_coverage(self):
+        evidence = _evidence(make_inputs(gcd_metrics(), corners=self._corners()[:1]))
+        assert evidence.consistency == pytest.approx(1.0)

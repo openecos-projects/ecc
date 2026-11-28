@@ -70,6 +70,7 @@ def build_qor_analysis(workspace) -> QorAnalysis:
         ),
         flow_steps=dict(inputs.flow_states),
         config_warnings=list(inputs.config_warnings),
+        supplementary_features=list(bundle.supplementary.values()),
     )
 
 

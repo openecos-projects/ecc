@@ -166,10 +166,12 @@ def _bottleneck_diagnosis(dimension) -> Diagnosis:
 _DIMENSION_KNOBS = {
     "interconnect": {
         "hypothesis": (
-            "evaluate increased router search depth correlated with wirelength reduction."
+            "evaluate routability-driven placement correlated with congestion reduction."
         ),
-        "knob": "route.dr_search_depth",
-        "validation": "Requires a trial reroute to confirm wirelength reduction.",
+        "knob": "place.routability_opt",
+        "validation": (
+            "Requires a trial placement and reroute to confirm congestion and wirelength."
+        ),
         "confidence": "LOW",
     },
     "area": {

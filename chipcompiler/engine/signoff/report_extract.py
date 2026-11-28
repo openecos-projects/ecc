@@ -54,19 +54,31 @@ def format_duration(seconds: float | None) -> str | None:
     return f"{secs}s"
 
 
+_POWER_PREFIX_TO_MW = {
+    "p": 1e-9,
+    "n": 1e-6,
+    "u": 1e-3,
+    "µ": 1e-3,
+    "m": 1.0,
+    "": 1e3,
+    "k": 1e6,
+    "M": 1e9,
+    "g": 1e12,
+}
+
+
 def _convert_unit_to_mw(val: float, unit_str: str) -> float:
-    unit = unit_str.lower()
-    if unit == "w":
-        return val * 1000
-    if unit == "mw":
+    unit = unit_str.strip()
+    if unit[-1:].lower() != "w":
         return val
-    if unit in ("uw", "µw"):
-        return val / 1000
-    if unit == "nw":
-        return val / 1e6
-    if unit == "pw":
-        return val / 1e9
-    return val
+    prefix = unit[:-1]
+    # m (milli) and M (mega) differ only by case; every other prefix is case-folded.
+    factor = _POWER_PREFIX_TO_MW.get(prefix if prefix in ("m", "M") else prefix.lower())
+    return val * factor if factor is not None else val
+
+
+_NUM = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+_UNIT = r"[pPuUnNmMkKgGµ]?[wW]"
 
 
 def parse_power_rpt(text: str | None) -> ParsedPowerMetrics:
@@ -74,19 +86,19 @@ def parse_power_rpt(text: str | None) -> ParsedPowerMetrics:
     if not text:
         return parsed
 
-    voltage = re.search(r"Global Operating Voltage\s*=\s*([\d.]+)", text, re.IGNORECASE)
+    voltage = re.search(rf"Global Operating Voltage\s*=\s*({_NUM})", text, re.IGNORECASE)
     if voltage:
         parsed.voltage_v = float(voltage.group(1))
 
     patterns = (
-        ("internal", r"Cell Internal Power\s*=\s*([\d.e+-]+)\s*([uUnNmMgk]?W)"),
-        ("switching", r"Net Switching Power\s*=\s*([\d.e+-]+)\s*([uUnNmMgk]?W)"),
-        ("dynamic", r"Total Dynamic Power\s*=\s*([\d.e+-]+)\s*([uUnNmMgk]?W)"),
-        ("leakage", r"Cell Leakage Power\s*=\s*([\d.e+-]+)\s*([uUnNmMgk]?W)"),
+        ("internal", rf"Cell Internal Power\s*=\s*({_NUM})\s*({_UNIT})"),
+        ("switching", rf"Net Switching Power\s*=\s*({_NUM})\s*({_UNIT})"),
+        ("dynamic", rf"Total Dynamic Power\s*=\s*({_NUM})\s*({_UNIT})"),
+        ("leakage", rf"Cell Leakage Power\s*=\s*({_NUM})\s*({_UNIT})"),
         (
             "total",
-            r"Total\s+[\d.e+-]+\s*[a-zA-Z]+\s+[\d.e+-]+\s*[a-zA-Z]+\s+[\d.e+-]+\s*[a-zA-Z]+\s+"
-            r"([\d.e+-]+)\s*([uUnNmMgk]?W)",
+            rf"Total\s+{_NUM}\s*{_UNIT}\s+{_NUM}\s*{_UNIT}\s+{_NUM}\s*{_UNIT}\s+"
+            rf"({_NUM})\s*({_UNIT})",
         ),
     )
     for field, pattern in patterns:

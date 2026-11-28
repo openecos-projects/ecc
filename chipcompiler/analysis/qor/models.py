@@ -76,6 +76,9 @@ class FeasibilityGate:
     # evidence ("corrupt"). None when state is not "unavailable".
     availability: str | None = None
     timing_slack: SlackView | None = None
+    # Cause of a "corrupt" availability when evidence is incomplete or
+    # inconsistent (e.g. per-corner STA summaries vs the aggregate metric).
+    reason: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -131,6 +134,12 @@ class ScalarSummary:
     status: str  # GREEN | YELLOW | ORANGE | RED | FAIL | NOT_RATED
     profile: str
     weights: dict
+    # Sum of the profile weights of the evaluated dimensions (0..1). The
+    # score re-normalizes over them, so coverage < 1 means the band is
+    # provisional: missing evidence can raise the number. None when no
+    # score is produced (FAIL / NOT_RATED).
+    coverage: float | None = None
+    band_provisional: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -178,6 +187,8 @@ class QorAnalysis:
     power: PowerObservation
     flow_steps: dict  # step value -> persisted state snapshot
     config_warnings: list
+    # Published-only observability features (never scored); additive to report contract.
+    supplementary_features: list = dataclasses.field(default_factory=list)
 
     def to_dict(self) -> dict:
         result = to_dict(self)

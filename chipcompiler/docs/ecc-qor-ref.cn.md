@@ -49,7 +49,7 @@ ecc report qor -o /tmp/qor.txt        # 自定义输出路径
 ==============================================================================
   FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]
   EVIDENCE STATE     : HIGH [Integrity: 100.0%, Coverage: 100.0%, Consistency: 100.0%]
-  QoR COMPOSITE      : 99.0 / 100 (Status: GREEN, Profile: balanced)
+  QoR COMPOSITE      : 99.0 / 100 (Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%)
 ------------------------------------------------------------------------------
   [PHYSICAL QoR RECORD BREAKDOWN]
     Timing Quality (Q_T)      : 100.0 / 100 [OPPORTUNITY] (WS: +16.622ns, WNS: 0ns)
@@ -266,6 +266,7 @@ Q_summary = 0.0                          若 Feasibility = PHYSICAL_FAIL（否�
 - **RCX 不是门禁**——寄生提取的 corner 覆盖进**证据指数**（§6），提取缺失会压低证据等级或触发 UNKNOWN，但本身不构成物理失败。
 - 门禁不可用（`unavailable`）分两种：`not_verified`（该步骤未成功执行）与 `corrupt`（步骤成功但证据缺失/损坏）。前者 → 总体 NOT_VERIFIED，后者 → UNKNOWN，都不是 FAIL。
 - 中间步骤的异常（布线中的 DR 违规、布局拥塞溢出）只触发特征级 WATCH/FAIL 诊断，不触发 PHYSICAL_FAIL——只有**最终签核检查**持续失败才算。
+- **setup/hold slack 门禁按逐 corner 评估**：读取逐 corner 的 `qor_summary.json` 并与总汇总 `sta_setup/hold_wns` 及违规数交叉校验：任一 corner 失败 → FAIL（最差 corner 决定）；有效 corner 少于 `sta_expected_corner_count`、slack 偏差超过 1.5 ps 或违规总数不一致 → `corrupt`（UNKNOWN）并附带 `reason`。完全没有逐 corner 摘要的工作区仍由总汇总决定。
 - 时序门禁附带完整 slack 视图：`ws_ns`（有符号）、`wns_ns`（钳位）、`tns_ns`、`nvp`、`worst_corner`。
 
 ## 6. 证据完整性指数 I_E
@@ -285,6 +286,7 @@ I_E = 100 × E_integrity × E_coverage × E_consistency（乘性合成，故意�
 
 - **C1**：`RWL ≥ place_hpwl`（网群体兼容时才计，INCOMPATIBLE → 不适用）；
 - **C2**：`(WS ≥ 0) ⇔ (NVP = 0)`（同 scope/corner/端点总体时才计，防假扣分）；
+- **C2b**：逐 corner 的 `(WS ≥ 0) ⇔ (NVP = 0)`（setup 与 hold）以及逐 corner 与 STA 总汇总的一致性检查（与 slack 门禁同口径；缺失 corner 时跳过，该情况已由 E_coverage 扣分）；
 - **C3**：`via_count > 0 ⇒ RWL > 0`（单向拓扑健全性）。
 
 补充规则：STA 只输出 setup（无 hold 报告）时，HIGH 降级为 MODERATE。零分母条件一律 NOT_APPLICABLE，不做除零或假满分。
@@ -332,6 +334,8 @@ qor_power_budget_w = 0.5
 ```
 
 - 非法值（未知 profile、非正预算）不报错中断：降级为默认并写入报告的 `CONFIG WARNING` 行与 `config_warnings` 字段。
+- 物理范围之外的指标输入（如 `core_utilization` 不在 `(0, 1]`、计数/面积/线长为负）会被丢弃：该指标变为 UNKNOWN（不参与评分）并生成 `CONFIG WARNING`。
+- 若单步 `qor_metrics.json` 对同一指标 id 给出两条数值不同的记录，该指标判为 UNKNOWN（对应门禁不通过验证）并写入 `config_warnings`；数值相同的重复记录则接受。各步 runner（`QorMetrics`）对单指标采用同一规则。
 - `qor_profile` / `qor_power_budget_w` 尚未纳入 `ecc param` 已审核参数表与 GUI 参数面板（规划中）；当前直接编辑 `home/params.toml` 后重跑任意一步（或 `ecc report qor`）即可生效。
 - 评分阈值（τ_I_pref=1.25 等）当前为引擎常量，未开放配置；如需工艺校准请向工具链维护者反馈。
 
@@ -509,7 +513,7 @@ WS 超过 0.20·T_clk 的过约束提示：设计可能过度缓冲，可尝试�
 当前是引擎常量，未开放为用户参数。它们是校准的工程默认值，随版本演进可能调整；对特定工艺的校准需求请反馈给工具链维护者。
 
 **Q：`ecc report qor` 和 `home/qor_report.json` 数值会不一致吗？**
-正常不会：报告每步成功后自动刷新，CLI 每次现算。若你手改了产物文件或正在并发跑 flow，两者可能短暂不一致；flow 走完后以重跑的 `ecc report qor` 为准。
+正常不会：报告每步成功后自动刷新，CLI 每次现算。若你手改了产物文件或正在并发跑 flow，两者可能短暂不一致；flow 走完后以重跑的 `ecc report qor` 为准，且（未使用 `-o` 重定向输出时）会同步刷新 `home/qor_report.json`。
 
 ## 13. 自动化实验与证据边界
 
