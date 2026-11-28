@@ -833,6 +833,9 @@ class ECCToolsModule:
         technology_file_path: PathArg,
         ploc_file_path: PathArg,
         spef_path: PathArg = "",
+        supply_ground_pins: dict[str, str] | None = None,
+        *,
+        allow_unmapped_pg_pins: bool = False,
     ):
         normalized_spef = os.fspath(spef_path)
         if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
@@ -842,6 +845,8 @@ class ECCToolsModule:
             instance_power_file_path=instance_power_file_path,
             technology_file_path=technology_file_path,
             ploc_file_path=ploc_file_path,
+            supply_ground_pins={} if supply_ground_pins is None else supply_ground_pins,
+            allow_unmapped_pg_pins=allow_unmapped_pg_pins,
         )
 
     def run_emir(self):
