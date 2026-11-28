@@ -80,6 +80,7 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
             "gates": [
                 _gate("qor.sta.setup_closed", "STA setup closure"),
                 _gate("qor.sta.hold_closed", "STA hold closure"),
+                _gate("qor.sta.drv_clean", "STA DRV clean"),
             ],
         },
     )
@@ -101,6 +102,7 @@ def test_sta_checklist_references_v4_quality_gates_and_current_artifacts(tmp_pat
     assert items["quality.sta.setup_closed"]["owner"] == "qor"
     assert items["quality.sta.setup_closed"]["state"] == "pass"
     assert items["quality.sta.hold_closed"]["state"] == "pass"
+    assert items["quality.sta.drv_clean"]["state"] == "pass"
     assert items["report.sta.timing_reports"]["state"] == "pass"
     assert items["artifact.sta.corner_summaries"]["state"] == "pass"
     assert items["artifact.sta.timing_paths"]["state"] == "pass"
@@ -128,6 +130,7 @@ def test_sta_checklist_blocks_missing_current_sta_reports(tmp_path):
             "gates": [
                 _gate("qor.sta.setup_closed", "STA setup closure"),
                 _gate("qor.sta.hold_closed", "STA hold closure"),
+                _gate("qor.sta.drv_clean", "STA DRV clean"),
             ],
         },
     )

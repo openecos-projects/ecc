@@ -58,6 +58,7 @@ SCHEMA = {
         },
         "scalar_summary": {
             "required": ["score", "status", "profile", "weights"],
+            "optional": ["coverage", "band_provisional"],
             "status_enum": SCALAR_STATUSES,
         },
     },
@@ -121,6 +122,10 @@ def validate_report(report: dict) -> list:
                     gate.get("availability") is None or isinstance(gate.get("availability"), str),
                     "gate.availability invalid",
                 )
+                require(
+                    gate.get("reason") is None or isinstance(gate.get("reason"), str),
+                    "gate.reason invalid",
+                )
                 timing = gate.get("timing_slack")
                 if timing is not None:
                     valid_timing = isinstance(timing, dict)
@@ -155,6 +160,33 @@ def validate_report(report: dict) -> list:
                 f"evidence.{field} out of range",
             )
 
+    def validate_feature(feature: object, label: str = "feature") -> None:
+        if not isinstance(feature, dict):
+            errors.append(f"{label} must be an object")
+            return
+        for field in (
+            "feature_id",
+            "unit",
+            "formula",
+            "classification",
+            "semantic_class",
+        ):
+            require(isinstance(feature.get(field), str), f"{label}.{field} must be a string")
+        require(finite_number(feature.get("value"), nullable=True), f"{label}.value invalid")
+        require(
+            feature.get("state")
+            in ("PASS", "FAIL", "WATCH", "OPPORTUNITY", "UNKNOWN", "NOT_APPLICABLE"),
+            f"{label}.state invalid",
+        )
+        require(
+            string_list(feature.get("input_metric_ids")),
+            f"{label}.input_metric_ids invalid",
+        )
+        require(
+            isinstance(feature.get("input_source_artifacts"), list),
+            f"{label}.input_source_artifacts invalid",
+        )
+
     qor_record = report["qor_record"]
     require(isinstance(qor_record, dict), "qor_record must be an object")
     if isinstance(qor_record, dict):
@@ -174,36 +206,12 @@ def validate_report(report: dict) -> list:
             require(isinstance(features, list), f"qor_record.{key}.features must be a list")
             if isinstance(features, list):
                 for feature in features:
-                    valid_feature = isinstance(feature, dict)
-                    require(valid_feature, "feature must be an object")
-                    if not valid_feature:
-                        continue
-                    for field in (
-                        "feature_id",
-                        "unit",
-                        "formula",
-                        "classification",
-                        "semantic_class",
-                    ):
-                        require(
-                            isinstance(feature.get(field), str), f"feature.{field} must be a string"
-                        )
-                    require(
-                        finite_number(feature.get("value"), nullable=True), "feature.value invalid"
-                    )
-                    require(
-                        feature.get("state")
-                        in ("PASS", "FAIL", "WATCH", "OPPORTUNITY", "UNKNOWN", "NOT_APPLICABLE"),
-                        "feature.state invalid",
-                    )
-                    require(
-                        string_list(feature.get("input_metric_ids")),
-                        "feature.input_metric_ids invalid",
-                    )
-                    require(
-                        isinstance(feature.get("input_source_artifacts"), list),
-                        "feature.input_source_artifacts invalid",
-                    )
+                    validate_feature(feature)
+
+    supplementary = report.get("supplementary_features", [])
+    require(isinstance(supplementary, list), "supplementary_features must be a list")
+    for feature in supplementary if isinstance(supplementary, list) else []:
+        validate_feature(feature, "supplementary feature")
 
     power = report["power"]
     require(isinstance(power, dict), "power must be an object")
@@ -238,6 +246,17 @@ def validate_report(report: dict) -> list:
         require(
             isinstance(summary.get("weights"), dict), "scalar_summary.weights must be an object"
         )
+        # Optional (added without a schema bump): older reports omit them.
+        if "coverage" in summary:
+            require(
+                finite_number(summary["coverage"], low=0, high=1, nullable=True),
+                "scalar_summary.coverage out of range",
+            )
+        if "band_provisional" in summary:
+            require(
+                isinstance(summary["band_provisional"], bool),
+                "scalar_summary.band_provisional must be a boolean",
+            )
 
     diagnoses = report["diagnoses"]
     require(isinstance(diagnoses, list), "diagnoses must be a list")

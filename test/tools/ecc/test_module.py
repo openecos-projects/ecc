@@ -1587,7 +1587,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
                 "setup": {"wns": -0.2, "tns": -1.2, "nvp": 3, "frequency_mhz": 750},
                 "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
             },
-            "design_statistics": {},
+            "design_statistics": {"tran": 2, "cap": 1, "fanout": 0},
         },
         step.feature.dir / "MIN_m40" / "Cbest" / "qor_summary.json": {
             "path_groups": [
@@ -1606,7 +1606,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
                 "setup": {"wns": 0.3, "tns": 0.0, "nvp": 0, "frequency_mhz": 900},
                 "hold": {"wns": -0.05, "tns": -0.1, "nvp": 1},
             },
-            "design_statistics": {},
+            "design_statistics": {"tran": 1, "cap": 0, "fanout": 0},
         },
     }
     for report_path, payload in reports.items():
@@ -1699,6 +1699,9 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert metrics.data["sta_missing_corner_count"] == 0
     assert metrics.data["setup_violation_count"] == 3
     assert metrics.data["hold_violation_count"] == 1
+    assert metrics.data["sta_max_transition_violation_count"] == 3
+    assert metrics.data["sta_max_capacitance_violation_count"] == 1
+    assert metrics.data["sta_max_fanout_violation_count"] == 0
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
     assert metrics.data["sta_worst_hold_corner"] == "MIN_m40/Cbest"
     assert step.analysis.metrics is not None
@@ -1811,6 +1814,7 @@ def test_ecc_metrics_extract_sta_multi_corner_summary(tmp_path):
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "failed",
         "qor.sta.hold_closed": "failed",
+        "qor.sta.drv_clean": "failed",
     }
     assert step.analysis.sta_timing_issues is not None
     issues = json.loads(step.analysis.sta_timing_issues.read_text(encoding="utf-8"))
@@ -1898,6 +1902,7 @@ def test_ecc_metrics_marks_missing_configured_sta_corner(tmp_path):
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "unavailable",
         "qor.sta.hold_closed": "unavailable",
+        "qor.sta.drv_clean": "unavailable",
     }
 
 
@@ -1956,7 +1961,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
                 {
                     "path_groups": [],
                     "summary": {"setup": setup, "hold": hold},
-                    "design_statistics": {},
+                    "design_statistics": {"tran": 0, "cap": 0, "fanout": 0},
                 }
             ),
             encoding="utf-8",
@@ -2017,6 +2022,7 @@ def test_ecc_metrics_classifies_configured_sta_pvt_rc_corners(tmp_path):
     assert {gate["id"]: gate["state"] for gate in summary["gates"]} == {
         "qor.sta.setup_closed": "pass",
         "qor.sta.hold_closed": "pass",
+        "qor.sta.drv_clean": "pass",
     }
     assert metrics.data["sta_worst_setup_corner"] == "MAX_125/RCworst"
 

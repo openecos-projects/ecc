@@ -55,7 +55,7 @@ def psi_target(value: float, tau_min: float, tau_max: float, tau_fail: float) ->
     if tau_min <= value <= tau_max:
         return 1.0
     if value < tau_min:
-        return value / tau_min
+        return max(0.0, value / tau_min)
     return max(0.0, min(1.0, (tau_fail - value) / (tau_fail - tau_max)))
 
 

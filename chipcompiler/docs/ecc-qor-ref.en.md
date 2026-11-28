@@ -29,7 +29,7 @@ Three design principles explain every line of the output:
 | Entry point | Artifact | Refresh |
 |---|---|---|
 | Flow engine (automatic) | `<workspace>/home/qor_report.json` (machine-readable, schema_version 3, see §10) | After every successful step (including skips of already-succeeded steps) |
-| `ecc report qor` | `<workspace>/signoff/<design>_qor_report.txt` (human-readable text report) | Rebuilt from current artifacts on every invocation |
+| `ecc report qor` | `<workspace>/signoff/<design>_qor_report.txt` (human-readable text report) | Rebuilt from current artifacts on every invocation; also rewrites `home/qor_report.json` from the same snapshot (a failed JSON write only warns) |
 | ECOS Studio | Project dashboard QoR card, 5-dimension breakdown, diagnosis list | Reads `home/qor_report.json`; missing or stale → NOT_RATED (§10.2) |
 
 ```bash
@@ -47,9 +47,9 @@ ecc report qor -o /tmp/qor.txt        # custom output path
   ECC QoR ANALYSIS REPORT - Design: gcd
   Workspace: ~/ecc-demo/gcd/ws_0001
 ==============================================================================
-  FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]
+  FEASIBILITY STATUS : PASS [All 10 Physical Signoff Gates Clean]
   EVIDENCE STATE     : HIGH [Integrity: 100.0%, Coverage: 100.0%, Consistency: 100.0%]
-  QoR COMPOSITE      : 99.0 / 100 (Status: GREEN, Profile: balanced)
+  QoR COMPOSITE      : 99.0 / 100 (Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%)
 ------------------------------------------------------------------------------
   [PHYSICAL QoR RECORD BREAKDOWN]
     Timing Quality (Q_T)      : 100.0 / 100 [OPPORTUNITY] (WS: +16.622ns, WNS: 0ns)
@@ -92,7 +92,7 @@ When a dimension cannot be evaluated (stage not run, data missing, no budget) it
 
 ### 2.2 Physical Feasibility (seven signoff gates)
 
-Feasibility answers "can this layout be signed off", reduced from seven zero-tolerance gates (details in §5):
+Feasibility answers "can this layout be signed off", reduced from ten zero-tolerance gates (details in §5):
 
 ```
 PHYSICAL_FAIL (any gate failed) ≻ UNKNOWN (corrupt evidence) ≻ NOT_VERIFIED (stage not executed) ≻ PASS
@@ -106,7 +106,7 @@ PHYSICAL_FAIL (any gate failed) ≻ UNKNOWN (corrupt evidence) ≻ NOT_VERIFIED 
 | State | Meaning | Example |
 |---|---|---|
 | Measured zero | The quantity was measured and equals zero — high-confidence evidence | `drc_count = 0`, `egr_total = 0` |
-| UNKNOWN | The stage ran but its report is missing/corrupt/unparseable | missing qor_metrics.json → affected dimensions null |
+| UNKNOWN | The stage ran but its report is missing/corrupt/unparseable | missing qor_metrics.json → affected dimensions null; a gate metric whose evidence artifact (its `source.path`, e.g. `feature/lvs.step.json`) was deleted or is newer than the cached `qor_metrics.json` (stale cache) → that gate UNKNOWN |
 | NOT_APPLICABLE | A prerequisite stage was intentionally omitted or a structural precondition fails | Q_P with no budget; cross-stage ratios with incompatible net populations |
 
 ## 3. How Each Dimension Is Computed
@@ -221,6 +221,8 @@ Q_summary = 0.0                          if Feasibility = PHYSICAL_FAIL (veto in
 
 **Weight re-normalization** is the key semantic: when Q_P is null (no budget), the remaining weights re-normalize so a perfect design still scores 100 — unlike the legacy scheme, where a missing power dimension silently capped the score at 75.
 
+**Coverage and provisional band**: re-normalization means missing evidence can raise the composite (a weak dimension that is not measured no longer drags the mean down). The composite number is unchanged, but `scalar_summary.coverage` (sum of the profile weights of the evaluated dimensions, 0–1) is published, and when `coverage < 1` the report sets `scalar_summary.band_provisional: true` and the text report shows `Status: GREEN (provisional)` plus `Coverage: 85.0%`. Read a provisional band as "at best this band, for the evaluated dimensions only". Both fields are `null`/`false` for `FAIL` and `NOT_RATED`; they are optional in `qor_report.json` (schema_version stays 3).
+
 ### 4.2 Design-intent profiles
 
 Four preset weight profiles (selected with the `qor_profile` parameter, §8):
@@ -249,16 +251,20 @@ Inputs: T_clk = 20 ns (frequency_max = 50 MHz), WS = +16.622 ns, HPWL = 3143.52 
 | Q_R | 0.5·0 + 0.5·(2.358/20) = 0.1179 → **94.1** | same |
 | Composite | (0.30+0.25+0.15)·100 + 0.15·94.105 over 0.85 → **98.96 GREEN** | 77.97/0.85 → **91.7 GREEN** |
 
-## 5. Feasibility Gates (7)
+## 5. Feasibility Gates (11)
 
 | Gate | Stage | Input metric | Pass predicate |
 |---|---|---|---|
 | GATE_DRC | DRC | `drc_count` | == 0 |
 | GATE_LVS | LVS | `lvs_count` | == 0 |
+| GATE_ANTENNA | Antenna | `antenna_violation_count` | == 0 (`antenna_signal_net_count > 0`, `antenna_gate_pin_count > 0`; evaluated when `antenna_check` is in flow) |
 | GATE_SETUP_SLACK | STA | `sta_setup_wns` (WS) | ≥ 0.0 ns |
 | GATE_HOLD_SLACK | STA | `sta_hold_wns` (WS) | ≥ 0.0 ns |
 | GATE_SETUP_NVP | STA | `sta_setup_violation_count` | == 0 |
 | GATE_HOLD_NVP | STA | `sta_hold_violation_count` | == 0 |
+| GATE_MAX_TRANSITION | STA | `sta_max_transition_violation_count` | == 0 |
+| GATE_MAX_CAPACITANCE | STA | `sta_max_capacitance_violation_count` | == 0 |
+| GATE_MAX_FANOUT | STA | `sta_max_fanout_violation_count` | == 0 |
 | GATE_HARDEN_ARTIFACTS | Harden | `harden_artifact_missing_count` | == 0 (GDS/LEF/LIB present) |
 
 Key points:
@@ -266,7 +272,9 @@ Key points:
 - **RCX is not a gate** — parasitic-extraction corner coverage feeds the **evidence index** (§6): missing extraction lowers the evidence grade or triggers UNKNOWN, but it is not by itself a physical failure.
 - An unavailable gate comes in two flavors: `not_verified` (the stage did not complete successfully) and `corrupt` (the stage succeeded but its evidence is missing/corrupt). The former → overall NOT_VERIFIED; the latter → UNKNOWN. Neither is FAIL.
 - Intermediate-stage anomalies (detailed-routing violations, placement congestion overflow) only trigger feature-level WATCH/FAIL diagnoses — only **final signoff checks** that persist trigger PHYSICAL_FAIL.
+- **Setup/hold slack gates are evaluated per corner** from the per-corner `qor_summary.json` files and cross-checked against the aggregate `sta_setup/hold_wns` and violation counts: any failing corner → FAIL (the worst corner decides); fewer valid corner summaries than `sta_expected_corner_count`, or a disagreement beyond 1.5 ps (slack) / any difference (violation total) → `corrupt` (UNKNOWN) with a `reason` on the gate. A workspace with no per-corner summaries at all is still decided by the aggregate alone.
 - Timing gates carry a full slack view: `ws_ns` (signed), `wns_ns` (clamped), `tns_ns`, `nvp`, `worst_corner`.
+- Both `qor.sta.drv_clean` (step summary / `home/checklist.json`, `blocking: false` / `policy: "warn"`) and the workspace `GATE_MAX_TRANSITION`, `GATE_MAX_CAPACITANCE`, and `GATE_MAX_FANOUT` gates (`blocks_tapeout: false`) are advisory: DRV violations are surfaced without triggering `PHYSICAL_FAIL` or vetoing the composite score while physical DRV repair is pending.
 
 ## 6. Evidence Completeness Index I_E
 
@@ -285,6 +293,7 @@ Consistency checks:
 
 - **C1**: `RWL ≥ place_hpwl` (counted only under compatible net populations; INCOMPATIBLE → not applicable);
 - **C2**: `(WS ≥ 0) ⇔ (NVP = 0)` (counted only under identical scope/corner/endpoint population, preventing false penalties);
+- **C2b**: per-corner `(WS ≥ 0) ⇔ (NVP = 0)` and per-corner vs aggregate STA agreement (same check as the slack gates; skipped when corners are missing, which E_coverage already penalizes);
 - **C3**: `via_count > 0 ⇒ RWL > 0` (one-way topological sanity).
 
 Additional rule: STA with setup-only output (no hold report) is downgraded from HIGH to MODERATE. Zero-denominator conditions are uniformly NOT_APPLICABLE — no division by zero, no fake perfect score.
@@ -332,6 +341,8 @@ qor_power_budget_w = 0.5
 ```
 
 - Invalid values (unknown profile, non-positive budget) do not abort: they degrade to the default and are surfaced as `CONFIG WARNING` lines in the report and in the `config_warnings` field.
+- Metric inputs outside their physical range (e.g. `core_utilization` outside (0, 1], negative counts/areas/lengths) are dropped: the metric becomes UNKNOWN (not scored) and a `CONFIG WARNING` is emitted.
+- A step `qor_metrics.json` that carries two records for the same metric id with different values makes that metric UNKNOWN (a gate on it is not verified) and adds a line to `config_warnings`; identical duplicates are accepted. The step runners (`QorMetrics`) apply the same rule per metric.
 - `qor_profile` / `qor_power_budget_w` are not yet part of the reviewed `ecc param` vocabulary or the GUI parameter panel (planned); for now edit `home/params.toml` and rerun any step (or run `ecc report qor`) to apply.
 - Scoring thresholds (τ_I_pref = 1.25 etc.) are engine constants, not configurable; contact the toolchain maintainers for technology-specific calibration.
 
@@ -357,7 +368,7 @@ Placement: `place_hpwl`, `place_grwl`, `place_flute_wirelength`, `place_congesti
 CTS: `cts_buffer_count`, `cts_inverter_count`, `clock_path_max_buffer/min_buffer`, `clock_wirelength`;
 Routing: `route_wirelength`, `route_via_count`;
 RCX: `rcx_spef_file_count`, `rcx_expected/missing_corner_count`, `rcx_spef_parse_failure_count`, `rcx_worst_total/coupling_capacitance_ff`;
-STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
+STA: `sta_setup/hold_wns` (signed WS), `sta_setup/hold_tns`, `sta_setup/hold_violation_count`, `sta_max_transition/max_capacitance/max_fanout_violation_count` (DRV counts summed over corners from `design_statistics`), `sta_frequency_mhz`, `sta_corner_count`, `sta_expected/missing_corner_count`, `sta_worst_setup_corner`;
 Power analysis: `power_analysis_internal_uw`, `power_analysis_switching_uw`, `power_analysis_dynamic_uw`, `power_analysis_leakage_uw` (legacy `synthesis_power_*` workspaces remain readable);
 Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 
@@ -379,6 +390,16 @@ Signoff: `drc_count`, `lvs_count`, `harden_artifact_missing_count`.
 | F_STA_FREQ_MARGIN | (F_max − F_target) / F_target | DERIVED_ENGINEERING (diagnostic only) |
 | F_STA_PVT_SETUP/HOLD/MAX_DISP | cross-corner WS range / T_clk | EMPIRICAL_STATISTICAL |
 | S_CONG | max(RUDY/1, EGR_max/20, EGR_total/100) | CALIBRATED_HEURISTIC |
+
+Published-only observability features appear in the report's top-level `supplementary_features` list. They are never read by any dimension score, gate, evidence index, or diagnosis:
+
+| Feature | Formula | Notes |
+|---|---|---|
+| F_PL_EGR_OVERFLOW_GCELL_FRAC | GCells with union overflow > 0 / all GCells | Read from persisted placement `place_map_metrics` detail (`egr`/`union`); UNKNOWN when absent |
+| F_STA_SETUP_TNS / F_STA_HOLD_TNS | `sta_setup_tns` / `sta_hold_tns` (ns) | Signed, worst corner |
+| F_STA_SETUP_TNS_NORM | setup TNS / T_clk | Needs `frequency_max` |
+| F_STA_SETUP_FEP / F_STA_HOLD_FEP | `sta_setup_violation_count` / `sta_hold_violation_count` | Counts only; endpoint population is not emitted |
+| F_STA_HOLD_HEADROOM | hold WS / T_clk | Needs `frequency_max` |
 
 Every feature record carries: value (or null), formula string, epistemic class, state, input metric ids, provenance artifacts (path + selector), the compatibility contract, and an interpretation — top-level diagnoses trace all the way back to raw report selectors.
 
@@ -441,7 +462,7 @@ The Engineering Snapshot v6 artifact index carries a `required` flag for every a
     "power":        {"key": "power",        "value": null,  "state": "UNKNOWN",     "features": ["…F_PWR_LEAK_FRAC…"]},
     "robustness":   {"key": "robustness",   "value": 94.1,  "state": "PASS",        "features": ["…four feature records…"]}
   },
-  "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced",
+  "scalar_summary": {"score": 98.96, "status": "GREEN", "profile": "balanced", "coverage": 0.85, "band_provisional": true,
                      "weights": {"timing": 0.30, "interconnect": 0.25, "area": 0.15,
                                  "power": 0.15, "robustness": 0.15}},
   "diagnoses": ["…diagnosis records per §7…"],
@@ -457,7 +478,7 @@ The Engineering Snapshot v6 artifact index carries a `required` flag for every a
 }
 ```
 
-Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dimensions + feature detail), `scalar_summary` (score/status/weights), `diagnoses` (diagnoses + interventions), `inflation` (decomposition + compatibility), `power` (observation + source), `flow_steps` (step-state snapshot at write time), `config_warnings` (parameter-degradation warnings).
+Field quick reference: `feasibility` (gates), `evidence`, `qor_record` (five dimensions + feature detail), `scalar_summary` (score/status/weights), `diagnoses` (diagnoses + interventions), `inflation` (decomposition + compatibility), `supplementary_features` (published-only observability features, never scored), `power` (observation + source), `flow_steps` (step-state snapshot at write time), `config_warnings` (parameter-degradation warnings).
 
 ### 10.2 How ECOS Studio consumes it (hard-cut semantics)
 
@@ -509,7 +530,7 @@ Both: `ws_ns` is the signed worst slack (used for continuous quality and headroo
 They are engine constants today, not user parameters. They are calibrated engineering defaults and may evolve between releases; route technology-specific calibration requests to the toolchain maintainers.
 
 **Q: Can `ecc report qor` and `home/qor_report.json` disagree?**
-Not normally: the report refreshes after every successful step and the CLI recomputes on the fly. If you hand-edit artifact files or run the flow concurrently, they may diverge briefly; after the flow finishes, a rerun of `ecc report qor` is authoritative.
+Not normally: the report refreshes after every successful step and the CLI recomputes on the fly. If you hand-edit artifact files or run the flow concurrently, they may diverge briefly; after the flow finishes, a rerun of `ecc report qor` is authoritative and also refreshes `home/qor_report.json`.
 
 ## 13. Automated experiments and evidence boundaries
 

@@ -5,7 +5,7 @@ import shlex
 
 from chipcompiler.cli.core.errors import CommandError, command_handler
 from chipcompiler.cli.core.output import disclosure_cmd
-from chipcompiler.cli.core.records import error_record
+from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.inspection.discovery import (
     resolve_loaded_workspace,
@@ -102,7 +102,7 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
             )
         extra["qor"] = to_dict()
 
-    return _write_report(
+    result = _write_report(
         "qor",
         f"{report.design or 'design'}_qor_report.txt",
         content,
@@ -110,6 +110,21 @@ def qor(command_input, ctx: CommandContext) -> CommandResult:
         ctx,
         extra=extra,
     )
+    if result.exit_code != 0:
+        return result
+
+    # Keep home/qor_report.json (what ECOS Studio reads) in step with the text
+    # report, from the same snapshot, unless the caller redirected output with -o.
+    if command_input.output_path is None:
+        from chipcompiler.analysis.qor import write_qor_report
+
+        try:
+            write_qor_report(workspace, report)
+        except OSError as exc:
+            return CommandResult.ok(
+                [*result.records, warning_record("qor_json_refresh_failed", reason=str(exc))]
+            )
+    return result
 
 
 def checklist(command_input, ctx: CommandContext) -> CommandResult:

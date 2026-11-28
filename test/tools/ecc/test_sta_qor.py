@@ -7,6 +7,7 @@ from chipcompiler.tools.ecc.sta_qor import (
     read_power_step_summary_json,
     read_sta_power_summary,
     read_sta_power_summary_json,
+    read_sta_qor_summary,
     sta_power_summary_payload,
 )
 
@@ -234,3 +235,133 @@ def test_read_sta_power_summary_json_returns_none_for_malformed_json(tmp_path):
     summary_path.write_text("{not json\n", encoding="utf-8")
 
     assert read_sta_power_summary_json(summary_path) is None
+
+
+def _write_qor_summary(path, design_statistics):
+    payload = {
+        "path_groups": [],
+        "summary": {
+            "setup": {"wns": 1.0, "tns": 0.0, "nvp": 0, "frequency_mhz": 100},
+            "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+        },
+    }
+    if design_statistics is not None:
+        payload["design_statistics"] = design_statistics
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_read_sta_qor_summary_reads_drv_counts(tmp_path):
+    path = tmp_path / "qor_summary.json"
+    _write_qor_summary(path, {"tran": 7, "cap": 9, "fanout": 0})
+
+    summary = read_sta_qor_summary("MAX_125/Cworst", path)
+
+    assert summary is not None
+    assert summary.max_transition_violations == 7
+    assert summary.max_capacitance_violations == 9
+    assert summary.max_fanout_violations == 0
+
+
+def test_read_sta_qor_summary_leaves_missing_drv_counts_unset(tmp_path):
+    path = tmp_path / "qor_summary.json"
+    _write_qor_summary(path, {"tran": 0, "cap": None, "fanout": -1})
+
+    summary = read_sta_qor_summary("MAX_125/Cworst", path)
+    assert summary is not None
+    assert summary.max_transition_violations == 0
+    assert summary.max_capacitance_violations is None
+    assert summary.max_fanout_violations is None
+
+    _write_qor_summary(path, None)
+    summary = read_sta_qor_summary("MAX_125/Cworst", path)
+    assert summary is not None
+    assert summary.max_transition_violations is None
+
+
+def test_safe_dir_name_never_returns_a_path_traversal_component():
+    from chipcompiler.tools.ecc.sta_qor import _safe_dir_name
+
+    assert _safe_dir_name("..") == "__"
+    assert _safe_dir_name(" . ") == "_"
+    assert _safe_dir_name("../x") == ".._x"
+    assert _safe_dir_name("ss_0p72v.m40c") == "ss_0p72v.m40c"
+    assert _safe_dir_name("") == "unknown"
+
+
+def _nvp_qor_summary(setup_nvp: object, hold_nvp: object = 0):
+    return {
+        "path_groups": [],
+        "summary": {
+            "setup": {"wns": 0.1, "tns": 0.0, "nvp": setup_nvp, "frequency_mhz": 100.0},
+            "hold": {"wns": 0.1, "tns": 0.0, "nvp": hold_nvp},
+        },
+    }
+
+
+def test_integral_float_nvp_keeps_the_corner(tmp_path):
+    from chipcompiler.tools.ecc.sta_qor import read_sta_qor_summary
+
+    path = tmp_path / "sta.json"
+    path.write_text(json.dumps(_nvp_qor_summary(3.0, 0.0)), encoding="utf-8")
+
+    summary = read_sta_qor_summary("c", path)
+
+    assert summary is not None
+    assert (summary.setup_nvp, summary.hold_nvp) == (3, 0)
+    assert type(summary.setup_nvp) is int
+
+
+def test_invalid_nvp_still_drops_the_corner(tmp_path):
+    from chipcompiler.tools.ecc.sta_qor import read_sta_qor_summary
+
+    path = tmp_path / "sta.json"
+    for bad in (-1, -1.0, 1.5, float("inf"), "3", True, None):
+        path.write_text(json.dumps(_nvp_qor_summary(bad), allow_nan=True), encoding="utf-8")
+        assert read_sta_qor_summary("c", path) is None, bad
+
+
+def test_build_metrics_sta_omits_drv_counts_when_corners_are_incomplete(tmp_path):
+    from chipcompiler.data import OriginDesign, StepEnum, Workspace
+    from chipcompiler.tools.ecc import builder
+    from chipcompiler.tools.ecc.metrics import build_metrics_sta
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="gcd", top_module="gcd"))
+    cfg = tmp_path / "sta_ecc.json"
+    cfg.write_text(
+        json.dumps(
+            {
+                "liberty": [
+                    {"corner": "MAX", "temperature": 125},
+                    {"corner": "MIN", "temperature": -40},
+                ],
+                "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    workspace.config[StepEnum.STA.value] = cfg
+    step = builder.build_step(
+        workspace=workspace,
+        step_name=StepEnum.STA.value,
+        input_def=tmp_path / "input.def",
+        input_verilog=tmp_path / "input.v",
+    )
+    builder.build_step_space(step)
+    assert step.feature.dir is not None
+    payload = _nvp_qor_summary(0, 0)
+    payload["design_statistics"] = {"tran": 0, "cap": 0, "fanout": 0}
+    c1_dir = step.feature.dir / "MAX_125" / "RCworst"
+    c1_dir.mkdir(parents=True)
+    (c1_dir / "qor_summary.json").write_text(json.dumps(payload), encoding="utf-8")
+    (c1_dir / "timing_paths.json").write_text(
+        json.dumps(
+            {"schema_version": 1, "corner": "MAX_125/RCworst", "path_limit": 0, "paths": []}
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = build_metrics_sta(workspace, step)
+    assert metrics is not None
+    assert metrics.data["sta_corner_count"] == 1
+    assert metrics.data["sta_expected_corner_count"] == 2
+    assert "sta_max_transition_violation_count" not in metrics.data

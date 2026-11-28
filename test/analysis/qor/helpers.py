@@ -1,8 +1,25 @@
 """Shared fixtures for the QoR engine tests."""
 
+import os
+
 from chipcompiler.analysis.qor.loader import CornerSlack, MetricRecord, QorInputs
 
 SUCCESS = "Success"
+
+
+def touch_qor_evidence(path, payload):
+    """Create each metric's evidence artifact (older than the cache written next)."""
+    if not isinstance(payload, dict):
+        return
+    step_dir = os.path.dirname(os.path.dirname(str(path)))
+    for metric in payload.get("metrics", []):
+        source = metric.get("source")
+        rel = source.get("path") if isinstance(source, dict) else None
+        if not isinstance(rel, str) or not rel or os.path.isabs(rel):
+            continue
+        os.makedirs(os.path.dirname(os.path.join(step_dir, rel)), exist_ok=True)
+        with open(os.path.join(step_dir, rel), "a"):
+            pass
 
 
 def make_metric(metric_id, value, step="sta", role="final", unit="", corner=None):
@@ -89,6 +106,9 @@ def gcd_metrics() -> dict:
         make_metric("sta_hold_tns", 0.0, step="sta"),
         make_metric("sta_setup_violation_count", 0, step="sta"),
         make_metric("sta_hold_violation_count", 0, step="sta"),
+        make_metric("sta_max_transition_violation_count", 0, step="sta"),
+        make_metric("sta_max_capacitance_violation_count", 0, step="sta"),
+        make_metric("sta_max_fanout_violation_count", 0, step="sta"),
         make_metric("sta_expected_corner_count", 2, step="sta"),
         make_metric("sta_missing_corner_count", 0, step="sta"),
         make_metric("sta_worst_setup_corner", "MAX_125", step="sta"),

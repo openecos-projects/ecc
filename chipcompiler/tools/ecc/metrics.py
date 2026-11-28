@@ -4,6 +4,7 @@ from csv import reader as csv_reader
 from math import ceil, isfinite
 from pathlib import Path
 
+from chipcompiler.analysis.qor.gate_catalog import step_gate_blocking
 from chipcompiler.analysis.qor.summary_contract import (
     is_supported_summary,
     summary_gates,
@@ -18,6 +19,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import StepDirectories, recorded_step_directory
+from chipcompiler.tools.ecc.antenna import antenna_check_metrics
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -31,6 +33,13 @@ from chipcompiler.tools.ecc.sta_qor import (
 )
 from chipcompiler.tools.ecc.subflow import EccSubFlow, EccSubFlowEnum
 from chipcompiler.utility import dict_to_str, json_read, json_write
+
+# Design-rule violation counts summed over the configured signoff corners.
+STA_DRV_METRIC_IDS = (
+    "sta_max_transition_violation_count",
+    "sta_max_capacitance_violation_count",
+    "sta_max_fanout_violation_count",
+)
 
 QOR_METRIC_MAP = {
     "Cell area": {
@@ -386,6 +395,27 @@ QOR_METRIC_MAP = {
         "dimension": "clock_robustness_dfm",
         "polarity": "lower_is_better",
     },
+    "antenna_violation_count": {
+        "name": "antenna_violation_count",
+        "display_name": "Antenna Violation Count",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "lower_is_better",
+    },
+    "antenna_signal_net_count": {
+        "name": "antenna_signal_net_count",
+        "display_name": "Antenna Nets Analysed",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "trend_only",
+    },
+    "antenna_gate_pin_count": {
+        "name": "antenna_gate_pin_count",
+        "display_name": "Antenna Gate Pins With Area",
+        "unit": "count",
+        "dimension": "clock_robustness_dfm",
+        "polarity": "trend_only",
+    },
     "route_dr_total_violation_count": {
         "name": "route_dr_total_violation_count",
         "display_name": "Route DR Violations",
@@ -561,6 +591,27 @@ QOR_METRIC_MAP = {
         "dimension": "timing",
         "polarity": "lower_is_better",
     },
+    "sta_max_transition_violation_count": {
+        "name": "sta_max_transition_violation_count",
+        "display_name": "STA Max Transition Violation Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
+    "sta_max_capacitance_violation_count": {
+        "name": "sta_max_capacitance_violation_count",
+        "display_name": "STA Max Capacitance Violation Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
+    "sta_max_fanout_violation_count": {
+        "name": "sta_max_fanout_violation_count",
+        "display_name": "STA Max Fanout Violation Count",
+        "unit": "count",
+        "dimension": "timing",
+        "polarity": "lower_is_better",
+    },
     "harden_gds_exists": {
         "name": "harden_gds_exists",
         "display_name": "Harden GDS Exists",
@@ -687,6 +738,11 @@ QOR_EXPECTED_METRICS_BY_STEP = {
     StepEnum.LVS.value: [
         "lvs_count",
     ],
+    StepEnum.ANTENNA_CHECK.value: [
+        "antenna_violation_count",
+        "antenna_signal_net_count",
+        "antenna_gate_pin_count",
+    ],
     StepEnum.RCX.value: [
         "rcx_spef_file_count",
         "rcx_expected_corner_count",
@@ -709,6 +765,7 @@ QOR_EXPECTED_METRICS_BY_STEP = {
         "sta_missing_corner_count",
         "sta_setup_violation_count",
         "sta_hold_violation_count",
+        *STA_DRV_METRIC_IDS,
     ],
     StepEnum.POWER_ANALYSIS.value: [
         "power_analysis_internal_uw",
@@ -1531,6 +1588,7 @@ STA_QOR_CORNER_FIELDS = {
     "sta_corner_count": "sta_corner_scope",
     "sta_expected_corner_count": "sta_corner_scope",
     "sta_missing_corner_count": "sta_corner_scope",
+    **dict.fromkeys(STA_DRV_METRIC_IDS, "sta_corner_scope"),
 }
 STA_TIMING_NEAR_FAIL_SLACK_NS = 0.05
 _PROCESS_CORNER_PATTERN = re.compile(r"(?:^|[_./-])(tt|ss|ff|sf|fs)(?=[_./-]|$)", re.IGNORECASE)
@@ -1613,6 +1671,7 @@ def _sta_signoff_metrics(
     hold_violation_count,
     frequency,
     frequency_corner: str,
+    drv_counts: dict | None = None,
 ) -> dict:
     sta_data = json_read(workspace.config.get(StepEnum.STA.value, ""))
     sta_data = sta_data if isinstance(sta_data, dict) else {}
@@ -1697,6 +1756,14 @@ def _sta_signoff_metrics(
     setup_status = _sta_group_status(coverage_status, setup_wns, setup_tns, setup_violation_count)
     hold_status = _sta_group_status(coverage_status, hold_wns, hold_tns, hold_violation_count)
     frequency_status = _sta_frequency_status(coverage_status, frequency)
+    drv_counts = drv_counts or {}
+    drv_values = [drv_counts.get(metric_id) for metric_id in STA_DRV_METRIC_IDS]
+    if any(value is None for value in drv_values):
+        drv_status = "unavailable" if coverage_status == "unavailable" else "incomplete"
+    elif any(value is not None and value > 0 for value in drv_values):
+        drv_status = "blocked"
+    else:
+        drv_status = "pass" if coverage_status == "pass" else "incomplete"
     return {
         "schema_version": 1,
         "coverage": {
@@ -1729,6 +1796,14 @@ def _sta_signoff_metrics(
             "status": frequency_status,
             "minimum_mhz": frequency,
             "corner": frequency_corner or None,
+        },
+        "drv": {
+            "status": drv_status,
+            "max_transition_violation_count": drv_counts.get("sta_max_transition_violation_count"),
+            "max_capacitance_violation_count": drv_counts.get(
+                "sta_max_capacitance_violation_count"
+            ),
+            "max_fanout_violation_count": drv_counts.get("sta_max_fanout_violation_count"),
         },
     }
 
@@ -1828,6 +1903,10 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
         scope = "final_lvs"
         project_role = "gate" if metric_id == "lvs_count" else "final"
         step_role = "primary"
+    elif step.name == StepEnum.ANTENNA_CHECK.value:
+        scope = "final_antenna"
+        project_role = "gate" if metric_id == "antenna_violation_count" else "final"
+        step_role = "primary"
     elif step.name == StepEnum.RCX.value:
         scope = "signoff_rcx"
         project_role = "gate" if metric_id == "rcx_missing_corner_count" else "final"
@@ -1845,6 +1924,7 @@ def _metric_scope_and_roles(step: WorkspaceStep, metric_id: str) -> tuple[str, s
                 "sta_setup_violation_count",
                 "sta_hold_violation_count",
                 "sta_missing_corner_count",
+                *STA_DRV_METRIC_IDS,
             }
             else "final"
         )
@@ -1911,6 +1991,8 @@ def _metric_analysis_group_and_rating(
             "sta_hold_violation_count",
         }:
             return "sta_hold_closure", {"gate": True, "score": True, "trend": True}
+        if metric_id in STA_DRV_METRIC_IDS:
+            return "sta_drv_closure", {"gate": True, "score": False, "trend": True}
         if metric_id == "sta_frequency_mhz":
             return "sta_frequency_margin", {"gate": False, "score": True, "trend": True}
     return group, rating
@@ -1977,6 +2059,11 @@ _STA_AGGREGATE_FEATURE_SELECTORS = {
     "sta_missing_corner_count": "/sta/signoff_metrics/coverage/missing_count",
     "sta_setup_violation_count": "/sta/signoff_metrics/setup/violation_count",
     "sta_hold_violation_count": "/sta/signoff_metrics/hold/violation_count",
+    "sta_max_transition_violation_count": "/sta/signoff_metrics/drv/max_transition_violation_count",
+    "sta_max_capacitance_violation_count": (
+        "/sta/signoff_metrics/drv/max_capacitance_violation_count"
+    ),
+    "sta_max_fanout_violation_count": "/sta/signoff_metrics/drv/max_fanout_violation_count",
 }
 
 _RUN_FEATURE_METRICS = (
@@ -2183,6 +2270,13 @@ def _metric_feature_source(
     elif metric_id == "lvs_count":
         feature_path = getattr(step.feature, "step", None)
         selector = "/violations"
+    elif metric_id.startswith("antenna_"):
+        feature_path = getattr(step.feature, "step", None)
+        selector = {
+            "antenna_violation_count": "/antenna_check/violation_count",
+            "antenna_signal_net_count": "/antenna_check/signal_net_count",
+            "antenna_gate_pin_count": "/antenna_check/pins_with_gate_area",
+        }.get(metric_id, "")
     elif metric_id.startswith("rcx_") or metric_id.startswith("harden_"):
         feature_path = getattr(step.feature, "step", None)
         selector = {
@@ -2444,6 +2538,7 @@ def _is_blocking_qor_record(record: dict) -> bool:
     if metric_name in {
         "drc_count",
         "lvs_count",
+        "antenna_violation_count",
         "route_dr_total_violation_count",
         "route_la_total_overflow",
         "rcx_spef_parse_failure_count",
@@ -2911,12 +3006,14 @@ def _quality_gate(
     state: str,
     metrics: list[dict],
     evidence: list[dict],
+    *,
+    blocking: bool | None = None,
 ) -> dict:
     return {
         "id": gate_id,
         "title": title,
         "state": state,
-        "blocking": True,
+        "blocking": step_gate_blocking(gate_id) if blocking is None else blocking,
         "metrics": metrics,
         "evidence": evidence,
     }
@@ -3153,6 +3250,30 @@ def _quality_gates(
             )
         ]
 
+    if step.name == StepEnum.ANTENNA_CHECK.value:
+        count, source = metric("antenna_violation_count")
+        nets, nets_source = metric("antenna_signal_net_count")
+        pins, pins_source = metric("antenna_gate_pin_count")
+        # Zero nets or gate pins analysed means the check was vacuous: not verified, never clean.
+        covered = nets is not None and nets > 0 and pins is not None and pins > 0
+        violated = count is not None and count > 0
+        return [
+            _quality_gate(
+                "qor.antenna.clean",
+                "Antenna violations (analysed)",
+                _gate_state(
+                    available=violated or (count is not None and covered),
+                    passed=covered and count == 0,
+                ),
+                [
+                    _quality_gate_metric("antenna_violation_count", count, "==", 0, source),
+                    _quality_gate_metric("antenna_signal_net_count", nets, ">", 0, nets_source),
+                    _quality_gate_metric("antenna_gate_pin_count", pins, ">", 0, pins_source),
+                ],
+                _quality_gate_evidence(source, nets_source, pins_source),
+            )
+        ]
+
     feature = json_read(getattr(step.feature, "step", "") or "")
     feature = feature if isinstance(feature, dict) else {}
 
@@ -3242,6 +3363,9 @@ def _quality_gates(
             and setup_tns >= 0
             and setup_nvp == 0
         )
+        drv_values = [metric(metric_id) for metric_id in STA_DRV_METRIC_IDS]
+        drv_available = coverage_available and all(value is not None for value, _ in drv_values)
+        drv_passed = drv_available and all(value == 0 for value, _ in drv_values)
         hold_passed = (
             hold_available
             and isinstance(hold, dict)
@@ -3279,6 +3403,18 @@ def _quality_gates(
                 ],
                 _quality_gate_evidence(hold_wns_source, hold_tns_source, hold_nvp_source),
             ),
+            _quality_gate(
+                "qor.sta.drv_clean",
+                "STA max transition / capacitance / fanout",
+                _gate_state(available=drv_available, passed=drv_passed),
+                [
+                    _quality_gate_metric(metric_id, value, "==", 0, source)
+                    for metric_id, (value, source) in zip(
+                        STA_DRV_METRIC_IDS, drv_values, strict=True
+                    )
+                ],
+                _quality_gate_evidence(*(source for _, source in drv_values)),
+            ),
         ]
 
     if step.name == StepEnum.HARDEN.value:
@@ -3313,9 +3449,10 @@ def build_qor_summary_payload(
         else "incomplete"
     )
     gates = _quality_gates(step, records, workspace)
-    if any(gate["state"] == "failed" for gate in gates):
+    blocking_gates = [gate for gate in gates if gate.get("blocking", True)]
+    if any(gate["state"] == "failed" for gate in blocking_gates):
         quality_status = "blocked"
-    elif any(gate["state"] == "unavailable" for gate in gates):
+    elif any(gate["state"] == "unavailable" for gate in blocking_gates):
         quality_status = "incomplete"
     else:
         quality_status = "pass"
@@ -3559,6 +3696,8 @@ def build_step_metrics(
             metrics = build_metrics_drc(workspace, step)
         case StepEnum.LVS.value:
             metrics = build_metrics_lvs(workspace, step)
+        case StepEnum.ANTENNA_CHECK.value:
+            metrics = build_metrics_antenna(workspace, step)
         case StepEnum.FILLER.value:
             metrics = build_metrics_filler(workspace, step)
         case StepEnum.RCX.value:
@@ -3738,6 +3877,14 @@ def build_metrics_lvs(workspace: Workspace, step: EccStep) -> StepMetrics | None
         if isinstance(violations, list):
             metrics["lvs_count"] = len(violations)
 
+    return _finish_step_metrics(workspace, step, step_metrics, metrics)
+
+
+def build_metrics_antenna(workspace: Workspace, step: EccStep) -> StepMetrics | None:
+    """Build antenna metrics from the iMJ step JSON (violations plus coverage counters)."""
+    step_metrics = StepMetrics()
+    step_metrics.path = step.analysis.metrics or ""
+    metrics = antenna_check_metrics(getattr(step.feature, "step", "") or "")
     return _finish_step_metrics(workspace, step, step_metrics, metrics)
 
 
@@ -3929,6 +4076,19 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
     _add_number_metric(metrics, "Frequency [MHz]", frequency)
     metrics["setup_violation_count"] = setup_violation_count
     metrics["hold_violation_count"] = hold_violation_count
+    # Only emit DRV totals when every configured corner succeeded and reported a count:
+    # missing corner or counter evidence must stay UNKNOWN, never appear clean.
+    drv_counts: dict[str, int] = {}
+    if summaries and len(summaries) == len(qor_paths):
+        for metric_id, counts in (
+            (STA_DRV_METRIC_IDS[0], [s.max_transition_violations for s in summaries]),
+            (STA_DRV_METRIC_IDS[1], [s.max_capacitance_violations for s in summaries]),
+            (STA_DRV_METRIC_IDS[2], [s.max_fanout_violations for s in summaries]),
+        ):
+            if all(count is not None for count in counts):
+                total = sum(count for count in counts if count is not None)
+                drv_counts[metric_id] = total
+                metrics[metric_id] = total
     metrics["sta_corner_count"] = len(summaries)
     metrics["sta_expected_corner_count"] = len(qor_paths)
     metrics["sta_missing_corner_count"] = len(qor_paths) - len(summaries)
@@ -3963,6 +4123,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
         hold_violation_count=hold_violation_count,
         frequency=frequency,
         frequency_corner=frequency_corner,
+        drv_counts=drv_counts,
     )
     corner_contexts = {
         corner["sta_corner"]: {
@@ -3982,6 +4143,7 @@ def build_metrics_sta(workspace: Workspace, step: EccStep) -> StepMetrics | None
             "missing_corner_count": metrics["sta_missing_corner_count"],
             "setup_violation_count": setup_violation_count,
             "hold_violation_count": hold_violation_count,
+            **drv_counts,
             "loaded_corners": sorted(loaded_corners),
             "missing_corners": [
                 corner for corner in expected_corners if corner not in loaded_corners

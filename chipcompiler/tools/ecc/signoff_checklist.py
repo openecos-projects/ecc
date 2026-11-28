@@ -8,7 +8,7 @@ to assemble a signoff package.
 import re
 from pathlib import Path
 
-from chipcompiler.analysis.qor.gate_catalog import QOR_STEP_GATE_IDS
+from chipcompiler.analysis.qor.gate_catalog import QOR_STEP_GATE_IDS, step_gate_policy
 from chipcompiler.analysis.qor.summary_contract import summary_gates
 from chipcompiler.data import (
     ADVISORY_FLOW_STEPS,
@@ -25,6 +25,11 @@ from chipcompiler.data import (
     inserted_step_kind,
 )
 from chipcompiler.data.step import StepDirectories
+from chipcompiler.tools.ecc.antenna import (
+    antenna_coverage,
+    antenna_diagnostics,
+    read_antenna_check,
+)
 from chipcompiler.tools.ecc.lec_gates import (
     inserted_lec_results as _inserted_lec_results,
 )
@@ -209,7 +214,7 @@ def _quality_gate_items_from_summary(
                     step=step_name,
                     category="quality_gate",
                     owner="qor",
-                    policy="block",
+                    policy=step_gate_policy(gate_id, "unavailable"),
                     state="unavailable",
                     title=gate_id,
                     summary="Current QoR gate is unavailable; rerun analysis for this step.",
@@ -229,7 +234,7 @@ def _quality_gate_items_from_summary(
                 step=step_name,
                 category="quality_gate",
                 owner="qor",
-                policy="block",
+                policy=step_gate_policy(gate_id, state, blocking=bool(gate.get("blocking", True))),
                 state=state,
                 title=str(gate.get("title") or gate_id),
                 summary=_gate_summary(gate),
@@ -256,6 +261,26 @@ def _quality_gate_items(workspace: Workspace, step: WorkspaceStep) -> list[dict]
         step.name,
         step_directory,
         Path(summary_path) if summary_path else step_directory / "analysis" / "qor_summary.json",
+    )
+
+
+def _antenna_coverage_item(workspace: Workspace, step: WorkspaceStep) -> dict:
+    """Zero-coverage or dropped-geometry antenna checks warn, never pass silently."""
+    step_json = getattr(step.feature, "step", None)
+    block = read_antenna_check(step_json)
+    verified, message = antenna_coverage(block)
+    has_diags = bool(antenna_diagnostics(block))
+    return _item(
+        item_id="quality.antenna.coverage",
+        step=step.name,
+        category="quality",
+        owner="checklist",
+        policy="warn",
+        state="pass" if verified and not has_diags else "warning",
+        title="Antenna check coverage",
+        summary=message,
+        source={"kind": "feature", "path": _path_text(workspace, step_json)},
+        evidence=[{"kind": "feature", "path": _path_text(workspace, step_json)}],
     )
 
 
@@ -400,7 +425,8 @@ def _step_artifact_items(workspace: Workspace, step: WorkspaceStep) -> list[dict
                 ),
                 source={"kind": "report", "path": _path_text(workspace, report)},
                 evidence=[{"kind": "report", "path": _path_text(workspace, report)}],
-            )
+            ),
+            _antenna_coverage_item(workspace, step),
         ]
     elif step.name == StepEnum.STA.value:
         report_dir = step.report.dir

@@ -22,6 +22,7 @@ from chipcompiler.analysis.qor import (
 from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
 from chipcompiler.analysis.qor.models import PowerObservation
 from chipcompiler.analysis.qor.schema import validate_report
+from test.analysis.qor.helpers import touch_qor_evidence
 from test.flow_fixture import step_fields
 
 SUCCESS = "Success"
@@ -44,6 +45,8 @@ _STEP_TOOLS = {"synthesis": "yosys", "placement": "dreamplace"}
 
 
 def _write(path, payload):
+    if str(path).endswith("qor_metrics.json"):
+        touch_qor_evidence(path, payload)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f)
@@ -62,7 +65,7 @@ def _metric(metric_id, value, project_role="final", unit=""):
         "project_role": project_role,
         "step_role": "primary",
         "rating": {"gate": False, "score": True, "trend": True},
-        "source": {"kind": "analysis", "path": "feature", "selector": "/x"},
+        "source": {"kind": "analysis", "path": "feature/x.json", "selector": "/x"},
     }
 
 
@@ -143,6 +146,9 @@ def _make_gcd_workspace(tmp_path):
             _metric("sta_hold_tns", 0.0, "gate", "ns"),
             _metric("sta_setup_violation_count", 0, "gate"),
             _metric("sta_hold_violation_count", 0, "gate"),
+            _metric("sta_max_transition_violation_count", 0, "gate"),
+            _metric("sta_max_capacitance_violation_count", 0, "gate"),
+            _metric("sta_max_fanout_violation_count", 0, "gate"),
             _metric("sta_expected_corner_count", 2, "trend"),
             _metric("sta_missing_corner_count", 0, "gate"),
         ],
@@ -185,7 +191,7 @@ class TestReferenceGcd:
     def test_feasibility_passes_all_gates(self, analysis):
         assert analysis.feasibility.status == "PASS"
         assert all(gate.state == "passed" for gate in analysis.feasibility.gates)
-        assert len(analysis.feasibility.gates) == 7
+        assert len(analysis.feasibility.gates) == 10
 
     def test_evidence_is_high(self, analysis):
         assert analysis.evidence.state == "HIGH"
@@ -241,9 +247,9 @@ class TestReferenceGcd:
         analysis = build_qor_analysis(workspace)
         text = render_qor_analysis(analysis, load_workspace_qor_inputs(workspace))
         assert "ECC QoR ANALYSIS REPORT" in text
-        assert "FEASIBILITY STATUS : PASS [All 7 Physical Signoff Gates Clean]" in text
+        assert "FEASIBILITY STATUS : PASS [All 10 Physical Signoff Gates Clean]" in text
         assert "EVIDENCE STATE     : HIGH" in text
-        assert "Status: GREEN, Profile: balanced" in text
+        assert "Status: GREEN (provisional), Profile: balanced, Coverage: 85.0%" in text
         assert "Q_T" in text
         assert "WS: +16.622ns" in text
         assert "[PRIORITIZED INTERVENTION HYPOTHESES]" in text
@@ -261,4 +267,27 @@ class TestReferenceGcd:
             ),
         )
         text = render_qor_analysis(report)
-        assert "Ptotal: 0.012W; no budget declared" in text
+        assert "Ptotal: 12.400mW; no budget declared" in text
+
+    @pytest.mark.parametrize(
+        ("total_uw", "expected"),
+        [
+            (334.25, "334.25µW"),
+            (12_400.0, "12.400mW"),
+            (2_500_000.0, "2.500W"),
+        ],
+    )
+    def test_power_units_auto_scale(self, analysis, total_uw, expected):
+        report = replace(
+            analysis,
+            power=PowerObservation(
+                total_uw=total_uw,
+                budget_uw=None,
+                source_path="/ws/power_summary.json",
+                source_kind="signoff",
+                corner="MAX_125/Cworst",
+            ),
+        )
+        text = render_qor_analysis(report)
+        assert f"Ptotal: {expected}; no budget declared" in text
+        assert "0.000W" not in text

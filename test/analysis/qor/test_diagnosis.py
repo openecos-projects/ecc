@@ -84,3 +84,14 @@ class TestQualityAndOpportunityDiagnoses:
         tier_rank = {"TIER_1_FEASIBILITY": 0, "TIER_2_BOTTLENECK": 1, "TIER_3_OPPORTUNITY": 2}
         tiers = [intervention.tier for intervention in ranked]
         assert tiers == sorted(tiers, key=lambda tier: tier_rank[tier])
+
+
+class TestInterventionKnobs:
+    def test_dimension_knobs_are_public_parameters(self):
+        from chipcompiler.analysis.qor.diagnosis import _DIMENSION_KNOBS
+        from chipcompiler.data.param_keys import AGENT_KNOB_MAP
+
+        for dimension, entry in _DIMENSION_KNOBS.items():
+            knob = entry.get("knob")
+            if knob is not None:
+                assert knob in AGENT_KNOB_MAP, f"{dimension} suggests non-public knob {knob}"

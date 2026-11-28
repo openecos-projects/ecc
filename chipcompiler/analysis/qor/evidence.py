@@ -8,6 +8,7 @@ Every zero-denominator condition evaluates to NOT_APPLICABLE, never to
 division-by-zero or a fake perfect score.
 """
 
+from chipcompiler.analysis.qor.feasibility import corner_slack_check
 from chipcompiler.analysis.qor.models import Evidence
 
 _HIGH = "HIGH"
@@ -124,6 +125,11 @@ def _consistency(inputs, bundle):
         nvp = nvp_record.value
         checks.append((ws >= 0.0) == (nvp == 0))
 
+    # C2b: per-corner summaries are self-consistent and agree with the
+    # aggregate STA metrics (same check that gates setup/hold feasibility).
+    corner_checks = _corner_checks(inputs)
+    checks.extend(corner_checks)
+
     # C3: vias imply routed wirelength (one-way topological sanity).
     vias = inputs.value("route_via_count")
     rwl = inputs.value("route_wirelength")
@@ -133,6 +139,33 @@ def _consistency(inputs, bundle):
     if not checks:
         return None
     return sum(1.0 for passed in checks if passed) / len(checks)
+
+
+def _corner_checks(inputs) -> list:
+    if not inputs.corners:
+        return []
+    checks = [
+        (corner.setup_ws >= 0.0) == (corner.setup_nvp == 0)
+        for corner in inputs.corners
+        if corner.setup_nvp is not None
+    ]
+    checks.extend(
+        (corner.hold_ws >= 0.0) == (corner.hold_nvp == 0)
+        for corner in inputs.corners
+        if corner.hold_ws is not None and corner.hold_nvp is not None
+    )
+    # Incomplete corner sets are already penalised by E_coverage.
+    expected = inputs.sta_expected_corners
+    if expected is not None and len(inputs.corners) < expected:
+        return checks
+    for metric_id, nvp_metric in (
+        ("sta_setup_wns", "sta_setup_violation_count"),
+        ("sta_hold_wns", "sta_hold_violation_count"),
+    ):
+        ws = inputs.value(metric_id)
+        if ws is not None:
+            checks.append(corner_slack_check(inputs, metric_id, nvp_metric, ws)[1] is None)
+    return checks
 
 
 def _population_compatible(left, right) -> bool:

@@ -22,6 +22,20 @@ class TestSchemaParity:
             "corner": None,
         }
 
+    def test_supplementary_features_are_published_and_validated(self):
+        from unittest import mock
+
+        inputs = make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0)
+        with mock.patch(
+            "chipcompiler.analysis.qor.load_workspace_qor_inputs",
+            lambda workspace: inputs,
+        ):
+            payload = build_qor_analysis(workspace=None).to_dict()
+        ids = {feature["feature_id"] for feature in payload["supplementary_features"]}
+        assert {"F_PL_EGR_OVERFLOW_GCELL_FRAC", "F_STA_SETUP_TNS", "F_STA_HOLD_HEADROOM"} <= ids
+        payload["supplementary_features"][0]["value"] = float("nan")
+        assert any("supplementary" in error for error in validate_report(payload))
+
     def test_missing_required_key_is_detected(self):
         from unittest import mock
 
@@ -47,6 +61,26 @@ class TestSchemaParity:
         payload["scalar_summary"]["score"] = 150.0
         errors = validate_report(payload)
         assert any("score out of range" in error for error in errors)
+
+    def test_coverage_fields_are_optional_and_validated(self):
+        from unittest import mock
+
+        inputs = make_inputs(gcd_metrics(), corners=gcd_corners(), tclk_ns=20.0)
+        with mock.patch(
+            "chipcompiler.analysis.qor.load_workspace_qor_inputs",
+            lambda workspace: inputs,
+        ):
+            payload = build_qor_analysis(workspace=None).to_dict()
+        assert payload["scalar_summary"]["band_provisional"] is True
+        assert validate_report(payload) == []
+        del payload["scalar_summary"]["coverage"]
+        del payload["scalar_summary"]["band_provisional"]
+        assert validate_report(payload) == []  # pre-coverage reports stay valid
+        payload["scalar_summary"]["coverage"] = 1.5
+        payload["scalar_summary"]["band_provisional"] = "yes"
+        errors = validate_report(payload)
+        assert any("coverage out of range" in error for error in errors)
+        assert any("band_provisional" in error for error in errors)
 
     def test_malformed_nested_blocks_return_errors_without_raising(self):
         from unittest import mock

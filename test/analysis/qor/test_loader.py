@@ -7,10 +7,13 @@ from typing import Any
 import pytest
 
 from chipcompiler.analysis.qor.loader import load_workspace_qor_inputs
+from test.analysis.qor.helpers import touch_qor_evidence
 from test.flow_fixture import step_fields
 
 
 def _write(path, payload):
+    if str(path).endswith("qor_metrics.json"):
+        touch_qor_evidence(path, payload)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(payload, f)
@@ -29,25 +32,28 @@ def _metric(metric_id, value, project_role="final", **overrides):
         "project_role": project_role,
         "step_role": "primary",
         "rating": {"gate": False, "score": True, "trend": True},
-        "source": {"kind": "analysis", "path": "x"},
+        "source": {"kind": "analysis", "path": "feature/x.json"},
     }
     record.update(overrides)
     return record
 
 
-def _payload(metrics):
-    return {
+def _payload(metrics, details=None):
+    payload = {
         "schema_version": 3,
         "kind": "qor_metrics",
         "integrity": {"status": "pass", "invalid_metric_source_ids": [], "invalid_detail_ids": []},
         "metrics": metrics,
     }
+    if details is not None:
+        payload["details"] = details
+    return payload
 
 
-def _write_step_payload(root, directory, metrics):
+def _write_step_payload(root, directory, metrics, details=None):
     _write(
         os.path.join(root, directory, "analysis", "qor_metrics.json"),
-        _payload(metrics),
+        _payload(metrics, details=details),
     )
 
 
@@ -151,6 +157,96 @@ class TestMetricSelection:
         assert inputs.value("place_hpwl") == 111.0
         assert inputs.metrics["place_hpwl"].step == "routing"
 
+    def test_conflicting_duplicate_record_is_unknown_and_warned(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0.0), _metric("drc_count", 999.0)],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("drc_count" in w and "conflicting" in w for w in inputs.config_warnings)
+
+    def test_identical_duplicate_record_is_harmless(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0.0), _metric("drc_count", 0.0)],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") == 0.0
+        assert inputs.config_warnings == []
+
+    def test_better_role_record_overrides_conflicting_duplicates(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "placement_dreamplace",
+            [
+                _metric("place_hpwl", 1.0, project_role="trend"),
+                _metric("place_hpwl", 2.0, project_role="trend"),
+            ],
+        )
+        _write_step_payload(
+            workspace.directory,
+            "routing_ecc",
+            [_metric("place_hpwl", 200.0, project_role="final")],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("place_hpwl") == 200.0
+        assert inputs.config_warnings == []
+
+    def test_same_step_cross_role_conflict_is_unknown(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [
+                _metric("drc_count", 0.0, project_role="gate"),
+                _metric("drc_count", 2.0, project_role="trend"),
+            ],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("conflicting" in w for w in inputs.config_warnings)
+
+    @pytest.mark.parametrize("pair", [(0, False), (False, 0)])
+    def test_bool_vs_int_duplicate_is_conflicted_in_both_readers(self, tmp_path, pair):
+        from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", pair[0]), _metric("drc_count", pair[1])],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("conflicting" in w for w in inputs.config_warnings)
+
+        qor_path = Path(workspace.directory) / "drc_ecc" / "analysis" / "qor_metrics.json"
+        value, error = QorMetrics(qor_path).number("drc_count")
+        assert value is None
+        assert error == "qor_metrics.json contains conflicting duplicate metric id drc_count"
+
+    def test_int_and_equal_float_duplicate_accepted_in_both_readers(self, tmp_path):
+        from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0), _metric("drc_count", 0.0)],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") == 0.0
+        assert inputs.config_warnings == []
+
+        qor_path = Path(workspace.directory) / "drc_ecc" / "analysis" / "qor_metrics.json"
+        assert QorMetrics(qor_path).number("drc_count") == (0.0, None)
+
     def test_stale_payload_of_unstarted_step_is_ignored(self, tmp_path):
         steps = dict(_FULL_FLOW)
         steps["routing"] = "Unstart"
@@ -211,6 +307,28 @@ class TestParameterResolution:
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.power_budget_uw is None
         assert inputs.config_warnings
+
+    def test_infinite_budget_warns_and_undeclares(self, tmp_path):
+        from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        parameters = load_workspace_config(workspace.directory)
+        parameters.update(frequency_max=50.0, qor_power_budget_w=float("inf"))
+        save_workspace_config(workspace.directory, parameters)
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.power_budget_uw is None
+        assert inputs.config_warnings
+
+    def test_nonfinite_frequency_max_warns(self, tmp_path):
+        from chipcompiler.data.workspace.config import load_workspace_config, save_workspace_config
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        parameters = load_workspace_config(workspace.directory)
+        parameters.update(frequency_max=float("inf"))
+        save_workspace_config(workspace.directory, parameters)
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.tclk_ns is None
+        assert any("frequency_max" in w for w in inputs.config_warnings)
 
 
 class TestCornerLoading:
@@ -409,6 +527,96 @@ class TestCornerLoading:
         assert len(inputs.corners) == 1
         assert inputs.sta_setup_only is True
 
+    def test_corner_with_float_violation_count_is_not_loaded(self, tmp_path):
+        # An unparseable corner must be absent (never silently coerced) so the
+        # gates see fewer loaded corners than expected and report UNKNOWN.
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write(
+            os.path.join(
+                workspace.directory,
+                "sta_ecc",
+                "feature",
+                "MAX_125_t125",
+                "Cworst",
+                "qor_summary.json",
+            ),
+            {
+                "path_groups": [],
+                "summary": {
+                    "setup": {"wns": -0.5, "tns": 0.0, "nvp": 3.5, "frequency_mhz": 296.0},
+                    "hold": {"wns": 0.1, "tns": 0.0, "nvp": 0},
+                },
+            },
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.corners == []
+
+
+class TestMetricRangeValidation:
+    @pytest.mark.parametrize("bad", [52.0, -0.3, 0.0])
+    def test_out_of_range_utilization_is_unknown_with_warning(self, tmp_path, bad):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "placement_dreamplace",
+            [_metric("core_utilization", bad), _metric("place_hpwl", 10.0)],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("core_utilization") is None
+        assert inputs.value("place_hpwl") == 10.0
+        assert any("core_utilization" in w and "out of range" in w for w in inputs.config_warnings)
+
+    def test_negative_count_is_unknown(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(workspace.directory, "routing_ecc", [_metric("drc_count", -1.0)])
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("drc_count" in w for w in inputs.config_warnings)
+
+    def test_valid_values_and_signed_slack_are_kept(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "placement_dreamplace",
+            [
+                _metric("core_utilization", 1.0),
+                _metric("place_rudy_utilization_max", 1.4),
+                _metric("sta_setup_wns", -2.5),
+            ],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("core_utilization") == 1.0
+        assert inputs.value("place_rudy_utilization_max") == 1.4
+        assert inputs.value("sta_setup_wns") == -2.5
+        assert inputs.config_warnings == []
+
+    @pytest.mark.parametrize("pair", [(2.0, 0.5), (0.5, 2.0)])
+    def test_out_of_range_and_valid_duplicate_in_same_step_conflicts(self, pair):
+        from chipcompiler.analysis.qor.loader import _select_metrics
+
+        records = [
+            {"id": "core_utilization", "value": pair[0], "project_role": "final"},
+            {"id": "core_utilization", "value": pair[1], "project_role": "final"},
+        ]
+        warnings = []
+        selected = _select_metrics([("post_floorplan", records)], warnings)
+        assert "core_utilization" not in selected
+        assert any("out of range" in w for w in warnings)
+        assert any("conflicting" in w for w in warnings)
+
+    def test_identical_out_of_range_duplicates_emit_single_range_warning(self):
+        from chipcompiler.analysis.qor.loader import _select_metrics
+
+        records = [
+            {"id": "core_utilization", "value": 2.0, "project_role": "final"},
+            {"id": "core_utilization", "value": 2.0, "project_role": "final"},
+        ]
+        warnings = []
+        selected = _select_metrics([("post_floorplan", records)], warnings)
+        assert "core_utilization" not in selected
+        assert len(warnings) == 1
+        assert "out of range" in warnings[0]
+
 
 class TestDesignResolution:
     def test_design_falls_back_to_parameters(self, tmp_path):
@@ -449,3 +657,227 @@ def test_indexed_step_directories_score_like_the_legacy_layout(tmp_path):
         legacy.scalar_summary,
     )
     assert indexed.evidence == legacy.evidence
+
+
+class TestGateEvidence:
+    """Gate metrics require an existing evidence artifact no newer than qor_metrics.json."""
+
+    def _workspace(self, tmp_path):
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [
+                _metric(
+                    "drc_count", 0, project_role="gate", source={"path": "feature/drc.step.json"}
+                ),
+                _metric("drc_trend", 5, project_role="trend", source={"path": "feature/gone.json"}),
+            ],
+        )
+        evidence = os.path.join(workspace.directory, "drc_ecc", "feature", "drc.step.json")
+        os.makedirs(os.path.dirname(evidence), exist_ok=True)
+        with open(evidence, "w") as f:
+            f.write("{}")
+        cache = os.path.join(workspace.directory, "drc_ecc", "analysis", "qor_metrics.json")
+        return workspace, evidence, cache
+
+    def test_present_and_older_evidence_keeps_gate_metric(self, tmp_path):
+        workspace, evidence, cache = self._workspace(tmp_path)
+        mtime = os.stat(cache).st_mtime - 10
+        os.utime(evidence, (mtime, mtime))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") == 0
+        assert not inputs.config_warnings
+
+    def test_missing_evidence_drops_gate_metric(self, tmp_path):
+        workspace, evidence, _ = self._workspace(tmp_path)
+        os.remove(evidence)
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("drc_count" in w and "missing" in w for w in inputs.config_warnings)
+
+    def test_evidence_newer_than_cache_drops_gate_metric(self, tmp_path):
+        workspace, evidence, cache = self._workspace(tmp_path)
+        mtime = os.stat(cache).st_mtime + 60
+        os.utime(evidence, (mtime, mtime))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("stale" in w for w in inputs.config_warnings)
+
+    def test_small_mtime_skew_is_tolerated(self, tmp_path):
+        workspace, evidence, cache = self._workspace(tmp_path)
+        mtime = os.stat(cache).st_mtime + 0.5
+        os.utime(evidence, (mtime, mtime))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") == 0
+
+    def test_missing_source_path_drops_gate_metric(self, tmp_path):
+        workspace, _, _ = self._workspace(tmp_path)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0, project_role="gate", source={})],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+
+    @pytest.mark.parametrize("bad_rel", ["/etc/passwd", "../outside.json"])
+    def test_evidence_path_escape_drops_gate_metric(self, tmp_path, bad_rel):
+        workspace, _, _ = self._workspace(tmp_path)
+        (tmp_path / "outside.json").write_text("{}")
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0, project_role="gate", source={"path": bad_rel})],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("invalid evidence path" in w for w in inputs.config_warnings)
+
+    def test_non_gate_metrics_are_not_checked(self, tmp_path):
+        workspace, _, _ = self._workspace(tmp_path)
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_trend") == 5
+
+
+class TestEgrOverflowGrid:
+    def _detail(
+        self,
+        *,
+        available: Any = True,
+        value_count: Any = 8,
+        nonzero_count: Any = 2,
+        source_file: str = "feature/egr_congestion_map/place_egr_union_overflow.csv",
+        feature_source_path: str = "feature/placement.map.json",
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": "place_map_metrics",
+                "presentation": "place_map_summary",
+                "summary": {
+                    "maps": [
+                        {
+                            "group": "density",
+                            "metric": "allcell",
+                            "available": True,
+                            "value_count": 4,
+                            "nonzero_count": 1,
+                        },
+                        {
+                            "group": "congestion",
+                            "metric": "egr",
+                            "direction": "union",
+                            "source_file": source_file,
+                            "available": available,
+                            "value_count": value_count,
+                            "nonzero_count": nonzero_count,
+                        },
+                    ]
+                },
+                "feature_source": {"kind": "feature", "path": feature_source_path, "selector": ""},
+            }
+        ]
+
+    def _workspace(self, tmp_path, *, placement_state=SUCCESS, details=None):
+        workspace = _make_workspace(tmp_path, {"placement": placement_state})
+        if placement_state == SUCCESS:
+            _write_step_payload(
+                workspace.directory,
+                "placement_dreamplace",
+                [_metric("probe_metric", 1.0)],
+                details=details,
+            )
+        return workspace
+
+    def test_reads_persisted_place_map_metrics(self, tmp_path):
+        workspace = self._workspace(tmp_path, details=self._detail())
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count == 8
+        assert inputs.egr_overflowed_gcell_count == 2
+        assert (
+            inputs.egr_grid_source_path == "feature/egr_congestion_map/place_egr_union_overflow.csv"
+        )
+
+    def test_falls_back_to_feature_source_when_map_source_file_empty(self, tmp_path):
+        workspace = self._workspace(tmp_path, details=self._detail(source_file=""))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count == 8
+        assert inputs.egr_overflowed_gcell_count == 2
+        assert inputs.egr_grid_source_path == "feature/placement.map.json"
+
+    def test_consumes_metrics_emitted_by_placement_extractor_without_rereading_csv(self, tmp_path):
+        from chipcompiler.data import OriginDesign, StepEnum, Workspace
+        from chipcompiler.tools.ecc.builder import build_step, build_step_space
+        from chipcompiler.tools.ecc.metrics import build_metrics_placement
+
+        workspace_stub = _make_workspace(tmp_path, {"placement": SUCCESS})
+        ws_root = Path(workspace_stub.directory)
+        real_ws = Workspace(directory=ws_root, design=OriginDesign(name="gcd", top_module="gcd"))
+        step = build_step(
+            workspace=real_ws,
+            step_name=StepEnum.PLACEMENT.value,
+            step_directory=ws_root / "placement_dreamplace",
+            input_def=ws_root / "input.def",
+            input_verilog=ws_root / "input.v",
+        )
+        build_step_space(step)
+        assert step.feature.dir is not None
+        assert step.feature.map is not None
+        csv_dir = step.feature.dir / "egr_congestion_map"
+        csv_dir.mkdir(parents=True, exist_ok=True)
+        egr_csv = csv_dir / "place_egr_union_overflow.csv"
+        egr_csv.write_text("0,0,3,0\n0,1,0,0\n", encoding="utf-8")
+        step.feature.map.write_text(
+            json.dumps(
+                {
+                    "Congestion": {
+                        "map": {"egr": {"union": str(egr_csv)}},
+                        "overflow": {"total": {"union": 4}, "max": {"union": 3}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert build_metrics_placement(real_ws, step) is not None
+        # Prove loader relies strictly on persisted qor_metrics.json stats, not the CSV file.
+        egr_csv.unlink()
+
+        inputs: Any = load_workspace_qor_inputs(workspace_stub)
+        assert inputs.egr_gcell_count == 8
+        assert inputs.egr_overflowed_gcell_count == 2
+        assert inputs.egr_grid_source_path is not None
+        assert inputs.egr_grid_source_path.endswith("place_egr_union_overflow.csv")
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"available": False},
+            {"value_count": 0},
+            {"nonzero_count": -1},
+            {"nonzero_count": 9, "value_count": 8},
+            {"value_count": True},
+            {"nonzero_count": True},
+        ],
+    )
+    def test_invalid_or_unavailable_persisted_stats_leave_grid_unknown(self, tmp_path, overrides):
+        workspace = self._workspace(tmp_path, details=self._detail(**overrides))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count is None
+        assert inputs.egr_overflowed_gcell_count is None
+
+    def test_missing_place_map_detail_leaves_grid_unknown(self, tmp_path):
+        inputs: Any = load_workspace_qor_inputs(_make_workspace(tmp_path, {"placement": SUCCESS}))
+        assert inputs.egr_gcell_count is None
+        assert inputs.egr_overflowed_gcell_count is None
+
+    def test_non_success_placement_leaves_grid_unknown(self, tmp_path):
+        workspace = self._workspace(tmp_path, placement_state="Unstart")
+        _write_step_payload(
+            workspace.directory,
+            "placement_dreamplace",
+            [_metric("probe_metric", 1.0)],
+            details=self._detail(),
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count is None
+        assert inputs.egr_overflowed_gcell_count is None

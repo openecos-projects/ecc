@@ -5,12 +5,13 @@ are audit metadata attached to every feature record, not code structure.
 """
 
 
-def _feature(formula, classification, semantic_class, inputs):
+def _feature(formula, classification, semantic_class, inputs, unit="ratio"):
     return {
         "formula": formula,
         "classification": classification,
         "semantic_class": semantic_class,
         "input_metric_ids": inputs,
+        "unit": unit,
     }
 
 
@@ -117,6 +118,58 @@ FEATURE_REGISTRY = {
     ),
 }
 
+# Published-only observability features (report ``supplementary_features``).
+# They are never read by dimension scoring, gating, evidence, or diagnosis,
+# so adding or computing them cannot change existing scores.
+SUPPLEMENTARY_FEATURE_REGISTRY = {
+    "F_PL_EGR_OVERFLOW_GCELL_FRAC": _feature(
+        "count(GCells with union overflow > 0) / count(GCells) from the placement EGR map",
+        "DERIVED_ENGINEERING_FEATURE",
+        "egr_overflow_gcell_fraction",
+        ["place_congestion_egr_overflow_total"],
+    ),
+    "F_STA_SETUP_TNS": _feature(
+        "sta_setup_tns",
+        "EXACT_TRANSFORMATION",
+        "total_negative_slack",
+        ["sta_setup_tns"],
+        unit="ns",
+    ),
+    "F_STA_HOLD_TNS": _feature(
+        "sta_hold_tns",
+        "EXACT_TRANSFORMATION",
+        "total_negative_slack",
+        ["sta_hold_tns"],
+        unit="ns",
+    ),
+    "F_STA_SETUP_TNS_NORM": _feature(
+        "sta_setup_tns / Tclk",
+        "DERIVED_ENGINEERING_FEATURE",
+        "normalized_total_negative_slack",
+        ["sta_setup_tns"],
+    ),
+    "F_STA_SETUP_FEP": _feature(
+        "sta_setup_violation_count",
+        "EXACT_TRANSFORMATION",
+        "failing_endpoint_count",
+        ["sta_setup_violation_count"],
+        unit="count",
+    ),
+    "F_STA_HOLD_FEP": _feature(
+        "sta_hold_violation_count",
+        "EXACT_TRANSFORMATION",
+        "failing_endpoint_count",
+        ["sta_hold_violation_count"],
+        unit="count",
+    ),
+    "F_STA_HOLD_HEADROOM": _feature(
+        "sta_hold_wns_ns / Tclk",
+        "DERIVED_ENGINEERING_FEATURE",
+        "normalized_hold_margin",
+        ["sta_hold_wns"],
+    ),
+}
+
 
 def make_record(
     feature_id,
@@ -130,11 +183,11 @@ def make_record(
     """Build a FeatureRecord from the registry entry."""
     from chipcompiler.analysis.qor.models import FeatureRecord
 
-    entry = FEATURE_REGISTRY[feature_id]
+    entry = FEATURE_REGISTRY.get(feature_id) or SUPPLEMENTARY_FEATURE_REGISTRY[feature_id]
     return FeatureRecord(
         feature_id=feature_id,
         value=value,
-        unit="ratio",
+        unit=entry["unit"],
         formula=entry["formula"],
         classification=entry["classification"],
         semantic_class=entry["semantic_class"],

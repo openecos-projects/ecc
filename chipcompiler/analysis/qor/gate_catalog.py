@@ -8,6 +8,7 @@ from chipcompiler.data import StepEnum
 QOR_STEP_GATE_IDS = {
     StepEnum.DRC.value: ("qor.drc.clean",),
     StepEnum.LVS.value: ("qor.lvs.clean",),
+    StepEnum.ANTENNA_CHECK.value: ("qor.antenna.clean",),
     StepEnum.RCX.value: (
         "qor.rcx.corner_coverage",
         "qor.rcx.spef_parse_health",
@@ -15,12 +16,38 @@ QOR_STEP_GATE_IDS = {
     StepEnum.STA.value: (
         "qor.sta.setup_closed",
         "qor.sta.hold_closed",
+        "qor.sta.drv_clean",
     ),
     StepEnum.HARDEN.value: (
         "qor.mpc.minimum_area",
         "qor.mpc.maximum_area",
     ),
 }
+
+
+# Step gates that always emit advisory warnings rather than blocking tapeout export
+# (e.g. STA DRV closure until #230 physical DRV repair is wired into flows).
+STEP_GATE_WARN_ALWAYS = frozenset({"qor.sta.drv_clean"})
+# Step gates that warn while their evidence is unavailable (but still block on
+# failure): a PDK without antenna rules analyses 0 nets/pins, which is unverified.
+STEP_GATE_WARN_WHEN_UNAVAILABLE = frozenset({"qor.antenna.clean"})
+
+
+def step_gate_blocking(gate_id: str) -> bool:
+    """Return whether failing ``gate_id`` blocks tapeout export."""
+    return gate_id not in STEP_GATE_WARN_ALWAYS
+
+
+def step_gate_policy(gate_id: str, state: str, *, blocking: bool | None = None) -> str:
+    """Return the checklist policy (``warn`` or ``block``) for a step QoR gate."""
+    resolved_blocking = step_gate_blocking(gate_id) if blocking is None else blocking
+    if (
+        not resolved_blocking
+        or gate_id in STEP_GATE_WARN_ALWAYS
+        or (gate_id in STEP_GATE_WARN_WHEN_UNAVAILABLE and state == "unavailable")
+    ):
+        return "warn"
+    return "block"
 
 
 @dataclass(frozen=True)
@@ -34,6 +61,12 @@ class WorkspaceGateSpec:
     qor_gate_ids: tuple[str, ...] = ()
     tns_metric: str | None = None
     nvp_metric: str | None = None
+    # Metrics that must all be > 0 for a zero count to mean verified (vacuous-check guard).
+    coverage_metrics: tuple[str, ...] = ()
+    # Evaluated only when the flow contains this step (older flows lack it).
+    only_if_in_flow: bool = False
+    # True when failure or missing evidence blocks workspace feasibility/export.
+    blocks_tapeout: bool = True
 
 
 # Workspace feasibility may split an aggregate step gate into scoring aspects.
@@ -52,6 +85,15 @@ WORKSPACE_GATES = (
         "lvs",
         "lvs_count",
         ("qor.lvs.clean",),
+    ),
+    WorkspaceGateSpec(
+        "GATE_ANTENNA",
+        "ANTENNA",
+        StepEnum.ANTENNA_CHECK.value,
+        "antenna_violation_count",
+        ("qor.antenna.clean",),
+        coverage_metrics=("antenna_signal_net_count", "antenna_gate_pin_count"),
+        only_if_in_flow=True,
     ),
     WorkspaceGateSpec(
         "GATE_SETUP_SLACK",
@@ -86,6 +128,30 @@ WORKSPACE_GATES = (
         ("qor.sta.hold_closed",),
     ),
     WorkspaceGateSpec(
+        "GATE_MAX_TRANSITION",
+        "STA",
+        "sta",
+        "sta_max_transition_violation_count",
+        ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
+    ),
+    WorkspaceGateSpec(
+        "GATE_MAX_CAPACITANCE",
+        "STA",
+        "sta",
+        "sta_max_capacitance_violation_count",
+        ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
+    ),
+    WorkspaceGateSpec(
+        "GATE_MAX_FANOUT",
+        "STA",
+        "sta",
+        "sta_max_fanout_violation_count",
+        ("qor.sta.drv_clean",),
+        blocks_tapeout=False,
+    ),
+    WorkspaceGateSpec(
         "GATE_HARDEN_ARTIFACTS",
         "HARDEN",
         "harden",
@@ -101,3 +167,13 @@ WORKSPACE_GATE_ALIASES = {
     gate_id: tuple(spec.id for spec in WORKSPACE_GATES if gate_id in spec.qor_gate_ids)
     for gate_id in _QOR_GATE_IDS
 }
+
+
+def gate_metric_ids() -> frozenset[str]:
+    """Metric ids that feed a workspace gate (value, TNS, violation and coverage counts)."""
+    return frozenset(
+        metric_id
+        for spec in WORKSPACE_GATES
+        for metric_id in (spec.metric_id, spec.tns_metric, spec.nvp_metric, *spec.coverage_metrics)
+        if metric_id
+    )

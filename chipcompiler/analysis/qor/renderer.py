@@ -45,9 +45,13 @@ def render(analysis, inputs=None) -> str:
     )
     lines.append(f"  EVIDENCE STATE     : {evidence.state} [{evidence_detail}]")
 
+    provisional = " (provisional)" if summary.band_provisional else ""
+    coverage = (
+        f", Coverage: {_fmt(_pct(summary.coverage))}%" if summary.coverage is not None else ""
+    )
     lines.append(
         f"  QoR COMPOSITE      : {_fmt(summary.score)} / 100 "
-        f"(Status: {summary.status}, Profile: {summary.profile})"
+        f"(Status: {summary.status}{provisional}, Profile: {summary.profile}{coverage})"
     )
     for warning in analysis.config_warnings:
         lines.append(f"  CONFIG WARNING     : {warning}")
@@ -111,14 +115,27 @@ def render(analysis, inputs=None) -> str:
 
 
 def _feasibility_line(feasibility) -> str:
+    blocking = [gate for gate in feasibility.gates if gate.blocks_tapeout]
     if feasibility.status == "PASS":
-        return "PASS [All 7 Physical Signoff Gates Clean]"
-    failed = [gate.id for gate in feasibility.gates if gate.state == "failed"]
+        advisory_failed = [
+            gate.id
+            for gate in feasibility.gates
+            if not gate.blocks_tapeout and gate.state == "failed"
+        ]
+        if advisory_failed:
+            return (
+                f"PASS [All {len(blocking)} Blocking Signoff Gates Clean; "
+                f"Advisory warnings: {', '.join(advisory_failed)}]"
+            )
+        if any(not gate.blocks_tapeout and gate.state != "passed" for gate in feasibility.gates):
+            return f"PASS [All {len(blocking)} Blocking Signoff Gates Clean]"
+        return f"PASS [All {len(feasibility.gates)} Physical Signoff Gates Clean]"
+    failed = [gate.id for gate in blocking if gate.state == "failed"]
     if failed:
         return f"PHYSICAL_FAIL [Failed gates: {', '.join(failed)}]"
     unverified = [
-        f"{gate.id}({gate.availability})"
-        for gate in feasibility.gates
+        f"{gate.id}({gate.availability}{': ' + gate.reason if gate.reason else ''})"
+        for gate in blocking
         if gate.state == "unavailable"
     ]
     return f"{feasibility.status} [Gates awaiting evidence: {', '.join(unverified) or 'none'}]"
@@ -161,6 +178,16 @@ def _area_note(analysis, inputs):
     return f"(Core Util: {utilization * 100:.1f}%)"
 
 
+def _fmt_power(value_uw):
+    """Format a power in microwatts with an auto-scaled unit (uW, mW or W)."""
+    magnitude = abs(value_uw)
+    if magnitude >= 1e6:
+        return f"{value_uw / 1e6:.3f}W"
+    if magnitude >= 1e3:
+        return f"{value_uw / 1e3:.3f}mW"
+    return f"{value_uw:.2f}µW"
+
+
 def _power_note(analysis, inputs):
     observation = getattr(analysis, "power", None)
     total = getattr(observation, "total_uw", None)
@@ -171,8 +198,8 @@ def _power_note(analysis, inputs):
         budget = inputs.power_budget_uw
     if total is not None:
         if budget is not None:
-            return f"(Ptotal: {_fmt(total / 1e6, 3)}W of {_fmt(budget / 1e6, 3)}W)"
-        return f"(Ptotal: {_fmt(total / 1e6, 3)}W; no budget declared)"
+            return f"(Ptotal: {_fmt_power(total)} of {_fmt_power(budget)})"
+        return f"(Ptotal: {_fmt_power(total)}; no budget declared)"
     if budget is None:
         if observation is None and inputs is None:
             return "(UNKNOWN)"

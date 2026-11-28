@@ -73,7 +73,8 @@ def _gate_magnitude(gate, inputs):
 
 def _gate_diagnosis(gate, inputs) -> Diagnosis:
     magnitude = _gate_magnitude(gate, inputs)
-    severity = 0.80 + 0.20 * magnitude
+    blocking = gate.blocks_tapeout
+    severity = 0.80 + 0.20 * magnitude if blocking else 0.50 + 0.25 * magnitude
     support = [
         metric
         for metric in (_supporting(inputs, metric_id) for metric_id in gate.metrics)
@@ -93,7 +94,7 @@ def _gate_diagnosis(gate, inputs) -> Diagnosis:
             "adjustments correlated with slack recovery."
         )
         validation = "Rerun STA after implementation changes to confirm slack >= 0."
-    else:
+    elif blocking:
         interpretation = (
             f"{gate.stage} signoff reports {numeric_support:g} violation(s); "
             "tapeout feasibility is blocked."
@@ -105,9 +106,21 @@ def _gate_diagnosis(gate, inputs) -> Diagnosis:
             "of the responsible implementation step."
         )
         validation = f"Rerun the {gate.stage} signoff check and confirm a clean result."
+    else:
+        interpretation = (
+            f"{gate.stage} advisory check reports {numeric_support:g} violation(s); "
+            "tapeout export is not blocked."
+            if numeric_support is not None
+            else f"{gate.stage} advisory gate reported violations; tapeout export is not blocked."
+        )
+        hypothesis = (
+            f"Inspect the {gate.stage} violation reports and evaluate sizing/buffering "
+            "adjustments for design-rule cleanup."
+        )
+        validation = f"Rerun {gate.stage} after optimization to confirm violations are resolved."
     return Diagnosis(
         diagnosis_id=f"diag.signoff.{gate.id.lower()}",
-        state="FAIL",
+        state="FAIL" if blocking else "WATCH",
         severity=severity,
         diagnosis_confidence="HIGH",
         trigger_features=[],
@@ -117,7 +130,7 @@ def _gate_diagnosis(gate, inputs) -> Diagnosis:
         interventions=[
             iv.make(
                 f"Intervention hypothesis: {hypothesis}",
-                iv.TIER_1,
+                iv.TIER_1 if blocking else iv.TIER_2,
                 confidence="MEDIUM",
                 validation_procedure=validation,
             )
@@ -166,10 +179,12 @@ def _bottleneck_diagnosis(dimension) -> Diagnosis:
 _DIMENSION_KNOBS = {
     "interconnect": {
         "hypothesis": (
-            "evaluate increased router search depth correlated with wirelength reduction."
+            "evaluate routability-driven placement correlated with congestion reduction."
         ),
-        "knob": "route.dr_search_depth",
-        "validation": "Requires a trial reroute to confirm wirelength reduction.",
+        "knob": "place.routability_opt",
+        "validation": (
+            "Requires a trial placement and reroute to confirm congestion and wirelength."
+        ),
         "confidence": "LOW",
     },
     "area": {

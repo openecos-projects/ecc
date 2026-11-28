@@ -92,3 +92,52 @@ def test_configured_sta_directories_follow_default_five_signoff_corners(tmp_path
         "MIN_m40/Cbest",
         "MIN_m40/RCbest",
     ]
+
+
+def test_qor_metrics_conflicting_duplicate_is_unknown_for_that_metric_only(tmp_path):
+    path = tmp_path / "analysis" / "qor_metrics.json"
+    _write(
+        path,
+        {
+            "schema_version": 3,
+            "metrics": [
+                {"id": "drc_count", "value": 0},
+                {"id": "drc_count", "value": 999},
+                {"id": "lvs_count", "value": 0},
+            ],
+        },
+    )
+    metrics = QorMetrics(path)
+
+    value, error = metrics.number("drc_count")
+    assert value is None
+    assert error == "qor_metrics.json contains conflicting duplicate metric id drc_count"
+    assert metrics.number("lvs_count") == (0.0, None)
+
+
+def test_qor_metrics_identical_duplicate_is_accepted(tmp_path):
+    path = tmp_path / "analysis" / "qor_metrics.json"
+    _write(
+        path,
+        {
+            "schema_version": 3,
+            "metrics": [{"id": "drc_count", "value": 0}, {"id": "drc_count", "value": 0}],
+        },
+    )
+
+    assert QorMetrics(path).number("drc_count") == (0.0, None)
+
+
+def test_qor_metrics_bool_vs_int_counts_as_conflict(tmp_path):
+    path = tmp_path / "analysis" / "qor_metrics.json"
+    _write(
+        path,
+        {
+            "schema_version": 3,
+            "metrics": [{"id": "drc_count", "value": 0}, {"id": "drc_count", "value": False}],
+        },
+    )
+
+    value, error = QorMetrics(path).number("drc_count")
+    assert value is None
+    assert error == "qor_metrics.json contains conflicting duplicate metric id drc_count"

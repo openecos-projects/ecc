@@ -6,6 +6,9 @@ signoff feasibility: a failing design still reports continuous quality
 coordinates while the scalar projection is vetoed to zero elsewhere.
 """
 
+import dataclasses
+from math import isfinite
+
 from chipcompiler.analysis.qor.calibration import (
     GUARDBAND_FRACTION,
     OVER_PROVISION_FRACTION,
@@ -17,14 +20,13 @@ from chipcompiler.analysis.qor.calibration import (
     TIMING_FAIL_FRACTION,
     W_CTS_IMBALANCE,
     W_PVT_DISPERSION,
+    CalibrationError,
     clamp01,
     psi_cost,
     psi_target,
 )
 from chipcompiler.analysis.qor.compatibility import EXACT_COMPATIBLE
 from chipcompiler.analysis.qor.models import QorDimension
-
-_QUALITY_DIMENSIONS = ("timing", "interconnect", "area", "power", "robustness")
 
 
 def _quality_state(value):
@@ -120,6 +122,13 @@ def _robustness(bundle, inputs):
     candidates = [d for d in (bundle.pvt_setup_disp, bundle.pvt_hold_disp) if d is not None]
     pvt = max(candidates) if candidates else None
 
+    b_max = inputs.value("clock_path_max_buffer")
+    b_min = inputs.value("clock_path_min_buffer")
+    if b_max is not None and b_min is not None and b_min > b_max:
+        # Inconsistent CTS buffer counts (min > max): no defensible score.
+        pvt = None
+        imbalance = None
+
     contributors = []
     if imbalance is not None:
         contributors.append(W_CTS_IMBALANCE * imbalance)
@@ -144,9 +153,34 @@ def _robustness(bundle, inputs):
     )
 
 
+def _clamp_score(value: float) -> float:
+    return max(0.0, min(100.0, value))
+
+
 def evaluate_dimensions(bundle, inputs) -> dict:
     dimensions = {}
-    for builder in (_timing, _interconnect, _area, _power, _robustness):
-        dimension = builder(bundle, inputs)
+    for key, builder in (
+        ("timing", _timing),
+        ("interconnect", _interconnect),
+        ("area", _area),
+        ("power", _power),
+        ("robustness", _robustness),
+    ):
+        try:
+            dimension = builder(bundle, inputs)
+        except CalibrationError:
+            # Contain a bad calibration input to its own dimension (UNKNOWN)
+            # so one dimension cannot abort the whole QoR report.
+            dimension = QorDimension(key=key, value=None, state="UNKNOWN", features=[])
+        if dimension.value is not None:
+            if not isfinite(dimension.value):
+                dimension = QorDimension(
+                    key=key,
+                    value=None,
+                    state="UNKNOWN",
+                    features=dimension.features,
+                )
+            elif not 0.0 <= dimension.value <= 100.0:
+                dimension = dataclasses.replace(dimension, value=_clamp_score(dimension.value))
         dimensions[dimension.key] = dimension
     return dimensions
