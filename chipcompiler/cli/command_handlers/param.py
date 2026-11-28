@@ -13,7 +13,7 @@ from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult, OutputMode
 from chipcompiler.cli.project.config import find_config_path
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
-from chipcompiler.cli.project.params import validate_pdk_target
+from chipcompiler.cli.project.params import project_parameter_pdk, validate_pdk_target
 from chipcompiler.data.step_parameters import (
     is_step_scoped,
     parse_step_key,
@@ -92,7 +92,9 @@ def param_list(args, ctx: CommandContext) -> CommandResult:
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
     pdk = _project_pdk(ctx)
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
+    resolved, _ = resolve_parameters(
+        toml_overrides=toml_overrides, pdk=project_parameter_pdk(ctx.config)
+    )
     selected_step = str(getattr(args, "step", None) or "")
     show_all = bool(getattr(args, "all", False))
     preset = getattr(ctx.config, "flow_preset", "")
@@ -188,7 +190,9 @@ def param_show(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+    resolved, _ = resolve_parameters(
+        toml_overrides=toml_overrides, pdk=project_parameter_pdk(ctx.config)
+    )
     by_key = {r.key: r for r in resolved}
     rp = record_at_step(by_key, by_key[schema.param], step)
     value, source = rp.value, rp.source
@@ -377,7 +381,9 @@ def param_unset(args, ctx: CommandContext) -> CommandResult:
 
     if removed:
         toml_overrides, _ = _load_toml_overrides(ctx.project_dir)
-        resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+        resolved, _ = resolve_parameters(
+            toml_overrides=toml_overrides, pdk=project_parameter_pdk(ctx.config)
+        )
         restored = next(
             item for item in resolved if item.param == schema.param and item.step is None
         )
@@ -415,7 +421,9 @@ def param_diff(args, ctx: CommandContext) -> CommandResult:
         return CommandResult.err(
             [error_record("invalid_param_config", reason=e) for e in param_errors]
         )
-    resolved, _ = resolve_parameters(toml_overrides=toml_overrides, pdk=_project_pdk(ctx))
+    resolved, _ = resolve_parameters(
+        toml_overrides=toml_overrides, pdk=project_parameter_pdk(ctx.config)
+    )
 
     records = []
     for rp in resolved:

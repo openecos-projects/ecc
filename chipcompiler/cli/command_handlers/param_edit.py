@@ -174,6 +174,7 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
         _project_pdk,
     )
     from chipcompiler.cli.command_handlers.param_step_values import record_at_step
+    from chipcompiler.cli.project.params import project_parameter_pdk
     from chipcompiler.params import resolve_parameters
     from chipcompiler.rtl2gds import get_flow_builders
 
@@ -188,7 +189,9 @@ def project_rows(ctx: CommandContext) -> "list[ParamRow] | CommandResult":
     builder = get_flow_builders().get(getattr(ctx.config, "flow_preset", ""))
     in_flow = {str(step) for step, _tool, _state in builder()} if builder is not None else set()
     pdk = _project_pdk(ctx)
-    resolved, _errors = resolve_parameters(toml_overrides=toml_overrides, pdk=pdk)
+    resolved, _errors = resolve_parameters(
+        toml_overrides=toml_overrides, pdk=project_parameter_pdk(ctx.config)
+    )
     by_key = {item.key: item for item in resolved}
     rows = []
     for item in resolved:

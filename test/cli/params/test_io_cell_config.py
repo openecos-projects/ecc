@@ -119,3 +119,25 @@ def test_io_cell_mode_updates_displayed_pdn_defaults_and_preserves_explicit_mesh
     )
     record = plain_records(capsys.readouterr().out)[0]
     assert ast.literal_eval(record["value"]) == pdn_defaults("ics55", "io_cell")["stripe"]
+
+
+def test_project_mesh_uses_configured_pdk_root(
+    ready_project, tmp_path, monkeypatch, capsys, plain_records
+):
+    config = ready_project / "ecc.toml"
+    raw = tomllib.loads(config.read_text())
+    profile = tmp_path / "pdk" / "ecc-configs" / "ecc" / "floorplan_ecc.json"
+    profile.parent.mkdir(parents=True)
+    profile.write_text(json.dumps({"pdn_generator": {"stripe": []}}))
+    config.write_text(config.read_text().replace(raw["pdk"]["root"], "../pdk"))
+    environment = tmp_path / "other"
+    environment.mkdir()
+    (environment / "VERSION").write_text("other-pdk-v1\n")
+    monkeypatch.setenv("ECC_PDK_ROOT", str(environment))
+
+    project = ["--project", str(ready_project), "--plain"]
+    assert cli_main.run(["param", "show", "design.frequency_mhz", *project]) == 0
+    capsys.readouterr()
+    assert cli_main.run(["param", "show", "floorplan.pdn_generator.stripe", *project]) == 0
+    record = plain_records(capsys.readouterr().out)[0]
+    assert (record["default"], record["value"], record["source"]) == ("[]", "[]", "default")

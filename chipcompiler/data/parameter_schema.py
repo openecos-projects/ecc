@@ -13,6 +13,7 @@ from chipcompiler.data.config_params import CONFIG_PARAM_SCHEMAS
 from chipcompiler.data.config_params.common import ConfigTarget, ParamSchema, PdkVariant
 from chipcompiler.data.config_params.floorplan import pdn_defaults
 from chipcompiler.data.config_params.macro import SCHEMAS as MACRO_SCHEMAS
+from chipcompiler.data.pdk import PDK
 from chipcompiler.data.step_parameters import STEP_TABLE, is_step_scoped, parse_step_key, step_key
 
 _SEMANTIC_PARAM_REGISTRY: tuple[ParamSchema, ...] = (
@@ -389,22 +390,23 @@ class ResolvedParam:
 
 
 def resolve_parameters(
-    toml_overrides=None, cli_overrides=None, manifest_overrides=None, pdk: str | None = None
+    toml_overrides=None, cli_overrides=None, manifest_overrides=None, pdk: PDK | str | None = None
 ):
     layers = (
         (cli_overrides or {}, "cli"),
         (toml_overrides or {}, "ecc.toml"),
         (manifest_overrides or {}, "project.json"),
     )
+    pdk_name = pdk.name if isinstance(pdk, PDK) else pdk
     resolved, errors = [], []
     for schema in PARAM_REGISTRY:
-        default = schema.default_for(pdk)
-        found = _resolve_key(schema.param, schema, layers, pdk, errors)
+        default = schema.default_for(pdk_name)
+        found = _resolve_key(schema.param, schema, layers, pdk_name, errors)
         value, source = found if found is not None else (default, "default")
         resolved.append(ResolvedParam(schema.param, value, default, source, schema))
         # A step-scoped parameter also resolves each step value a layer sets.
         for step in schema.steps if is_step_scoped(schema) else ():
-            found = _resolve_key(step_key(step, schema.param), schema, layers, pdk, errors)
+            found = _resolve_key(step_key(step, schema.param), schema, layers, pdk_name, errors)
             if found is not None:
                 value, source = found
                 resolved.append(ResolvedParam(schema.param, value, default, source, schema, step))
