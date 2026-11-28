@@ -170,6 +170,38 @@ def test_geometry_only_steps_persist_the_settings_their_mode_forces(
     }
 
 
+def test_geometry_only_modes_disable_midplace_repair_session(
+    tmp_path, monkeypatch, make_ics55_parameters
+) -> None:
+    from dreamplace.Params import Params
+    from dreamplace.Placer import create_session
+
+    workspace = _workspace(tmp_path, make_ics55_parameters)
+    monkeypatch.setattr(builder.ecc_builder, "build_step_config", lambda *_: None)
+    monkeypatch.setattr(
+        builder,
+        "prepare_diff_opt_drive_table",
+        lambda _workspace, _step, params: params
+        | {"buffering_candidate_drive_strength_table": "generated.json"},
+    )
+    modes = {
+        StepEnum.MACRO_PLACEMENT.value: DreamplaceRunMode.MACRO_PLACEMENT,
+        StepEnum.LEGALIZATION.value: DreamplaceRunMode.LEGALIZATION,
+        SkippableStepEnum.TIMING_OPT.value: DreamplaceRunMode.LEGALIZATION,
+    }
+    for name, mode in modes.items():
+        step = _step(workspace, tmp_path, name)
+        builder.write_step_config(workspace, step)
+        module = DreamplaceModule(
+            workspace, step, None, tmp_path / "input.def", tmp_path / "input.v", None, None
+        )
+        params = module._build_params(Params, mode=mode)
+        assert not params.repair_buffering_midplace_enable
+        assert not params.repair_buffering_enable
+        session = create_session(SimpleNamespace(params=params))
+        assert type(session).__name__ != "MidplaceRepairSession"
+
+
 def _forced_keys(mode: DreamplaceRunMode) -> set[str]:
     return {*GEOMETRY_ONLY_CONFIG, *MODE_FLAGS[mode]}
 
