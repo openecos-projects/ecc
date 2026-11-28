@@ -132,29 +132,11 @@ def test_close_resets_native_data_without_flow_exit():
     assert module.ecc.calls == [("reset_data", (), {})]
 
 
-def test_init_rcx_passes_pdk_when_configured():
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-
-    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="ics55") is True
-
-    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
-
-
-def test_init_rcx_defaults_to_ics55_pdk():
+def test_init_rcx_uses_configured_process_inputs():
     module = ECCToolsModule.__new__(ECCToolsModule)
     module.ecc = FakeEcc()
 
     assert module.init_rcx(config="/tmp/rcx_ecc.json") is True
-
-    assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json", "pdk": "ics55"}]
-
-
-def test_init_rcx_omits_explicit_empty_pdk_for_backward_compatibility():
-    module = ECCToolsModule.__new__(ECCToolsModule)
-    module.ecc = FakeEcc()
-
-    assert module.init_rcx(config="/tmp/rcx_ecc.json", pdk="") is True
 
     assert module.ecc.calls == [{"config": "/tmp/rcx_ecc.json"}]
 
