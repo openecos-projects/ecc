@@ -187,6 +187,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
     tmp_path,
 ):
     workspace: Any = Workspace(directory=tmp_path)
+    workspace.parameters.data["frequency_max"] = 500
     workspace.flow.data = {
         "schema_version": 3,
         "steps": [
@@ -238,6 +239,7 @@ def test_engine_flow_persists_run_facts_before_refreshing_qor_analysis(
             "availability": "available",
             "sha256": sha256(sdc_contents.encode("utf-8")).hexdigest(),
             "size_bytes": len(sdc_contents.encode("utf-8")),
+            "target_frequency_mhz": 500.0,
         }
     }
 

@@ -171,6 +171,56 @@ function buildStaSection(rows) {
   return lines;
 }
 
+function buildFrequencySection(rows) {
+  if (!rows.length) return [];
+  const byMetric = new Map(rows.map((row) => [row.metric, row]));
+  const evidence = rows.find((row) => row.evidence_mode === 'fixture') ? ' [FIXTURE]' : '';
+  const lines = [
+    `#### Recommended frequency${evidence}`,
+    '',
+    '| Metric | Value | Status | Detail |',
+    '| --- | --- | --- | --- |',
+  ];
+  const selected = [
+    ['target_frequency_mhz', 'Target'],
+    ['pll_output_frequency_mhz', 'PLL output'],
+    ['achieved_fmax_mhz', 'Achieved Fmax'],
+    ['verified_frequency_mhz', 'Verified'],
+    ['guard_limit_mhz', 'Guardband limit'],
+    ['recommended_frequency_mhz', 'Recommended'],
+  ];
+  for (const [metric, label] of selected) {
+    const row = byMetric.get(metric);
+    if (!row) continue;
+    const details = [];
+    if (metric === 'pll_output_frequency_mhz' && row.value) {
+      const mode = byMetric.get('mode');
+      if (mode && mode.value === 'bypass') {
+        details.push('bypass');
+      } else {
+        const n = byMetric.get('n');
+        const select = byMetric.get('select');
+        const od = byMetric.get('od_code');
+        const vco = byMetric.get('vco_mhz');
+        if (n && n.value) details.push(`N=${n.value}`);
+        if (select && select.value) details.push(`s=${select.value}`);
+        if (od && od.value) details.push(`OD=${od.value}`);
+        if (vco && vco.value) details.push(`VCO=${vco.value} MHz`);
+      }
+    }
+    if (row.detail) details.push(row.detail);
+    if (metric !== 'pll_output_frequency_mhz' && row.run_id) {
+      details.push(`run ${row.run_id}`);
+    }
+    lines.push(
+      `| ${label} | ${formatValue(row)} | ${sanitizeCell(row.status || 'unavailable')} | ` +
+        `${sanitizeCell(details.join('; '))} |`
+    );
+  }
+  lines.push('');
+  return lines;
+}
+
 function loadReport(design) {
   const directory = `${artifactRoot}/${artifactPrefix}${design}`;
   return {
@@ -179,6 +229,7 @@ function loadReport(design) {
     area: readCsv(directory, 'area.csv'),
     drc: readCsv(directory, 'drc.csv'),
     sta: readCsv(directory, 'sta.csv'),
+    frequency: readCsv(directory, 'frequency.csv'),
   };
 }
 
@@ -196,13 +247,24 @@ function buildOverviewRow(report) {
 
 function buildDesignDetails(report) {
   const lines = ['<details>', `<summary>${sanitizeHtml(report.design)}</summary>`, ''];
-  const hasData = report.manifest || report.area.length || report.drc.length || report.sta.length;
+  const hasData =
+    report.manifest ||
+    report.area.length ||
+    report.drc.length ||
+    report.sta.length ||
+    report.frequency.length;
   if (!hasData) {
     lines.push('No CSV artifact was produced by this E2E job.', '', '</details>', '');
     return lines;
   }
 
-  lines.push(...buildAreaSection(report.area), ...buildStaSection(report.sta), '</details>', '');
+  lines.push(
+    ...buildAreaSection(report.area),
+    ...buildStaSection(report.sta),
+    ...buildFrequencySection(report.frequency),
+    '</details>',
+    ''
+  );
   return lines;
 }
 

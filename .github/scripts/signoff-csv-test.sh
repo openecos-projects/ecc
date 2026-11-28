@@ -116,6 +116,17 @@ printf -v expected_summary '%s\n' \
   '| `Overall` | `-` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
   '| `MAX_125` | `RCworst` | `1.2` ns | `0.0` ns | `0.15` ns | `0.0` ns |' \
   '' \
+  '#### Recommended frequency [FIXTURE]' \
+  '' \
+  '| Metric | Value | Status | Detail |' \
+  '| --- | --- | --- | --- |' \
+  '| Target | `200` MHz | pass |  |' \
+  '| PLL output | `180` MHz | pass | N=18; s=1; OD=10; VCO=720 MHz |' \
+  '| Achieved Fmax | `195.5` MHz | pass |  |' \
+  '| Verified | `190` MHz | pass | run v190 |' \
+  '| Guardband limit | `180.5` MHz | pass |  |' \
+  '| Recommended | `180` MHz | pass | g_f=0.05; run g180 |' \
+  '' \
   '</details>' \
   '' \
   '<details>' \
@@ -224,5 +235,84 @@ mutate_json "${ws}/home/flow.json" \
 check_export "indexed step directories pass" "${ws}" pass
 grep -q '^synthesis,synthesis_cell_area,4200.0,um^2,01_synthesis_yosys/analysis/qor_metrics.json,true$' \
   "${ws}/out/area.csv" || fail "indexed synthesis area is missing from the summary CSV"
+
+# 13. Frequency: unknown higher evidence cannot promote a lower candidate.
+ws="${tmp}/frequency-higher-unknown"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/frequency.json" \
+  '(.runs[] | select(.run_id == "v200") | .status) = "unknown"'
+check_export "frequency higher unknown keeps the mandatory gate green" "${ws}" pass
+grep -Fq 'frequency,recommended_frequency_mhz,,MHz,incomplete_evidence,higher_candidate_unknown,,fixture' \
+  "${ws}/out/frequency.csv" || fail "frequency higher unknown produced a recommendation"
+jq -e '.gate == "PASS" and .checks.frequency.status == "incomplete_evidence"' \
+  "${ws}/out/signoff_csv_manifest.json" >/dev/null || fail "frequency higher unknown manifest is inconsistent"
+pass "frequency higher unknown is report-only and fail-closed"
+
+# 14. Frequency: missing native target stays unavailable in CSV and Markdown.
+ws="${tmp}/frequency-target-missing"
+fresh_workspace "${ws}"
+mutate_json "${ws}/sta_ecc/analysis/qor_metrics.json" \
+  '.metrics = [.metrics[] | select(.id != "sta_target_frequency_mhz")]'
+check_export "frequency missing native target keeps the mandatory gate green" "${ws}" pass
+grep -Fq 'frequency,target_frequency_mhz,,MHz,unavailable,native_target_unavailable,,fixture' \
+  "${ws}/out/frequency.csv" || fail "missing target was rendered as available"
+grep -Fq 'frequency,recommended_frequency_mhz,,MHz,unavailable,target_unavailable,,fixture' \
+  "${ws}/out/frequency.csv" || fail "missing target produced a recommendation"
+mkdir -p "${ws}/signoff-artifacts"
+ln -s "${ws}/out" "${ws}/signoff-artifacts/e2e-signoff-csv-gcd"
+(
+  cd "${ws}"
+  EXPECTED_DESIGNS='["gcd"]' GITHUB_STEP_SUMMARY="${tmp}/frequency-target-missing.md" node "${summary_js}"
+)
+grep -Fqx '| Target | N/A | unavailable | native_target_unavailable |' \
+  "${tmp}/frequency-target-missing.md" || fail "renderer did not preserve unavailable target"
+grep -Fqx '| Recommended | N/A | unavailable | target_unavailable |' \
+  "${tmp}/frequency-target-missing.md" || fail "renderer did not preserve unavailable recommendation"
+grep -Fqx '#### Recommended frequency [FIXTURE]' \
+  "${tmp}/frequency-target-missing.md" || fail "renderer omitted fixture evidence label"
+pass "frequency target and recommendation remain unavailable end to end"
+
+# 15. Frequency: absent input produces an unavailable report, not a gate failure.
+ws="${tmp}/frequency-input-missing"
+fresh_workspace "${ws}"
+rm "${ws}/home/frequency.json"
+check_export "frequency missing input keeps the mandatory gate green" "${ws}" pass
+grep -Fq 'frequency,recommended_frequency_mhz,,MHz,unavailable,frequency_input_missing,,' \
+  "${ws}/out/frequency.csv" || fail "missing frequency input did not stay unavailable"
+jq -e '.gate == "PASS" and .checks.frequency.status == "unavailable" and .checks.frequency.evidence_mode == ""' \
+  "${ws}/out/signoff_csv_manifest.json" >/dev/null || fail "missing frequency input manifest is inconsistent"
+pass "frequency missing input is explicit and report-only"
+
+# 16. Frequency: malformed input produces an unavailable report, not a gate failure.
+ws="${tmp}/frequency-input-invalid"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/frequency.json" '.params.pll_bypass = 1'
+check_export "frequency invalid input keeps the mandatory gate green" "${ws}" pass
+grep -Fq 'frequency,recommended_frequency_mhz,,MHz,unavailable,invalid_frequency_input,,' \
+  "${ws}/out/frequency.csv" || fail "invalid frequency input did not stay unavailable"
+pass "frequency invalid input is explicit and report-only"
+
+# 17. Frequency: unknown guardband evidence blocks a lower recommendation.
+ws="${tmp}/frequency-guardband-unknown"
+fresh_workspace "${ws}"
+mutate_json "${ws}/home/frequency.json" \
+  '(.runs[] | select(.run_id == "g180") | .status) = "unknown"'
+check_export "frequency guardband unknown keeps the mandatory gate green" "${ws}" pass
+grep -Fq 'frequency,verified_frequency_mhz,190,MHz,pass,,v190,fixture' \
+  "${ws}/out/frequency.csv" || fail "guardband unknown discarded the verified candidate"
+grep -Fq 'frequency,recommended_frequency_mhz,,MHz,incomplete_evidence,guardband_higher_unknown,,fixture' \
+  "${ws}/out/frequency.csv" || fail "guardband unknown produced a recommendation"
+pass "frequency guardband unknown is fail-closed"
+
+# 18. Repeated exports of one workspace must be byte-identical.
+ws="${tmp}/frequency-deterministic"
+fresh_workspace "${ws}"
+check_export "frequency deterministic first export passes" "${ws}" pass
+cp -a "${ws}/out" "${tmp}/frequency-deterministic-first"
+check_export "frequency deterministic second export passes" "${ws}" pass
+if ! diff -ru --exclude=export.log "${tmp}/frequency-deterministic-first" "${ws}/out"; then
+  fail "repeated signoff CSV exports differ"
+fi
+pass "repeated signoff CSV exports are byte-identical"
 
 echo "all signoff CSV negative-path checks passed"

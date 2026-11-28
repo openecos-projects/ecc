@@ -18,6 +18,7 @@ from chipcompiler.data import (
     WorkspaceStep,
 )
 from chipcompiler.data.step import StepDirectories, recorded_step_directory
+from chipcompiler.data.workspace.sdc_inputs import clock_frequency
 from chipcompiler.tools.ecc.qor_detail_facts import database_fact_summary, lvs_detail_summary
 from chipcompiler.tools.ecc.sta_qor import (
     POST_SYNTHESIS_STA_CORNER,
@@ -2028,6 +2029,44 @@ def _run_feature_qor_records(step: WorkspaceStep) -> list[dict]:
     return records
 
 
+def _sta_target_frequency_qor_record(step: WorkspaceStep) -> dict | None:
+    if step.name != StepEnum.STA.value:
+        return None
+    feature_path = getattr(step.feature, "step", None)
+    source_path = _relative_step_path(step, feature_path)
+    if feature_path is None or source_path is None:
+        return None
+    feature = json_read(feature_path)
+    constraints = feature.get("constraints") if isinstance(feature, dict) else None
+    sdc = constraints.get("sdc") if isinstance(constraints, dict) else None
+    if not isinstance(sdc, dict) or sdc.get("availability") != "available":
+        return None
+    try:
+        value = clock_frequency(sdc.get("target_frequency_mhz"))
+    except ValueError:
+        return None
+    return {
+        "id": "sta_target_frequency_mhz",
+        "display_name": "STA Target Frequency",
+        "value": value,
+        "unit": "MHz",
+        "category": "timing",
+        "direction": "trend_only",
+        "scope": "all_configured_corners",
+        "corner": None,
+        "project_role": "final",
+        "step_role": "primary",
+        "analysis_group": "sta_frequency_margin",
+        "rating": {"gate": False, "score": False, "trend": True},
+        "confidence": "high",
+        "source": {
+            "kind": "feature",
+            "path": source_path,
+            "selector": "/constraints/sdc/target_frequency_mhz",
+        },
+    }
+
+
 def _timing_constraint_context(step: WorkspaceStep) -> dict | None:
     feature_path = getattr(step.feature, "step", None)
     source_path = _relative_step_path(step, feature_path)
@@ -2388,6 +2427,9 @@ def build_qor_metrics_payload(
             records.append(record)
         else:
             invalid_metric_source_ids.append(record["id"])
+    target_record = _sta_target_frequency_qor_record(step)
+    if target_record is not None:
+        records.append(target_record)
     records.sort(key=lambda record: record["id"])
     details = []
     invalid_detail_ids = []

@@ -6,6 +6,7 @@ workspace already produces:
 
 - `home/params.toml`
 - `home/flow.json`
+- `home/frequency.json` (optional recommended-frequency input)
 - `<step>/analysis/qor_metrics.json`
 - `<step>/analysis/qor_summary.json`
 - `sta_ecc/feature/<corner>/<rc_corner>/qor_summary.json`
@@ -14,8 +15,10 @@ workspace already produces:
 - the golden/gate netlists referenced by the selected LEC result
 
 The collector is implemented in shell (`export.sh`) with `jq`; the
-CI-only deterministic workspace fixture is `nix/scripts/signoff-csv-fixture.sh`
-and is exposed as the `.#signoff-csv-fixture` flake package.
+recommended-frequency consumer is the standard-library-only Python model
+`frequency_model.py`. The CI-only deterministic workspace fixture is
+`nix/scripts/signoff-csv-fixture.sh` and is exposed as the `.#signoff-csv-fixture`
+flake package.
 
 ## Exported views
 
@@ -26,6 +29,7 @@ and is exposed as the `.#signoff-csv-fixture` flake package.
 | `lec` | `lec.csv` | mandatory |
 | `harden` | `harden.csv` | mandatory |
 | `area` | `area.csv` | report |
+| `frequency` | `frequency.csv` | report |
 
 ## Scope and limitations
 
@@ -88,6 +92,67 @@ Includes Harden QoR metrics and the three final artifacts: `gds`, `lef`, `lib`.
 Collects `synthesis_cell_area`, `die_area`, `core_area`, and `core_utilization`
 from `synthesis`, `post_floorplan`, and `harden` outputs.
 
+### `frequency.csv`
+
+`kind,metric,value,unit,status,detail,run_id,evidence_mode`
+
+The compact report distinguishes native `target_frequency_mhz` and
+`achieved_fmax_mhz` from `verified_frequency_mhz`, `guard_limit_mhz`,
+`pll_output_frequency_mhz`, and `recommended_frequency_mhz`. Target comes from
+`sta_target_frequency_mhz`; achieved Fmax comes from `sta_frequency_mhz`. One
+must never be substituted for the other. Missing or duplicate native metrics
+are unavailable rather than zero or passing values.
+
+The optional `<workspace>/home/frequency.json` input has this shape:
+
+```json
+{
+  "schema_version": 1,
+  "kind": "frequency_run_results",
+  "design": "gcd",
+  "base_id": "design-base-v1",
+  "evidence_mode": "signoff",
+  "params": {
+    "pll_refclk_mhz": "20",
+    "pll_bypass": false,
+    "frequency_min_mhz": "150",
+    "frequency_max_mhz": "200",
+    "guardband_frequency_ratio": "0.05"
+  },
+  "runs": [
+    {
+      "candidate_mhz": "190",
+      "phase": "verification",
+      "run_id": "v190",
+      "base_id": "design-base-v1",
+      "status": "pass",
+      "coverage_status": "pass"
+    }
+  ]
+}
+```
+
+`design` must match the native STA QoR design identity, and every run must use
+the same non-empty `base_id` and a globally unique `run_id`. `evidence_mode` is
+`signoff` or `fixture`. A time-domain `guardband_time_ns` may replace
+`guardband_frequency_ratio`, but the two policies are mutually exclusive.
+Each run records only the terminal `status` and `coverage_status` for a
+`verification` or `guardband` candidate; this consumer does not re-audit the
+underlying signoff evidence.
+
+Candidates are scanned from high to low using exact rational PLL arithmetic.
+A completed failure permits trying the next lower candidate. A missing or
+unknown run, or unknown coverage, blocks promotion of a lower candidate. A
+recommendation requires a second, independently identified guardband run even
+when the guardband is zero. Missing or malformed input and unavailable native
+target data produce explicit `unavailable` rows; incomplete scans produce
+`incomplete_evidence`. Frequency remains report-only and does not change the
+mandatory STA/DRC/LEC/Harden gate.
+
+Fixture evidence is labeled `[FIXTURE]` in the GitHub Actions summary. Fixture
+runs validate only the consumer, CSV collector, and Markdown renderer; they do
+not demonstrate real EDA, hosted CI, production signoff, or silicon signoff.
+
 ## Fixture
 
 ```bash
@@ -106,4 +171,4 @@ bash nix/scripts/signoff_csv/export.sh \
 
 The command writes one CSV per selected check and
 `signoff_csv_manifest.json`. It returns non-zero only when a mandatory CSV is
-missing or failed; `area` is report-only.
+missing or failed; `area` and `frequency` are report-only.

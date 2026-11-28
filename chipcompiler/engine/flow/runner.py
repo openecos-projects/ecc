@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from copy import deepcopy
 from pathlib import Path
 
@@ -39,6 +40,7 @@ from chipcompiler.data.step import (
     next_step_index,
     recorded_step_directory,
 )
+from chipcompiler.data.workspace.sdc_inputs import clock_frequency
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.flow.completion import (
     finalize_interrupted_subflow as _finalize_interrupted_subflow,
@@ -520,11 +522,16 @@ class EngineFlow:
         if digest is None:
             return {"availability": "unreadable"}
         sha256, size_bytes = digest
-        return {
+        facts = {
             "availability": "available",
             "sha256": sha256,
             "size_bytes": size_bytes,
         }
+        with suppress(ValueError):
+            facts["target_frequency_mhz"] = clock_frequency(
+                self.workspace.parameters.data.get("frequency_max")
+            )
+        return facts
 
     def save_step_flow_facts(
         self,
