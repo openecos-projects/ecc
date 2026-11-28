@@ -7,6 +7,7 @@ import signal
 import sys
 import threading
 from contextlib import contextmanager, suppress
+from pathlib import Path
 
 from chipcompiler.project.runtime_processes import (
     RuntimeProcessError,
@@ -82,8 +83,17 @@ def managed_run_process(
             runtime_id=runtime_id,
             log_path=log_path,
         )
+
+        def recover_stale(reaped_run_id: str) -> None:
+            if (Path(workspace_path) / "home" / "flow.json").is_file():
+                from chipcompiler.engine.interrupted_run import recover_interrupted_run
+
+                recover_interrupted_run(
+                    Path(workspace_path), run_id=reaped_run_id, allow_markerless=False
+                )
+
         # Only Workspace contention is nonblocking; Project registration writes must serialize.
-        register_runtime_process(project_dir, workspace_id, entry)
+        register_runtime_process(project_dir, workspace_id, entry, before_replace=recover_stale)
         registered = True
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event

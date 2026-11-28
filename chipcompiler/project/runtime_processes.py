@@ -9,6 +9,7 @@ import re
 import signal
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -188,9 +189,53 @@ def validate_runtime_entry(value: Any) -> dict[str, Any]:
     return value
 
 
+def is_stale_local_entry(
+    entry: dict[str, Any],
+    *,
+    local_host: str | None = None,
+    live_check: Callable[[dict[str, Any]], bool] | None = None,
+) -> bool:
+    """True when a validated entry belongs to this host and its process is gone."""
+    resolved_host = host_id() if local_host is None else local_host
+    is_live = identity_is_live if live_check is None else live_check
+    return entry["host_id"] == resolved_host and not is_live(entry)
+
+
+def _validate_replaceable_slot(existing: Any, workspace_id: str) -> str:
+    """Return the dead local run_id if *existing* may be replaced, else raise."""
+    entry = validate_runtime_entry(existing)
+    local_host = host_id()
+    if is_stale_local_entry(entry, local_host=local_host):
+        return entry["run_id"]
+    if entry["host_id"] == local_host:
+        raise RuntimeProcessError(
+            "workspace_running",
+            f"Workspace already has a live runtime process (run_id={entry['run_id']}, "
+            f"pid={entry['pid']}); wait for it or cancel it with: "
+            f"ecc process cancel --workspace {workspace_id} --run-id {entry['run_id']}",
+        )
+    raise RuntimeProcessError(
+        "workspace_running",
+        f"Workspace has a runtime process registered on another host (run_id={entry['run_id']}); "
+        "if it is no longer running, clear it with: "
+        f"ecc process reconcile --workspace {workspace_id} --run-id {entry['run_id']}",
+    )
+
+
 def register_runtime_process(
-    project_dir: str | Path, workspace_id: str, entry: dict[str, Any], *, blocking: bool = True
-) -> None:
+    project_dir: str | Path,
+    workspace_id: str,
+    entry: dict[str, Any],
+    *,
+    blocking: bool = True,
+    before_replace: Callable[[str], None] | None = None,
+) -> str | None:
+    """Register *entry* for *workspace_id*, reaping any dead local entry.
+
+    If ``before_replace`` is supplied and a stale local ``run_id`` is being
+    replaced, it runs under the project manifest lock before writing the new
+    registration so any recovery failure preserves the stale entry.
+    """
     project = Path(project_dir).resolve()
     validated = validate_runtime_entry(entry)
     with manifest_lock(project, blocking=blocking):
@@ -206,6 +251,8 @@ def register_runtime_process(
             raise RuntimeProcessError(
                 "invalid_runtime_processes", "runtime process registry is invalid"
             )
+        reaped_run_id: str | None = None
+        recovered_run_id: str | None = None
         existing = processes.get(workspace_id)
         if existing is not None:
             if (
@@ -213,23 +260,35 @@ def register_runtime_process(
                 and existing.get("run_id") == entry["run_id"]
                 and existing == entry
             ):
-                return
-            raise RuntimeProcessError(
-                "workspace_running", "Workspace already has a runtime process"
-            )
+                return None
+            reaped_run_id = _validate_replaceable_slot(existing, workspace_id)
+            if before_replace is not None:
+                before_replace(reaped_run_id)
+                recovered_run_id = reaped_run_id
 
         def mutate(document: dict) -> None:
+            nonlocal reaped_run_id, recovered_run_id
             current = document.setdefault("runtime_processes", {})
-            if not isinstance(current, dict) or workspace_id in current:
+            if not isinstance(current, dict):
                 raise RuntimeProcessError(
-                    "workspace_running", "Workspace already has a runtime process"
+                    "invalid_runtime_processes", "runtime process registry is invalid"
                 )
+            if workspace_id in current:
+                current_entry = current[workspace_id]
+                if current_entry != existing:
+                    reaped_run_id = _validate_replaceable_slot(current_entry, workspace_id)
+                    if before_replace is not None and reaped_run_id != recovered_run_id:
+                        before_replace(reaped_run_id)
+                        recovered_run_id = reaped_run_id
+            else:
+                reaped_run_id = None
             current[workspace_id] = dict(entry)
 
         if not update_manifest_locked(project, mutate):
             raise RuntimeProcessError(
                 "runtime_registration_failed", "Project Manifest update failed"
             )
+        return reaped_run_id
 
 
 def unregister_runtime_process(

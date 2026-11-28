@@ -10,6 +10,7 @@ from chipcompiler.project.manifest_write import manifest_lock, update_manifest_l
 from chipcompiler.project.runtime_processes import (
     RuntimeProcessError,
     identity_is_live,
+    is_stale_local_entry,
     read_runtime_process,
     signal_runtime_process,
     validate_runtime_entry,
@@ -75,7 +76,7 @@ def reconcile_process(
             # instead of recovering its flow as interrupted (§14.3). The entry
             # of a run that was killed on this host is the stale entry this
             # command exists to clear: recover it like its --run-id form.
-            if not _entry_is_stale_here(entry):
+            if not is_stale_local_entry(entry, live_check=identity_is_live):
                 raise RuntimeProcessError(
                     "workspace_busy", "A runtime process registered during orphan reconcile"
                 )
@@ -106,18 +107,6 @@ def _workspace_path(project: Path, workspace_id: str) -> Path:
     if workspace is None:
         raise RuntimeProcessError("workspace_not_declared", "Workspace is not registered")
     return Path(workspace.workspace_path).resolve()
-
-
-def _entry_is_stale_here(entry: dict) -> bool:
-    """True when the registered process provably no longer exists.
-
-    That can only be told for a run started on this host: its process is gone,
-    or it predates the current boot. An entry from another host is never
-    assumed dead.
-    """
-    from chipcompiler.project.runtime_processes import host_id
-
-    return entry["host_id"] == host_id() and not identity_is_live(entry)
 
 
 def _entry_is_local(entry: dict) -> bool:
