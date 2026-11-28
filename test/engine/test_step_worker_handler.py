@@ -352,7 +352,9 @@ def test_worker_layout_image_false_is_logged_without_failing(monkeypatch, tmp_pa
     assert "layout image was not generated" in caplog.text
 
 
-def test_worker_layout_image_exception_fails_the_step(monkeypatch, tmp_path):
+def test_worker_layout_image_exception_keeps_step_successful(monkeypatch, tmp_path, caplog):
+    from chipcompiler.data.handshake import ResponseStatus, load_response
+
     step = _workspace_step(tmp_path)
     flow = _FakeFlow(_workspace(tmp_path))
     flow._step = step
@@ -360,19 +362,23 @@ def test_worker_layout_image_exception_fails_the_step(monkeypatch, tmp_path):
     def explode(**_kwargs):
         raise RuntimeError("render failed")
 
-    exit_code, result = _run_main(
-        monkeypatch,
-        tmp_path,
-        step,
-        flow,
-        lambda *_args, **_kwargs: True,
-        save_layout_image=explode,
-    )
+    with caplog.at_level(logging.WARNING, logger="ecc-test"):
+        exit_code, result = _run_main(
+            monkeypatch,
+            tmp_path,
+            step,
+            flow,
+            lambda *_args, **_kwargs: True,
+            save_layout_image=explode,
+        )
 
-    assert exit_code == 1
-    assert result["done"] is True
-    assert result["ok"] is False
-    assert "render failed" in result["error"]
+    response = load_response(step.directory)
+    assert (exit_code, result["done"], result["ok"]) == (0, True, True)
+    assert result["error"] is None
+    assert response is not None
+    assert (response.attempt_id, response.status) == ("test-attempt", ResponseStatus.SUCCESS)
+    assert "layout image rendering failed" in caplog.text
+    assert "render failed" in caplog.text
 
 
 @pytest.mark.parametrize(("tool_ok", "status"), [(True, "success"), (False, "failed")])

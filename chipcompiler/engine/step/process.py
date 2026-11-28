@@ -382,8 +382,15 @@ def run_step_worker(
     if outputs_complete and request.layout_image and not flow._is_placement_only_step(step):
         from chipcompiler.tools import save_layout_image
 
-        if not save_layout_image(workspace=workspace, step=step):
-            workspace.logger.warning("[STEP] %s layout image was not generated", step.name)
+        try:
+            rendered = save_layout_image(workspace=workspace, step=step)
+        except Exception:
+            workspace.logger.warning(
+                "[STEP] %s layout image rendering failed", step.name, exc_info=True
+            )
+        else:
+            if not rendered:
+                workspace.logger.warning("[STEP] %s layout image was not generated", step.name)
     if not ok:
         result["error"] = f"step {request.step} reported failure"
     return ok

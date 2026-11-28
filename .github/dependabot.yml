@@ -1,0 +1,56 @@
+# Dependabot version updates.
+#
+# Commit messages use the `chore` type so Dependabot PRs pass the Conventional
+# Commit check in .github/workflows/commit-message.yml. nixpkgs (flake.lock) is
+# pinned by rev in flake.nix, which the `nix` ecosystem skips, so it is
+# updated manually with `nix flake lock`.
+
+version: 2
+
+updates:
+  # pyproject.toml + uv.lock (runtime and dev dependencies)
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+
+  # `uses:` pins in .github/workflows/** and .github/actions/**
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+
+  # `rev:` pins in .pre-commit-config.yaml
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+
+  # gitlinks in .gitmodules, bumped to the tip of each submodule's default
+  # branch. Daily keeps one rolling PR per submodule; 09:00 CST picks up the
+  # previous day's tip so the upstream wheel CI has finished.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: daily
+      time: "09:00"
+      timezone: Asia/Shanghai
+    commit-message:
+      prefix: chore
+
+  # FROM digest pin in .devcontainer/Dockerfile (mcr.microsoft.com images get
+  # digest refreshes only, no tag version bumps)
+  - package-ecosystem: docker
+    directory: /.devcontainer
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
