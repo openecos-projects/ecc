@@ -135,6 +135,7 @@ Commands:
   config        Show resolved project or step configuration
   doctor        Check host environment: PDK, tools, and components
   check-update  Check whether a newer nightly build is available
+  fe            Run the ECC-FE RTL frontend: every argument goes to ecc-fe unchanged
   rtl           Import project RTL sources
   param         Manage EDA parameters
   flow          Inspect available ECC flows and the project's step selection
@@ -189,6 +190,7 @@ Every command and subcommand at a glance (semantics, options, and examples in th
 | `ecc doc TOPIC` | read the bundled guides in the terminal (`config` / `ug` / `tutorial`) | §1.5 |
 | `ecc gdsview` | open a workspace step's GDS in KLayout | §13 |
 | `ecc chipview` | open a workspace step's geometry snapshot in Chip Viewer | §14 |
+| `ecc fe ...` | run the ECC-FE RTL frontend; the arguments go to `ecc-fe` unchanged | §14.5 |
 | `ecc init NAME` | create a project skeleton | §3 |
 | `ecc check` | validate project config, RTL sources, and PDK contents | §4 |
 | `ecc run` | execute a flow (fresh/resume/range/single-step; project and workspace modes) | §5 |
@@ -2136,6 +2138,40 @@ snapshot, so select a step that does when opening Chip Viewer:
 
 ```bash
 ecc chipview --workspace default --step filler
+```
+
+## 14.5 fe — the RTL frontend
+
+ECC-FE checks a design before it enters the RTL-to-GDS flow (review,
+elaboration, lint and, for a CPU, simulation). It is a separate program,
+`ecc-fe`, installed and released on its own. `ecc fe` runs it:
+
+```bash
+ecc fe init my_core --kind rtl --top core --filelist rtl/core.f
+ecc fe run --project my_core
+ecc fe status --project my_core
+ecc fe --help
+```
+
+Everything after `fe` goes to `ecc-fe` unchanged, `--help` included, and its
+output, streams and exit status come back unchanged. ECC does not know the
+commands of ECC-FE; `ecc fe --help` and the ECC-FE documentation describe
+them. ECC-FE names itself `ecc fe` in what it prints, so a command it
+suggests can be typed back as shown.
+
+ECC finds `ecc-fe` the way it finds its other external tools: when
+`CHIPCOMPILER_ECC_FE_ROOT` names an ECC-FE installation (a release archive
+or a source checkout), `bin/ecc-fe` under it is used; otherwise `ecc-fe` is
+looked up on `PATH`. When neither gives an executable, `ecc fe` exits with
+status 127.
+
+The two tools meet in one place: `ecc-fe handoff` writes a manifest of a
+design that passed the frontend, and `ecc rtl import --from-fe` imports it
+(§8.5):
+
+```bash
+ecc fe handoff --project my_core
+ecc rtl import --from-fe my_core/handoff/default --project /projects/chip
 ```
 
 ## 15. Typical end-to-end workflow

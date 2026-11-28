@@ -189,6 +189,7 @@ ecc run --project gcd --workspace recovered --resume
 | `ecc gdsview` | 打开 workspace 指定 step 的 GDS 版图查看器 |
 | `ecc chipview` | 打开 workspace 指定 step 的 geometry 版图数据 |
 | `ecc check-update` | 检查是否有更新的 nightly 构建 |
+| `ecc fe ...` | 运行 ECC-FE RTL 前端；参数原样交给 `ecc-fe` |
 
 项目命令均接受 `--project <dir>`（默认为当前目录）。大多数命令支持
 `--plain` 输出，便于脚本化。

@@ -12,7 +12,8 @@ def _walk(command, path):
 
 
 def _all_command_paths():
-    return list(_walk(typer.main.get_command(app), []))
+    # `ecc fe --help` is answered by ecc-fe, not rendered here.
+    return [path for path in _walk(typer.main.get_command(app), []) if path != ["fe"]]
 
 
 @pytest.mark.parametrize("path", _all_command_paths(), ids=lambda path: " ".join(path) or "ecc")
