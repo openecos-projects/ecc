@@ -3,26 +3,26 @@
 import json
 import os
 import shutil
-import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from chipcompiler.cli.project.config import (
-    load_project_config,
-    resolve_pdk_root,
+    ProjectConfig,
+    parse_project_config,
     validate_project_config,
 )
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
+from chipcompiler.cli.project.effective_config import (
+    apply_manifest_defaults,
+    manifest_field_changed,
+    project_manifest_summary,
+)
 from chipcompiler.cli.project.param_edit import set_parameter, unset_parameter
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
 from chipcompiler.params import parse_value, validate_value
-from chipcompiler.project.manifest import CONFIG_FILENAME, load_manifest
-from chipcompiler.project.manifest_write import (
-    base_design_from_config,
-    manifest_lock,
-    update_manifest_locked,
-)
+from chipcompiler.project.manifest import CONFIG_FILENAME, assemble_config, load_manifest
+from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
 from chipcompiler.utility.file import write_text_atomic
 
 
@@ -50,6 +50,28 @@ def apply_project(
     blocking: bool = True,
     validate: bool = True,
 ) -> tuple[str, ...]:
+    changed, _cfg = apply_project_with_config(
+        project_dir,
+        sets=sets,
+        unsets=unsets,
+        add_rtl=add_rtl,
+        remove_rtl=remove_rtl,
+        blocking=blocking,
+        validate=validate,
+    )
+    return changed
+
+
+def apply_project_with_config(
+    project_dir: str | Path,
+    *,
+    sets: tuple[str, ...],
+    unsets: tuple[str, ...],
+    add_rtl: tuple[str, ...],
+    remove_rtl: tuple[str, ...],
+    blocking: bool = True,
+    validate: bool = True,
+) -> tuple[tuple[str, ...], ProjectConfig]:
     project = Path(project_dir).expanduser().resolve()
     config_path = project / CONFIG_FILENAME
     if not any((sets, unsets, add_rtl, remove_rtl)):
@@ -61,7 +83,7 @@ def apply_project(
             original = config_path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
             raise ProjectApplicationError("config_error", str(exc)) from exc
-        load_manifest(str(project))
+        manifest = load_manifest(str(project))
         updated, changed = _apply_text(
             original,
             parsed_sets=parsed_sets,
@@ -69,11 +91,19 @@ def apply_project(
             add_rtl=add_rtl,
             remove_rtl=remove_rtl,
         )
-        cfg = _validate_text(project, updated, validate=validate)
+        cfg = parse_project_settings(project, updated)
+        name, base = project_manifest_summary(cfg, manifest, unsets=unsets)
+        for key in unsets:
+            if key not in changed and manifest_field_changed(key, manifest, name, base):
+                changed.append(key)
+        if validate:
+            candidate = replace(manifest, design_name=name, base_design=base)
+            apply_manifest_defaults(cfg, assemble_config(candidate, None), str(project))
+            _validate_settings(cfg)
         try:
             if updated != original:
                 write_text_atomic(str(config_path), updated)
-            if not _update_summary_locked(project, cfg):
+            if not _update_summary_locked(project, name, base):
                 raise OSError("Project Manifest update failed")
         except BaseException as exc:
             try:
@@ -86,26 +116,26 @@ def apply_project(
             if isinstance(exc, ProjectApplicationError):
                 raise
             raise ProjectApplicationError("project_apply_failed", str(exc)) from exc
-    return tuple(changed)
+    return tuple(changed), cfg
 
 
 def reconcile_project_summary(project_dir: str | Path, *, blocking: bool) -> bool:
     project = Path(project_dir).expanduser().resolve()
-    config_path = project / CONFIG_FILENAME
     with manifest_lock(project, blocking=blocking):
-        load_manifest(str(project))
-        cfg = load_project_config(str(config_path))
-        errors = validate_project_config(cfg)
-        if errors:
-            raise ProjectApplicationError("invalid_project_config", errors[0])
-        before = load_manifest(str(project)).base_design
-        # Project reconciliation must not silently bind a fresh project to a
-        # host PDK environment before the user declares a project root.
-        pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
-        expected = base_design_from_config(cfg, pdk_root)
-        if before == expected:
+        manifest = load_manifest(str(project))
+        try:
+            text = (project / CONFIG_FILENAME).read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ProjectApplicationError(
+                "invalid_project_config", f"unreadable ecc.toml: {exc}"
+            ) from exc
+        cfg = parse_project_settings(project, text)
+        name, base = project_manifest_summary(cfg, manifest)
+        apply_manifest_defaults(cfg, assemble_config(manifest, None), str(project))
+        _validate_settings(cfg)
+        if (manifest.design_name, manifest.base_design) == (name, base):
             return False
-        if not _update_summary_locked(project, cfg):
+        if not _update_summary_locked(project, name, base):
             raise ProjectApplicationError("project_reconcile_failed", "Manifest update failed")
         return True
 
@@ -251,6 +281,10 @@ def _reconcile_orphan_workspace(project: Path, candidate: Path, *, blocking: boo
                 or Path(str(metadata.get("workspacePath", ""))).resolve() != candidate
             ):
                 continue
+            # A draft also changes Project configuration. A workspace directory
+            # alone cannot prove that its Project changes were published.
+            if request.get("draft") is not None:
+                continue
             expected_revision = metadata.get("expectedRevision")
             if expected_revision is not None and (
                 not isinstance(expected_revision, int) or isinstance(expected_revision, bool)
@@ -332,6 +366,7 @@ def _reconcile_workspace_state(
         RuntimeProcessError,
         identity_is_live,
         validate_runtime_entry,
+        write_run_result,
     )
     from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -366,6 +401,8 @@ def _reconcile_workspace_state(
             run_id=process["run_id"] if process is not None else None,
             allow_markerless=process is None,
         )
+        if process is not None:
+            write_run_result(workspace, workspace_id, process, "interrupted")
         _remove_runtime_entry(project, workspace_id, raw_entry, blocking=blocking)
         repairs.append(f"runtime:{workspace_id}")
         if recovered:
@@ -683,7 +720,7 @@ def _apply_text(
             raise ProjectApplicationError("unknown_project_field", f"Unknown key: {key}", key=key)
         if result is not None:
             updated = result
-        changed.append(key)
+            changed.append(key)
     if add_rtl or remove_rtl:
         try:
             data = tomllib.loads(updated)
@@ -718,32 +755,32 @@ def _parse_field_value(field, raw: str) -> object:
         raise ProjectApplicationError("invalid_project_value", str(exc), key=field.key) from exc
 
 
-def _validate_text(project: Path, text: str, *, validate: bool = True):
-    descriptor, name = tempfile.mkstemp(prefix=".ecc.toml.validate-", dir=project)
+def apply_settings_text(text: str, sets: tuple[str, ...]) -> str:
+    """Apply the same registered project fields without publishing the file."""
+    updated, _ = _apply_text(
+        text, parsed_sets=_parse_sets(sets), unsets=(), add_rtl=(), remove_rtl=()
+    )
+    return updated
+
+
+def parse_project_settings(project: Path, text: str) -> ProjectConfig:
+    """Parse Project TOML and attach a structured error to syntax failures."""
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-            output.write(text)
-            output.flush()
-            os.fsync(output.fileno())
-        cfg = load_project_config(name)
-        # The temporary file is in the Project root, so relative paths resolve identically.
-        if validate:
-            errors = validate_project_config(cfg)
-            if errors:
-                raise ProjectApplicationError("invalid_project_config", errors[0])
-        cfg.config_path = str(project / CONFIG_FILENAME)
-        cfg.project_dir = str(project)
-        return cfg
-    finally:
-        Path(name).unlink(missing_ok=True)
+        return parse_project_config(text, str(project / CONFIG_FILENAME))
+    except tomllib.TOMLDecodeError as exc:
+        raise ProjectApplicationError(
+            "invalid_project_config", f"malformed ecc.toml: {exc}"
+        ) from exc
 
 
-def _update_summary_locked(project: Path, cfg) -> bool:
-    pdk_root = resolve_pdk_root(cfg) if cfg.pdk_root else ""
-    base_design = base_design_from_config(cfg, pdk_root)
+def _validate_settings(cfg: ProjectConfig) -> None:
+    errors = validate_project_config(cfg)
+    if errors:
+        raise ProjectApplicationError("invalid_project_config", errors[0])
 
+
+def _update_summary_locked(project: Path, name: str, base_design: dict) -> bool:
     def mutate(document: dict) -> None:
-        document["design_name"] = cfg.design_name
-        document["base_design"] = base_design
+        document.update(design_name=name, base_design=base_design)
 
     return update_manifest_locked(project, mutate)

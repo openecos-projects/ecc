@@ -12,7 +12,6 @@ code default is fixed and fits every preset.
 
 import os
 from collections.abc import Collection, Mapping, Sequence
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from chipcompiler.cli.core.records import warning_record
@@ -234,6 +233,10 @@ def _flow_option(flow_config: FlowConfig | None, key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+class FlowSelectionChangedError(ValueError):
+    """The selected plan was prepared from a different Project flow."""
+
+
 def write_flow_selection(
     config_path: str,
     *,
@@ -242,6 +245,7 @@ def write_flow_selection(
     skip_steps: Sequence[str],
     insert_steps: Sequence[str],
     max_parallel_steps: int,
+    expected: "ProjectConfig | None" = None,
 ) -> None:
     """Declare the whole selection in ``ecc.toml`` ``[flow]``, comments kept.
 
@@ -249,23 +253,37 @@ def write_flow_selection(
     states which steps the next fresh run executes. ``insert_steps`` is the
     exception: nothing inserted is the absent key, so it is removed then.
     """
+    from chipcompiler.cli.project.config import parse_project_config
     from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
-    from chipcompiler.utility.file import write_text_atomic
+    from chipcompiler.project.config_write import edit_project_config
 
-    with open(config_path, encoding="utf-8") as f:
-        text = f.read()
-    for name, value in (
-        ("preset", preset),
-        ("lec_engine", lec_engine),
-        ("skip_steps", list(skip_steps)),
-        ("max_parallel_steps", max_parallel_steps),
-    ):
-        text = set_scoped_key(text, "flow", name, value)
-    if insert_steps:
-        text = set_scoped_key(text, "flow", "insert_steps", list(insert_steps))
-    else:
-        text = remove_scoped_key(text, "flow", "insert_steps") or text
-    write_text_atomic(Path(config_path), text)
+    def edit(text: str) -> str:
+        if expected is not None:
+            current = parse_project_config(text, config_path)
+            flow_fields = (
+                "flow_preset",
+                "flow_lec_engine",
+                "flow_skip_steps",
+                "flow_insert_steps",
+                "flow_max_parallel_steps",
+                "_flow_config_errors",
+            )
+            if any(getattr(current, field) != getattr(expected, field) for field in flow_fields):
+                raise FlowSelectionChangedError(
+                    "Project flow changed while editing. Retry with the current flow."
+                )
+        for name, value in (
+            ("preset", preset),
+            ("lec_engine", lec_engine),
+            ("skip_steps", list(skip_steps)),
+            ("max_parallel_steps", max_parallel_steps),
+        ):
+            text = set_scoped_key(text, "flow", name, value)
+        if insert_steps:
+            return set_scoped_key(text, "flow", "insert_steps", list(insert_steps))
+        return remove_scoped_key(text, "flow", "insert_steps") or text
+
+    edit_project_config(config_path, edit)
 
 
 def mismatched_workspaces(

@@ -39,6 +39,13 @@ class FlowStatusInput:
 
 
 @dataclass(frozen=True)
+class WorkspaceFlowPlanInput:
+    output: OutputOptions
+    workspace: str
+    project: ProjectOptions = ProjectOptions()
+
+
+@dataclass(frozen=True)
 class FlowEditInput:
     output: OutputOptions
     project: ProjectOptions = ProjectOptions()
@@ -136,6 +143,7 @@ class RunInput:
     run_id: str = ""
     runtime_id: str = ""
     log_file: str = ""
+    create_draft_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -480,6 +488,8 @@ class WorkspaceCreateInput:
     param_set: tuple[str, ...] = ()
     command_id: str = ""
     no_wait: bool = False
+    draft: str | None = None
+    preview: bool = False
 
 
 @dataclass(frozen=True)

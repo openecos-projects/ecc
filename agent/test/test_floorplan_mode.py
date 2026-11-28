@@ -14,7 +14,7 @@ from agent.floorplan_mode import (
 )
 from agent.requests import CandidateRerunRequest
 from agent.runtime_support import AgentApplicationError as RuntimeApiError
-from agent.workspace_api import _validate_candidate_rerun_request
+from agent.workspace_api import validate_candidate_rerun_request
 
 
 def _request(**kwargs):
@@ -57,7 +57,7 @@ def _workspace(tmp_path):
 @pytest.mark.parametrize("mode", ("die_util", "die_size"))
 def test_explicit_mode_only_baseline_request(mode):
     request = _request(floorplan_mode=mode)
-    _validate_candidate_rerun_request(request)
+    validate_candidate_rerun_request(request)
     assert request.floorplan_mode == mode
 
 
@@ -72,7 +72,7 @@ def test_explicit_mode_only_baseline_request(mode):
 )
 def test_invalid_mode_request_is_rejected_before_execution(overrides):
     with pytest.raises(RuntimeApiError):
-        _validate_candidate_rerun_request(_request(**overrides))
+        validate_candidate_rerun_request(_request(**overrides))
 
 
 @pytest.mark.parametrize("mode", ("die_util", "die_size"))

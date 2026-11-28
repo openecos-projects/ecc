@@ -13,9 +13,11 @@ import os
 from pathlib import Path
 
 from chipcompiler.cli.core.output import disclosure_cmd
+from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandResult
+from chipcompiler.cli.project.creation import repeats_recorded_create
 from chipcompiler.cli.project.run_existing import run_existing_workspace
-from chipcompiler.cli.project.run_prepare import create_command_spec, execute_fresh_run
+from chipcompiler.cli.project.run_prepare import execute_fresh_run
 from chipcompiler.project.manifest import MANIFEST_FILENAME
 
 
@@ -94,11 +96,14 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
     instead of deleted, so a failed creation can put it back; the backup is
     discarded once the replacement is fully constructed.
     """
-    from chipcompiler.cli.core.records import error_record
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     project_dir = ctx.project_dir
     backup_path = None
+    # The target lock serializes all target creates or replacements.
+    # Its sibling lock survives a directory rename.
+    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
+
     empty_target = False
     if os.path.isdir(run_dir) and not os.path.islink(run_dir):
         try:
@@ -118,13 +123,6 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
                     )
                 ]
             )
-        # Serialize the rename with an active execution of this workspace:
-        # flock blocks until the running engine releases the sibling lock
-        # (<run_dir>.lock, which survives the rename), and the fresh engine
-        # re-acquires it on the recreated tree, so two runs never execute
-        # against the same paths. The lock stays entered in *ws_locks* until
-        # the replacement is built.
-        ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
         from chipcompiler.cli.project.revision import expected_revision_error
 
         conflict = expected_revision_error(
@@ -134,18 +132,21 @@ def _prepare_run_target(command_input, ctx, run_dir: str, run_name: str, ws_lock
         )
         if conflict is not None:
             return conflict
+        if command_input.run_id:
+            from chipcompiler.cli.project.run_process import runtime_process_error_result
+            from chipcompiler.project.runtime_processes import (
+                RuntimeProcessError,
+                require_unused_run_id,
+            )
+
+            try:
+                require_unused_run_id(run_dir, command_input.run_id)
+            except RuntimeProcessError as exc:
+                return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
         backup_path = f"{run_dir}.overwritten-{os.getpid()}"
         # An atomic rename, not a delete: until the replacement is fully
         # constructed the old tree stays on disk and recoverable.
         os.replace(run_dir, backup_path)
-
-    # Every fresh run holds the workspace lock from before the target is
-    # created through engine execution (see execute_fresh_run): a live run
-    # must hold the sibling lock, or `ecc process inspect` reports it dead
-    # and project reconcile flags it as an inconsistent runtime process.
-    # The overwrite branch entered the lock above the rename; entering it
-    # again here is a same-thread reentrant no-op.
-    ws_locks.enter_context(workspace_lock(Path(run_dir), blocking=not command_input.no_wait))
 
     if command_input.expected_revision is not None and not os.path.lexists(run_dir):
         from chipcompiler.cli.project.revision import expected_revision_error
@@ -202,29 +203,6 @@ def _abandon_prepared_target(backup_path: str | None, run_dir: str, *, owns_targ
             os.replace(backup_path, run_dir)
 
 
-def _repeats_recorded_create(command_input, run_dir: str, run_name: str) -> bool:
-    """True when this exact `workspace create` request already built the workspace."""
-    if not command_input.command_id:
-        return False
-    from chipcompiler.engine.workspace.lifecycle import (
-        WorkspaceLifecycleError,
-        command_retry_matches,
-        workspace_command_fingerprint,
-    )
-
-    fingerprint = workspace_command_fingerprint(
-        "create",
-        create_command_spec(command_input, run_name),
-        None,
-        command_input.expected_revision,
-    )
-    try:
-        return command_retry_matches(Path(run_dir), command_input.command_id, fingerprint)
-    except (WorkspaceLifecycleError, OSError, ValueError):
-        # A reused id with another request, or an unreadable ledger: not a retry.
-        return False
-
-
 def dispatch_project_run(
     command_input,
     ctx,
@@ -250,7 +228,7 @@ def dispatch_project_run(
         """
         if execute_flow or not cli_overrides:
             return None
-        if _repeats_recorded_create(command_input, run_dir, run_name):
+        if repeats_recorded_create(command_input, run_dir, run_name):
             return None
         from chipcompiler.cli.core.records import error_record
 
@@ -313,7 +291,6 @@ def dispatch_project_run(
             run_name,
             cli_overrides,
             flow_config,
-            project_state,
             warning_records,
             workspace_registered=workspace_registered,
             owns_target=owns_target,
@@ -364,7 +341,6 @@ def dispatch_project_run(
                     rejected = rejected_run_overrides(run_name, run_dir)
                 if rejected is not None:
                     return rejected
-                from chipcompiler.cli.core.records import error_record
                 from chipcompiler.cli.project.config import resolve_pdk_root
                 from chipcompiler.cli.project.workspace_registration import (
                     WorkspaceRegistrationError,
@@ -432,7 +408,6 @@ def dispatch_project_run(
             if not workspace_registered and not os.path.lexists(
                 os.path.join(project_dir, MANIFEST_FILENAME)
             ):
-                from chipcompiler.cli.core.records import error_record
                 from chipcompiler.cli.project.config import resolve_pdk_root
                 from chipcompiler.project.manifest_write import pre_register_workspace
 

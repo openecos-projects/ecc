@@ -51,7 +51,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
     patch = materialization["patch"][0]
     if patch["knob_id"] in DREAMPLACE_KNOBS:
         with _capture_dreamplace(patch) as recorder:
-            return _invoke_and_record(
+            return invoke_and_record(
                 workspace,
                 invoke,
                 lambda succeeded: _build_dreamplace_report(
@@ -62,6 +62,10 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
                     engine_succeeded=succeeded,
                 ),
             )
+    from .routing_parameter_observer import ROUTING_KNOBS, run_with_routing_observation
+
+    if patch["knob_id"] in ROUTING_KNOBS:
+        return run_with_routing_observation(workspace, step, patch, invoke)
     from .floorplan_parameter_observer import (
         FLOORPLAN_KNOBS,
         build_floorplan_report,
@@ -72,7 +76,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
     if patch["knob_id"] not in FLOORPLAN_KNOBS:
         return invoke()
     with capture_floorplan(patch) as boundary:
-        return _invoke_and_record(
+        return invoke_and_record(
             workspace,
             invoke,
             lambda succeeded: build_floorplan_report(
@@ -84,7 +88,7 @@ def run_with_parameter_observation(workspace, step, materialization, invoke):
         )
 
 
-def _invoke_and_record(workspace, invoke, build_report):
+def invoke_and_record(workspace, invoke, build_report):
     try:
         result = invoke()
     except BaseException:
@@ -167,7 +171,7 @@ def _observe_placement_call(recorder, original, engine, *args, **kwargs):
     area = _scalar_value(getattr(placedb, "total_movable_node_area", None))
     space = _scalar_value(getattr(placedb, "total_space_area", None))
     if area is not None and space is not None and space > 0:
-        recorder.probe["utilization_floor"] = min(area / space + 0.05, 1.0)
+        recorder.probe["utilization_floor"] = min(area / space, 1.0)
     result = original(engine, *args, **kwargs)
     recorder.probe["placement_completed"] = True
     metrics = getattr(engine, "metrics", None)

@@ -328,7 +328,7 @@ class TestRunPreflight:
         self, tmp_path, create_cli_project, monkeypatch
     ):
         """Skipping a step removes its tool from the preflight probe set."""
-        from chipcompiler.cli.command_handlers.project import _preflight_environment
+        from chipcompiler.cli.project.preparation import _preflight_environment
 
         monkeypatch.setattr(
             "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",

@@ -2,11 +2,13 @@ import json
 import os
 import re
 import shutil
+from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
+from typing import Generic, TypeVar
 
 import chipcompiler
-from chipcompiler.data.types import LEC_STEP_TOOLS, StepEnum
+from chipcompiler.data.types import StepEnum
 from chipcompiler.utility.path import path_is_within
 
 from .candidate_clone import candidate_clone_ignore
@@ -20,7 +22,13 @@ from .data import (
     reapply_materialized_candidate_config,
     validate_candidate_step_contract,
 )
-from .data.candidate_artifacts import sha256_path, validate_candidate_id, write_json_atomic
+from .data.candidate_artifacts import (
+    CANDIDATE_WORKSPACE_MANIFEST,
+    sha256_path,
+    validate_candidate_id,
+    write_json_atomic,
+)
+from .data.candidate_input_binding import candidate_source_step
 from .data.candidate_materialization import (
     candidate_written_patch,
     validate_candidate_materialization_receipt,
@@ -48,6 +56,9 @@ from .runtime_support import (
     AgentApplicationError as RuntimeApiError,
 )
 from .runtime_support import (
+    CandidateHost,
+)
+from .runtime_support import (
     state_value as _state_value,
 )
 
@@ -69,6 +80,10 @@ def candidate_operation_workspace_id(workspace_id: str, candidate_id: str) -> st
 
 
 def _parameter_unit(knob_id: str) -> str:
+    if knob_id.startswith("route."):
+        return {"thread_number": "thread", "enable_timing": "boolean"}.get(
+            knob_id.split(".")[1], "layer"
+        )
     if knob_id.endswith("routability_opt"):
         return "boolean"
     if knob_id.endswith("cell_padding_x"):
@@ -92,10 +107,13 @@ def build_agent_flow_for_workspace(workspace, *, create_step_workspaces: bool = 
     return flow
 
 
-class FlowAgentRuntimeApi:
+_HostT = TypeVar("_HostT", bound=CandidateHost)
+
+
+class FlowAgentRuntimeApi(Generic[_HostT]):
     """Candidate execution facade over one ECC workspace application."""
 
-    def __init__(self, ecc_api):
+    def __init__(self, ecc_api: _HostT):
         self.ecc_api = ecc_api
 
     def extract_foundation(self, request: WorkspaceExtractFoundationRequest) -> dict:
@@ -117,7 +135,7 @@ class FlowAgentRuntimeApi:
         )
 
     def candidate_rerun(self, request: CandidateRerunRequest) -> dict:
-        _validate_candidate_rerun_request(request)
+        validate_candidate_rerun_request(request)
         session = self.ecc_api._get_session(request.workspace_id)
         self.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
         self._reject_active_source_operation(request.workspace_id)
@@ -131,6 +149,7 @@ class FlowAgentRuntimeApi:
                 rerun=True,
                 step=request.target_step,
                 idempotency_key=request.idempotency_key,
+                command_input=asdict(request),
                 runner=lambda observer: self._candidate_rerun(session, request, observer),
             )
         except RuntimeOperationConflict as exc:
@@ -359,7 +378,7 @@ def _step_value(step, field: str):
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
-def _validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
+def validate_candidate_rerun_request(request: CandidateRerunRequest) -> None:
     validate_floorplan_mode_request(request)
     if request.expected_workspace_revision is not None and (
         type(request.expected_workspace_revision) is not int
@@ -430,7 +449,7 @@ def _notify_candidate_rerun_prepared(observer, steps: list, request: CandidateRe
 
 
 _CANDIDATE_WORKSPACE_SCHEMA = "ecc.workspace.candidate_workspace.v1"
-_CANDIDATE_WORKSPACE_MANIFEST = "candidate_workspace.v1.json"
+_CANDIDATE_WORKSPACE_MANIFEST = CANDIDATE_WORKSPACE_MANIFEST
 
 
 def _create_candidate_workspace(
@@ -484,7 +503,7 @@ def _workspace_state_sha256(root: Path) -> str:
         "config/dreamplace.json",
     )
     hashes = {
-        relative: _required_file_sha256(root / relative, relative)
+        relative: required_file_sha256(root / relative, relative)
         for relative in relative_files
         if (root / relative).is_file() and not (root / relative).is_symlink()
     }
@@ -531,7 +550,7 @@ def _candidate_parent_root(workspace_root: Path, candidate_root_ref: str | None)
 
 def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | None) -> dict:
     source = _candidate_parent_root(workspace_root, candidate_root_ref)
-    flow_sha256 = _required_file_sha256(source / "home" / "flow.json", "parent flow")
+    flow_sha256 = required_file_sha256(source / "home" / "flow.json", "parent flow")
     state_sha256 = _workspace_state_sha256(source)
     binding = {
         "root": source,
@@ -545,7 +564,7 @@ def _candidate_parent_binding(workspace_root: Path, candidate_root_ref: str | No
         return binding
     manifest_ref = f"{candidate_root_ref}/analysis/{_CANDIDATE_WORKSPACE_MANIFEST}"
     manifest_path = workspace_root / manifest_ref
-    manifest_sha256 = _required_file_sha256(manifest_path, "parent manifest")
+    manifest_sha256 = required_file_sha256(manifest_path, "parent manifest")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -596,7 +615,7 @@ def _candidate_workspace_root(parent_root: Path, candidate_id: str) -> Path:
     return root
 
 
-def _required_file_sha256(path: Path, label: str) -> str:
+def required_file_sha256(path: Path, label: str) -> str:
     if path.is_symlink() or not path.is_file() or (digest := sha256_path(path)) is None:
         raise RuntimeApiError("command_failed", f"candidate {label} is missing or unsafe")
     return digest
@@ -622,7 +641,7 @@ def _candidate_workspace_receipt(
     manifest_path = candidate_root / "analysis" / _CANDIDATE_WORKSPACE_MANIFEST
     if manifest_path.parent.is_symlink():
         raise RuntimeApiError("command_failed", "candidate manifest path is unsafe")
-    candidate_flow_sha256 = _required_file_sha256(candidate_root / "home" / "flow.json", "flow")
+    candidate_flow_sha256 = required_file_sha256(candidate_root / "home" / "flow.json", "flow")
     candidate_state_sha256 = _workspace_state_sha256(candidate_root)
     manifest = {
         "schema": _CANDIDATE_WORKSPACE_SCHEMA,
@@ -653,29 +672,42 @@ def _candidate_workspace_receipt(
         if artifact.is_file() and not artifact.is_symlink():
             artifacts[key] = {
                 "ref": relative,
-                "sha256": _required_file_sha256(artifact, key),
+                "sha256": required_file_sha256(artifact, key),
             }
     if terminal_state == "succeeded":
         design_name = getattr(getattr(workspace, "design", None), "name", None)
         if not isinstance(design_name, str) or not design_name:
             raise RuntimeApiError("command_failed", "candidate design name is unavailable")
+        records = workspace.flow.data.get("steps", [])
+        harden_directory = next(
+            (
+                row["directory"]
+                for row in records
+                if row.get("name") == StepEnum.HARDEN.value and "directory" in row
+            ),
+            "harden_ecc",
+        )
+        from chipcompiler.data.step.directories import is_step_directory_name
+
+        if not isinstance(harden_directory, str) or not is_step_directory_name(harden_directory):
+            raise RuntimeApiError("command_failed", "candidate harden step directory is invalid")
         for key, suffix in (
             ("harden_gds", "gds"),
             ("harden_lef", "lef"),
             ("harden_lib", "lib"),
         ):
-            relative = f"harden_ecc/output/{design_name}_harden.{suffix}"
+            relative = f"{harden_directory}/output/{design_name}_harden.{suffix}"
             artifact = candidate_root / relative
             artifacts[key] = {
                 "ref": relative,
-                "sha256": _required_file_sha256(artifact, key),
+                "sha256": required_file_sha256(artifact, key),
             }
     manifest["artifacts"] = artifacts
     try:
         write_json_atomic(manifest_path, manifest)
     except OSError as exc:
         raise RuntimeApiError("command_failed", f"candidate manifest write failed: {exc}") from exc
-    manifest_sha256 = _required_file_sha256(manifest_path, "manifest")
+    manifest_sha256 = required_file_sha256(manifest_path, "manifest")
     replay_path = candidate_root / "analysis" / "candidate_execution_receipt.v1.json"
     replay = {
         "schema": "ecc.candidate_execution_receipt.v1",
@@ -787,7 +819,12 @@ def _candidate_parameter_receipt(
     snapshot = materialization["snapshots"][0]
     knob_id = patch["knob_id"]
     unit = _parameter_unit(knob_id)
-    tool_name = "ECC-Floorplan" if knob_id.startswith("floorplan.") else "DREAMPlace"
+    if knob_id.startswith("route."):
+        from .data.routing_parameter_observer import ROUTING_TOOL
+
+        tool_name = ROUTING_TOOL
+    else:
+        tool_name = "ECC-Floorplan" if knob_id.startswith("floorplan.") else "DREAMPlace"
     runtime_report_path = (
         Path(workspace.directory) / "analysis" / "parameter_runtime_report.v2.json"
     )
@@ -862,7 +899,15 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         .removesuffix(".gz")
         .endswith((".v", ".sv", ".vh", ".svh", ".vhd", ".vhdl"))
     )
-    sdc_files = sorted(origin.glob("*.sdc"))
+    sdc_files = sorted(
+        path
+        for path in origin.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix == ".sdc"
+            or (path.suffix == ".tcl" and path.parent.name in {"pre_CTS", "post_CTS"})
+        )
+    )
     if not rtl_files or not sdc_files:
         raise RuntimeApiError("command_failed", "candidate input fingerprints are unavailable")
     try:
@@ -894,13 +939,22 @@ def _parameter_receipt_context(workspace, request, parent_flow_sha256: str) -> d
         raise RuntimeApiError("command_failed", "candidate PDK fingerprint is unavailable") from exc
     rtl_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in rtl_files]
     sdc_hashes = [f"sha256:{sha256(path.read_bytes()).hexdigest()}" for path in sdc_files]
-    filelist = next(
-        (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()),
-        None,
+    declared = workspace.parameters.data.get("file_list") or workspace.design.input_filelist
+    filelist = (
+        root / declared
+        if declared
+        else next(
+            (path for path in (origin / "filelist", origin / "filelist.f") if path.is_file()), None
+        )
     )
     if filelist is None:
-        raise RuntimeApiError("command_failed", "candidate filelist fingerprint is unavailable")
-    filelist_sha256 = f"sha256:{sha256(filelist.read_bytes()).hexdigest()}"
+        filelist_sha256 = _stable_hash(
+            {"rtl_files": [path.relative_to(root).as_posix() for path in rtl_files]}
+        )
+    else:
+        if not path_is_within(filelist, root):
+            raise RuntimeApiError("command_failed", "candidate filelist is outside its workspace")
+        filelist_sha256 = required_file_sha256(filelist, "filelist")
     rtl_sha256 = rtl_hashes[0] if len(rtl_hashes) == 1 else _stable_hash({"files": rtl_hashes})
     sdc_sha256 = sdc_hashes[0] if len(sdc_hashes) == 1 else _stable_hash({"files": sdc_hashes})
     design_sha256 = _stable_hash(
@@ -997,21 +1051,13 @@ def _validate_runtime_report_binding(
 
 
 def _candidate_source_step(flow, target_step: str) -> str:
-    # The RPC-level "floorplan" target binds the post-synthesis netlist: the
-    # floorplan sub-steps consume the synthesis output as their phase input.
-    if target_step == StepEnum.FLOORPLAN.value:
-        return StepEnum.SYNTHESIS.value
-    steps = flow.workspace.flow.data.get("steps", [])
-    for index, step in enumerate(steps):
-        if step.get("name") == target_step and index:
-            for source_step in reversed(steps[:index]):
-                # An LEC check reads a netlist and changes nothing.
-                if source_step.get("tool") in LEC_STEP_TOOLS:
-                    continue
-                source = source_step.get("name")
-                if isinstance(source, str):
-                    return source
-    raise RuntimeApiError("invalid_request", f"candidate target has no predecessor: {target_step}")
+    records = flow.workspace.flow.data.get("steps", [])
+    source_step = candidate_source_step(records, target_step)
+    if source_step is None:
+        raise RuntimeApiError(
+            "invalid_request", f"candidate target has no predecessor: {target_step}"
+        )
+    return source_step
 
 
 def _reapply_candidate_input(workspace, flow, target_step: str) -> None:

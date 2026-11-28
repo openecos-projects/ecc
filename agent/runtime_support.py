@@ -1,4 +1,15 @@
-from typing import Any
+from typing import Any, Protocol
+
+
+class CandidateHost(Protocol):
+    """Minimal workspace host interface required by FlowAgentRuntimeApi."""
+
+    operations: Any
+
+    def _get_session(self, workspace_id: str, /) -> Any: ...
+    def _validate_workspace_revision(self, session: Any, expected: int | None, /) -> None: ...
+    def _close_transient_flow_db(self, flow: Any, /) -> None: ...
+    def _with_session_mutation_lock(self, workspace_id: str, operation: Any, /) -> Any: ...
 
 
 class AgentApplicationError(RuntimeError):

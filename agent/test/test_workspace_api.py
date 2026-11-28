@@ -26,7 +26,7 @@ from agent.workspace_api import (
     _reject_workspace_symlinks,
     build_agent_flow_for_workspace,
 )
-from chipcompiler.data import StateEnum
+from chipcompiler.data import OriginDesign, StateEnum
 from chipcompiler.data.parameter import load_parameter, save_parameter
 from chipcompiler.data.step import new_step_directory
 from chipcompiler.data.step_parameters import set_step_value
@@ -359,7 +359,7 @@ def test_current_flow_topological_edges_are_declared() -> None:
     for index in range(1, len(_CURRENT_FLOW_STEPS)):
         target = _CURRENT_FLOW_STEPS[index]["name"]
         source = _CURRENT_FLOW_STEPS[index - 1]["name"]
-        _validate_edge(target, source)
+        _validate_edge(None, target, source)
 
 
 def test_floorplan_target_range_starts_at_the_first_floorplan_sub_step() -> None:
@@ -860,10 +860,14 @@ def test_succeeded_candidate_preserves_flow_when_runtime_report_is_missing(
     (tmp_path / "home").mkdir()
     (tmp_path / "home" / "flow.json").write_text('{"steps": []}', encoding="utf-8")
     for suffix in ("gds", "lef", "lib"):
-        output = tmp_path / "harden_ecc" / "output"
+        output = tmp_path / "21_harden_ecc" / "output"
         output.mkdir(parents=True, exist_ok=True)
         (output / f"gcd_harden.{suffix}").write_text("artifact", encoding="utf-8")
-    workspace = SimpleNamespace(directory=tmp_path, design=SimpleNamespace(name="gcd"))
+    workspace = SimpleNamespace(
+        directory=tmp_path,
+        design=SimpleNamespace(name="gcd"),
+        flow=SimpleNamespace(data={"steps": [{"name": "harden", "directory": "21_harden_ecc"}]}),
+    )
     parent = {
         "root_ref": None,
         "manifest_ref": None,
@@ -1148,7 +1152,7 @@ class _EccApi:
             directory=root,
             config={"dreamplace": root / "config" / "dreamplace.json"},
             parameters=load_parameter(root / "home" / "params.toml"),
-            design=SimpleNamespace(name="gcd"),
+            design=OriginDesign(name="gcd"),
             flow=SimpleNamespace(
                 data=json.loads(flow_path.read_text(encoding="utf-8")), path=flow_path
             ),

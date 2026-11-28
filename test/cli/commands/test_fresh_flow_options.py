@@ -11,43 +11,6 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data import load_workspace
-from chipcompiler.engine import EngineFlow
-
-
-class LedgerOnlyFlow(EngineFlow):
-    """The real flow ledger, without step workspaces or tool execution."""
-
-    def create_step_workspaces(self, **_kwargs):
-        self.workspace_steps = list(self.workspace.flow.data.get("steps", []))
-
-    def run_steps(self, **_kwargs):
-        return True
-
-
-@pytest.fixture
-def fresh_project(tmp_path, monkeypatch, minimal_ics55_pdk_factory):
-    """A project whose fresh runs build a real workspace and a real ledger."""
-    monkeypatch.setattr("chipcompiler.engine.EngineFlow", LedgerOnlyFlow)
-    monkeypatch.setattr(
-        "chipcompiler.rtl2gds.builder.build_rtl2gds_flow",
-        lambda *, skip=(), lec_engine=None: [
-            ("synthesis", "yosys", "Unstart"),
-            ("pre_floorplan", "ecc", "Unstart"),
-            ("placement", "dreamplace", "Unstart"),
-        ],
-    )
-    monkeypatch.setattr(
-        "chipcompiler.cli.project.config._validate_pdk_contents",
-        lambda name, root, overrides=None: None,
-    )
-    project = tmp_path / "project"
-    assert cli_main.run(["init", str(project), "--design-name", "gcd"]) == 0
-    pdk = minimal_ics55_pdk_factory(tmp_path / "pdk")
-    (project / "gcd.v").write_text("module gcd(input clk); endmodule\n")
-    assert cli_main.run(["project", "set", "design.rtl", "gcd.v", "--project", str(project)]) == 0
-    config = project / "ecc.toml"
-    config.write_text(config.read_text().replace('root = ""', f'root = "{pdk}"'))
-    return project
 
 
 @pytest.mark.parametrize(

@@ -10,6 +10,7 @@ edit, or any write outside the derivation path) from an untouched tree, so
 refresh can refuse to clobber edits instead of silently discarding them.
 """
 
+from collections.abc import Collection
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -72,3 +73,45 @@ def modified_derived_configs(workspace_dir: str | Path) -> list[str]:
         if current != recorded[filename]:
             modified.append(filename)
     return modified
+
+
+def unmodified_derived_configs(workspace_dir: str | Path) -> frozenset[str]:
+    """Managed config filenames whose on-disk bytes match the recorded baseline."""
+    manifest = json_read(derived_config_manifest_path(workspace_dir))
+    recorded = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(recorded, dict) or not recorded:
+        return frozenset()
+    modified = set(modified_derived_configs(workspace_dir))
+    return frozenset(name for name in recorded if isinstance(name, str) and name not in modified)
+
+
+def refresh_relocated_derived_configs(
+    workspace_dir: str | Path,
+    unmodified: frozenset[str],
+    relocated_paths: Collection[Path],
+) -> bool:
+    """Update baseline hashes only for clean managed configs rewritten by relocation."""
+    if not unmodified or not relocated_paths:
+        return True
+    manifest_path = derived_config_manifest_path(workspace_dir)
+    manifest = json_read(manifest_path)
+    recorded = manifest.get("files") if isinstance(manifest, dict) else None
+    if not isinstance(recorded, dict) or not recorded:
+        return True
+    relocated = set(relocated_paths)
+    config_dir = Path(workspace_dir) / "config"
+    updated = dict(recorded)
+    changed = False
+    for filename in sorted(unmodified):
+        if filename not in updated or Path("config") / filename not in relocated:
+            continue
+        digest = file_digest(config_dir / filename)
+        if digest is None:
+            continue
+        entry = {"sha256": digest[0], "size": digest[1]}
+        if updated[filename] != entry:
+            updated[filename] = entry
+            changed = True
+    if not changed:
+        return True
+    return json_write(manifest_path, {**manifest, "files": updated})

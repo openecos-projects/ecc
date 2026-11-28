@@ -1,14 +1,14 @@
 """Import external RTL sources into a manifest project."""
 
-from __future__ import annotations
-
 import os
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 from chipcompiler.cli.project.toml_edit import set_scoped_key
 from chipcompiler.project.manifest import CONFIG_FILENAME, MANIFEST_FILENAME
-from chipcompiler.project.manifest_write import update_manifest
+from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
+from chipcompiler.utility.file import write_text_atomic
 from chipcompiler.utility.filelist import (
     _remove_inline_comment,
     parse_filelist,
@@ -36,13 +36,74 @@ def import_project_rtl(
         raise RtlImportError("missing_config", "ecc.toml was not found", str(config_path))
     if not (root / MANIFEST_FILENAME).is_file():
         raise RtlImportError("missing_manifest", "project.json was not found", str(root))
+    with manifest_lock(root):
+        plan = plan_project_rtl(root, filelist=filelist, verilog=verilog)
+        plan.copy(force=force)
+        rtl_config, rtl_entries = plan.configured_paths, plan.rtl_entries
+
+        text = config_path.read_text(encoding="utf-8")
+        write_text_atomic(config_path, set_scoped_key(text, "design", "rtl", rtl_config))
+
+        def mutate(document: dict) -> None:
+            base = document.setdefault("base_design", {})
+            base["rtl_list"] = rtl_entries
+            base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
+            if filelist:
+                base["origin_filelist"] = rtl_config[0]
+            document["design_name"] = document.get("design_name") or root.name
+
+        update_manifest_locked(root, mutate)
+    return {
+        "project": str(root),
+        "status": "rtl_imported",
+        "filelist": rtl_config[0] if filelist else None,
+        "rtl": rtl_entries,
+        "include_dirs": [str(path.relative_to(root)) for path in plan.include_dirs.values()]
+        or None,
+    }
+
+
+@dataclass(frozen=True)
+class RtlImportPlan:
+    copied: list[tuple[Path, Path]]
+    source_list: Path | None
+    configured_paths: list[str]
+    rtl_entries: list[str]
+    include_dirs: dict[Path, Path]
+
+    @property
+    def source_paths(self) -> list[str]:
+        return (
+            [str(self.source_list)]
+            if self.source_list
+            else [str(source) for source, _ in self.copied]
+        )
+
+    def copy(self, *, force: bool = False) -> None:
+        _ensure_targets_available(self.copied, force=force)
+        for source, target in self.copied:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+        if self.source_list:
+            _write_filelist(
+                self.copied[0][1],
+                self.source_list,
+                self.copied[1 : 1 + len(self.rtl_entries)],
+                self.include_dirs,
+            )
+
+
+def plan_project_rtl(
+    root: Path,
+    *,
+    filelist: str | None = None,
+    verilog: tuple[str, ...] = (),
+) -> RtlImportPlan:
     if filelist and verilog:
         raise RtlImportError("rtl_inputs_exclusive", "use --filelist or --verilog, not both")
 
     rtl_root = root / "rtl"
-    rtl_root.mkdir(exist_ok=True)
     copied: list[tuple[Path, Path]] = []
-    sources: list[tuple[Path, Path]] = []
     include_dirs: dict[Path, Path] = {}
     source_list: Path | None = None
     if filelist:
@@ -68,7 +129,6 @@ def import_project_rtl(
             copied.append((source, _target_for(source, source_list.parent, rtl_root)))
         rtl_entries = [str(path.relative_to(root)) for _, path in copied[1:]]
         rtl_config = [str(list_target.relative_to(root))]
-        sources = copied[1:]
         include_dirs = _include_directories(source_list, rtl_root)
         copied.extend(_include_files(include_dirs, root, rtl_root, copied))
     else:
@@ -84,56 +144,22 @@ def import_project_rtl(
         rtl_entries = [str(path.relative_to(root)) for _, path in copied]
         rtl_config = rtl_entries
 
-    _ensure_targets_available(copied, force=force)
-    for source, target in copied:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, target)
-    if filelist:
-        assert source_list is not None
-        _write_filelist(copied[0][1], source_list, sources, include_dirs)
-
-    text = config_path.read_text(encoding="utf-8")
-    text = set_scoped_key(text, "design", "rtl", rtl_config)
-    config_path.write_text(text, encoding="utf-8")
-
-    def mutate(document: dict) -> None:
-        base = document.setdefault("base_design", {})
-        base["rtl_list"] = rtl_entries
-        base["origin_verilog"] = rtl_entries[0] if rtl_entries else ""
-        if filelist:
-            base["origin_filelist"] = rtl_config[0]
-        document["design_name"] = document.get("design_name") or root.name
-
-    update_manifest(root, mutate)
-    return {
-        "project": str(root),
-        "status": "rtl_imported",
-        "filelist": rtl_config[0] if filelist else None,
-        "rtl": rtl_entries,
-        "include_dirs": [str(path.relative_to(root)) for path in include_dirs.values()] or None,
-    }
+    _validate_plan_targets(copied)
+    return RtlImportPlan(copied, source_list, rtl_config, rtl_entries, include_dirs)
 
 
 def _target_for(source: Path, base: Path, rtl_root: Path) -> Path:
-    try:
-        relative = source.relative_to(base)
-    except ValueError:
-        relative = Path(source.name)
+    relative = source.relative_to(base) if source.is_relative_to(base) else Path(source.name)
     return _contained(rtl_root / relative, rtl_root, source)
 
 
 def _contained(target: Path, rtl_root: Path, source: Path) -> Path:
-    """The resolved *target*, refused when it is not below the project's ``rtl/``.
-
-    Resolving follows the symlinks already present under ``rtl/``, so a link
-    that points out of the project cannot redirect a copy.
-    """
-    target = target.resolve()
-    if target != rtl_root and rtl_root not in target.parents:
+    resolved = target.resolve()
+    if not resolved.is_relative_to(rtl_root):
         raise RtlImportError(
             "rtl_path_escape", "RTL target escapes project rtl directory", str(source)
         )
-    return target
+    return resolved
 
 
 def _include_directories(source_list: Path, rtl_root: Path) -> dict[Path, Path]:
@@ -211,18 +237,21 @@ def _include_files(
     return files
 
 
-def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
-    targets = set()
+def require_rtl_target_parents(target: Path) -> None:
+    """A target can only create directories through missing path components."""
+    for parent in target.parents:
+        if (parent.exists() or parent.is_symlink()) and not parent.is_dir():
+            raise FileExistsError(f"RTL target parent is not a directory: {parent}")
+
+
+def _validate_plan_targets(copied: list[tuple[Path, Path]]) -> None:
+    targets: set[Path] = set()
     for _source, target in copied:
         if target in targets:
             raise RtlImportError(
                 "rtl_target_collision", "multiple inputs map to the same target", str(target)
             )
         targets.add(target)
-        if target.exists() and not force:
-            raise RtlImportError(
-                "rtl_target_exists", "target exists; use --force to replace it", str(target)
-            )
     # A file cannot be written where another input needs a directory: a listed
     # source named like an include directory would stop the copy half-way.
     for target in sorted(targets):
@@ -230,6 +259,18 @@ def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -
             raise RtlImportError(
                 "rtl_target_collision", "one input maps into the target of another", str(target)
             )
+
+
+def _ensure_targets_available(copied: list[tuple[Path, Path]], *, force: bool) -> None:
+    for _source, target in copied:
+        if target.exists() and not force:
+            raise RtlImportError(
+                "rtl_target_exists", "target exists; use --force to replace it", str(target)
+            )
+        try:
+            require_rtl_target_parents(target)
+        except FileExistsError as exc:
+            raise RtlImportError("rtl_target_collision", str(exc), str(target)) from exc
 
 
 def _write_filelist(

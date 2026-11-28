@@ -33,15 +33,14 @@ def execute_workspace_run(
     runs only within the reconciled target range. Manifest projects register
     the active process in project.json without writing flow status there.
     """
-    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.cli.project.run_process import locked_run_session
     from chipcompiler.project.runtime_processes import RuntimeProcessError
 
     workspace_path = os.path.abspath(workspace_path)
     try:
-        # §13.1 step 2: an explicit --log-file must exist and own stdout/
-        # stderr before the pure-read preflight below; a log-open failure
-        # exits here without running the flow.
-        with run_log_stdio(command_input, workspace_path) as run_log:
+        # §13.1 step 2: lock the Workspace across run-ID validation, optional
+        # --log-file capture, preflight, and execution.
+        with locked_run_session(command_input, workspace_path) as run_log:
             return _execute_workspace_run(
                 command_input,
                 workspace_path,
@@ -169,29 +168,7 @@ def _execute_workspace_run(
         reconcile_result = reconcile_workspace_locked(workspace_path)
         if not reconcile_result.ok:
             return mismatch_error(reconcile_result.error or "")
-        if (
-            reconcile_result.outcome == "no_op"
-            and reconcile_result.persisted
-            and command_input.from_step is None
-            and command_input.only is None
-        ):
-            # The persisted flow already covers the target and finished;
-            # resume has nothing to do. Explicit selectors (--from/--only)
-            # still re-execute on request. The flow is complete, so the
-            # manifest entry reads success even if a previous failed state
-            # is stale.
-            return CommandResult.ok(
-                warnings
-                + [
-                    {
-                        "workspace_id": workspace_id or "default",
-                        "status": "success",
-                        "workspace": workspace_path,
-                        "executed_steps": [],
-                        "no_op": True,
-                    }
-                ]
-            )
+        outcome = None
 
         def run_failed(
             kind: str,
@@ -200,6 +177,8 @@ def _execute_workspace_run(
             details=(),
             **fields,
         ) -> CommandResult:
+            if outcome is not None:
+                outcome.error = {"code": kind, "message": reason or ""}
             return CommandResult.err(
                 [
                     {
@@ -230,7 +209,28 @@ def _execute_workspace_run(
                 )
             else:
                 process_context = nullcontext()
-            with process_context:
+            with process_context as outcome:
+                if (
+                    reconcile_result.outcome == "no_op"
+                    and reconcile_result.persisted
+                    and command_input.from_step is None
+                    and command_input.only is None
+                ):
+                    if outcome is not None:
+                        outcome.record_execution(succeeded=True)
+                    return CommandResult.ok(
+                        warnings
+                        + [
+                            {
+                                "workspace_id": workspace_id or "default",
+                                "status": "success",
+                                "workspace": workspace_path,
+                                "executed_steps": [],
+                                "no_op": True,
+                            }
+                        ]
+                    )
+
                 engine_flow = EngineFlow(workspace=workspace)
                 engine_flow.max_parallel_steps = max_parallel_steps
                 if not engine_flow.has_init():
@@ -326,6 +326,10 @@ def _execute_workspace_run(
                             )
                 except ValueError as exc:
                     return run_failed("step_unavailable", str(exc))
+                if outcome is not None:
+                    outcome.record_execution(
+                        succeeded=result.ok, failed_step_error=result.failed_step_error
+                    )
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

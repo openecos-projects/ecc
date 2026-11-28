@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.flow.policy import FlowInputResolver
 from chipcompiler.data.types import SkippableStepEnum, StepEnum
 
 from .candidate_artifacts import (
@@ -76,7 +77,7 @@ def bind_candidate_input(
     candidate_id: str,
 ) -> dict[str, Any]:
     candidate_id = _validated_candidate_id(candidate_id)
-    _validate_edge(target_step, source_step)
+    _validate_edge(workspace, target_step, source_step)
     target = _step_or_error(engine_flow, _flow_step_name(engine_flow, target_step), "target")
     inputs = _source_inputs(workspace, engine_flow, source_step)
     receipt = _build_receipt(workspace, target_step, source_step, candidate_id, inputs)
@@ -97,7 +98,7 @@ def reapply_candidate_input_binding(
     if receipt["target_step"] != target_step:
         return None
     source_step = receipt["source"]["step"]
-    _validate_edge(target_step, source_step)
+    _validate_edge(workspace, target_step, source_step)
     target = _step_or_error(engine_flow, _flow_step_name(engine_flow, target_step), "target")
     inputs = _source_inputs(workspace, engine_flow, source_step)
     actual = _build_receipt(
@@ -113,8 +114,27 @@ def reapply_candidate_input_binding(
     return actual
 
 
-def _validate_edge(target_step: str, source_step: str) -> None:
-    if (target_step, source_step) not in CANONICAL_INPUT_EDGES:
+def candidate_source_step(records: list[dict], target_step: str) -> str | None:
+    names = [record.get("name") for record in records]
+    target = target_step if target_step in names else FLOORPLAN_TARGET_FLOW_STEP.get(target_step)
+    if target not in names:
+        return None
+    if target == StepEnum.FLOORPLAN.value and target_step == StepEnum.FLOORPLAN.value:
+        # Single-step floorplan is still supported by the offline library.
+        return StepEnum.SYNTHESIS.value if StepEnum.SYNTHESIS.value in names else "initial"
+    return FlowInputResolver(records).input_step_name(names.index(target)) or "initial"
+
+
+def _validate_edge(workspace: Any, target_step: str, source_step: str) -> None:
+    flow = getattr(workspace, "flow", None)
+    records = getattr(flow, "data", {}).get("steps", [])
+    if any(record.get("category") for record in records):
+        allowed = target_step != StepEnum.FILLER.value and (
+            candidate_source_step(records, target_step) == source_step
+        )
+    else:
+        allowed = (target_step, source_step) in CANONICAL_INPUT_EDGES
+    if not allowed:
         raise CandidateInputBindingError(
             f"unsupported candidate input edge: {source_step} -> {target_step}"
         )

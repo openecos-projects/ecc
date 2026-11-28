@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """Derive a fresh-identity Workspace copy from an existing Workspace."""
 
-import json
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from chipcompiler.data.workspace.config_manifest import (
+    refresh_relocated_derived_configs,
+    unmodified_derived_configs,
+)
 from chipcompiler.engine.snapshot.store import (
     SNAPSHOT_FILENAME,
     STALE_SNAPSHOT_FILENAME,
@@ -14,70 +18,63 @@ from chipcompiler.engine.snapshot.store import (
 )
 from chipcompiler.engine.workspace.lifecycle import (
     WorkspaceLifecycleError,
-    _replace_string_prefix,
     command_retry_matches,
     workspace_command_fingerprint,
     write_workspace_command,
 )
+from chipcompiler.engine.workspace.paths import (
+    replace_path_prefix,
+    rewrite_workspace_json_paths,
+    rewrite_workspace_tcl_paths,
+)
+from chipcompiler.project.runtime_processes import is_run_history_file
 from chipcompiler.utility.path import path_is_within
 
 _RUNTIME_COMMANDS_FILENAME = "runtime-commands.json"
 _WORKSPACE_COMMANDS_FILENAME = "workspace-commands.json"
 
 
-def derive_workspace(
+def publish_copied_workspace(
     source_directory: str | Path,
     target_directory: str | Path,
     *,
-    reset_from_step: str = "",
-    through_step: str = "",
+    command_spec: dict[str, Any],
     command_id: str = "",
     cause: str = "workspace.derived",
     blocking: bool = True,
     project_id: str = "",
     source_workspace_id: str = "",
     target_workspace_id: str = "",
+    source_lock: Path | None = None,
+    prepare_workspace: Callable[[Any], None] | None = None,
+    rewrite_target: Callable[[Path, Path], None] | None = None,
 ) -> Any:
-    """Copy ``source_directory`` to ``target_directory`` under a new identity.
+    """Copy ``source_directory`` into a staged sibling, snapshot, and atomically publish.
 
-    The source stays read-only and byte-identical. The target receives a new
-    Engineering Snapshot (target_workspace_id or a fresh ID, revision 1, ``cause``), an empty
-    runtime command ledger, and no inherited workspace command records. With an
-    empty ``reset_from_step`` the whole flow is prepared for a rerun; otherwise
-    only the named step and its flow suffix are reset while earlier steps keep
-    their Success state and artifacts.
-
-    With ``through_step``, the ledger contains only the inclusive requested
-    range, with the first step's inherited inputs frozen into ``origin/``.
-
-    Returns the loaded derived workspace.
+    Excludes source-private ``.agent`` trees, per-run ``log/`` history, and
+    transient command/snapshot markers. Callers supply domain-specific hooks
+    for staging preparation, flow reset, and path rewriting.
     """
     from chipcompiler.data import load_workspace
     from chipcompiler.utility.workspace_lock import workspace_lock
 
     source = Path(source_directory).expanduser().resolve()
     target = Path(target_directory).expanduser().resolve()
-    command_spec = {
-        "directory": str(source),
-        "targetDirectory": str(target),
-        "resetFromStep": reset_from_step,
-        **({"throughStep": through_step} if through_step else {}),
-    }
-    fingerprint = workspace_command_fingerprint("derive", command_spec, None)
     if path_is_within(target, source):
         raise WorkspaceLifecycleError(
             "workspace_invalid", f"Target directory is inside the source Workspace: {target}"
         )
-    if not (source / "home" / SNAPSHOT_FILENAME).is_file():
-        raise WorkspaceLifecycleError(
-            "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
-        )
 
+    fingerprint = workspace_command_fingerprint("derive", command_spec, None)
+    lock_target = source_lock if source_lock is not None else source
     # Blocking acquisition uses a stable path order so two derives can never
-    # deadlock. A non-blocking acquisition never waits, so it cannot deadlock
-    # either; it takes the source lock first so a busy source fails before the
-    # target's sibling lock file is created (#400).
-    locks = sorted((source, target), key=str) if blocking else (source, target)
+    # deadlock. Non-blocking takes the source lock first so a busy source fails
+    # before the target's sibling lock file is created (#400).
+    locks: tuple[Path, Path] = (
+        (lock_target, target)
+        if not blocking or str(lock_target) <= str(target)
+        else (target, lock_target)
+    )
     with workspace_lock(locks[0], blocking=blocking), workspace_lock(locks[1], blocking=blocking):
         _sweep_stale_staging(target)
         if target.exists():
@@ -89,7 +86,16 @@ def derive_workspace(
         staging = Path(tempfile.mkdtemp(prefix=f".{target.name}.staging-", dir=target.parent))
         staging.rmdir()
         try:
-            shutil.copytree(source, staging)
+
+            def ignore_source_history(path: str, names: list[str]) -> list[str]:
+                directory = Path(path)
+                if directory == source:
+                    return [".agent"]
+                if directory == source / "log":
+                    return [name for name in names if is_run_history_file(name)]
+                return []
+
+            shutil.copytree(source, staging, ignore=ignore_source_history)
             home = staging / "home"
             for name in (
                 STALE_SNAPSHOT_FILENAME,
@@ -103,36 +109,14 @@ def derive_workspace(
                 raise WorkspaceLifecycleError(
                     "workspace_invalid", f"Workspace cannot be opened: {source}"
                 )
-
-            from chipcompiler.engine.workspace.reset import (
-                build_flow_for_workspace,
-                prepare_steps_for_rerun,
-            )
-
-            engine_flow = build_flow_for_workspace(workspace)
-            if through_step:
-                from chipcompiler.engine.workspace.derive_range import bound_derived_flow
-
-                bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
-                _prune_derived_checklist(workspace, engine_flow.workspace_steps)
-            elif reset_from_step:
-                reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
-                prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
-                _prune_derived_checklist(workspace, reset_steps)
-            else:
-                import chipcompiler.data as data_api
-
-                data_api.prepare_workspace_for_rerun(
-                    workspace, engine_flow, preserve_user_inputs=True
-                )
+            if prepare_workspace is not None:
+                prepare_workspace(workspace)
 
             snapshot = create_engineering_snapshot(
                 workspace, workspace_id=target_workspace_id or None, cause=cause
             )
-            _rewrite_staged_paths(
-                staging,
-                ((str(source), str(target)), (str(staging), str(target))),
-            )
+            if rewrite_target is not None:
+                rewrite_target(staging, target)
             if command_id:
                 write_workspace_command(
                     staging,
@@ -163,6 +147,103 @@ def derive_workspace(
             return derived
         finally:
             shutil.rmtree(staging, ignore_errors=True)
+
+
+def derive_workspace(
+    source_directory: str | Path,
+    target_directory: str | Path,
+    *,
+    reset_from_step: str = "",
+    through_step: str = "",
+    command_id: str = "",
+    cause: str = "workspace.derived",
+    blocking: bool = True,
+    project_id: str = "",
+    source_workspace_id: str = "",
+    target_workspace_id: str = "",
+) -> Any:
+    """Copy ``source_directory`` to ``target_directory`` under a new identity.
+
+    The source stays read-only and byte-identical. The target receives a new
+    Engineering Snapshot (target_workspace_id or a fresh ID, revision 1, ``cause``), an empty
+    runtime command ledger, and no inherited workspace command records. With an
+    empty ``reset_from_step`` the whole flow is prepared for a rerun; otherwise
+    only the named step and its flow suffix are reset while earlier steps keep
+    their Success state and artifacts.
+
+    With ``through_step``, the ledger contains only the inclusive requested
+    range, with the first step's inherited inputs frozen into ``origin/``.
+
+    Returns the loaded derived workspace.
+    """
+    source = Path(source_directory).expanduser().resolve()
+    target = Path(target_directory).expanduser().resolve()
+    if not (source / "home" / SNAPSHOT_FILENAME).is_file():
+        raise WorkspaceLifecycleError(
+            "workspace_invalid", f"Workspace has no Engineering Snapshot: {source}"
+        )
+
+    command_spec = {
+        "directory": str(source),
+        "targetDirectory": str(target),
+        "resetFromStep": reset_from_step,
+        **({"throughStep": through_step} if through_step else {}),
+    }
+
+    def rewrite_target(staging: Path, published: Path) -> None:
+        clean_configs = unmodified_derived_configs(staging)
+        rewritten = rewrite_workspace_json_paths(
+            staging,
+            lambda value: replace_path_prefix(
+                replace_path_prefix(value, str(source), str(published)),
+                str(staging),
+                str(published),
+            ),
+        )
+        rewrite_workspace_tcl_paths(
+            staging,
+            lambda text: text.replace(f"{source}/", f"{published}/").replace(
+                f"{staging}/", f"{published}/"
+            ),
+        )
+        if not refresh_relocated_derived_configs(staging, clean_configs, rewritten):
+            raise OSError(f"Failed to update derived Workspace configuration: {staging}")
+
+    return publish_copied_workspace(
+        source,
+        target,
+        command_spec=command_spec,
+        command_id=command_id,
+        cause=cause,
+        blocking=blocking,
+        project_id=project_id,
+        source_workspace_id=source_workspace_id,
+        target_workspace_id=target_workspace_id,
+        prepare_workspace=lambda ws: _prepare_derived_flow(ws, reset_from_step, through_step),
+        rewrite_target=rewrite_target,
+    )
+
+
+def _prepare_derived_flow(workspace, reset_from_step: str, through_step: str) -> None:
+    from chipcompiler.engine.workspace.reset import (
+        build_flow_for_workspace,
+        prepare_steps_for_rerun,
+    )
+
+    engine_flow = build_flow_for_workspace(workspace)
+    if through_step:
+        from chipcompiler.engine.workspace.derive_range import bound_derived_flow
+
+        bound_derived_flow(workspace, engine_flow, reset_from_step, through_step)
+        _prune_derived_checklist(workspace, engine_flow.workspace_steps)
+    elif reset_from_step:
+        reset_steps = _reset_step_suffix(engine_flow, reset_from_step)
+        prepare_steps_for_rerun(workspace, engine_flow, reset_steps)
+        _prune_derived_checklist(workspace, reset_steps)
+    else:
+        from chipcompiler.data import prepare_workspace_for_rerun
+
+        prepare_workspace_for_rerun(workspace, engine_flow, preserve_user_inputs=True)
 
 
 def _sweep_stale_staging(target: Path) -> None:
@@ -208,18 +289,3 @@ def _prune_derived_checklist(workspace, reset_steps) -> None:
         if isinstance(item, dict) and str(item.get("step", "")) not in wiped
     ]
     checklist.replace(kept)
-
-
-def _rewrite_staged_paths(staging: Path, replacements: tuple[tuple[str, str], ...]) -> None:
-    from chipcompiler.utility import json_write
-
-    for path in staging.rglob("*.json"):
-        try:
-            value = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        rewritten = value
-        for source, target in replacements:
-            rewritten = _replace_string_prefix(rewritten, source, target)
-        if rewritten != value and not json_write(path, rewritten):
-            raise OSError(f"Failed to rewrite staged Workspace path: {path}")

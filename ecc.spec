@@ -367,6 +367,12 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
+    # Candidate receipts hash the observer's source bytes, also inside frozen workers.
+    module_collection_mode={
+        "agent.data.routing_parameter_observer": "pyz+py",
+        "agent.data.floorplan_parameter_observer": "pyz+py",
+        "agent.data.parameter_runtime_observer": "pyz+py",
+    },
     hookspath=[str(HOOKS_DIR)],
     excludes=EXCLUDES,
     noarchive=False,

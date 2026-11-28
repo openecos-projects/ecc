@@ -4,6 +4,7 @@ import pytest
 
 from chipcompiler.cli.project.config import load_project_config, validate_project_config
 from chipcompiler.cli.project.flow_selection import (
+    FlowSelectionChangedError,
     entry_step,
     selection_errors,
     selection_warnings,
@@ -125,6 +126,26 @@ def test_written_selection_keeps_the_rest_of_ecc_toml(tmp_path):
         "# fanout\n"
         "max_fanout = 32\n"
     )
+
+
+def test_written_selection_rejects_an_outdated_flow(tmp_path):
+    expected = _config(tmp_path, "max_parallel_steps = 2\n")
+    config_path = tmp_path / "ecc.toml"
+    _config(tmp_path, "max_parallel_steps = 3\n")
+    updated = config_path.read_bytes()
+
+    with pytest.raises(FlowSelectionChangedError, match="Project flow changed"):
+        write_flow_selection(
+            str(config_path),
+            preset="rtl2gds",
+            lec_engine="kepler_formal",
+            skip_steps=["diff_opt"],
+            insert_steps=[],
+            max_parallel_steps=2,
+            expected=expected,
+        )
+
+    assert config_path.read_bytes() == updated
 
 
 def test_written_selection_adds_a_missing_flow_section(tmp_path):

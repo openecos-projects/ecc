@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent.data.candidate_artifacts import canonical_json_bytes, sha256_bytes
+from chipcompiler.data import OriginDesign
+from chipcompiler.data.parameter import load_parameter
 from chipcompiler.data.pdk import PDK
 from test.flow_fixture import step_fields
 
@@ -84,6 +86,7 @@ def workspace(tmp_path: Path):
     )
     return SimpleNamespace(
         directory=str(tmp_path),
+        design=OriginDesign(),
         config={
             "cts": cts_path,
             "floorplan": tmp_path / "config" / "floorplan_ecc.json",
@@ -98,7 +101,7 @@ def workspace(tmp_path: Path):
             site_core="core7",
             tech=tech_path,
         ),
-        parameters=SimpleNamespace(path=parameters_path),
+        parameters=load_parameter(parameters_path),
         flow=SimpleNamespace(
             data={
                 "schema_version": 3,

@@ -6,8 +6,8 @@ import pytest
 import tomli_w
 
 from chipcompiler.cli import main as cli_main
-from chipcompiler.cli.command_handlers import project as project_commands
 from chipcompiler.cli.core.types import CommandResult
+from chipcompiler.cli.project import run_workspace
 from chipcompiler.cli.project.timing_template import SDC_INPUT_FILENAME
 from chipcompiler.data import load_workspace, refresh_workspace_config
 from chipcompiler.data.parameter import save_parameter
@@ -54,14 +54,14 @@ def legacy_timing_project(request, tmp_path, minimal_ics55_pdk_factory, monkeypa
 
     resumed = []
 
-    def run_existing(command_input, ctx):
-        loaded = load_workspace(ctx.run_dir)
+    def run_existing(command_input, workspace_path, workspace_id, **kwargs):
+        loaded = load_workspace(workspace_path)
         refresh_workspace_config(loaded)
         generate_timing_scripts(loaded, has_io_cells=False)
         resumed.append(loaded.parameters.data["sdc"])
         return CommandResult.ok([])
 
-    monkeypatch.setattr(project_commands, "_run_workspace", run_existing)
+    monkeypatch.setattr(run_workspace, "execute_workspace_run", run_existing)
     return project, frozen, resumed
 
 

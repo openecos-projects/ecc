@@ -18,6 +18,7 @@ from chipcompiler.data.workspace import Flow, load_workspace
 from chipcompiler.engine import EngineDB
 from chipcompiler.engine.step.execution import StepExecutionResult
 from chipcompiler.tools.ecc.module import ECCToolsModule
+from test.conftest import create_minimal_ics55_pdk
 from test.data.handshake.helpers import answer
 
 CONTEXT_SHA256 = "sha256:" + "a" * 64
@@ -67,9 +68,16 @@ def _make_workspace(root, records, *, design="same-design"):
     workspace = Workspace(directory=root, flow=Flow(path=root / "home" / "flow.json"))
     workspace.design.name = design
     workspace.design.top_module = design
+    pdk_root = create_minimal_ics55_pdk(root.parent / "pdk")
     parameters = Parameters(
         path=root / "home" / "params.toml",
-        data={"design": design, "top_module": design, "pdk": "ics55", "clock": "clk"},
+        data={
+            "design": design,
+            "top_module": design,
+            "pdk": "ics55",
+            "pdk_root": str(pdk_root),
+            "clock": "clk",
+        },
     )
     assert save_parameter(parameters)
     workspace.parameters = parameters
@@ -333,6 +341,7 @@ from types import SimpleNamespace
 from agent import tools as agent_tools
 from chipcompiler.engine.step import process as step_subprocess
 from chipcompiler.engine.flow.runner import EngineFlow
+from chipcompiler.utility.file import write_text_atomic
 
 
 def initialize_db(flow, step):
@@ -387,7 +396,7 @@ def run_step(workspace, step, ecc_module=None):
     candidate = Path(workspace.directory).name
     mode = os.environ.get("WORKER_TEST_MODE")
     if mode == "sleep" and step.name == "placement":
-        Path(os.environ["WORKER_TEST_PID_PATH"]).write_text(str(os.getpid()))
+        write_text_atomic(os.environ["WORKER_TEST_PID_PATH"], str(os.getpid()))
         time.sleep(60)
     if mode == "barrier" and step.name == "placement":
         ready_dir = Path(os.environ["WORKER_TEST_READY_DIR"])

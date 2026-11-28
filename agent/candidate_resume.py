@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 from chipcompiler.data.types import StepEnum
@@ -37,15 +38,15 @@ from .workspace_api import (
     _parent_workspace_root,
     _prepare_candidate_rerun,
     _reapply_candidate_input,
-    _required_file_sha256,
     _run_candidate_steps,
     _workspace_state_sha256,
     candidate_operation_workspace_id,
+    required_file_sha256,
 )
 
 
 def candidate_resume(api, request: CandidateResumeRequest) -> dict:
-    _validate_candidate_resume_request(request)
+    validate_candidate_resume_request(request)
     session = api.ecc_api._get_session(request.workspace_id)
     api.ecc_api._validate_workspace_revision(session, request.expected_workspace_revision)
     api._reject_active_source_operation(request.workspace_id)
@@ -59,6 +60,7 @@ def candidate_resume(api, request: CandidateResumeRequest) -> dict:
             rerun=True,
             step=StepEnum.HARDEN.value,
             idempotency_key=request.idempotency_key,
+            command_input=asdict(request),
             runner=lambda observer: _candidate_resume(api, session, request, observer),
         )
     except RuntimeOperationConflict as exc:
@@ -159,7 +161,7 @@ def _candidate_resume_failure_result(
     return result
 
 
-def _validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
+def validate_candidate_resume_request(request: CandidateResumeRequest) -> None:
     if request.expected_workspace_revision is not None and (
         type(request.expected_workspace_revision) is not int
         or request.expected_workspace_revision < 1
@@ -221,9 +223,7 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RuntimeApiError("command_failed", "candidate resume manifest is invalid") from exc
-    _validate_candidate_resume_manifest(
-        workspace_root, candidate_root, candidate_root_ref, manifest
-    )
+    validate_candidate_resume_manifest(workspace_root, candidate_root, candidate_root_ref, manifest)
     parent = _candidate_parent_binding(workspace_root, manifest.get("parent_candidate_root_ref"))
     _validate_candidate_resume_parent(manifest, parent)
     candidate_workspace = ecc_api._load_workspace(str(candidate_root))
@@ -232,18 +232,23 @@ def _load_candidate_resume(ecc_api, workspace, candidate_id: str):
     return candidate_workspace, manifest, parent
 
 
-def _validate_candidate_resume_manifest(
-    workspace_root: Path, candidate_root: Path, candidate_root_ref: str, manifest: object
+def validate_candidate_resume_manifest(
+    workspace_root: Path,
+    candidate_root: Path,
+    candidate_root_ref: str,
+    manifest: object,
+    *,
+    terminal_state: str = "failed",
 ) -> None:
     expected = {
         "schema": _CANDIDATE_WORKSPACE_SCHEMA,
         "schema_version": 1,
         "candidate_id": Path(candidate_root_ref).name,
         "candidate_root_ref": candidate_root_ref,
-        "terminal_state": "failed",
+        "terminal_state": terminal_state,
         "end_step": StepEnum.HARDEN.value,
         "execution_scope": "full_flow",
-        "candidate_flow_sha256": _required_file_sha256(
+        "candidate_flow_sha256": required_file_sha256(
             candidate_root / "home" / "flow.json", "resume flow"
         ),
         "candidate_state_sha256": _workspace_state_sha256(candidate_root),
@@ -251,7 +256,7 @@ def _validate_candidate_resume_manifest(
     if not isinstance(manifest, dict) or any(
         manifest.get(key) != value for key, value in expected.items()
     ):
-        raise RuntimeApiError("command_failed", "candidate resume manifest binding is invalid")
+        raise RuntimeApiError("command_failed", "candidate manifest binding is invalid")
     if not isinstance(manifest.get("target_step"), str) or not manifest["target_step"]:
         raise RuntimeApiError("command_failed", "candidate resume target step is invalid")
     _validate_candidate_resume_artifacts(candidate_root, manifest.get("artifacts"))
@@ -285,7 +290,7 @@ def _validate_candidate_resume_artifacts(candidate_root: Path, artifacts: object
             not isinstance(ref, str)
             or Path(ref).is_absolute()
             or not path_is_within(path.resolve(), candidate_root)
-            or artifact.get("sha256") != _required_file_sha256(path, "resume artifact")
+            or artifact.get("sha256") != required_file_sha256(path, "resume artifact")
         ):
             raise RuntimeApiError("command_failed", "candidate resume artifact binding is invalid")
 

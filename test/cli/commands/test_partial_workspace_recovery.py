@@ -182,3 +182,26 @@ class TestPartialWorkspaceRecovery:
         records = plain_records(capsys.readouterr().out)
         assert any(r.get("error") == "workspace_path_unsafe" for r in records)
         assert not os.path.exists(os.path.join(str(tmp_path), "new"))
+
+
+def test_overwrite_snapshot_failure_restores_registered_workspace(
+    fresh_project, monkeypatch, capsys
+):
+    args = ["--project", str(fresh_project), "--plain"]
+    assert cli_main.run(["workspace", "create", "old", *args]) == 0
+    target = fresh_project / "old"
+    original_inode = target.stat().st_ino
+    original_manifest = (fresh_project / "project.json").read_bytes()
+    capsys.readouterr()
+
+    def fail_snapshot(*args, **kwargs):
+        raise OSError("snapshot write failed")
+
+    monkeypatch.setattr(
+        "chipcompiler.engine.snapshot.store.create_engineering_snapshot", fail_snapshot
+    )
+    assert cli_main.run(["run", "--workspace", "old", "--overwrite", *args]) == 1
+    assert "error=workspace_failed" in capsys.readouterr().out
+    assert target.stat().st_ino == original_inode
+    assert (fresh_project / "project.json").read_bytes() == original_manifest
+    assert not list(fresh_project.glob("old.overwritten-*"))

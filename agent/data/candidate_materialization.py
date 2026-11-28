@@ -443,7 +443,12 @@ def _apply_patch(
                 current[key] = child
             current = child
         value = values[knob.knob_id]
-        current[knob.json_path[-1]] = int(value) if knob.value_type == "bool_int" else value
+        if knob.value_type == "bool_int":
+            value = int(value)
+        # iRT reads the RT config values as strings, including numeric flags.
+        if knob.config_key == "routing":
+            value = str(value)
+        current[knob.json_path[-1]] = value
 
 
 def _effective_step_value(

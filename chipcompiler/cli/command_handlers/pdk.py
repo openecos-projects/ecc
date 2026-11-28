@@ -5,8 +5,8 @@ import os
 from chipcompiler.cli.core.records import error_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.toml_edit import set_pdk_root
+from chipcompiler.project.config_write import edit_project_config
 from chipcompiler.project.manifest import CONFIG_FILENAME
-from chipcompiler.utility.file import write_text_atomic
 
 
 def _write_pdk_root(config_path: str, value: str) -> None:
@@ -15,10 +15,7 @@ def _write_pdk_root(config_path: str, value: str) -> None:
     Raises OSError when the config cannot be read or replaced; handlers map
     that to a structured config_error at the command boundary.
     """
-    with open(config_path) as f:
-        original = f.read()
-
-    write_text_atomic(config_path, set_pdk_root(original, value))
+    edit_project_config(config_path, lambda text: set_pdk_root(text, value))
 
 
 def _write_root_or_error(config_path: str, value: str, project: str | None) -> CommandResult | None:

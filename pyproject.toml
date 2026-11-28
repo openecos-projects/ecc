@@ -112,7 +112,7 @@ known-first-party = ["chipcompiler", "csv_gates"]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]
-pythonpath = ["test/lit"]
+pythonpath = [".", "test/lit"]
 norecursedirs = [".venv"]
 markers = [
   "integration: tests that run an ECC flow or large workspace orchestration",

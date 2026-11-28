@@ -3,7 +3,6 @@
 import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 from chipcompiler.cli import main as cli_main
 
@@ -163,7 +162,6 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
     capsys, create_cli_project, manifest_stubs, plain_records, flow_mocks
 ):
     """A retry of the command that created the workspace is not a new --set request."""
-    from chipcompiler.cli.project.run_prepare import create_command_spec
     from chipcompiler.engine.workspace.lifecycle import (
         workspace_command_fingerprint,
         write_workspace_command,
@@ -173,13 +171,16 @@ def test_workspace_create_retry_with_the_same_command_id_and_set_is_not_rejected
         capsys, create_cli_project, manifest_stubs, flow_mocks
     )
     command_id = "0b0f6f0e-7a55-4a4e-9a57-0d6a3f1f6c11"
-    request = SimpleNamespace(
-        from_step=None, to_step=None, param_set=("placement:place.target_density=0.5",)
-    )
+    request = {
+        "workspace": "test-ws",
+        "from": None,
+        "to": None,
+        "parameters": ["placement:place.target_density=0.5"],
+    }
     write_workspace_command(
         flow_json.parent.parent,
         command_id,
-        workspace_command_fingerprint("create", create_command_spec(request, "test-ws"), None),
+        workspace_command_fingerprint("create", request, None),
         "test-ws",
         1,
     )

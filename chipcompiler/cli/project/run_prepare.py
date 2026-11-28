@@ -12,10 +12,22 @@ lazily by the run handler, so module-level imports here must stay cheap
 import contextlib
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from chipcompiler.cli.core.output import disclosure_cmd
 from chipcompiler.cli.core.types import CommandResult
+
+if TYPE_CHECKING:
+    from chipcompiler.data import Workspace
+    from chipcompiler.engine import EngineFlow
+
+
+@dataclass(frozen=True)
+class BuiltWorkspace:
+    workspace: "Workspace"
+    engine_flow: "EngineFlow"
 
 
 def invalid_workspace_name(workspace_name: str) -> bool:
@@ -126,7 +138,7 @@ def resolve_manifest_run_target(command_input, ctx):
     return (candidate_path, workspace_name, False, [])
 
 
-def _workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
+def workspace_failed_result(run_name: str, run_dir: str, reason: str | None) -> CommandResult:
     from chipcompiler.cli.core.records import error_record
 
     record = error_record("workspace_failed", workspace_id=run_name, workspace=run_dir)
@@ -181,16 +193,6 @@ def _quote_filelist_path(path: str) -> str:
     return f'"{path}"' if any(ch.isspace() for ch in path) else path
 
 
-def create_command_spec(command_input, run_name: str) -> dict:
-    """The request `workspace create` records under its command id."""
-    return {
-        "workspace": run_name,
-        "from": command_input.from_step,
-        "to": command_input.to_step,
-        "parameters": list(command_input.param_set),
-    }
-
-
 def _mark_explicit_frequency(resolved, parameters: dict) -> None:
     """Preserve explicit frequency overrides for legacy clock-list snapshots."""
     from chipcompiler.data.workspace.sdc_inputs import EXPLICIT_FREQUENCY_KEY
@@ -201,6 +203,211 @@ def _mark_explicit_frequency(resolved, parameters: dict) -> None:
         parameters[EXPLICIT_FREQUENCY_KEY] = True
 
 
+def build_fresh_workspace(
+    command_input,
+    ctx,
+    cfg,
+    *,
+    build_dir: str | Path,
+    run_dir: str,
+    run_name: str,
+    cli_overrides: dict,
+    flow_config,
+    backup_path: str | None = None,
+    record_create_command: bool = False,
+) -> BuiltWorkspace:
+    """Construct, seed, project, and snapshot one fresh Workspace tree."""
+    import shutil
+
+    from chipcompiler import rtl2gds as rtl2gds_api
+    from chipcompiler.cli.project.config import (
+        resolve_max_parallel_steps,
+        resolve_pdk_overrides,
+        resolve_pdk_root,
+        resolve_rtl,
+        to_parameters,
+    )
+    from chipcompiler.cli.project.design_inputs import resolve_design_inputs
+    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
+    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
+    from chipcompiler.data import create_workspace
+    from chipcompiler.data.flow.options import sync_flow_options_projection
+    from chipcompiler.data.parameter import save_parameter, update_parameters
+    from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
+    from chipcompiler.engine import EngineFlow
+    from chipcompiler.engine.snapshot.store import create_engineering_snapshot
+
+    project_dir = ctx.project_dir
+    inputs = resolve_design_inputs(cfg)
+    _, origin_verilog, input_filelist = resolve_rtl(cfg)
+
+    # The declared netlist is the synthesis OUTPUT consumed by a
+    # post-synthesis entry step. A flow entering at Synthesis must use the
+    # declared RTL, even when a netlist is also present in ecc.toml.
+    entry_step = fresh_entry_step(cfg, flow_config)
+    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
+    if uses_netlist_input:
+        origin_verilog = inputs.netlist
+        input_filelist = ""
+    parameters = to_parameters(cfg)
+    if uses_netlist_input:
+        # Preserve the creator's input role for Studio/CLI reopen symmetry.
+        parameters["_input_mode"] = "postSynthesis"
+    pdk_root = resolve_pdk_root(cfg)
+
+    if cfg.params_overrides or cli_overrides:
+        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
+        from chipcompiler.params import (
+            build_backend_overrides,
+            build_config_overrides,
+            build_pdk_overrides,
+            build_step_params,
+            resolve_parameters,
+        )
+
+        resolved, _ = resolve_parameters(
+            toml_overrides=cfg.params_overrides,
+            cli_overrides=cli_overrides,
+            pdk=cfg.pdk_name or None,
+        )
+        update_parameters(build_backend_overrides(resolved), parameters)
+        _mark_explicit_frequency(resolved, parameters)
+        config_overrides = build_config_overrides(resolved)
+        if config_overrides:
+            update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
+        pdk_cli_overrides = build_pdk_overrides(resolved)
+        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
+        step_params = build_step_params(resolved)
+        if step_params:
+            parameters[STEP_PARAMS_KEY] = step_params
+    else:
+        pdk_cli_overrides = {}
+        param_sources = {}
+    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
+        explicit = "design.frequency_mhz" in cfg._explicit_keys
+        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
+    if param_sources:
+        from chipcompiler.params import PARAM_SOURCES_KEY
+
+        parameters[PARAM_SOURCES_KEY] = param_sources
+
+    target_dir = str(build_dir)
+    generated_filelist = None
+    try:
+        if len(cfg.design_rtl) > 1 and not uses_netlist_input:
+            generated_filelist = _materialize_rtl_filelist(cfg)
+            input_filelist = generated_filelist
+            origin_verilog = ""
+        workspace = create_workspace(
+            directory=target_dir,
+            origin_def=inputs.workspace_def,
+            origin_verilog=origin_verilog,
+            pdk=cfg.pdk_name,
+            parameters=parameters,
+            input_filelist=input_filelist,
+            pdk_root=pdk_root,
+            pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+            flow_config=flow_config,
+            sdc=inputs.sdc,
+            spef=inputs.spef,
+            golden_verilog=inputs.golden_netlist,
+        )
+        if workspace is not None:
+            workspace.__dict__["_ecc_project_dir"] = project_dir
+    finally:
+        if generated_filelist is not None:
+            with contextlib.suppress(OSError):
+                shutil.rmtree(os.path.dirname(generated_filelist))
+
+    if workspace is None:
+        raise RuntimeError()
+
+    if cli_overrides:
+        import json
+
+        provenance_path = os.path.join(target_dir, "home", "cli-param-overrides.json")
+        os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
+        with open(provenance_path, "w") as _f:
+            json.dump(cli_overrides, _f)
+
+    if not flow_config_selects_steps(flow_config):
+        workspace_parameters = getattr(workspace, "parameters", None)
+        if workspace_parameters is not None:
+            from chipcompiler.data.workspace.config import (
+                FLOW_POLICY_KEYS,
+                validate_flow_config,
+            )
+
+            flow_section: dict = {"preset": cfg.flow_preset}
+            policies = (
+                {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
+                if isinstance(flow_config, dict)
+                else {}
+            )
+            if policies:
+                flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
+            workspace_parameters.data["_flow"] = flow_section
+            if not save_parameter(workspace_parameters):
+                raise RuntimeError("failed to persist the flow target in params.toml")
+
+    engine_flow = EngineFlow(workspace=workspace)
+    engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
+    flow_builders = rtl2gds_api.get_flow_builders()
+    if not engine_flow.has_init():
+        lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
+        seeded = rtl2gds_api.substitute_lec_engine(flow_builders[cfg.flow_preset](), lec_engine)
+        for step, tool, state in rtl2gds_api.insert_flow_steps(
+            rtl2gds_api.filter_flow_steps(seeded, rtl2gds_api.resolve_skip_steps(flow_config)),
+            rtl2gds_api.resolve_insert_steps(flow_config),
+            lec_engine,
+        ):
+            engine_flow.add_step(step=step, tool=tool, state=state)
+
+    engine_flow.create_step_workspaces()
+
+    flow_ledger = getattr(getattr(engine_flow, "workspace", None), "flow", None)
+    persisted_steps = flow_ledger.data.get("steps", []) if flow_ledger else []
+    created_steps = getattr(engine_flow, "workspace_steps", None) or []
+    if len(created_steps) < len(persisted_steps):
+        missing = persisted_steps[len(created_steps)].get("name")
+        raise RuntimeError(f"step workspace creation failed at {missing}")
+
+    sync_flow_options_projection(workspace, persist=True)
+
+    if getattr(workspace, "directory", None):
+        snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
+        if record_create_command and command_input.command_id:
+            from chipcompiler.cli.project.creation import create_command_spec
+            from chipcompiler.engine.workspace.lifecycle import (
+                workspace_command_fingerprint,
+                write_workspace_command,
+            )
+            from chipcompiler.project.manifest import load_manifest
+
+            command_spec = create_command_spec(command_input, run_name)
+            write_workspace_command(
+                Path(target_dir),
+                command_input.command_id,
+                workspace_command_fingerprint(
+                    "create" if backup_path is None else "refresh",
+                    command_spec,
+                    None,
+                    command_input.expected_revision,
+                ),
+                snapshot["workspaceId"],
+                snapshot["workspaceRevision"],
+                metadata={
+                    "operation": "create" if backup_path is None else "refresh",
+                    "projectId": load_manifest(project_dir).project_id,
+                    "workspaceId": run_name,
+                    "workspacePath": str(Path(run_dir).resolve()),
+                    "request": command_spec,
+                    "expectedRevision": command_input.expected_revision,
+                },
+            )
+    return BuiltWorkspace(workspace=workspace, engine_flow=engine_flow)
+
+
 def execute_fresh_run(
     command_input,
     ctx,
@@ -209,7 +416,6 @@ def execute_fresh_run(
     run_name: str,
     cli_overrides: dict,
     flow_config,
-    project_state: str | None,
     warning_records: list[dict],
     *,
     workspace_registered: bool,
@@ -234,27 +440,9 @@ def execute_fresh_run(
     """
     import shutil
 
-    from chipcompiler import rtl2gds as rtl2gds_api
-    from chipcompiler.cli.project.config import (
-        resolve_max_parallel_steps,
-        resolve_pdk_overrides,
-        resolve_pdk_root,
-        resolve_rtl,
-        to_parameters,
-    )
-    from chipcompiler.cli.project.effective_config import flow_config_selects_steps
-    from chipcompiler.data import create_workspace
-    from chipcompiler.data.parameter import save_parameter, update_parameters
-    from chipcompiler.data.workspace.config_overrides import CONFIG_OVERRIDES_KEY
-    from chipcompiler.engine import EngineFlow
-
     project = ctx.project
     project_dir = ctx.project_dir
     write_back_repair = disclosure_cmd("ecc run", project, run_name)
-    # Commit point: once the replacement is verified and the backup is
-    # discarded, execution failures are a normal failed run — the new tree
-    # stays, and cleanup must no longer touch it.
-    committed_state = {"value": False}
 
     def commit_replacement() -> str | None:
         """Commit the verified replacement and dispose of the renamed-aside tree.
@@ -266,7 +454,6 @@ def execute_fresh_run(
         replaced generation follow the registered backup entry or clear when
         none was retained. Returns the retained backup path.
         """
-        committed_state["value"] = True
         if backup_path is None:
             return None
         if not command_input.keep_backup:
@@ -323,7 +510,7 @@ def execute_fresh_run(
         workspace back, so the previous artifacts survive the failure.
         Returns problems encountered while rolling back."""
         problems: list[str] = []
-        if not owns_target or committed_state["value"]:
+        if not owns_target:
             return problems
         shutil.rmtree(run_dir, ignore_errors=True)
         if os.path.lexists(run_dir):
@@ -335,95 +522,8 @@ def execute_fresh_run(
                 problems.append(f"previous workspace left at {backup_path}: {exc}")
         return problems
 
-    def failed_workspace(reason: str | None) -> CommandResult:
-        rollback_problems = cleanup_failed_target()
-        if rollback_problems:
-            reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
-        if registration_created:
-            from chipcompiler.project.manifest_write import remove_workspace_registration
-
-            remove_workspace_registration(project_dir, run_name)
-        return _workspace_failed_result(run_name, run_dir, reason)
-
-    from chipcompiler.cli.project.design_inputs import resolve_design_inputs
-
-    inputs = resolve_design_inputs(cfg)
-    _, origin_verilog, input_filelist = resolve_rtl(cfg)
-    origin_def = inputs.def_ or cfg.manifest_origin_def
-
-    # The declared netlist is the synthesis OUTPUT consumed by a
-    # post-synthesis entry step. A flow entering at Synthesis must use the
-    # declared RTL, even when a netlist is also present in ecc.toml.
-    from chipcompiler.cli.project.flow_selection import entry_step as fresh_entry_step
-
-    entry_step = fresh_entry_step(cfg, flow_config)
-    uses_netlist_input = bool(inputs.netlist) and entry_step != "synthesis"
-    if uses_netlist_input:
-        origin_verilog = inputs.netlist
-        input_filelist = ""
-    generated_filelist = None
-    if len(cfg.design_rtl) > 1 and not uses_netlist_input:
-        # Manifest-backed projects may declare several RTL sources;
-        # materialize them as one generated filelist for creation. A failure
-        # here must not strand a partial run target for the next run.
-        try:
-            generated_filelist = _materialize_rtl_filelist(cfg)
-        except Exception as exc:
-            return failed_workspace(str(exc))
-        input_filelist = generated_filelist
-        origin_verilog = ""
-    parameters = to_parameters(cfg)
-    if uses_netlist_input:
-        # Preserve the creator's input role for Studio/CLI reopen symmetry.
-        parameters["_input_mode"] = "postSynthesis"
-    pdk_root = resolve_pdk_root(cfg)
-
-    if cfg.params_overrides or cli_overrides:
-        from chipcompiler.data.step_parameters import STEP_PARAMS_KEY
-        from chipcompiler.params import (
-            build_backend_overrides,
-            build_config_overrides,
-            build_pdk_overrides,
-            build_step_params,
-            resolve_parameters,
-        )
-
-        resolved, _ = resolve_parameters(
-            toml_overrides=cfg.params_overrides,
-            cli_overrides=cli_overrides,
-            pdk=cfg.pdk_name or None,
-        )
-        update_parameters(build_backend_overrides(resolved), parameters)
-        _mark_explicit_frequency(resolved, parameters)
-        config_overrides = build_config_overrides(resolved)
-        if config_overrides:
-            update_parameters({CONFIG_OVERRIDES_KEY: config_overrides}, parameters)
-        pdk_cli_overrides = build_pdk_overrides(resolved)
-        param_sources = {item.key: item.source for item in resolved if item.is_explicit}
-        step_params = build_step_params(resolved)
-        if step_params:
-            parameters[STEP_PARAMS_KEY] = step_params
-    else:
-        pdk_cli_overrides = {}
-        param_sources = {}
-    if "design.frequency_mhz" not in param_sources and cfg.design_frequency_mhz:
-        # [design] frequency_mhz is not a [params] key; a value ecc.toml leaves
-        # unset was filled from project.json.
-        explicit = "design.frequency_mhz" in cfg._explicit_keys
-        param_sources["design.frequency_mhz"] = "ecc.toml" if explicit else "project.json"
-    if param_sources:
-        from chipcompiler.params import PARAM_SOURCES_KEY
-
-        parameters[PARAM_SOURCES_KEY] = param_sources
-
     from chipcompiler.utility.workspace_lock import workspace_lock
 
-    # The workspace lock is taken BEFORE the target becomes discoverable
-    # (flow.json appears in create_workspace), so a concurrent `ecc run` cannot
-    # classify this target as existing and win the race to execute it. The lock
-    # stays held through seeding and engine execution. The caller's stack
-    # already holds it after an overwrite rename, so only a self-owned stack
-    # enters it here.
     caller_locks = ws_locks is not None
     if ws_locks is None:
         ws_locks = contextlib.ExitStack()
@@ -433,153 +533,39 @@ def execute_fresh_run(
                 workspace_lock(Path(run_dir), blocking=not command_input.no_wait)
             )
         try:
-            workspace = create_workspace(
-                directory=run_dir,
-                origin_def=origin_def,
-                origin_verilog=origin_verilog,
-                pdk=cfg.pdk_name,
-                parameters=parameters,
-                input_filelist=input_filelist,
-                pdk_root=pdk_root,
-                pdk_overrides=resolve_pdk_overrides(cfg, pdk_cli_overrides),
+            built = build_fresh_workspace(
+                command_input,
+                ctx,
+                cfg,
+                build_dir=run_dir,
+                run_dir=run_dir,
+                run_name=run_name,
+                cli_overrides=cli_overrides,
                 flow_config=flow_config,
-                sdc=inputs.sdc,
-                spef=inputs.spef,
-                golden_verilog=inputs.golden_netlist,
+                backup_path=backup_path,
+                record_create_command=bool(command_input.command_id and not execute_flow),
             )
-            if workspace is not None:
-                workspace.__dict__["_ecc_project_dir"] = project_dir
-        except Exception as exc:
-            return failed_workspace(str(exc))
-        finally:
-            if generated_filelist is not None:
-                with contextlib.suppress(OSError):
-                    shutil.rmtree(os.path.dirname(generated_filelist))
+        except BaseException as exc:
+            # This invocation owns the target until construction finishes. Undo
+            # its writes under the lock, including when interrupted by Ctrl-C.
+            problems = cleanup_failed_target()
+            if registration_created:
+                from chipcompiler.project.manifest_write import remove_workspace_registration
 
-        if workspace is None:
-            return failed_workspace(None)
+                if not remove_workspace_registration(project_dir, run_name):
+                    problems.append(f"could not remove workspace registration: {run_name}")
+            if not isinstance(exc, Exception):
+                for problem in problems:
+                    exc.add_note(problem)
+                raise
+            reason = str(exc)
+            if problems:
+                reason += f"; rollback incomplete: {'; '.join(problems)}"
+            return workspace_failed_result(run_name, run_dir, reason or None)
 
-        # Seeding writes are part of the replacement construction: they run
-        # before the commit point inside the recovery boundary, so a write
-        # failure restores the renamed-aside previous workspace.
+        workspace = built.workspace
+        engine_flow = built.engine_flow
         try:
-            if cli_overrides:
-                import json
-
-                provenance_path = os.path.join(run_dir, "home", "cli-param-overrides.json")
-                os.makedirs(os.path.dirname(provenance_path), exist_ok=True)
-                with open(provenance_path, "w") as _f:
-                    json.dump(cli_overrides, _f)
-
-            if not flow_config_selects_steps(flow_config):
-                # CLI-born workspaces persist the named preset chain as
-                # their target; a declared skip policy, LEC engine or inserted
-                # steps ride along, normalized (validate_flow_config is the
-                # normalizer).
-                workspace_parameters = getattr(workspace, "parameters", None)
-                if workspace_parameters is not None:
-                    from chipcompiler.data.workspace.config import (
-                        FLOW_POLICY_KEYS,
-                        validate_flow_config,
-                    )
-
-                    flow_section: dict = {"preset": cfg.flow_preset}
-                    policies = (
-                        {key: flow_config[key] for key in FLOW_POLICY_KEYS if key in flow_config}
-                        if isinstance(flow_config, dict)
-                        else {}
-                    )
-                    if policies:
-                        flow_section = validate_flow_config({"preset": cfg.flow_preset, **policies})
-                    workspace_parameters.data["_flow"] = flow_section
-                    if not save_parameter(workspace_parameters):
-                        return failed_workspace("failed to persist the flow target in params.toml")
-        except Exception as exc:
-            return failed_workspace(str(exc))
-
-        # Engine execution still holds the workspace lock taken before
-        # creation: a second `ecc run` taking the existing-workspace path
-        # can never race this ledger or its outputs.
-        try:
-            engine_flow = EngineFlow(workspace=workspace)
-            engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
-            flow_builders = rtl2gds_api.get_flow_builders()
-            if not engine_flow.has_init():
-                # No-arg preset builders stay canonical; the configured LEC
-                # engine, skip policy and inserted steps apply to their output
-                # so every ledger-creation path filters through the same
-                # resolvers.
-                lec_engine = rtl2gds_api.resolve_lec_engine(flow_config)
-                seeded = rtl2gds_api.substitute_lec_engine(
-                    flow_builders[cfg.flow_preset](), lec_engine
-                )
-                for step, tool, state in rtl2gds_api.insert_flow_steps(
-                    rtl2gds_api.filter_flow_steps(
-                        seeded, rtl2gds_api.resolve_skip_steps(flow_config)
-                    ),
-                    rtl2gds_api.resolve_insert_steps(flow_config),
-                    lec_engine,
-                ):
-                    engine_flow.add_step(step=step, tool=tool, state=state)
-
-            engine_flow.create_step_workspaces()
-
-            # create_step_workspaces marks a failed dependency Incomplete and
-            # stops: a ranged workspace can end up only partially constructed,
-            # which is a failed run/refresh, never a success. The ledger read
-            # tolerates stub flows so test doubles stay minimal.
-            flow_ledger = getattr(getattr(engine_flow, "workspace", None), "flow", None)
-            persisted_steps = flow_ledger.data.get("steps", []) if flow_ledger else []
-            created_steps = getattr(engine_flow, "workspace_steps", None) or []
-            if len(created_steps) < len(persisted_steps):
-                missing = persisted_steps[len(created_steps)].get("name")
-                return failed_workspace(f"step workspace creation failed at {missing}")
-
-            # add_step saves the ledger without the options projection.
-            # Write it once here, so the first workspace load finds a
-            # complete flow.json and has nothing to rewrite.
-            from chipcompiler.data.flow.options import (
-                sync_flow_options_projection,
-            )
-
-            sync_flow_options_projection(workspace, persist=True)
-
-            # The replacement is fully constructed and verified: commit it.
-            # The previous workspace's backup is obsolete (or retained as an
-            # archived replace-backup under --keep-backup), the new tree owns
-            # the target, and later failures are a normal failed run.
-            from chipcompiler.engine.snapshot.store import create_engineering_snapshot
-
-            if getattr(workspace, "directory", None):
-                snapshot = create_engineering_snapshot(workspace, workspace_id=run_name)
-                if command_input.command_id and not execute_flow:
-                    from chipcompiler.engine.workspace.lifecycle import (
-                        workspace_command_fingerprint,
-                        write_workspace_command,
-                    )
-                    from chipcompiler.project.manifest import load_manifest
-
-                    command_spec = create_command_spec(command_input, run_name)
-                    write_workspace_command(
-                        Path(run_dir),
-                        command_input.command_id,
-                        workspace_command_fingerprint(
-                            "create" if backup_path is None else "refresh",
-                            command_spec,
-                            None,
-                            command_input.expected_revision,
-                        ),
-                        snapshot["workspaceId"],
-                        snapshot["workspaceRevision"],
-                        metadata={
-                            "operation": "create" if backup_path is None else "refresh",
-                            "projectId": load_manifest(project_dir).project_id,
-                            "workspaceId": run_name,
-                            "workspacePath": str(Path(run_dir).resolve()),
-                            "request": command_spec,
-                            "expectedRevision": command_input.expected_revision,
-                        },
-                    )
             retained_backup = commit_replacement()
 
             if not workspace_registered:
@@ -632,8 +618,7 @@ def execute_fresh_run(
                     ]
                 )
 
-            from contextlib import nullcontext
-
+            from chipcompiler.cli.project.run_process import managed_run_process
             from chipcompiler.cli.rendering.progress import (
                 preserve_cli_stdio,
                 run_progress_event_sink,
@@ -641,30 +626,27 @@ def execute_fresh_run(
             )
             from chipcompiler.engine import ExecutionPlan, execute
 
-            if workspace_registered:
-                from chipcompiler.cli.project.run_process import managed_run_process
-
-                process_context = managed_run_process(
-                    command_input,
-                    project_dir,
-                    run_name,
-                    workspace,
-                    workspace_path=run_dir,
-                )
-            else:
-                process_context = nullcontext()
-            with process_context:
+            with managed_run_process(
+                command_input,
+                project_dir,
+                run_name,
+                workspace,
+                workspace_path=run_dir,
+            ) as outcome:
                 plan = ExecutionPlan(intent="run")
                 if should_enable_run_progress(ctx, sys.stderr):
                     with (
                         preserve_cli_stdio(),
                         run_progress_event_sink(engine_flow, ctx, project, sys.stderr) as sink,
                     ):
-                        flow_ok = execute(engine_flow, plan, event_sink=sink).succeeded
+                        result = execute(engine_flow, plan, event_sink=sink)
                 else:
-                    flow_ok = execute(engine_flow, plan).succeeded
+                    result = execute(engine_flow, plan)
+                outcome.record_execution(
+                    succeeded=result.succeeded, failed_step_error=result.failed_step_error
+                )
 
-            if not flow_ok:
+            if not result.succeeded:
                 failure_records = [
                     {
                         "workspace_id": run_name,
@@ -684,14 +666,6 @@ def execute_fresh_run(
                 return runtime_process_error_result(exc, workspace_id=run_name, workspace=run_dir)
             from chipcompiler.cli.core.records import error_record
 
-            rollback_problems = cleanup_failed_target()
-            reason = str(exc)
-            if rollback_problems:
-                reason = f"{reason}; rollback incomplete: {'; '.join(rollback_problems)}"
-            if registration_created:
-                from chipcompiler.project.manifest_write import remove_workspace_registration
-
-                remove_workspace_registration(project_dir, run_name)
             return CommandResult.err(
                 warning_records
                 + [
@@ -699,7 +673,7 @@ def execute_fresh_run(
                         "flow_failed",
                         workspace_id=run_name,
                         workspace=run_dir,
-                        reason=reason,
+                        reason=str(exc),
                     )
                 ]
             )

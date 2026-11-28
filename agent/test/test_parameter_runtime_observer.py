@@ -9,11 +9,11 @@ from agent.data.floorplan_parameter_observer import build_floorplan_report
 from agent.data.parameter_runtime_observer import (
     DreamplaceRecorder,
     _build_dreamplace_report,
-    _invoke_and_record,
     _observe_cell_padding,
     _observe_native_model,
     _observe_placement_call,
     _patch_method,
+    invoke_and_record,
 )
 
 
@@ -64,6 +64,17 @@ def test_adaptive_density_tensor_does_not_revoke_effectiveness():
     )
     assert (report["status"], report["actual_value"]) == ("effective", 0.55)
     assert report["observation"]["density_tensor_value"] == 0.709
+
+
+def test_placement_observes_native_density_floor_without_a_margin():
+    recorder = DreamplaceRecorder({"knob_id": "place.target_density", "value": 0.4})
+    placedb = SimpleNamespace(total_movable_node_area=38, total_space_area=100)
+    engine = SimpleNamespace(placedb=placedb)
+
+    def place(engine):
+        assert recorder.probe["utilization_floor"] == 0.38
+
+    _observe_placement_call(recorder, place, engine)
 
 
 def test_completed_placement_preserves_overflow_before_later_failure():
@@ -253,5 +264,71 @@ def test_report_failure_does_not_change_tool_result(monkeypatch, tmp_path):
         raise OSError("read-only analysis directory")
 
     monkeypatch.setattr("agent.data.parameter_runtime_observer.write_json_atomic", fail_write)
-    assert _invoke_and_record(workspace, lambda: True, lambda _ok: {}) is True
+    assert invoke_and_record(workspace, lambda: True, lambda _ok: {}) is True
     assert failures == ["Failed to persist parameter runtime evidence"]
+
+
+@pytest.mark.parametrize(
+    ("knob_id", "written", "native_key", "native_value", "expected"),
+    [
+        ("route.thread_number", 4, "thread_number", "4", 4),
+        ("route.enable_timing", True, "enable_timing", "1", True),
+        ("route.bottom_layer", "MET3", "bottom_routing_layer", "MET2", "MET2"),
+        ("route.top_layer", "M5", "top_routing_layer", "M5", "M5"),
+    ],
+)
+def test_routing_observer_reports_effective_values_from_print_config(
+    tmp_path, knob_id, written, native_key, native_value, expected
+):
+    from agent.data.candidate_materialization import materialize_candidate_config
+    from agent.data.parameter_runtime_observer import (
+        RUNTIME_REPORT_REF,
+        run_with_parameter_observation,
+    )
+    from agent.test.data import candidate_workspace
+    from agent.workspace_api import _candidate_parameter_receipt
+
+    workspace = candidate_workspace.workspace(tmp_path)
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    (origin / "top.v").write_text("module top; endmodule\n")
+    (origin / "constraints.sdc").write_text("create_clock clk\n")
+    log_path = tmp_path / "routing.log"
+    log_path.write_text("[RT 00:00 printConfig] prior_run\n", encoding="utf-8")
+    step = SimpleNamespace(name="routing", log=SimpleNamespace(file=str(log_path)))
+    request = SimpleNamespace(
+        candidate_id="routing-1",
+        target_step="routing",
+        patch=[{"knob_id": knob_id, "value": written}],
+        context_sha256="sha256:" + "a" * 64,
+        parameter_card_sha256="sha256:" + "b" * 64,
+        seed=17,
+    )
+    materialization = materialize_candidate_config(
+        workspace, "routing", request.patch, request.candidate_id
+    )
+
+    def fake_route():
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                f"[RT 00:01 printConfig] {native_key}\n[RT 00:01 printConfig] {native_value}\n"
+            )
+        return True
+
+    assert run_with_parameter_observation(workspace, step, materialization, fake_route) is True
+    report = json.loads((tmp_path / RUNTIME_REPORT_REF).read_text(encoding="utf-8"))
+    assert report["status"] == "effective"
+    assert report["actual_value"] == expected
+    assert report["reason"] is None
+
+    analysis = tmp_path / "analysis"
+    receipt = _candidate_parameter_receipt(
+        workspace,
+        request,
+        ".agent/candidates/routing-1",
+        analysis / "candidate_materialization.v1.json",
+        parent_flow_sha256="sha256:" + "c" * 64,
+    )
+    assert json.loads((analysis / "parameter_application_receipt.v2.json").read_text()) == receipt
+    assert receipt["actual_value"] == expected
+    assert receipt["materialization"]["written_value"] == written

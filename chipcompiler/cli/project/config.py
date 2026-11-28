@@ -87,6 +87,11 @@ def load_project_config(config_path: str) -> ProjectConfig:
     return _parse_config(data, config_path)
 
 
+def parse_project_config(text: str, config_path: str) -> ProjectConfig:
+    """Parse draft content with the real config path for relative inputs."""
+    return _parse_config(tomllib.loads(text), config_path)
+
+
 def _parse_config(data: dict, config_path: str) -> ProjectConfig:
     design = data.get("design", {})
     pdk = data.get("pdk", {})
@@ -220,7 +225,9 @@ def _supported_flow_presets() -> set[str]:
     return set(rtl2gds_api.get_flow_builders())
 
 
-def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool = True) -> list[str]:
+def validate_project_config(
+    cfg: ProjectConfig, *, check_pdk_files: bool = True, validate_timing_input: bool = True
+) -> list[str]:
     if cfg._toml_error:
         return [f"malformed ecc.toml: {cfg._toml_error}"]
 
@@ -249,16 +256,17 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
     elif cfg.pdk_name not in SUPPORTED_PDK_NAMES:
         errors.append(f"unsupported pdk.name: {cfg.pdk_name}")
 
-    pdk_root = _resolve_pdk_root(cfg)
-    if pdk_root:
-        if not os.path.isdir(pdk_root):
-            errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
+    if check_pdk_files:
+        pdk_root = _resolve_pdk_root(cfg)
+        if pdk_root:
+            if not os.path.isdir(pdk_root):
+                errors.append(f"pdk.root is not a directory: {cfg.pdk_root or '$(env)'}")
+            else:
+                pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
+                if pdk_err:
+                    errors.append(pdk_err)
         else:
-            pdk_err = _validate_pdk_contents(cfg.pdk_name, pdk_root, resolve_pdk_overrides(cfg))
-            if pdk_err:
-                errors.append(pdk_err)
-    else:
-        errors.append("pdk.root is required")
+            errors.append("pdk.root is required")
 
     if not cfg.flow_preset:
         errors.append("flow.preset is required")
@@ -295,7 +303,7 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
             errors.append(str(exc))
 
     if "flow.max_parallel_steps" in cfg._explicit_keys:
-        problem = _max_parallel_steps_problem(cfg.flow_max_parallel_steps)
+        problem = max_parallel_steps_problem(cfg.flow_max_parallel_steps)
         if problem:
             errors.append(problem)
 
@@ -304,7 +312,7 @@ def validate_project_config(cfg: ProjectConfig, *, validate_timing_input: bool =
     return errors
 
 
-def _max_parallel_steps_problem(value: object) -> str | None:
+def max_parallel_steps_problem(value: object) -> str | None:
     # bool is an int subclass: ``max_parallel_steps = true`` is not a count.
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return f"flow.max_parallel_steps must be an integer >= 1, got {value!r}"
@@ -324,7 +332,7 @@ def resolve_max_parallel_steps(cfg: ProjectConfig | None) -> int:
     declared = None if cfg is None else cfg.flow_max_parallel_steps
     if declared is None:
         return DEFAULT_MAX_PARALLEL_STEPS
-    problem = _max_parallel_steps_problem(declared)
+    problem = max_parallel_steps_problem(declared)
     if problem:
         raise ValueError(problem)
     return declared

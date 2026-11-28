@@ -1,12 +1,14 @@
 import json
 from copy import deepcopy
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
 from chipcompiler.engine import create_workspace_from_spec
 from chipcompiler.engine.workspace.derive import derive_workspace
 from chipcompiler.engine.workspace.lifecycle import WorkspaceLifecycleError
+from chipcompiler.project.runtime_processes import default_log_path, require_unused_run_id
 
 
 def test_derive_rejects_existing_target(tmp_path):
@@ -82,3 +84,31 @@ def test_derive_sweeps_stale_staging_siblings(tmp_path, minimal_ics55_pdk_factor
     assert target.is_dir()
     assert not stale.exists()
     assert not Path(f"{stale}.lock").exists()
+
+
+def test_derived_workspace_starts_with_its_own_run_history(tmp_path, minimal_ics55_pdk_factory):
+    fixture = Path(__file__).parents[1] / "fixtures" / "workspace_spec" / "valid.json"
+    payload = json.loads(fixture.read_text(encoding="utf-8"))
+    bindings = payload["workspaceBindings"]
+    bindings["inputs"] = {
+        key: str(fixture.parent / value) for key, value in bindings["inputs"].items()
+    }
+    bindings["pdk"]["root"] = str(minimal_ics55_pdk_factory(tmp_path / "pdk"))
+    source = tmp_path / "source"
+    create_workspace_from_spec(source, payload["workspaceSpec"], bindings)
+    run_id, interrupted_id = str(uuid4()), str(uuid4())
+    history = [
+        Path(default_log_path(run_id)),
+        Path("log") / f"{run_id}.run.json",
+        Path(default_log_path(interrupted_id)),
+    ]
+    for path in history:
+        (source / path).write_text("source run", encoding="utf-8")
+
+    target = tmp_path / "derived"
+    derive_workspace(source, target)
+
+    assert all((source / path).is_file() for path in history)
+    assert not any((target / path).exists() for path in history)
+    require_unused_run_id(target, run_id)
+    require_unused_run_id(target, interrupted_id)

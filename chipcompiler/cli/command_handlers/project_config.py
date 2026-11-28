@@ -9,8 +9,8 @@ from chipcompiler.cli.core.records import error_record, warning_record
 from chipcompiler.cli.core.types import CommandContext, CommandResult
 from chipcompiler.cli.project.config_fields import lookup_project_field, parse_project_field_values
 from chipcompiler.cli.project.toml_edit import remove_scoped_key, set_scoped_key
+from chipcompiler.project.config_write import edit_project_config
 from chipcompiler.project.manifest import CONFIG_FILENAME
-from chipcompiler.utility.file import write_text_atomic
 
 
 @command_handler
@@ -25,12 +25,11 @@ def project_set(args, ctx: CommandContext) -> CommandResult:
     config_path = _require_config_path(ctx)
     if ctx.project_state == "manifest":
         raw = json.dumps(value) if field.list_value else str(value)
-        error = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+        applied = _apply_manifest_change(ctx, sets=(f"{field.key}={raw}",))
+        if isinstance(applied, CommandResult):
+            raise CommandError.from_result(applied)
     else:
         _set_value(config_path, field, value)
-        error = None
-    if error is not None:
-        raise CommandError.from_result(error)
     return CommandResult.ok(
         [*_shadowed_clock_warnings(config_path, (field.key,)), _record(field.key, value, "set")]
     )
@@ -116,7 +115,9 @@ def project_reconcile(args, ctx: CommandContext) -> CommandResult:
         report = reconcile_project_state(ctx.project_dir, blocking=not args.no_wait)
     except BlockingIOError:
         return CommandResult.err([error_record("workspace_busy")], exit_code=20)
-    except (ProjectApplicationError, ManifestError, OSError) as exc:
+    except ProjectApplicationError as exc:
+        return CommandResult.err([error_record(exc.code, reason=str(exc))])
+    except (ManifestError, OSError) as exc:
         return CommandResult.err([error_record("project_reconcile_failed", reason=str(exc))])
     record = {
         "project": "reconcile",
@@ -137,26 +138,21 @@ def project_unset(args, ctx: CommandContext) -> CommandResult:
     field = _require_field(args.key)
     config_path = _require_config_path(ctx)
     try:
-        with open(config_path) as file:
-            changed = remove_scoped_key(file.read(), field.table, field.name)
+
+        def unset(text: str) -> str | None:
+            return remove_scoped_key(text, field.table, field.name)
+
+        if ctx.project_state == "manifest":
+            applied = _apply_manifest_change(ctx, unsets=(field.key,))
+            if isinstance(applied, CommandResult):
+                return applied
+            changed_keys, _cfg = applied
+            changed = field.key in changed_keys
+        else:
+            changed = edit_project_config(config_path, unset)
     except (OSError, UnicodeDecodeError) as exc:
         return CommandResult.err([_io_error(config_path, exc)])
-    if changed is None:
-        if ctx.project_state == "manifest":
-            error = _apply_manifest_change(ctx, unsets=(field.key,))
-            if error is not None:
-                return error
-        return CommandResult.ok([_record(field.key, None, "no_value")])
-    if ctx.project_state == "manifest":
-        error = _apply_manifest_change(ctx, unsets=(field.key,))
-        if error is not None:
-            return error
-    else:
-        try:
-            write_text_atomic(config_path, changed)
-        except OSError as exc:
-            return CommandResult.err([_io_error(config_path, exc)])
-    return CommandResult.ok([_record(field.key, None, "unset")])
+    return CommandResult.ok([_record(field.key, None, "unset" if changed else "no_value")])
 
 
 @command_handler
@@ -220,31 +216,45 @@ def _change_rtl(args, ctx: CommandContext, *, add: bool) -> CommandResult:
                 )
             ]
         )
+    rtl_paths = tuple(values)
     config_path = _require_config_path(ctx)
-    try:
-        with open(config_path, "rb") as file:
-            data = tomllib.load(file)
-    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        return CommandResult.err([_io_error(config_path, exc)])
-    current = data.get("design", {}).get("rtl", [])
-    if not isinstance(current, list) or not all(isinstance(value, str) for value in current):
-        return CommandResult.err(
-            [error_record("invalid_project_config", reason="design.rtl must be a string list")]
-        )
-    if add:
-        updated = [*current, *(value for value in values if value not in current)]
-        status = "added"
-    else:
-        updated = [value for value in current if value not in values]
-        status = "removed"
     if ctx.project_state == "manifest":
-        error = _apply_manifest_change(ctx, sets=(f"{field.key}={json.dumps(updated)}",))
+        applied = _apply_manifest_change(
+            ctx,
+            add_rtl=rtl_paths if add else (),
+            remove_rtl=() if add else rtl_paths,
+        )
+        if isinstance(applied, CommandResult):
+            raise CommandError.from_result(applied)
+        _changed_keys, cfg = applied
+        updated = list(cfg.design_rtl)
     else:
-        _set_value(config_path, field, updated)
-        error = None
-    if error is not None:
-        raise CommandError.from_result(error)
-    return CommandResult.ok([_record(field.key, updated, status)])
+        updated = []
+
+        def edit(text: str) -> str:
+            nonlocal updated
+            current = tomllib.loads(text).get("design", {}).get("rtl", [])
+            if not isinstance(current, list) or not all(
+                isinstance(value, str) for value in current
+            ):
+                raise CommandError(
+                    [
+                        error_record(
+                            "invalid_project_config", reason="design.rtl must be a string list"
+                        )
+                    ]
+                )
+            if add:
+                updated = [*current, *(value for value in rtl_paths if value not in current)]
+            else:
+                updated = [value for value in current if value not in rtl_paths]
+            return set_scoped_key(text, field.table, field.name, updated)
+
+        try:
+            edit_project_config(config_path, edit)
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            return CommandResult.err([_io_error(config_path, exc)])
+    return CommandResult.ok([_record(field.key, updated, "added" if add else "removed")])
 
 
 def _apply_manifest_change(
@@ -252,7 +262,9 @@ def _apply_manifest_change(
     *,
     sets: tuple[str, ...] = (),
     unsets: tuple[str, ...] = (),
-) -> CommandResult | None:
+    add_rtl: tuple[str, ...] = (),
+    remove_rtl: tuple[str, ...] = (),
+):
     """Apply one project edit to ``ecc.toml`` and ``project.json`` atomically.
 
     Skip full project validation to preserve project-set behavior on partially
@@ -260,17 +272,17 @@ def _apply_manifest_change(
     """
     from chipcompiler.cli.project.project_application import (
         ProjectApplicationError,
-        apply_project,
+        apply_project_with_config,
     )
     from chipcompiler.project.manifest import ManifestError
 
     try:
-        apply_project(
+        return apply_project_with_config(
             ctx.project_dir,
             sets=sets,
             unsets=unsets,
-            add_rtl=(),
-            remove_rtl=(),
+            add_rtl=add_rtl,
+            remove_rtl=remove_rtl,
             validate=False,
         )
     except BlockingIOError:
@@ -282,29 +294,15 @@ def _apply_manifest_change(
         if key:
             fields["key"] = key
         return CommandResult.err([error_record(code, **fields)])
-    return None
 
 
 def _set_value(config_path: str, field, value: object) -> None:
     """Apply one field edit, raising CommandError when the edit fails."""
     try:
-        with open(config_path) as file:
-            updated = set_scoped_key(file.read(), field.table, field.name, value)
+        edit_project_config(
+            config_path, lambda text: set_scoped_key(text, field.table, field.name, value)
+        )
     except (OSError, UnicodeDecodeError) as exc:
-        raise CommandError([_io_error(config_path, exc)]) from exc
-    try:
-        write_text_atomic(config_path, updated)
-    except OSError as exc:
-        raise CommandError([_io_error(config_path, exc)]) from exc
-
-    try:
-        with open(config_path) as file:
-            updated = set_scoped_key(file.read(), field.table, field.name, value)
-    except (OSError, UnicodeDecodeError) as exc:
-        raise CommandError([_io_error(config_path, exc)]) from exc
-    try:
-        write_text_atomic(config_path, updated)
-    except OSError as exc:
         raise CommandError([_io_error(config_path, exc)]) from exc
 
 

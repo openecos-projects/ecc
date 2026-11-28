@@ -5,6 +5,7 @@ from typing import Annotated
 
 import typer
 
+from chipcompiler.cli.commands.candidate import candidate_app
 from chipcompiler.cli.commands.check_update import register_check_update_command
 from chipcompiler.cli.commands.chipview import register_chipview_commands
 from chipcompiler.cli.commands.compare import compare_app
@@ -87,6 +88,7 @@ app.add_typer(macro_app, name="macro")
 app.add_typer(pdk_app, name="pdk")
 app.add_typer(project_app, name="project")
 app.add_typer(process_app, name="process")
+app.add_typer(candidate_app, name="candidate")
 app.add_typer(workspace_app, name="workspace")
 app.add_typer(signoff_app, name="signoff")
 app.add_typer(report_app, name="report")

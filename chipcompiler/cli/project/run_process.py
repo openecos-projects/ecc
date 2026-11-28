@@ -1,12 +1,12 @@
 """Manifest runtime-process lifecycle for one locked ECC run."""
 
-from __future__ import annotations
-
 import os
 import signal
 import sys
 import threading
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
+from pathlib import Path
 
 from chipcompiler.project.runtime_processes import (
     RuntimeProcessError,
@@ -16,27 +16,55 @@ from chipcompiler.project.runtime_processes import (
     normalize_run_id,
     normalize_runtime_id,
     register_runtime_process,
+    require_unused_run_id,
     unregister_runtime_process,
+    write_run_result,
 )
 
 
-@contextmanager
-def run_log_stdio(command_input, workspace_path):
-    """Open the explicit ``--log-file`` run log and redirect stdio to it.
+@dataclass
+class RunOutcome:
+    succeeded: bool = False
+    error: dict[str, str] | None = None
 
-    §13.1 step 2: with an explicit ``--log-file`` the run log (opened with
-    O_NOFOLLOW and a restricted mode by ``create_run_log``) must exist and own
-    stdout/stderr before any preflight, and a log-open failure aborts the
-    command without running the flow. Without ``--log-file`` stdio is left on
-    the TTY and the default run log is opened later by
-    ``managed_run_process``; GUI-spawned runs already inherit the log as
-    their spawn stdio, so nothing redirects there either.
+    def record_execution(self, *, succeeded: bool, failed_step_error: str | None = None) -> None:
+        self.succeeded = succeeded
+        if failed_step_error is not None:
+            self.error = {"code": "step_worker_failed", "message": failed_step_error}
+
+
+@contextmanager
+def locked_run_session(command_input, workspace_path):
+    """Hold the Workspace lock across run-ID validation, optional log capture, and execution.
+
+    When ``--run-id`` or ``--log-file`` is supplied on an existing Workspace,
+    this context keeps the Workspace lock held from ``require_unused_run_id``
+    through execution so another process cannot claim the same ID in between.
+    An explicit ``--log-file`` captures stdout/stderr before preflight
+    (§13.1 step 2); otherwise ``managed_run_process`` opens the default log.
     """
-    if not command_input.log_file:
+    if not (command_input.run_id or command_input.log_file):
         yield None
         return
     run_id = normalize_run_id(command_input.run_id)
     log_path = normalize_log_path(command_input.log_file, run_id)
+    path = Path(workspace_path)
+    if not path.is_dir():
+        yield None
+        return
+    from chipcompiler.utility.workspace_lock import workspace_lock
+
+    with workspace_lock(path, blocking=not command_input.no_wait):
+        require_unused_run_id(path, run_id)
+        if not command_input.log_file:
+            yield None
+            return
+        with _open_run_log_stdio(path, log_path) as log_descriptor:
+            yield log_descriptor
+
+
+@contextmanager
+def _open_run_log_stdio(workspace_path: Path, log_path: str):
     log_descriptor = create_run_log(workspace_path, log_path)
     try:
         with _redirect_stdio_to_descriptor(log_descriptor, enabled=True):
@@ -49,7 +77,7 @@ def run_log_stdio(command_input, workspace_path):
 def managed_run_process(
     command_input, project_dir, workspace_id, workspace, *, workspace_path: str, run_log=None
 ):
-    """Register this process and expose its execution marker to Engine."""
+    """Register the run and persist its terminal result before unregistering."""
     from chipcompiler import __version__
 
     run_id = normalize_run_id(command_input.run_id)
@@ -59,16 +87,21 @@ def managed_run_process(
     )
     log_path = normalize_log_path(command_input.log_file, run_id)
     if run_log is None:
+        require_unused_run_id(workspace_path, run_id)
         log_descriptor = create_run_log(workspace_path, log_path)
         close_log = True
     else:
-        # Explicit --log-file: run_log_stdio already opened the log and
+        # Explicit --log-file: locked_run_session already opened the log and
         # redirected stdio before preflight; this context only registers.
         log_descriptor = run_log
         close_log = False
     cancel_event = threading.Event()
+    outcome = RunOutcome()
+    interrupted = False
+    returned = False
+    result_write_error = None
     old_handler = None
-    registered = False
+    registered_entry = None
     old_run_id = getattr(workspace, "_ecc_run_id", None)
     old_cancel_event = getattr(workspace, "_ecc_cancel_event", None)
     try:
@@ -82,24 +115,58 @@ def managed_run_process(
             runtime_id=runtime_id,
             log_path=log_path,
         )
+        scope = {
+            key: value
+            for key, value in (
+                ("only", command_input.only),
+                ("from_step", command_input.from_step),
+                ("through_step", command_input.to_step),
+            )
+            if value is not None
+        }
+        entry["selection"] = scope
         # Only Workspace contention is nonblocking; Project registration writes must serialize.
         register_runtime_process(project_dir, workspace_id, entry)
-        registered = True
+        registered_entry = entry
         workspace._ecc_run_id = run_id
         workspace._ecc_cancel_event = cancel_event
         os.write(log_descriptor, f"ECC run {run_id} started\n".encode())
-        # The existing-run paths redirect from run_log_stdio before preflight;
+        # The existing-run paths redirect from locked_run_session before preflight;
         # the fresh-run path (workspace created above this context) redirects
         # here, only when --log-file is explicit.
         with _redirect_stdio_to_descriptor(
             log_descriptor, enabled=run_log is None and bool(command_input.log_file)
         ):
-            yield entry
-    finally:
-        if registered:
             try:
+                yield outcome
+                returned = True
+            except KeyboardInterrupt:
+                interrupted = True
+                raise
+            except Exception as exc:
+                outcome.error = {"code": "flow_failed", "message": str(exc)}
+                raise
+    finally:
+        if registered_entry is not None:
+            try:
+                state = "succeeded" if outcome.succeeded else "failed"
+                if cancel_event.is_set():
+                    state = "cancelled"
+                elif interrupted:
+                    state = "interrupted"
+                write_run_result(
+                    workspace_path, workspace_id, registered_entry, state, outcome.error
+                )
+            except OSError as exc:
+                result_write_error = exc
+                with suppress(OSError):
+                    os.write(
+                        log_descriptor, f"WARNING: failed to save run result: {exc}\n".encode()
+                    )
+            with suppress(OSError):
                 os.write(log_descriptor, f"ECC run {run_id} finished\n".encode())
                 os.fsync(log_descriptor)
+            try:
                 unregister_runtime_process(project_dir, workspace_id, run_id)
             except Exception as exc:  # Final flow state remains authoritative.
                 with suppress(OSError):
@@ -120,6 +187,11 @@ def managed_run_process(
             signal.signal(signal.SIGUSR1, old_handler)
         if close_log:
             os.close(log_descriptor)
+        if returned and outcome.succeeded and result_write_error is not None:
+            raise RuntimeProcessError(
+                "run_result_write_failed",
+                f"Run {run_id} finished, but ECC could not save its result: {result_write_error}",
+            ) from result_write_error
 
 
 @contextmanager

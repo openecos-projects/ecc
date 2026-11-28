@@ -140,7 +140,7 @@ def test_execution_reports_wave_steps_in_flow_order(selected):
                 ("drc", StateEnum.Invalid),
                 ("lvs", StateEnum.Success),
             ]:
-                observer.on_step_completed(SimpleNamespace(name=name), state)
+                observer.on_step_completed(SimpleNamespace(name=name), state, f"{name} detail")
             return False
 
     plan = ExecutionPlan(intent="rerun", step_ids=names if selected else ())
@@ -151,6 +151,7 @@ def test_execution_reports_wave_steps_in_flow_order(selected):
         state=StateEnum.Imcomplete.value,
         executed_steps=("lvs", "antenna_check"),
         failed_step="drc",
+        failed_step_error="drc: drc detail",
     )
 
 

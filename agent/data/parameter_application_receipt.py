@@ -49,11 +49,14 @@ def build_parameter_application_receipt(
     actual = runtime_report.get("actual_value")
     if status not in {"effective", "inactive", "unknown"}:
         raise ValueError("parameter status is invalid")
-    if actual is not None and (
-        type(actual) not in {bool, int, float}
-        or (type(actual) is float and not math.isfinite(actual))
-    ):
-        raise ValueError("actual parameter value is invalid")
+    if actual is not None:
+        if isinstance(requested.get("value"), str):
+            if not isinstance(actual, str) or not actual.strip():
+                raise ValueError("actual parameter value is invalid")
+        elif type(actual) not in {bool, int, float} or (
+            type(actual) is float and not math.isfinite(actual)
+        ):
+            raise ValueError("actual parameter value is invalid")
     if status == "effective" and actual is None:
         raise ValueError("effective parameter requires an actual value")
     reason = runtime_report.get("reason")

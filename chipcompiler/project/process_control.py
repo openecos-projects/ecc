@@ -13,6 +13,7 @@ from chipcompiler.project.runtime_processes import (
     read_runtime_process,
     signal_runtime_process,
     validate_runtime_entry,
+    write_run_result,
 )
 from chipcompiler.utility.workspace_lock import workspace_lock
 
@@ -85,6 +86,7 @@ def reconcile_process(
         if _entry_is_local(entry) and identity_is_live(entry):
             raise RuntimeProcessError("workspace_busy", "Runtime process is still alive")
         recovered = recover_interrupted_run(workspace, run_id=run_id, allow_markerless=False)
+        write_run_result(workspace, workspace_id, entry, "interrupted")
 
         def mutate(document: dict) -> None:
             current = document.get("runtime_processes", {})

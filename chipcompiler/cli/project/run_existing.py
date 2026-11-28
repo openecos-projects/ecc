@@ -198,14 +198,13 @@ def _resume_existing_workspace(
                 if key not in target_section and f"flow.{key}" in cfg._explicit_keys:
                     target_section[key] = value
 
-    from chipcompiler.cli.project.run_process import run_log_stdio
+    from chipcompiler.cli.project.run_process import locked_run_session
     from chipcompiler.project.runtime_processes import RuntimeProcessError
 
     try:
-        # §13.1 step 2: an explicit --log-file owns stdout/stderr before the
-        # pure-read preflight below; a log-open failure exits without running
-        # the flow.
-        with run_log_stdio(command_input, run_dir) as run_log:
+        # §13.1 step 2: lock the Workspace across run-ID validation, optional
+        # --log-file capture, preflight, and execution.
+        with locked_run_session(command_input, run_dir) as run_log:
             return _execute_existing_run(
                 command_input,
                 ctx,
@@ -436,7 +435,7 @@ def _execute_existing_run(
                 )
             else:
                 process_context = nullcontext()
-            with process_context:
+            with process_context as outcome:
                 engine_flow = EngineFlow(workspace=workspace)
                 engine_flow.max_parallel_steps = resolve_max_parallel_steps(cfg)
                 flow_ok = True
@@ -480,6 +479,8 @@ def _execute_existing_run(
                     )
                     failure = preflight_failure(preflight)
                     if failure is not None:
+                        if outcome is not None:
+                            outcome.error = {"code": failure["error"], "message": failure["reason"]}
                         return CommandResult.err(
                             warnings
                             + [
@@ -535,6 +536,12 @@ def _execute_existing_run(
                                 through=through,
                             )
                     flow_ok = run_result.ok
+                    if outcome is not None:
+                        outcome.record_execution(
+                            succeeded=flow_ok, failed_step_error=run_result.failed_step_error
+                        )
+                elif outcome is not None:
+                    outcome.record_execution(succeeded=flow_ok)
         except Exception as exc:
             from chipcompiler.project.runtime_processes import RuntimeProcessError
 

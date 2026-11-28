@@ -12,6 +12,7 @@ from chipcompiler.cli.core.inputs import (
     FlowShowInput,
     FlowStatusInput,
     FlowValidateInput,
+    WorkspaceFlowPlanInput,
     output_options,
     project_options,
 )
@@ -62,6 +63,28 @@ def validate_cmd(
         flow_id=flow_id,
     )
     execute_command("flow", command_input, flow_validate, render_key="flow:validate")
+
+
+@flow_app.command("workspace")
+def workspace_cmd(
+    *,
+    workspace: Annotated[str, typer.Argument(help="Managed Workspace ID or absolute path")],
+    project: ProjectOption = None,
+    plain: PlainOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Show the plan of the steps recorded in a Workspace."""
+    from chipcompiler.cli.inspection.flow import workspace_plan
+
+    execute_command(
+        "flow",
+        WorkspaceFlowPlanInput(
+            output=output_options(plain=plain, json_output=json_output),
+            project=project_options(project),
+            workspace=workspace,
+        ),
+        workspace_plan,
+    )
 
 
 def _step_toggle(flag: str, help_text: str) -> Any:

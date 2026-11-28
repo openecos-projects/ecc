@@ -57,6 +57,25 @@ def test_registry_covers_the_declared_public_physical_knobs():
     }
 
 
+@pytest.mark.parametrize(
+    ("knob", "key", "requested", "native_value"),
+    [
+        ("route.thread_number", "-thread_number", 2, "2"),
+        ("route.enable_timing", "-enable_timing", True, "1"),
+    ],
+)
+def test_materialize_routing_uses_native_string_values(
+    tmp_path, knob, key, requested, native_value
+):
+    workspace = cw.workspace(tmp_path)
+    patch = [{"knob_id": knob, "value": requested}]
+
+    receipt = materialize_candidate_config(workspace, "routing", patch, "routing-candidate")
+
+    assert cw.read_json(workspace.config["routing"])["RT"][key] == native_value
+    assert receipt["patch"] == patch
+
+
 def test_materialize_cts_overlay_preserves_base_config_and_writes_receipt(tmp_path):
     workspace = cw.workspace(tmp_path)
 

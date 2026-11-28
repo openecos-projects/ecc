@@ -7,7 +7,9 @@ workspace behind, and `--overwrite` had already replaced the old one.
 """
 
 import json
+import os
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -111,3 +113,63 @@ def test_rejected_run_identity_does_not_overwrite(fresh_project, capsys):
     assert "error=invalid_run_id" in capsys.readouterr().out
     assert marker.read_text() == "from the first run\n"
     assert not list(fresh_project.glob("w1.overwritten-*"))
+
+
+@pytest.mark.parametrize(
+    ("replay_options", "result_survived"),
+    [
+        pytest.param([], True, id="default-log"),
+        pytest.param(["--log-file", f"log/{RUN_ID}.log"], True, id="explicit-log"),
+        pytest.param(["--only", "synthesis", "--force"], True, id="single-step"),
+        pytest.param(["--overwrite"], True, id="overwrite"),
+        pytest.param(["--log-file", f"log/{RUN_ID}.log"], False, id="log-without-result"),
+    ],
+)
+def test_repeated_run_id_preserves_the_original_log_and_result(
+    fresh_project, capsys, replay_options, result_survived
+):
+    log = f"log/{RUN_ID}.log"
+    args = [
+        "run",
+        "--project",
+        str(fresh_project),
+        "--workspace",
+        "w1",
+        "--run-id",
+        RUN_ID,
+        "--plain",
+    ]
+    assert cli_main.run(args) == 0
+    capsys.readouterr()
+    workspace = fresh_project / "w1"
+    result = workspace / "log" / f"{RUN_ID}.run.json"
+    if not result_survived:
+        result.unlink()
+    files = (
+        workspace / log,
+        result,
+        workspace / "home" / "flow.json",
+    )
+    original = tuple(path.read_bytes() if path.exists() else None for path in files)
+
+    exit_code = cli_main.run([*args, *replay_options])
+
+    assert tuple(path.read_bytes() if path.exists() else None for path in files) == original
+    assert exit_code == 1
+    assert "error=run_id_already_used" in capsys.readouterr().out
+
+
+def test_run_accepts_an_empty_log_preopened_by_the_launcher(tmp_path):
+    from chipcompiler.cli.project.run_process import locked_run_session
+
+    log_path = f"log/{RUN_ID}.log"
+    log = tmp_path / log_path
+    log.parent.mkdir()
+    log.touch()
+    request = SimpleNamespace(run_id=RUN_ID, log_file=log_path, no_wait=True)
+
+    with locked_run_session(request, tmp_path) as fd:
+        assert fd is not None
+        os.write(fd, b"run output\n")
+
+    assert log.read_bytes() == b"run output\n"

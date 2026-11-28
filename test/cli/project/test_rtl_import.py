@@ -287,6 +287,26 @@ def test_import_filelist_rejects_a_source_named_like_an_include_directory(tmp_pa
     assert _files(project / "rtl") == []
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_import_filelist_rejects_an_occupied_parent_before_copying(tmp_path, force):
+    project = tmp_path / "project"
+    _project(project)
+    occupied = project / "rtl" / "nested"
+    occupied.write_text("existing project file")
+    source_root = tmp_path / "sources"
+    (source_root / "nested").mkdir(parents=True)
+    (source_root / "nested" / "demo.v").write_text("module demo; endmodule\n")
+    filelist = source_root / "sources.f"
+    filelist.write_text("nested/demo.v\n")
+
+    with pytest.raises(RtlImportError) as error:
+        import_project_rtl(str(project), filelist=str(filelist), force=force)
+
+    assert error.value.code == "rtl_target_collision"
+    assert _files(project / "rtl") == ["nested"]
+    assert occupied.read_text() == "existing project file"
+
+
 def test_import_filelist_copies_headers_reached_through_a_directory_link(tmp_path):
     """``inc/alias -> real``: an include of ``alias/defs.vh`` still resolves after the import."""
     project = tmp_path / "project"

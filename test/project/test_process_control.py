@@ -6,7 +6,11 @@ import pytest
 
 import chipcompiler.project.process_control as process_control
 from chipcompiler.project.process_control import reconcile_process
-from chipcompiler.project.runtime_processes import RuntimeProcessError, default_log_path
+from chipcompiler.project.runtime_processes import (
+    RuntimeProcessError,
+    default_log_path,
+    write_run_result,
+)
 from test.flow_fixture import step_fields
 
 
@@ -88,9 +92,25 @@ def test_registered_reconcile_recovers_flow_then_removes_matching_entry(tmp_path
     assert recovered == ("synthesis",)
     manifest = json.loads((project / "project.json").read_text())
     assert manifest["runtime_processes"] == {}
+    result = json.loads((workspace / "log" / f"{run_id}.run.json").read_text())
+    assert result["run_id"] == run_id
+    assert result["state"] == "interrupted"
     step = json.loads((workspace / "home" / "flow.json").read_text())["steps"][0]
     assert step["state"] == "Incomplete"
     assert "execution" not in step["info"]
+
+
+def test_reconcile_preserves_a_result_already_published_by_ecc(tmp_path):
+    project, workspace, run_id = _project(tmp_path)
+    manifest = json.loads((project / "project.json").read_text())
+    entry = manifest["runtime_processes"]["baseline"]
+    write_run_result(workspace, "baseline", entry, "succeeded")
+    result_path = workspace / "log" / f"{run_id}.run.json"
+    before = result_path.read_bytes()
+
+    reconcile_process(project, "baseline", run_id, blocking=False)
+
+    assert result_path.read_bytes() == before
 
 
 def test_registered_reconcile_run_id_mismatch_changes_nothing(tmp_path):

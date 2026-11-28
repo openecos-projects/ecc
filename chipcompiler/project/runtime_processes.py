@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -11,7 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Literal
 
 from chipcompiler.project.manifest import load_manifest
 from chipcompiler.project.manifest_write import manifest_lock, update_manifest_locked
@@ -19,6 +20,8 @@ from chipcompiler.project.manifest_write import manifest_lock, update_manifest_l
 RUNTIME_PROCESS_SCHEMA_VERSION = 1
 MAX_RUNTIME_PROCESSES = 4096
 _SAFE_TOKEN = re.compile(r"[A-Za-z0-9._:@+-]{1,128}\Z")
+_RUN_RESULT_SUFFIX = ".run.json"
+_RUN_LOG_SUFFIX = ".log"
 
 
 class RuntimeProcessError(RuntimeError):
@@ -58,7 +61,20 @@ def normalize_runtime_id(value: str | None, *, default: str) -> str:
 
 
 def default_log_path(run_id: str) -> str:
-    return f"log/{run_id}.log"
+    return f"log/{run_id}{_RUN_LOG_SUFFIX}"
+
+
+def is_run_history_file(name: str) -> bool:
+    """Recognize per-run logs and receipts in a Workspace's log directory."""
+    for suffix in (_RUN_RESULT_SUFFIX, _RUN_LOG_SUFFIX):
+        run_id = name.removesuffix(suffix)
+        if run_id and run_id != name:
+            try:
+                normalize_run_id(run_id)
+            except RuntimeProcessError:
+                return False
+            return True
+    return False
 
 
 def normalize_log_path(value: str | None, run_id: str) -> str:
@@ -70,6 +86,22 @@ def normalize_log_path(value: str | None, run_id: str) -> str:
         )
     _validate_relative_posix(result, field="log_path")
     return result
+
+
+def require_unused_run_id(workspace: str | Path, run_id: str) -> None:
+    """Check for a previous run while holding the Workspace lock."""
+    directory = Path(workspace).resolve() / "log"
+    for suffix in (_RUN_RESULT_SUFFIX, _RUN_LOG_SUFFIX):
+        path = directory / f"{run_id}{suffix}"
+        if not path.exists():
+            continue
+        # Studio opens an empty log for the detached process before launching ECC.
+        if suffix == _RUN_LOG_SUFFIX and path.is_file() and path.stat().st_size == 0:
+            continue
+        raise RuntimeProcessError(
+            "run_id_already_used",
+            f"Run ID {run_id} has already been used in this Workspace. Choose a new ID.",
+        )
 
 
 def create_run_log(workspace: str | Path, log_path: str) -> int:
@@ -91,6 +123,49 @@ def create_run_log(workspace: str | Path, log_path: str) -> int:
         return os.open(target, flags, 0o600)
     except OSError as exc:
         raise RuntimeProcessError("run_log_open_failed", str(exc)) from exc
+
+
+def write_run_result(
+    workspace: str | Path,
+    workspace_id: str,
+    entry: dict[str, Any],
+    state: Literal["succeeded", "failed", "interrupted", "cancelled"],
+    error: dict[str, str] | None = None,
+) -> None:
+    """Publish the result while holding the Workspace lock.
+
+    Reconcile can retry after a completed run saved its result but failed
+    to unregister. Preserve the result already on disk.
+    """
+    from chipcompiler.utility.file import write_text_atomic
+
+    root = Path(workspace).resolve()
+    directory = root / "log"
+    run_id = normalize_run_id(entry["run_id"])
+    path = directory / f"{run_id}{_RUN_RESULT_SUFFIX}"
+    if path.exists():
+        if state == "interrupted":
+            return
+        raise FileExistsError(f"Run result already exists: {path.name}")
+    directory.mkdir(mode=0o700, exist_ok=True)
+    record = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "workspace_id": workspace_id,
+        "started_at": entry["started_at"],
+        "finished_at": max(entry["started_at"], time.time()),
+        "runtime_id": entry["runtime_id"],
+        "state": state,
+    }
+    selection = entry.get("selection", {})
+    if isinstance(selection, dict):
+        for field in ("only", "from_step", "through_step"):
+            value = selection.get(field)
+            if isinstance(value, str):
+                record[field] = value[:256]
+    if state == "failed" and error:
+        record["error"] = {"code": error["code"], "message": error["message"][:500]}
+    write_text_atomic(path, json.dumps(record) + "\n")
 
 
 def current_process_identity() -> ProcessIdentity:
