@@ -38,19 +38,22 @@ def _metric(metric_id, value, project_role="final", **overrides):
     return record
 
 
-def _payload(metrics):
-    return {
+def _payload(metrics, details=None):
+    payload = {
         "schema_version": 3,
         "kind": "qor_metrics",
         "integrity": {"status": "pass", "invalid_metric_source_ids": [], "invalid_detail_ids": []},
         "metrics": metrics,
     }
+    if details is not None:
+        payload["details"] = details
+    return payload
 
 
-def _write_step_payload(root, directory, metrics):
+def _write_step_payload(root, directory, metrics, details=None):
     _write(
         os.path.join(root, directory, "analysis", "qor_metrics.json"),
-        _payload(metrics),
+        _payload(metrics, details=details),
     )
 
 
@@ -208,6 +211,41 @@ class TestMetricSelection:
         inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.value("drc_count") is None
         assert any("conflicting" in w for w in inputs.config_warnings)
+
+    @pytest.mark.parametrize("pair", [(0, False), (False, 0)])
+    def test_bool_vs_int_duplicate_is_conflicted_in_both_readers(self, tmp_path, pair):
+        from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", pair[0]), _metric("drc_count", pair[1])],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") is None
+        assert any("conflicting" in w for w in inputs.config_warnings)
+
+        qor_path = Path(workspace.directory) / "drc_ecc" / "analysis" / "qor_metrics.json"
+        value, error = QorMetrics(qor_path).number("drc_count")
+        assert value is None
+        assert error == "qor_metrics.json contains conflicting duplicate metric id drc_count"
+
+    def test_int_and_equal_float_duplicate_accepted_in_both_readers(self, tmp_path):
+        from chipcompiler.tools.ecc.qor_metrics import QorMetrics
+
+        workspace = _make_workspace(tmp_path, _FULL_FLOW)
+        _write_step_payload(
+            workspace.directory,
+            "drc_ecc",
+            [_metric("drc_count", 0), _metric("drc_count", 0.0)],
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.value("drc_count") == 0.0
+        assert inputs.config_warnings == []
+
+        qor_path = Path(workspace.directory) / "drc_ecc" / "analysis" / "qor_metrics.json"
+        assert QorMetrics(qor_path).number("drc_count") == (0.0, None)
 
     def test_stale_payload_of_unstarted_step_is_ignored(self, tmp_path):
         steps = dict(_FULL_FLOW)
@@ -703,42 +741,143 @@ class TestGateEvidence:
 
 
 class TestEgrOverflowGrid:
-    def _workspace(
+    def _detail(
         self,
-        tmp_path,
-        grid_rows,
         *,
-        recorded_exists=False,
-        map_filename="placement.map.json",
-    ):
-        workspace = _make_workspace(tmp_path, {"placement": SUCCESS})
-        feature = os.path.join(workspace.directory, "placement_dreamplace", "feature")
-        os.makedirs(os.path.join(feature, "egr_congestion_map"))
-        csv_path = os.path.join(feature, "egr_congestion_map", "place_egr_union_overflow.csv")
-        with open(csv_path, "w") as f:
-            f.write("\n".join(grid_rows) + "\n")
-        # Stale absolute paths happen when a workspace is moved: prefer the CSV beside the map.
-        recorded = csv_path if recorded_exists else "/nonexistent/place_egr_union_overflow.csv"
-        _write(
-            os.path.join(feature, map_filename),
-            {"Congestion": {"map": {"egr": {"union": recorded}}}},
-        )
+        available: Any = True,
+        value_count: Any = 8,
+        nonzero_count: Any = 2,
+        source_file: str = "feature/egr_congestion_map/place_egr_union_overflow.csv",
+        feature_source_path: str = "feature/placement.map.json",
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": "place_map_metrics",
+                "presentation": "place_map_summary",
+                "summary": {
+                    "maps": [
+                        {
+                            "group": "density",
+                            "metric": "allcell",
+                            "available": True,
+                            "value_count": 4,
+                            "nonzero_count": 1,
+                        },
+                        {
+                            "group": "congestion",
+                            "metric": "egr",
+                            "direction": "union",
+                            "source_file": source_file,
+                            "available": available,
+                            "value_count": value_count,
+                            "nonzero_count": nonzero_count,
+                        },
+                    ]
+                },
+                "feature_source": {"kind": "feature", "path": feature_source_path, "selector": ""},
+            }
+        ]
+
+    def _workspace(self, tmp_path, *, placement_state=SUCCESS, details=None):
+        workspace = _make_workspace(tmp_path, {"placement": placement_state})
+        if placement_state == SUCCESS:
+            _write_step_payload(
+                workspace.directory,
+                "placement_dreamplace",
+                [_metric("probe_metric", 1.0)],
+                details=details,
+            )
         return workspace
 
-    @pytest.mark.parametrize("map_filename", ["placement.map.json", "place.map.json"])
-    def test_grid_size_and_overflowed_cells(self, tmp_path, map_filename):
-        inputs: Any = load_workspace_qor_inputs(
-            self._workspace(tmp_path, ["0,0,3,0", "0,1,0,0"], map_filename=map_filename)
-        )
+    def test_reads_persisted_place_map_metrics(self, tmp_path):
+        workspace = self._workspace(tmp_path, details=self._detail())
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.egr_gcell_count == 8
         assert inputs.egr_overflowed_gcell_count == 2
+        assert (
+            inputs.egr_grid_source_path == "feature/egr_congestion_map/place_egr_union_overflow.csv"
+        )
+
+    def test_falls_back_to_feature_source_when_map_source_file_empty(self, tmp_path):
+        workspace = self._workspace(tmp_path, details=self._detail(source_file=""))
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count == 8
+        assert inputs.egr_overflowed_gcell_count == 2
+        assert inputs.egr_grid_source_path == "feature/placement.map.json"
+
+    def test_consumes_metrics_emitted_by_placement_extractor_without_rereading_csv(self, tmp_path):
+        from chipcompiler.data import OriginDesign, StepEnum, Workspace
+        from chipcompiler.tools.ecc.builder import build_step, build_step_space
+        from chipcompiler.tools.ecc.metrics import build_metrics_placement
+
+        workspace_stub = _make_workspace(tmp_path, {"placement": SUCCESS})
+        ws_root = Path(workspace_stub.directory)
+        real_ws = Workspace(directory=ws_root, design=OriginDesign(name="gcd", top_module="gcd"))
+        step = build_step(
+            workspace=real_ws,
+            step_name=StepEnum.PLACEMENT.value,
+            step_directory=ws_root / "placement_dreamplace",
+            input_def=ws_root / "input.def",
+            input_verilog=ws_root / "input.v",
+        )
+        build_step_space(step)
+        assert step.feature.dir is not None
+        assert step.feature.map is not None
+        csv_dir = step.feature.dir / "egr_congestion_map"
+        csv_dir.mkdir(parents=True, exist_ok=True)
+        egr_csv = csv_dir / "place_egr_union_overflow.csv"
+        egr_csv.write_text("0,0,3,0\n0,1,0,0\n", encoding="utf-8")
+        step.feature.map.write_text(
+            json.dumps(
+                {
+                    "Congestion": {
+                        "map": {"egr": {"union": str(egr_csv)}},
+                        "overflow": {"total": {"union": 4}, "max": {"union": 3}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert build_metrics_placement(real_ws, step) is not None
+        # Prove loader relies strictly on persisted qor_metrics.json stats, not the CSV file.
+        egr_csv.unlink()
+
+        inputs: Any = load_workspace_qor_inputs(workspace_stub)
+        assert inputs.egr_gcell_count == 8
+        assert inputs.egr_overflowed_gcell_count == 2
+        assert inputs.egr_grid_source_path is not None
         assert inputs.egr_grid_source_path.endswith("place_egr_union_overflow.csv")
 
-    def test_invalid_cell_leaves_grid_unknown(self, tmp_path):
-        inputs: Any = load_workspace_qor_inputs(self._workspace(tmp_path, ["0,nan,0", "0,0,0"]))
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"available": False},
+            {"value_count": 0},
+            {"nonzero_count": -1},
+            {"nonzero_count": 9, "value_count": 8},
+            {"value_count": True},
+            {"nonzero_count": True},
+        ],
+    )
+    def test_invalid_or_unavailable_persisted_stats_leave_grid_unknown(self, tmp_path, overrides):
+        workspace = self._workspace(tmp_path, details=self._detail(**overrides))
+        inputs: Any = load_workspace_qor_inputs(workspace)
         assert inputs.egr_gcell_count is None
         assert inputs.egr_overflowed_gcell_count is None
 
-    def test_missing_map_leaves_grid_unknown(self, tmp_path):
+    def test_missing_place_map_detail_leaves_grid_unknown(self, tmp_path):
         inputs: Any = load_workspace_qor_inputs(_make_workspace(tmp_path, {"placement": SUCCESS}))
         assert inputs.egr_gcell_count is None
+        assert inputs.egr_overflowed_gcell_count is None
+
+    def test_non_success_placement_leaves_grid_unknown(self, tmp_path):
+        workspace = self._workspace(tmp_path, placement_state="Unstart")
+        _write_step_payload(
+            workspace.directory,
+            "placement_dreamplace",
+            [_metric("probe_metric", 1.0)],
+            details=self._detail(),
+        )
+        inputs: Any = load_workspace_qor_inputs(workspace)
+        assert inputs.egr_gcell_count is None
+        assert inputs.egr_overflowed_gcell_count is None

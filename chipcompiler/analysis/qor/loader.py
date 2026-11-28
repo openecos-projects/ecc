@@ -7,13 +7,12 @@ disk, and stale suffixes must not report obsolete metrics as current.
 """
 
 import dataclasses
-from csv import reader as csv_reader
-from math import isfinite
 from pathlib import Path
 from typing import cast
 
 from chipcompiler.analysis.qor.gate_catalog import gate_metric_ids
 from chipcompiler.analysis.qor.metric_registry import SCORED_STEP_VALUES, metric_range_violation
+from chipcompiler.analysis.qor.metrics_contract import index_metric_records
 from chipcompiler.data import StateEnum, StepEnum
 from chipcompiler.data.flow.document import FlowStepEntry
 from chipcompiler.data.step import StepDirectories
@@ -77,8 +76,9 @@ class QorInputs:
     profile: str = "balanced"
     power_budget_uw: float | None = None
     config_warnings: list = dataclasses.field(default_factory=list)
-    # Global-route union overflow grid read from the placement EGR map CSV:
-    # total GCell count, GCells with positive overflow, and the CSV path.
+    # Global-route union overflow grid read from the persisted placement
+    # ``place_map_metrics`` detail record: total GCell count, GCells with
+    # positive overflow, and source path.
     egr_gcell_count: int | None = None
     egr_overflowed_gcell_count: int | None = None
     egr_grid_source_path: str | None = None
@@ -203,8 +203,7 @@ def _select_metrics(step_payloads: list, warnings: list | None = None) -> dict:
     selected: dict = {}
     conflicted: dict = {}
     for index, (step_value, records) in enumerate(step_payloads):
-        step_values: dict[str, float] = {}
-        step_conflicts: dict[str, tuple[float, float]] = {}
+        step_conflicts = index_metric_records(records).conflicts
         step_candidates: dict[str, tuple[tuple[int, int], MetricRecord]] = {}
         for raw in records:
             metric_id = raw.get("id")
@@ -212,11 +211,6 @@ def _select_metrics(step_payloads: list, warnings: list | None = None) -> dict:
             if not isinstance(metric_id, str) or not metric_id or num is None:
                 continue
             value = float(num)
-            # Track duplicates before range filtering so an invalid entry
-            # still conflicts with any differing record in the same step.
-            first = step_values.setdefault(metric_id, value)
-            if value != first and metric_id not in step_conflicts:
-                step_conflicts[metric_id] = (first, value)
             violation = metric_range_violation(metric_id, value)
             if violation is not None:
                 message = (
@@ -340,47 +334,71 @@ def _power_summary(workspace, directories: StepDirectories, flow_states: dict):
     return None, None, None, None
 
 
-def _egr_overflow_grid(directories: StepDirectories, flow_states: dict):
-    """Read (total GCells, overflowed GCells, path) from the placement EGR map.
+def _egr_overflow_grid(placement_payload: dict | None) -> tuple[int | None, int | None, str | None]:
+    """Read ``(total_gcells, overflowed_gcells, source_path)`` from placement details.
 
-    ``placement.map.json`` (or legacy ``place.map.json``) records the union
-    overflow CSV, one cell per GCell, so the grid size and overflowed-GCell
-    fraction are derivable from it. Returns ``(None, None, None)`` when absent
+    Consumes the ``place_map_metrics`` detail record already computed and persisted
+    by the placement metric extractor (``group="congestion"``, ``metric="egr"``,
+    ``direction="union"``). Returns ``(None, None, None)`` when absent, unavailable,
     or invalid.
     """
-    empty = (None, None, None)
-    if flow_states.get(StepEnum.PLACEMENT.value) != StateEnum.Success.value:
+    empty: tuple[int | None, int | None, str | None] = (None, None, None)
+    if not isinstance(placement_payload, dict):
         return empty
-    feature_dir = directories.path(StepEnum.PLACEMENT.value) / "feature"
-    map_data = json_read(feature_dir / "placement.map.json")
-    if not map_data:
-        map_data = json_read(feature_dir / "place.map.json")
-    recorded = (
-        JsonObject(map_data).get_obj("Congestion").get_obj("map").get_obj("egr").get_str("union")
+    details = placement_payload.get("details")
+    if not isinstance(details, list):
+        return empty
+
+    detail = next(
+        (
+            item
+            for item in details
+            if isinstance(item, dict) and item.get("id") == "place_map_metrics"
+        ),
+        None,
     )
-    if not recorded:
+    if not isinstance(detail, dict):
         return empty
-    # Prefer the copy beside the map file: recorded paths may be absolute and
-    # stop resolving once a workspace is moved.
-    candidates = [feature_dir / "egr_congestion_map" / Path(recorded).name, Path(recorded)]
-    path = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if path is None:
+    summary = detail.get("summary")
+    maps = summary.get("maps") if isinstance(summary, dict) else None
+    if not isinstance(maps, list):
         return empty
-    total = overflowed = 0
-    try:
-        with path.open(newline="", encoding="utf-8") as file:
-            for row in csv_reader(file):
-                for cell in row:
-                    value = float(cell)
-                    if not isfinite(value) or value < 0:
-                        return empty
-                    total += 1
-                    overflowed += value > 0
-    except (OSError, UnicodeDecodeError, ValueError):
+
+    record = next(
+        (
+            item
+            for item in maps
+            if isinstance(item, dict)
+            and item.get("group") == "congestion"
+            and item.get("metric") == "egr"
+            and item.get("direction") == "union"
+        ),
+        None,
+    )
+    if not isinstance(record, dict) or record.get("available") is not True:
         return empty
-    if total == 0:
+
+    total = record.get("value_count")
+    overflowed = record.get("nonzero_count")
+    if isinstance(total, bool) or not isinstance(total, int) or total <= 0:
         return empty
-    return total, overflowed, str(path)
+    if (
+        isinstance(overflowed, bool)
+        or not isinstance(overflowed, int)
+        or not 0 <= overflowed <= total
+    ):
+        return empty
+
+    source_file = record.get("source_file")
+    feature_source = detail.get("feature_source")
+    feature_path = feature_source.get("path") if isinstance(feature_source, dict) else None
+    if isinstance(source_file, str) and source_file:
+        source = source_file
+    elif isinstance(feature_path, str) and feature_path:
+        source = feature_path
+    else:
+        source = None
+    return total, overflowed, source
 
 
 def _resolve_parameters(parameters: dict, warnings: list) -> tuple:
@@ -432,12 +450,15 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
     analyzed_steps: list = []
     parse_failures = 0
     invalid_selector_count = 0
+    placement_payload: dict | None = None
     for step_value in SCORED_STEP_VALUES:
         if flow_states.get(step_value) != StateEnum.Success.value:
             continue
         step_dir = directories.path(step_value)
         cache = step_dir / "analysis" / "qor_metrics.json"
         payload = json_read(cache)
+        if step_value == StepEnum.PLACEMENT.value and isinstance(payload, dict):
+            placement_payload = payload
         records = _payload_metrics(payload)
         if payload is None or not records:
             parse_failures += 1
@@ -462,7 +483,7 @@ def load_workspace_qor_inputs(workspace) -> QorInputs:
     corners, sta_setup_only, sta_corner_parse_failures = _corner_slack(
         workspace, directories, flow_states
     )
-    egr_gcells, egr_overflowed, egr_source = _egr_overflow_grid(directories, flow_states)
+    egr_gcells, egr_overflowed, egr_source = _egr_overflow_grid(placement_payload)
 
     return QorInputs(
         design=design,

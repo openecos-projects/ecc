@@ -390,7 +390,7 @@ Published-only observability features appear in the report's top-level `suppleme
 
 | Feature | Formula | Notes |
 |---|---|---|
-| F_PL_EGR_OVERFLOW_GCELL_FRAC | GCells with union overflow > 0 / all GCells | Read from the placement EGR union overflow CSV; UNKNOWN when absent |
+| F_PL_EGR_OVERFLOW_GCELL_FRAC | GCells with union overflow > 0 / all GCells | Read from persisted placement `place_map_metrics` detail (`egr`/`union`); UNKNOWN when absent |
 | F_STA_SETUP_TNS / F_STA_HOLD_TNS | `sta_setup_tns` / `sta_hold_tns` (ns) | Signed, worst corner |
 | F_STA_SETUP_TNS_NORM | setup TNS / T_clk | Needs `frequency_max` |
 | F_STA_SETUP_FEP / F_STA_HOLD_FEP | `sta_setup_violation_count` / `sta_hold_violation_count` | Counts only; endpoint population is not emitted |

@@ -368,7 +368,10 @@ def _supplementary_features(inputs) -> dict:
             SourceArtifact(
                 metric="place_congestion_egr_overflow_total",
                 path=inputs.egr_grid_source_path,
-                selector="/grid[overflow>0]/count/grid/count",
+                selector=(
+                    "/details[id=place_map_metrics]/summary"
+                    "/maps[group=congestion,metric=egr,direction=union]"
+                ),
             )
         ]
     _add_supplementary_feature(
