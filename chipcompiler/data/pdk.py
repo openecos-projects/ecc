@@ -47,6 +47,7 @@ class PDK:
     lefs: list[Path] = field(default_factory=list[Path])  # pdk lef files
     libs: list[Path] = field(default_factory=list[Path])  # pdk liberty files
     mapping_file: Path | None = None  # pdk mapping file
+    gds: list[Path] = field(default_factory=list[Path])  # std-cell / IO GDS libraries
     corners: list = field(default_factory=list)
     sdc: Path | None = None  # pdk sdc file
     spef: Path | None = None  # pdk spef file
@@ -85,6 +86,7 @@ class PDK:
         self.lefs = path_list(self.lefs)
         self.libs = path_list(self.libs)
         self.mapping_file = optional_path(self.mapping_file)
+        self.gds = path_list(self.gds)
         self.sdc = optional_path(self.sdc)
         self.spef = optional_path(self.spef)
 
@@ -138,7 +140,7 @@ STRING_LIST_FIELDS = {f.name for f in fields(PDK) if f.type == list[str]}
 # Path fields holding PDK content: relative override values resolve against
 # the PDK root. sdc/spef are design data and stay project-relative; root is
 # the resolution anchor itself.
-PDK_CONTENT_PATH_FIELDS = {"tech", "lefs", "libs", "mapping_file"}
+PDK_CONTENT_PATH_FIELDS = {"tech", "lefs", "libs", "mapping_file", "gds"}
 
 # Optional path fields not covered by PDK.validate() (which only checks the
 # always-required root/tech/lefs/libs). When one of these is set through an
@@ -250,6 +252,7 @@ def _pdk_from_external_config(data: dict, pdk_name: str = "") -> PDK:
         lefs=data.get("lefs", []),
         libs=data.get("libs", []),
         mapping_file=optional_path(str(data.get("mapping_file", ""))),
+        gds=data.get("gds", []),
         corners=data.get("corners", []),
         sdc=optional_path(str(data.get("sdc", ""))),
         spef=optional_path(str(data.get("spef", ""))),
@@ -345,6 +348,10 @@ def get_pdk(
             path = getattr(pdk, key)
             if path and not path.is_file():
                 errors.append(f"{label}: {path}")
+        if "gds" in overrides:
+            for path in pdk.gds:
+                if not path.is_file():
+                    errors.append(f"PDK GDS file not found: {path}")
         _raise_pdk_validation_error(errors)
     return pdk
 
@@ -404,6 +411,18 @@ def _PDK_ICS55_V1(resolved_root: Path) -> PDK:
     ]
     mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
     mapping_file = mapping_path if mapping_path.is_file() else None
+    gds_paths = [
+        stdcell_dir / cell_lib / "gds" / f"{cell_lib}.gds"
+        for cell_lib in ("ics55_LLSC_H7CR", "ics55_LLSC_H7CL", "ics55_LLSC_H7CH")
+    ]
+    gds_paths.append(
+        resolved_root
+        / "IP"
+        / "IO"
+        / "ICsprout_55LLULP1233_IO_251013"
+        / "gds"
+        / "ICSIOA_N55_3P3_1P6M1TM.gds"
+    )
     corners = [
         {"name": "TYPICAL", "temperature": [25], "spef_file": "./TYP.spef"},
         {"name": "RCbest", "temperature": [-40, 125], "spef_file": "./RCbest.spef"},
@@ -420,6 +439,7 @@ def _PDK_ICS55_V1(resolved_root: Path) -> PDK:
         lefs=[path for path in lef_paths if path.is_file()],
         libs=[path for path in lib_paths if path.is_file()],
         mapping_file=mapping_file,
+        gds=[path for path in gds_paths if path.is_file()],
         corners=corners,
         site_core="core7",
         site_io="core7",
@@ -494,6 +514,16 @@ def _PDK_ICS55_V2(resolved_root: Path) -> PDK:
     ]
     mapping_path = resolved_root / "techfile" / "icsprout55.layermap"
     mapping_file = mapping_path if mapping_path.is_file() else None
+    gds_paths = [
+        stdcell_dir / f"ICsprout55_SC9T_BASIC_{vt}" / "gds" / f"ICsprout55_9T{vt}_basic.gds"
+        for vt in variants
+    ]
+    gds_paths.extend(
+        [
+            resolved_root / "IP" / "IO" / "gds" / "IC055L_GPIO3P3V_CDG_6M_0901.gds",
+            resolved_root / "IP" / "IO" / "gds" / "IC055L_PAD_1P6M_5IM_T4M2.gds",
+        ]
+    )
     corners = [
         {"name": "TYPICAL", "temperature": [25], "spef_file": "./TYP.spef"},
         {"name": "RCbest", "temperature": [-40, 125], "spef_file": "./RCbest.spef"},
@@ -510,6 +540,7 @@ def _PDK_ICS55_V2(resolved_root: Path) -> PDK:
         lefs=[path for path in lef_paths if path.is_file()],
         libs=[path for path in lib_paths if path.is_file()],
         mapping_file=mapping_file,
+        gds=[path for path in gds_paths if path.is_file()],
         corners=corners,
         site_core="SC9T_site",
         site_io="IOSite",

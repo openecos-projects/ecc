@@ -462,6 +462,59 @@ def test_get_pdk_optional_path_override_existing_ok(tmp_path, minimal_ics55_pdk_
     assert getattr(pdk, field) == real_file
 
 
+def test_get_pdk_gds_override_validated(tmp_path, minimal_ics55_pdk_factory):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+
+    with pytest.raises(ValueError, match="PDK GDS file not found"):
+        get_pdk("ics55", pdk_root=pdk_root, overrides={"gds": ["/no/such.gds"]})
+
+    real_gds = tmp_path / "cells.gds"
+    real_gds.write_text("gds\n")
+    pdk = get_pdk("ics55", pdk_root=pdk_root, overrides={"gds": [str(real_gds)]})
+    assert pdk.gds == [real_gds]
+
+
+@pytest.mark.parametrize(
+    ("release", "rel_paths"),
+    [
+        (
+            "v1",
+            [
+                "IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CR/gds/ics55_LLSC_H7CR.gds",
+                "IP/STD_cell/ics55_LLSC_H7C_V1p10C100/ics55_LLSC_H7CL/gds/ics55_LLSC_H7CL.gds",
+                "IP/IO/ICsprout_55LLULP1233_IO_251013/gds/ICSIOA_N55_3P3_1P6M1TM.gds",
+            ],
+        ),
+        (
+            "v2",
+            [
+                "IP/STD_cell/ICsprout55_SC9T_BASIC_SVT/gds/ICsprout55_9TSVT_basic.gds",
+                "IP/STD_cell/ICsprout55_SC9T_BASIC_LVT/gds/ICsprout55_9TLVT_basic.gds",
+                "IP/IO/gds/IC055L_GPIO3P3V_CDG_6M_0901.gds",
+                "IP/IO/gds/IC055L_PAD_1P6M_5IM_T4M2.gds",
+            ],
+        ),
+    ],
+)
+def test_pdk_ics55_detects_versioned_gds_paths(
+    tmp_path, minimal_ics55_pdk_factory, release, rel_paths
+):
+    from chipcompiler.data.pdk import PDK_ICS55
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / f"ics55_{release}", release=release)
+    expected = []
+    for rel in rel_paths:
+        path = (pdk_root / rel).resolve()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("gds\n", encoding="utf-8")
+        expected.append(path)
+
+    pdk = PDK_ICS55(pdk_root=pdk_root)
+
+    assert pdk.version == release
+    assert pdk.gds == expected
+
+
 def test_pdk_validate_optional_paths_absent_ok(tmp_path, minimal_ics55_pdk_factory):
     pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
 
