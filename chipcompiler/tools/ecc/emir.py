@@ -20,6 +20,11 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
 
     sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
     config = json_read(workspace.config[StepEnum.EMIR.value])
+    if config.get("allow_unmapped_pg_pins", False):
+        workspace.logger.warning(
+            "Exploratory EMIR: unmapped PG pins are allowed. See supply_coverage.rpt for "
+            "omitted currents; successful execution is not full-chip EMIR signoff."
+        )
     technology_file = config["technology_file_path"]
     if not technology_file:
         workspace.logger.error(
@@ -45,8 +50,11 @@ def run_emir(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | N
             output_dir=step.data.steps[StepEnum.EMIR.value],
             instance_power_file_path=instance_power_path(power_directory),
             technology_file_path=technology_file,
-            ploc_file_path=pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
+            ploc_file_path=config.get("ploc_file_path")
+            or pdn_directory / "data" / "fp" / "pdn_generator" / "power.ploc",
             spef_path=spef_path,
+            supply_ground_pins=config.get("supply_ground_pins", {}),
+            allow_unmapped_pg_pins=config.get("allow_unmapped_pg_pins", False),
         )
         if not initialized:
             workspace.logger.error("Failed to initialize EMIR")

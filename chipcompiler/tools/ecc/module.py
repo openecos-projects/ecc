@@ -91,7 +91,6 @@ def _place_timing_kwargs(inputs: dict[str, object]) -> dict[str, Any]:
         "sdc_path": first("sdc_path", "sdc"),
         "spef_path": first("spef_path", "spef"),
         "rcx_config": first("rcx_config"),
-        "rcx_pdk": str(first("rcx_pdk")),
         "rcx_output_dir": first("rcx_output_dir"),
         "rcx_spef_path": first("rcx_spef_path"),
         "config": first("config", "sta_config"),
@@ -197,7 +196,6 @@ class ECCToolsModule:
         sdc_path: PathArg,
         spef_path: PathArg = "",
         rcx_config: PathArg = "",
-        rcx_pdk: str = "",
         rcx_output_dir: PathArg = "",
         rcx_spef_path: PathArg = "",
         config: PathArg = "",
@@ -223,7 +221,6 @@ class ECCToolsModule:
         if normalized_rcx:
             normalized_spef, rcx_summary = self._extract_place_parasitics(
                 normalized_rcx,
-                pdk=rcx_pdk,
                 output_dir=normalized_rcx_output,
                 requested_spef=os.fspath(rcx_spef_path) or normalized_spef,
             )
@@ -266,7 +263,6 @@ class ECCToolsModule:
             "sdc_path": normalized_sdc,
             "spef_path": normalized_spef,
             "rcx_config": normalized_rcx,
-            "rcx_pdk": rcx_pdk,
             "rcx_output_dir": normalized_rcx_output,
             "rcx_spef_path": normalized_spef if normalized_rcx else "",
             "config": sta_config,
@@ -291,12 +287,11 @@ class ECCToolsModule:
         self,
         config: PathArg,
         *,
-        pdk: str = "",
         output_dir: PathArg = "",
         requested_spef: str = "",
     ) -> tuple[str, dict[str, object]]:
         """Run the configured native RCX backend and select its fresh SPEF."""
-        if self.init_rcx(config=config, pdk=pdk) is not True:
+        if self.init_rcx(config=config) is not True:
             raise RuntimeError("ECC placement timing RCX initialization failed")
         try:
             if self.run_rcx() is not True:
@@ -836,9 +831,7 @@ class ECCToolsModule:
     ########################################################################
     # RCX api
     ########################################################################
-    def init_rcx(self, config: PathArg, pdk: str = "ics55"):
-        if pdk:
-            return self.ecc.init_rcx(config=config, pdk=pdk)
+    def init_rcx(self, config: PathArg):
         return self.ecc.init_rcx(config=config)
 
     def run_rcx(self):
@@ -884,6 +877,9 @@ class ECCToolsModule:
         technology_file_path: PathArg,
         ploc_file_path: PathArg,
         spef_path: PathArg = "",
+        supply_ground_pins: dict[str, str] | None = None,
+        *,
+        allow_unmapped_pg_pins: bool = False,
     ):
         normalized_spef = os.fspath(spef_path)
         if normalized_spef and self.ecc.spef_init(normalized_spef) is not True:
@@ -893,6 +889,8 @@ class ECCToolsModule:
             instance_power_file_path=instance_power_file_path,
             technology_file_path=technology_file_path,
             ploc_file_path=ploc_file_path,
+            supply_ground_pins={} if supply_ground_pins is None else supply_ground_pins,
+            allow_unmapped_pg_pins=allow_unmapped_pg_pins,
         )
 
     def run_emir(self):

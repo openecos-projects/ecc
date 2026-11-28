@@ -1,0 +1,49 @@
+{
+    "mapping_file": "",
+    "corners": [
+        {
+            "name": "TYPICAL",
+            "temperature": [
+                25
+            ],
+            "process_file": "techfile/ICsprout55_TYP.tech",
+            "captab_file": "techfile/ICsprout55_TYP.captab"
+        },
+        {
+            "name": "RCbest",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "techfile/ICsprout55_RCbest.tech",
+            "captab_file": "techfile/ICsprout55_RCbest.captab"
+        },
+        {
+            "name": "RCworst",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "techfile/ICsprout55_RCworst.tech",
+            "captab_file": "techfile/ICsprout55_RCworst.captab"
+        },
+        {
+            "name": "Cbest",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "techfile/ICsprout55_Cbest.tech",
+            "captab_file": "techfile/ICsprout55_Cbest.captab"
+        },
+        {
+            "name": "Cworst",
+            "temperature": [
+                -40,
+                125
+            ],
+            "process_file": "techfile/ICsprout55_Cworst.tech",
+            "captab_file": "techfile/ICsprout55_Cworst.captab"
+        }
+    ]
+}

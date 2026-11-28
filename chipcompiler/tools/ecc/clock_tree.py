@@ -117,23 +117,26 @@ def _select_typical_spef(output_dir: Path, temperature_c: float) -> Path:
     return spef
 
 
-def _prepare_rcx_config(clock_tree_dir: Path) -> tuple[Path, Path]:
+def _prepare_rcx_config(workspace, clock_tree_dir: Path) -> tuple[Path, Path]:
+    from chipcompiler.utility import json_read_strict
+
+    payload = json_read_strict(workspace.config[StepEnum.RCX.value])
     rcx_dir = clock_tree_dir / "rcx"
     shutil.rmtree(rcx_dir, ignore_errors=True)
     rcx_dir.mkdir(parents=True, exist_ok=True)
     config_path = clock_tree_dir / "rcx_config.json"
+    payload["output"] = str(rcx_dir.resolve())
     config_path.write_text(
-        json.dumps({"thread_num": 64, "output": str(rcx_dir.resolve())}, indent=2) + "\n",
+        json.dumps(payload, indent=2) + "\n",
         encoding="utf-8",
     )
     return config_path, rcx_dir
 
 
-def _run_rcx(workspace, ecc_module, config_path: Path) -> None:
-    pdk = workspace.pdk.name or "ics55"
+def _run_rcx(ecc_module, config_path: Path) -> None:
     initialized = False
     try:
-        if ecc_module.init_rcx(config=config_path, pdk=pdk) is False:
+        if ecc_module.init_rcx(config=config_path) is False:
             raise ClockTreeCaptureError("filler clock-tree RCX initialization failed")
         initialized = True
         if ecc_module.run_rcx() is False:
@@ -196,8 +199,8 @@ def capture_filler_clock_tree(workspace, step, ecc_module) -> dict[str, Any] | N
     if sdc_path is None or not sdc_path.is_file():
         raise ClockTreeCaptureError(f"filler clock-tree SDC does not exist: {sdc_path}")
 
-    rcx_config, rcx_dir = _prepare_rcx_config(clock_tree_dir)
-    _run_rcx(workspace, ecc_module, rcx_config)
+    rcx_config, rcx_dir = _prepare_rcx_config(workspace, clock_tree_dir)
+    _run_rcx(ecc_module, rcx_config)
     spef_path = _select_typical_spef(rcx_dir, temperature_c)
     graph = _run_ista_clock_graph(
         ecc_module,

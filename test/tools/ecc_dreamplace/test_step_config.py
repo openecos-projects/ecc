@@ -24,7 +24,13 @@ def _workspace(tmp_path: Path, make_ics55_parameters) -> Workspace:
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
-        pdk=PDK(name="ics55", version="v1", tech=Path("tech.lef"), lefs=[Path("std.lef")]),
+        pdk=PDK(
+            name="ics55",
+            version="v1",
+            root=tmp_path / "pdk",
+            tech=Path("tech.lef"),
+            lefs=[Path("std.lef")],
+        ),
         parameters=make_ics55_parameters(),
     )
     init_workspace_config(workspace)

@@ -435,8 +435,8 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    if step.name in _GEOMETRY_SNAPSHOT_STEPS:
-        geometry_dir = step.output.geometry or ""
+    if step.name in _GEOMETRY_SNAPSHOT_STEPS and step.output.geometry is not None:
+        geometry_dir = step.output.geometry
         geometry_manifest = step.output.geometry_manifest
         clock_tree_stage = clock_tree_stage_for_step(workspace, step.name)
         if not ecc_module.geometry_snapshot_save(
@@ -984,9 +984,7 @@ def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             wipe_stale_spef_artifacts(data_dir)
 
         try:
-            if not ecc_module.init_rcx(
-                config=workspace.config.get(StepEnum.RCX.value, ""), pdk=workspace.pdk.name
-            ):
+            if not ecc_module.init_rcx(config=workspace.config.get(StepEnum.RCX.value, "")):
                 workspace.logger.error("Failed to initialize RCX extraction")
                 sub_flow.update_step(
                     step_name=EccSubFlowEnum.run_rcx.value, state=StateEnum.Imcomplete

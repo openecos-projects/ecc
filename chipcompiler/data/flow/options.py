@@ -6,11 +6,22 @@ from .document import FlowDocument
 
 OPTIONS_KEY = "options"
 GEOMETRY_KEY = "geometry"
+SNAPSHOT_KEY = "snapshot"
 CLOCK_TREE_KEY = "clock_tree"
 
 
+def geometry_snapshot_requested(workspace) -> bool:
+    """Return the snapshot control, retaining capture for existing workspaces."""
+    from chipcompiler.data.parameter_schema import lookup_schema
+    from chipcompiler.data.workspace.parameters import workspace_param_value
+
+    schema = lookup_schema("geometry.snapshot")
+    assert schema is not None
+    return workspace_param_value(workspace, schema) is True
+
+
 def clock_tree_requested(workspace) -> bool:
-    """Return the validated Workspace parameter, defaulting old workspaces to false."""
+    """Clock-tree visualization is opt-in and requires geometry snapshots."""
     from chipcompiler.data.parameter_schema import lookup_schema
     from chipcompiler.data.workspace.parameters import workspace_param_value
 
@@ -18,7 +29,7 @@ def clock_tree_requested(workspace) -> bool:
     if schema is None:
         return False
     value = workspace_param_value(workspace, schema)
-    return value is True
+    return value is True and geometry_snapshot_requested(workspace)
 
 
 def sync_flow_options_projection(workspace, *, persist: bool = False) -> bool:
@@ -42,11 +53,10 @@ def sync_flow_options_projection(workspace, *, persist: bool = False) -> bool:
     options = {} if not isinstance(options, dict) else deepcopy(options)
     geometry = options.get(GEOMETRY_KEY)
     geometry = {} if not isinstance(geometry, dict) else deepcopy(geometry)
-    desired = clock_tree_requested(workspace)
-    changed = geometry.get(CLOCK_TREE_KEY) is not desired
-    geometry[CLOCK_TREE_KEY] = desired
+    geometry[SNAPSHOT_KEY] = geometry_snapshot_requested(workspace)
+    geometry[CLOCK_TREE_KEY] = clock_tree_requested(workspace)
     options[GEOMETRY_KEY] = geometry
-    changed = changed or data.get(OPTIONS_KEY) != options
+    changed = data.get(OPTIONS_KEY) != options
     data[OPTIONS_KEY] = options
 
     if persist and changed:

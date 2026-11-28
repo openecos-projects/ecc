@@ -403,6 +403,8 @@ class TestRunSet:
                 "--set",
                 f"emir.technology_file_path={tmp_path / 'process.tech'}",
                 "--set",
+                f"emir.ploc_file_path={tmp_path / 'imported grid' / 'power.ploc'}",
+                "--set",
                 "pdk.tech=prtech/custom.lef",
             ]
         )
@@ -411,7 +413,10 @@ class TestRunSet:
         params = capture["kwargs"]["parameters"]
         assert params["config_overrides"] == {
             "cts": {"skew_bound": "0.05"},
-            "emir": {"technology_file_path": str(tmp_path / "process.tech")},
+            "emir": {
+                "technology_file_path": str(tmp_path / "process.tech"),
+                "ploc_file_path": str(tmp_path / "imported grid" / "power.ploc"),
+            },
         }
         assert capture["kwargs"]["pdk_overrides"]["tech"].endswith("prtech/custom.lef")
 

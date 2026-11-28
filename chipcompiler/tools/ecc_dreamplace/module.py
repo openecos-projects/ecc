@@ -197,7 +197,6 @@ class DreamplaceModule:
             "spef": spef,
             "sta_config": sta_config or "",
             "rcx_config": rcx_config or "",
-            "rcx_pdk": str(getattr(self.workspace.pdk, "name", "") or ""),
             "work_dir": Path(self.result_dir) / "native_sta",
             "thread_number": int(getattr(params, "num_threads", 2) or 2),
             "max_paths": 20,
