@@ -155,7 +155,6 @@ class DreamplaceModule:
         existing = dict(getattr(params, "design_inputs", {}) or {})
         rc_mode = getattr(params, "timing_rc_mode", "placement")
         spef_rc = rc_mode == "spef"
-        frozen_rc = rc_mode in {"gr", "spef"}
         if spef_rc:
             spef_input = str(getattr(params, "spef_input", "") or "").strip()
             if not spef_input:
@@ -179,17 +178,14 @@ class DreamplaceModule:
         if not sta_config:
             sta_config = self.workspace.config.get("sta", "")
         rcx_config = existing.get("rcx_config", "")
-        if frozen_rc:
-            # GRParasiticsOp and SPEF snapshots supply wire RC without running
-            # native RCX extraction. SPEF mode still feeds its post-route SPEF
-            # and complete propagated-clock STA to native STA.
+        if rc_mode in {"placement", "gr", "spef"}:
+            # Placement, GR, and SPEF timing modes supply wire RC without
+            # running native RCX extraction. Only SPEF mode forwards a SPEF
+            # snapshot to native STA; placement and GR modes must not inherit a
+            # stale PDK SPEF.
             rcx_config = ""
             existing.pop("spef_path", None)
-        spef = (
-            str(getattr(params, "spef_input", "") or "")
-            if spef_rc
-            else ("" if rc_mode == "gr" else (getattr(self.workspace.pdk, "spef", None) or ""))
-        )
+        spef = str(getattr(params, "spef_input", "") or "") if spef_rc else ""
         design_inputs = {
             **existing,
             "tech_lef": getattr(self.workspace.pdk, "tech", None) or "",

@@ -43,7 +43,7 @@ SCHEMAS = (
         "star_pin_pair",
         applies="placement",
         description=(
-            "coordinate timing method; explicit star_pin_pair, direct_loss, or pin2pin "
+            "coordinate timing method; explicit direct_loss, star_pin_pair, or pin2pin "
             "selects mutually exclusive GP controls; "
             "gradient_net_weight retains gradient projection"
         ),

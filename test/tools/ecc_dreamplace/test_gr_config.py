@@ -61,6 +61,29 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     assert (geometry.timing_rc_mode, geometry.with_sta) == ("placement", 0)
 
 
+def test_placement_rc_clears_stale_pdk_spef_and_rcx_config(tmp_path):
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="clocked"))
+    workspace.pdk.spef = tmp_path / "stale.spef"
+    workspace.config[StepEnum.RCX.value] = tmp_path / "rcx.json"
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        data=EccData(steps={StepEnum.PLACEMENT.value: tmp_path / "pl"}),
+        directory=tmp_path / "placement",
+    )
+    module = DreamplaceModule(workspace, step, None, None, None, None, None)
+    params = FakeParams()
+    params.timing_rc_mode = "placement"
+    params.num_threads = 2
+    params.design_inputs = {
+        "spef": str(tmp_path / "existing.spef"),
+        "spef_path": str(tmp_path / "stale_path.spef"),
+        "rcx_config": str(tmp_path / "stale_rcx.json"),
+    }
+    design_inputs = module._ecc_design_inputs(params)
+    assert (design_inputs["spef"], design_inputs["rcx_config"]) == ("", "")
+    assert "spef_path" not in design_inputs
+
+
 @pytest.mark.parametrize(
     "override",
     [
