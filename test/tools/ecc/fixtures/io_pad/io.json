@@ -1,0 +1,6 @@
+{
+  "corner": {"master": "CORNER"},
+  "signal_masters": ["PAD_SIG"],
+  "power_members": [{"master": "PAD_VDD", "pin": "VDD", "net_pattern": ["VDD"]}],
+  "filler_masters": [{"master": "IO_FILL", "width_micron": 1.0}]
+}
