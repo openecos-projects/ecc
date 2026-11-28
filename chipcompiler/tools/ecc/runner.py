@@ -13,6 +13,7 @@ from chipcompiler.data import (
     workspace_config_key_path,
 )
 from chipcompiler.data.handshake import ParasiticsSource, load_request, parasitics_source
+from chipcompiler.data.workspace.sta_liberty import select_liberty_group
 from chipcompiler.data.workspace.timing_constraints import generate_timing_scripts
 from chipcompiler.tools.ecc.checklist import EccChecklist
 from chipcompiler.tools.ecc.clock_tree import (
@@ -20,6 +21,7 @@ from chipcompiler.tools.ecc.clock_tree import (
     clock_tree_stage_for_step,
 )
 from chipcompiler.tools.ecc.drc_artifacts import save_drc_feature
+from chipcompiler.tools.ecc.harden import export_harden_views
 from chipcompiler.tools.ecc.lvs_artifacts import (
     copy_lvs_outputs as copy_lvs_outputs,
 )
@@ -125,23 +127,22 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
         )
     declared_spef = getattr(getattr(workspace, "pdk", None), "spef", None)
 
-    liberty_by_corner = {liberty.get("corner"): liberty for liberty in sta_data.get("liberty", [])}
     spef_design_name = workspace.design.top_module or workspace.design.name
     items = []
 
     for signoff_group in sta_data.get("signoff", []):
         for corner_name, rcx_corner_names in signoff_group.items():
-            liberty = liberty_by_corner.get(corner_name)
-            if liberty is None:
-                workspace.logger.error(
-                    "No liberty corner '%s' found in %s", corner_name, sta_config
-                )
-                return []
-
-            temperature = liberty.get("temperature")
-            liberty_files = liberty.get("path", [])
-
             for rcx_corner_name in rcx_corner_names:
+                liberty = select_liberty_group(
+                    sta_data.get("liberty", []), corner_name, rcx_corner_name
+                )
+                if liberty is None:
+                    workspace.logger.error(
+                        "No Liberty group for %s/%s in %s", corner_name, rcx_corner_name, sta_config
+                    )
+                    return []
+                temperature = liberty["temperature"]
+                liberty_files = liberty["path"]
                 spef_name = (
                     f"{spef_design_name}_{rcx_corner_name}_{temperature_token(temperature)}C.spef"
                 )
@@ -156,6 +157,7 @@ def collect_sta_signoff_items(workspace: Workspace, step: EccStep) -> list[dict]
                         "temperature": temperature,
                         "rcx_corner": rcx_corner_name,
                         "liberty_files": liberty_files,
+                        "min_liberty_files": liberty.get("min_path", []),
                         "spef_file": spef_file,
                     }
                 )
@@ -908,61 +910,6 @@ def run_post_floorplan(
     return reslut
 
 
-def run_harden(
-    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
-) -> bool:
-    """
-    run harden, save design as Lef Macro and extract lib
-    """
-    reslut = False
-
-    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
-
-    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
-
-    if ecc_module is not None:
-        sub_flow.update_step(step_name=EccSubFlowEnum.load_data.value, state=StateEnum.Success)
-
-        signoff_items = collect_sta_signoff_items(workspace, step)
-        if not signoff_items:
-            workspace.logger.error("No signoff STA items found")
-            return False
-        signoff_item = typical_signoff_item(signoff_items)
-        if signoff_item is None:
-            workspace.logger.error("No TYP/TYPICAL signoff STA item found for harden")
-            return False
-        sta_config = _workspace_sta_config_path(workspace)
-        if sta_config is None:
-            workspace.logger.error("workspace STA config path is not configured")
-            return False
-
-        ecc_module.write_abstract_lef(output_lef_path=step.output.lef or "")
-        ecc_module.write_timing_model(
-            output_lib_path=step.output.lib or "",
-            config=sta_config,
-            output_dir=(step.data.steps or {}).get(StepEnum.STA.value, ""),
-            lib_paths=signoff_item["liberty_files"],
-            sdc_path=step_tcl_path(workspace, step) or "",
-            spef_path=signoff_item["spef_file"],
-            design_name=workspace.design.name,
-        )
-        layer_map_path = getattr(workspace.pdk, "mapping_file", None)
-        if not layer_map_path:
-            workspace.logger.error("Cannot harden without a PDK GDS layer map")
-            return False
-        ecc_module.gds_save(
-            output_path=step.output.gds or "",
-            layer_map_path=layer_map_path,
-        )
-
-        sub_flow.update_step(step_name=EccSubFlowEnum.run_harden.value, state=StateEnum.Success)
-
-        run_analysis(workspace=workspace, step=step, subflow=sub_flow)
-        reslut = True
-
-    return reslut
-
-
 def run_rcx(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
     """
     run rcx
@@ -1179,6 +1126,29 @@ def run_power_analysis(
     return True
 
 
+def run_harden(
+    workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None
+) -> bool:
+    sub_flow = EccSubFlow(workspace=workspace, workspace_step=step)
+    ecc_module = get_eda_instance(workspace=workspace, step=step, ecc_module=ecc_module)
+    if ecc_module is None:
+        return False
+    sub_flow.update_step(EccSubFlowEnum.load_data.value, StateEnum.Success)
+
+    items = collect_sta_signoff_items(workspace, step)
+    if typical_signoff_item(items) is None:
+        workspace.logger.error("No TYP/TYPICAL signoff STA item found for harden")
+        return False
+    sta_config = _workspace_sta_config_path(workspace)
+    if sta_config is None:
+        workspace.logger.error("Harden STA configuration is not configured")
+        return False
+    export_harden_views(workspace, step, ecc_module, items, sta_config)
+    sub_flow.update_step(EccSubFlowEnum.run_harden.value, StateEnum.Success)
+    run_analysis(workspace=workspace, step=step, subflow=sub_flow)
+    return True
+
+
 def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | None = None) -> bool:
     """
     run sta
@@ -1221,6 +1191,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
         temperature = signoff_item["temperature"]
         rcx_corner_name = signoff_item["rcx_corner"]
         liberty_files = signoff_item["liberty_files"]
+        min_liberty_files = signoff_item.get("min_liberty_files", [])
         spef_file = signoff_item["spef_file"]
 
         if not os.path.exists(spef_file):
@@ -1235,7 +1206,9 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             return False
 
         missing_liberty_files = [
-            lib_path for lib_path in liberty_files if not os.path.exists(lib_path)
+            lib_path
+            for lib_path in [*liberty_files, *min_liberty_files]
+            if not os.path.exists(lib_path)
         ]
         if len(liberty_files) <= 0 or missing_liberty_files:
             workspace.logger.error(
@@ -1283,6 +1256,7 @@ def run_sta(workspace: Workspace, step: EccStep, ecc_module: ECCToolsModule | No
             report_dir=report_dir,
             feature_dir=feature_dir,
             lib_paths=liberty_files,
+            min_lib_paths=min_liberty_files,
             sdc_path=sdc_path,
             spef_path=spef_file,
             output_modes=("report", "structured"),

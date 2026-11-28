@@ -1,6 +1,7 @@
 """Multi-target config parameters: fan-out, transforms, list elements, PDK variants."""
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -214,14 +215,17 @@ def test_carried_creation_time_config_overrides_are_validated_against_the_new_pd
     ]
 
 
-def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative() -> None:
+@pytest.mark.parametrize("field", ["path", "min_path"])
+def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative(field) -> None:
     from chipcompiler.params import carried_parameters
 
     def liberty(*paths: str) -> list[dict[str, Any]]:
-        return [{"corner": "MAX", "temperature": 25, "path": list(paths)}]
+        return [{"corner": "MAX", "temperature": 25, "path": ["common.lib"], field: list(paths)}]
 
     parameters = {
-        "config_overrides": {"sta": {"liberty": liberty("/old/pdk/lib/a.lib", "/ext/b.lib")}},
+        "config_overrides": {
+            "sta": {"liberty": liberty("/old/pdk/lib/a.lib", "/ext/b.lib", "/old/pdk-other/c.lib")}
+        },
         "workspace_param_overrides": [
             {
                 "key": "sta.liberty",
@@ -231,12 +235,18 @@ def test_carried_liberty_paths_inside_the_old_pdk_are_rebound_to_pdk_relative() 
         ],
     }
 
+    original = deepcopy(parameters)
     carried = carried_parameters(parameters, "/old/pdk")
 
-    assert carried["config_overrides"] == {"sta": {"liberty": liberty("lib/a.lib", "/ext/b.lib")}}
-    assert carried["workspace_param_overrides"] == [
-        {"key": "sta.liberty", "baseline": liberty("lib/a.lib"), "value": liberty("lib/c.lib")}
-    ]
+    assert carried == {
+        "config_overrides": {
+            "sta": {"liberty": liberty("lib/a.lib", "/ext/b.lib", "/old/pdk-other/c.lib")}
+        },
+        "workspace_param_overrides": [
+            {"key": "sta.liberty", "baseline": liberty("lib/a.lib"), "value": liberty("lib/c.lib")}
+        ],
+    }
+    assert parameters == original
 
 
 def test_carried_stored_tunables_leave_old_pdk_defaults_to_the_new_template() -> None:

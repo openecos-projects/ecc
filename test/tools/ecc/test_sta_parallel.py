@@ -255,6 +255,7 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
             feature_dir=tmp_path / "feature" / str(index),
             corner=str(index),
             lib_paths=["lib"],
+            min_lib_paths=[f"macro_{index}_min.lib"],
             spef_path="spef",
             sdc_path=tmp_path / "sdc" / f"{index}.sdc",
             config="sta.json",
@@ -272,7 +273,7 @@ def test_full_corner_barrier_isolates_jobs_and_publishes_only_after_success(
         assert len(jobs) == 13
         assert len({job[2]["work_dir"] for job in jobs}) == 13
         for original, (_, _, job, _) in zip(originals, jobs, strict=True):
-            keys = ("corner", "lib_paths", "spef_path", "sdc_path")
+            keys = ("corner", "lib_paths", "min_lib_paths", "spef_path", "sdc_path")
             assert {key: job[key] for key in keys} == {key: original[key] for key in keys}
             assert job["sdc_path"].read_text() == f"# corner {job['corner']}\n"
             assert not original["report_dir"].exists()
