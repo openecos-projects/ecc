@@ -133,7 +133,7 @@ class TestBoolParamValidation:
         records = plain_records(capsys.readouterr().out)
         records = [r for r in records if r.get("key") == "flow.run_analysis"]
         assert len(records) == 1
-        assert records[0]["value"] == "False"
+        assert records[0]["value"] == "false"
         assert records[0]["source"] == "ecc.toml"
 
 

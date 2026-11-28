@@ -1,4 +1,4 @@
-import ast
+import json
 import os
 from types import SimpleNamespace
 
@@ -116,7 +116,7 @@ class TestReportQor:
         assert record["report"] == "qor"
         assert record["status"] == "written"
         assert record["overall_score"] == "72.5"
-        assert ast.literal_eval(record["dimensions"])[0]["dimension"] == "timing"
+        assert json.loads(record["dimensions"])[0]["dimension"] == "timing"
         expected = os.path.join(run_dir, "signoff", "gcd_qor_report.txt")
         assert record["path"] == expected
         with open(expected) as f:

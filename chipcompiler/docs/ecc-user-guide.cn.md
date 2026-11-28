@@ -101,6 +101,7 @@ uv run ecc --help
 - 全局：`ecc --version`（单行版本号）、`ecc --help`。
 - 项目定位：项目级命令接受 `--project <dir>`（缺少参数指定即为当前目录）。`--workspace <路径指定>` 可以是受工具管理的非空简单文件夹路径，也可以是完整绝对路径。名称继续使用项目内的 `<project>/<workspace-id>` 布局；绝对路径创建或选择项目外 workspace，新路径默认以目录 basename 作为 workspace ID，已登记路径沿用清单中的 ID。新项目裸执行 `ecc run` 创建 `default`；只有一个活跃 workspace 时自动选择，多个活跃 workspace 时必须指定 `--workspace`。命名 workspace 会在创建文件前登记到 `project.json`。遗留的 `runs/` 项目不再迁移，请新建项目与 workspace。每个项目只有一个 `ecc.toml`；创建时会把声明的输入复制到各 workspace 的 `origin/`。
 - 结构化输出：`init`、`check`、`run`、`status`、`log`、`config`、`doctor`、`rtl`、`param`、`macro`、`pdk`、`project`、`workspace`、`process`、`flow`、`signoff`、`report`、`compare`、`chipview`、`gdsview` 在相应命令中支持 `--plain`，缺省为人类可读 TEXT。实验命令组没有统一的输出开关：`sweep create/list/run/verify`、`explore rank/promote` 和 `reproducible export` 直接输出 JSON；`sweep compare`、`reproducible report` 和 `diagnose run` 默认 TEXT、可用 `--json` 切换；`sweep show` 与 `reproducible inspect/verify` 始终输出 JSON（其 `--json` 选项可传但不会改变结果）；`explore export` 输出所选 JSON/CSV/Markdown 内容，提供 `--output` 时只输出一行 JSON 状态。这些命令组均不支持 `--plain`。
+- `--plain` 记录里的值：布尔值写作 `true` / `false`；列表和映射写作 JSON（去掉 shell 风格的引号之后例如 `invalidated_steps='["place", "route"]'`），脚本用 JSON 解析器解析，不要求值。含有空白、`=`、`"` 或 `\` 的值用双引号包裹，并使用 `\"`、`\\`、`\n`、`\r`、`\t` 转义。
 - 退出码：成功 0；业务失败 1（错误记录形如 `[error] error=<机器可读错误码>`）。完整注册表：
 
 | 退出码 | 含义 | 触发者 |
@@ -1307,7 +1308,7 @@ agent 使用 `param apply`。
 
 ```console
 $ ecc param set design.frequency_mhz 150 --workspace default --plain
-param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps="[\"Synthesis\"]"
 
 $ ecc param list --workspace default      # workspace 作用域：只列局部覆盖
     design.frequency_mhz           150.0  (workspace)
@@ -1321,7 +1322,7 @@ $ ecc param diff --workspace default --plain
 param=design.frequency_mhz value=150.0 baseline=100.0 source=workspace workspace=default
 
 $ ecc param unset design.frequency_mhz --workspace default --plain
-param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps="[\"Synthesis\"]"
 ```
 
 ```console
@@ -1828,7 +1829,7 @@ PDK / Node         : ics55
 $ ecc report qor --project gcd --plain
 report=qor path=.../signoff/gcd_qor_report.txt bytes=... design=gcd \
   overall_score=98.96 qor_status=GREEN gate_status=PASS \
-  dimensions="[{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...}, ...]" \
+  dimensions="[{\"dimension\": \"timing\", \"score\": 100.0, \"state\": \"OPPORTUNITY\", \"features\": ...}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 

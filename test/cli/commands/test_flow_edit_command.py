@@ -425,11 +425,12 @@ def test_plain_records_state_the_written_selection(capsys, create_cli_project):
     assert rc == 0
     assert capsys.readouterr().out.splitlines() == [
         f"record=flow_edit status=written path={os.path.join(project_dir, 'ecc.toml')} "
-        "preset=rtl2gds lec_engine=kepler_formal skip_steps=\"['diff_opt', 'cts']\" "
-        "insert_steps=[] max_parallel_steps=4 enabled=[] disabled=['cts'] inserted=[] removed=[]",
+        'preset=rtl2gds lec_engine=kepler_formal skip_steps="[\\"diff_opt\\", \\"cts\\"]" '
+        'insert_steps=[] max_parallel_steps=4 enabled=[] disabled="[\\"cts\\"]" '
+        "inserted=[] removed=[]",
         *(
-            f"kind=warning warning=flow_step_degraded step={step} missing=['clock_tree'] "
-            f"fixes=['cts'] reason=\"{step} runs with degraded results without clock_tree; "
+            f'kind=warning warning=flow_step_degraded step={step} missing="[\\"clock_tree\\"]" '
+            f'fixes="[\\"cts\\"]" reason="{step} runs with degraded results without clock_tree; '
             'enable cts"'
             for step in ("routing", "sta", "power_analysis", "harden")
         ),

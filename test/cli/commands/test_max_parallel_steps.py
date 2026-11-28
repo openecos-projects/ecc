@@ -313,4 +313,4 @@ class TestRunApplication:
         assert cli_main.run(["run", "--project", project_dir, "--plain"]) == 0
 
         (record, *_rest) = plain_records(capsys.readouterr().out)
-        assert (record["status"], record["no_op"]) == ("success", "True")
+        assert (record["status"], record["no_op"]) == ("success", "true")

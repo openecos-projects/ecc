@@ -102,6 +102,7 @@ uv run ecc --help
 - Global: `ecc --version` (single version line), `ecc --help`.
 - Project location: project-scoped commands accept `--project <dir>` (when the option is not given, the current directory is used). `--workspace <path>` accepts either a tool-managed, non-empty simple folder name or a complete absolute filesystem path. A name keeps the project-local `<project>/<workspace-id>` layout; an absolute path creates or selects an external workspace and uses its basename as the new ID unless the path is already registered. A fresh project creates `default` on bare `ecc run`; a project with one active workspace auto-selects it, while one with multiple active workspaces requires `--workspace`. A named workspace is created and registered in `project.json` before its files are created. Legacy `runs/` projects are not migrated; create a new project and workspace. Each project has one `ecc.toml`; workspace inputs are copied to its own `origin/` directory at creation time.
 - Structured output: `init`, `check`, `run`, `status`, `log`, `config`, `doctor`, `rtl`, `param`, `macro`, `pdk`, `project`, `workspace`, `process`, `flow`, `signoff`, `report`, `compare`, `chipview`, and `gdsview` accept `--plain` where documented, with human-readable TEXT by default. The experiment groups do not share one output switch: `sweep create/list/run/verify`, `explore rank/promote`, and `reproducible export` emit JSON directly; `sweep compare`, `reproducible report`, and `diagnose run` default to text and accept `--json`; `sweep show` and `reproducible inspect/verify` emit JSON (their `--json` option is accepted but does not change the payload); `explore export` prints the selected JSON/CSV/Markdown content, or a one-line JSON status when `--output` is supplied. None of these groups supports `--plain`.
+- Values in `--plain` records: a boolean is written `true` / `false`; a list or mapping is written as JSON (for example `invalidated_steps='["place", "route"]'` once the shell-style quoting is undone), so a script parses it with a JSON parser and never evaluates it. A value that contains whitespace, `=`, `"` or `\` is wrapped in double quotes with `\"`, `\\`, `\n`, `\r` and `\t` escapes.
 - Exit codes: 0 on success; 1 on business failure (error records look like `[error] error=<machine-readable-code>`). Complete registry:
 
 | Exit code | Meaning | Emitted by |
@@ -1331,7 +1332,7 @@ Common options: `--project DIR`, `--plain`. `list`, `show`, `set`, `unset`, and 
 
 ```console
 $ ecc param set design.frequency_mhz 150 --workspace default --plain
-param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+param=design.frequency_mhz value=150.0 status=set source=workspace workspace=default from_step=Synthesis invalidated_steps="[\"Synthesis\"]"
 
 $ ecc param list --workspace default      # workspace scope: only local overrides
     design.frequency_mhz           150.0  (workspace)
@@ -1345,7 +1346,7 @@ $ ecc param diff --workspace default --plain
 param=design.frequency_mhz value=150.0 baseline=100.0 source=workspace workspace=default
 
 $ ecc param unset design.frequency_mhz --workspace default --plain
-param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps=['Synthesis']
+param=design.frequency_mhz value=100.0 status=unset source=workspace workspace=default from_step=Synthesis invalidated_steps="[\"Synthesis\"]"
 ```
 
 ```console
@@ -1871,7 +1872,7 @@ The scalar score uses the selected `qor_profile` weights (balanced by default) a
 $ ecc report qor --project gcd --plain
 report=qor path=.../signoff/gcd_qor_report.txt bytes=... design=gcd \
   overall_score=98.96 qor_status=GREEN gate_status=PASS \
-  dimensions="[{'dimension': 'timing', 'score': 100.0, 'state': 'OPPORTUNITY', 'features': ...}, ...]" \
+  dimensions="[{\"dimension\": \"timing\", \"score\": 100.0, \"state\": \"OPPORTUNITY\", \"features\": ...}, ...]" \
   view="cat .../gcd_qor_report.txt" status=written
 ```
 

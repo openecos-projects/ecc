@@ -136,7 +136,7 @@ def test_reconcile_deletes_recovers_interrupted_delete_and_is_idempotent(
     assert exit_code == 0, output
     action = "restored" if registered else "removed"
     assert plain_records(output) == [
-        {"status": "reconciled", "recovered_deletes": f"[{action}:baseline]"}
+        {"status": "reconciled", "recovered_deletes": f'["{action}:baseline"]'}
     ]
     assert not staging.exists()
     assert workspace.exists() is registered

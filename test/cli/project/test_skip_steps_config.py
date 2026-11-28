@@ -342,8 +342,8 @@ class TestManifestSkipBoundary:
             ["diff_opt", "cts"],
             0,
             [
-                f"warning=flow_step_degraded step={step} missing=['clock_tree'] "
-                f"fixes=['cts'] reason=\"{step} runs with degraded results without "
+                f'warning=flow_step_degraded step={step} missing="[\\"clock_tree\\"]" '
+                f'fixes="[\\"cts\\"]" reason="{step} runs with degraded results without '
                 'clock_tree; enable cts"'
                 for step in ("routing", "sta", "power_analysis", "harden")
             ],
