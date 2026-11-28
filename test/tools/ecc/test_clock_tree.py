@@ -53,33 +53,7 @@ def test_select_typ_liberty_does_not_take_the_first_corner(tmp_path):
 def test_select_typ_liberty_rejects_temperature_mismatch(tmp_path):
     config, _liberty = _sta_config(tmp_path, typ_temperature=0)
 
-    with pytest.raises(ClockTreeCaptureError, match="TYP/TYPICAL Liberty at 25°C"):
-        _select_typ_liberty(config)
-
-
-@pytest.mark.parametrize("rc_corner", ["TYPICAL", "Cworst"])
-def test_select_typ_liberty_prefers_the_matching_rc_group(tmp_path, rc_corner):
-    config, fallback = _sta_config(tmp_path)
-    specific = tmp_path / "specific.lib"
-    specific.write_text("library(specific) {}\n")
-    payload = json.loads(config.read_text())
-    payload["liberty"].append(
-        {"corner": "TYP", "temperature": 25, "rc_corner": rc_corner, "path": [str(specific)]}
-    )
-    config.write_text(json.dumps(payload))
-
-    expected = specific if rc_corner == "TYPICAL" else fallback
-    assert _select_typ_liberty(config) == ([str(expected)], "TYP", 25.0)
-
-
-def test_select_typ_liberty_rejects_ambiguous_rc_groups(tmp_path):
-    config, _liberty = _sta_config(tmp_path)
-    payload = json.loads(config.read_text())
-    group = payload["liberty"][1] | {"rc_corner": "TYPICAL"}
-    payload["liberty"] += [group, group]
-    config.write_text(json.dumps(payload))
-
-    with pytest.raises(ClockTreeCaptureError, match="Ambiguous STA Liberty groups for TYP/TYPICAL"):
+    with pytest.raises(ClockTreeCaptureError, match="exactly one TYP Liberty at 25°C"):
         _select_typ_liberty(config)
 
 
@@ -92,19 +66,8 @@ def test_select_typical_spef_requires_exact_corner_and_temperature(tmp_path):
     assert _select_typical_spef(tmp_path, 25.0) == expected
 
 
-@pytest.mark.parametrize("rc_specific", [False, True])
-def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(
-    tmp_path, rc_specific
-):
-    sta_config, liberty = _sta_config(tmp_path)
-    if rc_specific:
-        liberty = tmp_path / "typical.lib"
-        liberty.write_text("library(typical) {}\n")
-        payload = json.loads(sta_config.read_text())
-        payload["liberty"].append(
-            {"corner": "TYP", "temperature": 25, "rc_corner": "TYPICAL", "path": [str(liberty)]}
-        )
-        sta_config.write_text(json.dumps(payload))
+def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(tmp_path):
+    sta_config, _liberty = _sta_config(tmp_path)
     from chipcompiler.data.workspace.tool_configs import tool_config
 
     configs_dir = Path(__file__).resolve().parents[3] / "chipcompiler/tools/ecc/configs"
@@ -211,7 +174,6 @@ def test_capture_filler_clock_tree_runs_rcx_then_ista_and_attaches_provenance(
         "sta_clock_graph",
         "destroy_sta",
     ]
-    assert module.native.calls[0] == ("lib_init", {"lib_paths": [str(liberty)]})
     assert module.native.calls[3][1]["config_dict"]["-timing_corner"] == "TYP"
     assert graph is not None
     assert graph["stage"] == "filler"

@@ -10,7 +10,6 @@ from typing import Any, Final
 from chipcompiler.data import StepEnum
 from chipcompiler.data.flow.options import clock_tree_requested
 from chipcompiler.data.step import StepDirectories
-from chipcompiler.data.workspace.sta_liberty import select_liberty_group
 
 # Steps whose clock network ecc-tools can capture into the geometry snapshot.
 CLOCK_TREE_STEPS: Final = frozenset(
@@ -59,22 +58,24 @@ def _select_typ_liberty(sta_config: Path) -> tuple[list[str], str, float]:
         payload = json.loads(sta_config.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ClockTreeCaptureError(f"cannot read STA config {sta_config}: {exc}") from exc
-    try:
-        entry = select_liberty_group(
-            payload.get("liberty", []), FILLER_LIBERTY_CORNER, FILLER_RC_CORNER
+    matches = [
+        entry
+        for entry in payload.get("liberty", [])
+        if isinstance(entry, dict)
+        and str(entry.get("corner", "")).upper() == FILLER_LIBERTY_CORNER
+        and math.isclose(
+            float(entry.get("temperature", math.nan)),
+            FILLER_TEMPERATURE_C,
+            rel_tol=0.0,
+            abs_tol=1.0e-6,
         )
-    except ValueError as exc:
-        raise ClockTreeCaptureError(f"STA config {sta_config}: {exc}") from exc
-    if entry is None or not math.isclose(
-        float(entry.get("temperature", math.nan)),
-        FILLER_TEMPERATURE_C,
-        rel_tol=0.0,
-        abs_tol=1.0e-6,
-    ):
+    ]
+    if len(matches) != 1:
         raise ClockTreeCaptureError(
-            f"STA config {sta_config} must contain a {FILLER_LIBERTY_CORNER}/{FILLER_RC_CORNER} "
-            f"Liberty at {FILLER_TEMPERATURE_C:g}°C"
+            f"STA config {sta_config} must contain exactly one {FILLER_LIBERTY_CORNER} "
+            f"Liberty at {FILLER_TEMPERATURE_C:g}°C; found {len(matches)}"
         )
+    entry = matches[0]
     paths = entry.get("path", [])
     if isinstance(paths, str):
         paths = [paths]

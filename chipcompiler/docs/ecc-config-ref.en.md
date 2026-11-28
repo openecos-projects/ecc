@@ -1099,17 +1099,15 @@ Configuration file `sta_ecc.json`, made of two parts: `liberty` (corner → libe
 | `liberty[].corner` | `MAX` / `WCL` / `TYP` / `MIN` / `ML` | Timing corner type (slow / worst-cold / typical / fast / fast-hot library groups) |
 | `liberty[].temperature` | 125 / -40 / 25 / -40 / 125 | Standard-cell group temperature (°C), used to select the SPEF; does not override IO library characterization temperatures |
 | `liberty[].path` | H7CR + H7CL + H7CH | Liberty files for this corner (PDK-relative paths auto-expanded) |
-| `liberty[].rc_corner` | `Cbest` (optional) | Select this complete library group for the PVT/RC pair ahead of the PVT-only default; groups for one PVT must have the same temperature |
-| `liberty[].min_path` | `[]` (optional) | Early/min macro models paired with late/max models in `path`; do not repeat ordinary standard-cell libraries |
 | `signoff[0]` | TYP:[TYPICAL]; MIN:[Cworst,RCworst,Cbest,RCbest] | Default "liberty corner × RC corner" combinations for signoff — 5 analysis corners in total |
 
 Final STA defaults to the combinations above for TYP (TT, 1.2 V, 25°C) and MIN
 (FF, 1.32 V, -40°C). The `liberty` catalog retains MAX/WCL/ML for explicit
 `sta.signoff` overrides; retaining these groups does not enable their analysis
 or change the libraries used by synthesis, CTS, Sizer, or other earlier stages.
-power_analysis uses the TYP/TYPICAL signoff item for Liberty, SPEF, and SDC.
-Harden exports all selected combinations and retains TYP/TYPICAL as the default
-model entry. Both steps require TYP/TYPICAL; list order does not change that selection.
+Harden and power_analysis use the TYP/TYPICAL signoff item for Liberty, SPEF, and
+SDC; `signoff` list order does not change that selection. If a `sta.signoff`
+override omits TYP/TYPICAL, these steps fail instead of silently using another corner.
 
 ics55 corner naming: `Cworst/Cbest` = worst/best capacitance; `RCworst/RCbest` = worst/best for both R and C; `TYPICAL` = typical.
 
@@ -1124,35 +1122,6 @@ temperature; for example, MIN uses -40°C standard-cell libraries alongside the
 0°C IO library. Standard-cell libraries, SPEF temperatures and the configured
 signoff corners are unaffected. A `sta.liberty` setting replaces the entire default
 list, so the standard-cell libraries must be listed as well.
-
-An assembled top also needs its macro libraries in `sta.liberty`; listing them
-in `pdk.overrides.libs` does not populate final STA. Harden characterizes each
-selected PVT/RC scenario using its actual libraries, timing constraints and SPEF,
-then writes `output/timing_models/<PVT>_<temperature>/<RC>/<top>.lib` (max) and `<top>_min.lib`.
-`timing_models/manifest.json` records the models and their input provenance.
-The existing `output/<design>_harden.lib` remains the TYP/TYPICAL model.
-
-The manifest records both `path` and `min_path`. Native STA selects delay
-families by analysis type, retaining setup/recovery from max and hold/removal
-from min. Cells without an explicit min override keep their ordinary library
-for both analyses. A max-only macro model does not establish hold coverage.
-This interface covers final STA and Harden, not optimization snapshots, which
-do not yet support paired models. Complete handoff is not proof of equivalence
-to flattened timing; review the source constraints and extracted path coverage.
-
-For RC-specific macro models, add complete groups with `rc_corner`, for example:
-
-```json
-{"corner":"MIN", "temperature":-40, "rc_corner":"Cbest",
- "path":["/pdk/ff_std.lib", "/pdk/ff_io.lib", "/core/timing_models/MIN_m40/Cbest/core.lib"],
- "min_path":["/core/timing_models/MIN_m40/Cbest/core_min.lib"]}
-```
-
-Set the full list with `ecc param set sta.liberty '<JSON-list>'`; select
-`--workspace` when updating an existing workspace. An exact PVT/RC group replaces
-the PVT-only group for that scenario, so include all standard-cell, IO and macro
-libraries. Without an exact match, the PVT-only default is used. Duplicate
-groups are rejected, not resolved by list order. Never relabel a TYP model as MIN.
 
 For each corner, ecc-tools splits the reports by path type (`sta_ecc/report/<lib_corner>_<temp>/<RCcorner>/`):
 

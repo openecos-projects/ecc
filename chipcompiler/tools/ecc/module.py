@@ -871,7 +871,6 @@ class ECCToolsModule:
         max_paths_per_analysis: int = 20,
         max_paths: int = 1000,
         corner: str = "",
-        min_lib_paths: list[str] | None = None,
     ):
         if lib_paths is None:
             lib_paths = []
@@ -893,7 +892,7 @@ class ECCToolsModule:
 
         discard_sta_run_outputs(work_dir, report_dir, feature_dir, modes)
 
-        if not self.ecc.lib_init(lib_paths=[*lib_paths, *(min_lib_paths or [])]):
+        if not self.ecc.lib_init(lib_paths=lib_paths):
             raise RuntimeError("Failed to load Liberty libraries for STA")
         self.ecc.sdc_init(sdc_path)
         self.ecc.spef_init(spef_path)
@@ -910,7 +909,7 @@ class ECCToolsModule:
         )
         if corner:
             config_dict["-timing_corner"] = corner
-        self.ecc.init_sta(config=config, config_dict=config_dict, min_lib_paths=min_lib_paths or [])
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.run_sta()
         finally:
@@ -936,8 +935,6 @@ class ECCToolsModule:
         sdc_path: PathArg = "",
         spef_path: PathArg = "",
         design_name: str = "",
-        min_lib_paths: list[str] | None = None,
-        output_min_lib_path: PathArg | None = None,
     ):
         output_lib_path = Path(output_lib_path or "")
         output_lib_path.parent.mkdir(parents=True, exist_ok=True)
@@ -955,28 +952,37 @@ class ECCToolsModule:
                 design_name = design_name[: -len(harden_suffix)]
 
         sta_output_dir = Path(output_dir) if output_dir else output_lib_path.parent
-        if not self.ecc.lib_init(lib_paths=[*lib_paths, *(min_lib_paths or [])]):
+        if not self.ecc.lib_init(lib_paths=lib_paths):
             raise RuntimeError("Failed to load Liberty libraries for timing model")
         self.ecc.sdc_init(sdc_path)
         self.ecc.spef_init(spef_path)
         config_dict = {"-temp_directory_path": os.fspath(sta_output_dir)}
-        self.ecc.init_sta(config=config, config_dict=config_dict, min_lib_paths=min_lib_paths or [])
+        self.ecc.init_sta(config=config, config_dict=config_dict)
         try:
             self.ecc.extract_lib()
         finally:
             self.ecc.destroy_sta()
 
-        outputs = {analysis_mode: output_lib_path}
-        if output_min_lib_path is not None:
-            outputs["min"] = Path(output_min_lib_path)
-        sources = {
-            mode: sta_output_dir / "timing_characterizer" / f"{design_name}_{mode}.lib"
-            for mode in outputs
-        }
-        for source in sources.values():
-            if not source.is_file() or source.stat().st_size == 0:
-                raise RuntimeError(f"Timing model is missing or empty: {source}")
-        for mode, destination in outputs.items():
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            if sources[mode].resolve() != destination.resolve():
-                shutil.copyfile(sources[mode], destination)
+        source_lib_path = (
+            sta_output_dir / "timing_characterizer" / f"{design_name}_{analysis_mode}.lib"
+        )
+        if not source_lib_path.exists():
+            candidates = sorted(
+                (sta_output_dir / "timing_characterizer").glob(f"*_{analysis_mode}.lib")
+            )
+            if len(candidates) == 1:
+                source_lib_path = candidates[0]
+            else:
+                raise FileNotFoundError(source_lib_path)
+
+        if source_lib_path.resolve() != output_lib_path.resolve():
+            shutil.copyfile(source_lib_path, output_lib_path)
+
+        if output_lib_path.stat().st_size <= 0:
+            output_lib_path.write_text(
+                f"library ({design_name}_{analysis_mode}) {{\n"
+                f"  cell ({design_name}) {{\n"
+                "  }\n"
+                "}\n",
+                encoding="utf-8",
+            )

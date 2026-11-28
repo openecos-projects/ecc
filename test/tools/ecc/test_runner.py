@@ -938,13 +938,11 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
     config_dir.mkdir()
     max_lib = tmp_path / "pdk" / "max.lib"
     min_lib = tmp_path / "pdk" / "min.lib"
-    early_macro_lib = tmp_path / "pdk" / "macro_early.lib"
     sdc = tmp_path / "pdk" / "gcd.sdc"
     spef_root = tmp_path / "rcx_ecc" / "output"
     for path in (
         max_lib,
         min_lib,
-        early_macro_lib,
         sdc,
         spef_root / "gcd_RCworst_125C.spef",
         spef_root / "gcd_Cbest_m40C.spef",
@@ -957,12 +955,7 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
         json.dumps(
             {
                 "liberty": [
-                    {
-                        "corner": "MAX",
-                        "temperature": 125,
-                        "path": [str(max_lib)],
-                        "min_path": [str(early_macro_lib)],
-                    },
+                    {"corner": "MAX", "temperature": 125, "path": [str(max_lib)]},
                     {"corner": "MIN", "temperature": -40, "path": [str(min_lib)]},
                 ],
                 "signoff": [{"MAX": ["RCworst"], "MIN": ["Cbest"]}],
@@ -1031,7 +1024,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "report_dir": step.report.dir / "MAX_125" / "RCworst",
             "feature_dir": step.feature.dir / "MAX_125" / "RCworst",
             "lib_paths": [str(max_lib)],
-            "min_lib_paths": [str(early_macro_lib)],
             "sdc_path": workspace.directory
             / "origin/post_CTS"
             / ("MAX_125_RCworst.tcl" if generated_sdc else "gcd.sdc.ecc.tcl"),
@@ -1046,7 +1038,6 @@ def test_run_sta_uses_matched_report_and_feature_corner_directories(
             "report_dir": step.report.dir / "MIN_m40" / "Cbest",
             "feature_dir": step.feature.dir / "MIN_m40" / "Cbest",
             "lib_paths": [str(min_lib)],
-            "min_lib_paths": [],
             "sdc_path": workspace.directory
             / "origin/post_CTS"
             / ("MIN_m40_Cbest.tcl" if generated_sdc else "gcd.sdc.ecc.tcl"),
