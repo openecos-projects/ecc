@@ -2584,3 +2584,49 @@ def test_timing_model_infers_the_design_from_the_harden_output_name(tmp_path):
     module.write_timing_model(timing_output, output_dir=timing_work_dir)
 
     assert timing_output.read_text(encoding="utf-8") == module.ecc.generated_timing_lib_contents
+
+
+class _ThreadEcc:
+    def __init__(self):
+        self.calls = []
+
+    def init_drc(self, **kwargs):
+        self.calls.append(("drc", kwargs))
+
+    def init_lvs(self, **kwargs):
+        self.calls.append(("lvs", kwargs))
+
+
+class TestDrcAndLvsThreadCount:
+    def _module_with_recorder(self):
+        module = ECCToolsModule()
+        module.ecc = _ThreadEcc()
+        return module
+
+    def test_budget_and_explicit_thread_number_across_drc_and_lvs(self, monkeypatch):
+        monkeypatch.setenv("ECC_THREADS", "6")
+        module = self._module_with_recorder()
+
+        module.init_drc(Path("/ws/data/drc"))
+        module.init_lvs(Path("/ws/data/lvs"))
+        module.init_drc(Path("/ws/data/drc"), thread_number=2)
+        module.init_lvs(Path("/ws/data/lvs"), thread_number=3)
+
+        assert [call[1]["thread_number"] for call in module.ecc.calls] == [6, 6, 2, 3]
+
+    def test_legacy_therad_number_keyword_warns_and_rejects_duplicate(self):
+        module = self._module_with_recorder()
+        with pytest.warns(DeprecationWarning, match="thread_number"):
+            module.init_drc(Path("/ws/data/drc"), therad_number=9)
+        assert module.ecc.calls[-1][1]["thread_number"] == 9
+
+        with pytest.raises(TypeError, match="therad_number"):
+            module.init_drc(Path("/ws/data/drc"), thread_number=4, therad_number=9)
+
+    @pytest.mark.parametrize("bad", [0, -1, True])
+    def test_non_positive_or_bool_thread_number_raises(self, bad):
+        module = self._module_with_recorder()
+        with pytest.raises(ValueError, match="positive integer"):
+            module.init_drc(Path("/ws/data/drc"), thread_number=bad)
+        with pytest.raises(ValueError, match="positive integer"):
+            module.init_lvs(Path("/ws/data/lvs"), thread_number=bad)

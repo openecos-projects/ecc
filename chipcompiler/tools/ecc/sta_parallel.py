@@ -24,6 +24,7 @@ from chipcompiler.tools.ecc.sta_artifacts import copy_sta_artifact, discard_sta_
 from chipcompiler.tools.ecc.sta_qor import sta_artifact_directory
 from chipcompiler.utility.log import redirect_stdio_to_file
 from chipcompiler.utility.path import MissingPathError, PathArg, require_path
+from chipcompiler.utility.threads import env_thread_budget, thread_budget
 
 
 def sta_workers(workspace, step) -> int:
@@ -42,10 +43,10 @@ def sta_workers(workspace, step) -> int:
     )
     if sys.platform != "linux":
         return 1
-    cpu_count = os.cpu_count() or 1
-    if hasattr(os, "sched_getaffinity"):
-        with suppress(OSError):
-            cpu_count = min(cpu_count, len(os.sched_getaffinity(0)) or 1)
+    env_budget = env_thread_budget()
+    if env_budget is not None:
+        return min(value, max(1, corner_count), env_budget)
+    cpu_count = min(max(1, os.cpu_count() or 1), thread_budget())
     return min(value, max(1, corner_count), cpu_count)
 
 

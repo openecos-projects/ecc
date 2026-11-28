@@ -8,6 +8,7 @@ from typing import Any
 
 from chipcompiler.tools.ecc.sta_artifacts import discard_sta_run_outputs, publish_sta_artifacts
 from chipcompiler.utility.path import PathArg, path_list, path_text
+from chipcompiler.utility.threads import resolve_thread_count
 
 # ecc-tools loggers terminate the host process on error by default; embedded in
 # Python they must raise instead so failures surface as Python exceptions.
@@ -685,32 +686,39 @@ class ECCToolsModule:
     ########################################################################
     # DRC api
     ########################################################################
-    def init_drc(self, output_dir: PathArg, therad_number: int = 128):
-        """
-        init drc config
-        """
-        self.ecc.init_drc(temp_directory_path=output_dir, thread_number=therad_number)
+    def init_drc(
+        self,
+        output_dir: PathArg,
+        thread_number: int | None = None,
+        *,
+        therad_number: int | None = None,
+    ):
+        """Init DRC config (``therad_number`` is a deprecated keyword alias)."""
+        if therad_number is not None:
+            if thread_number is not None:
+                raise TypeError("init_drc() got both 'thread_number' and 'therad_number'")
+            import warnings
+
+            msg = "init_drc(therad_number=...) is deprecated; use thread_number"
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            thread_number = therad_number
+        threads = resolve_thread_count(thread_number, default=128)
+        self.ecc.init_drc(temp_directory_path=output_dir, thread_number=threads)
 
     def run_drc(self) -> bool:
-        """
-        run drc check
-        """
+        """run drc check"""
         return self.ecc.run_drc()
 
     def destroy_drc(self) -> bool:
-        """
-        release drc resources
-        """
+        """release drc resources"""
         return self.ecc.destroy_drc()
 
     ########################################################################
     # LVS api
     ########################################################################
-    def init_lvs(self, output_dir: PathArg, thread_number: int = 128):
-        return self.ecc.init_lvs(
-            temp_directory_path=output_dir,
-            thread_number=thread_number,
-        )
+    def init_lvs(self, output_dir: PathArg, thread_number: int | None = None):
+        threads = resolve_thread_count(thread_number, default=128)
+        return self.ecc.init_lvs(temp_directory_path=output_dir, thread_number=threads)
 
     def run_lvs(self):
         return self.ecc.run_lvs()

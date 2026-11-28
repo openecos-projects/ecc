@@ -221,6 +221,15 @@ def test_cpu_affinity_limits_corner_concurrency(tmp_path, monkeypatch):
     assert sta.sta_workers(workspace, SimpleNamespace(tool="ecc", name="sta")) == 1
 
 
+def test_env_threads_caps_sta_worker_count(tmp_path, monkeypatch):
+    config_path = tmp_path / "sta.json"
+    config_path.write_text(json.dumps(_sta_config(max_parallel_corners=13)))
+    workspace: Any = SimpleNamespace(config={"sta": config_path})
+    monkeypatch.setattr(sta.sys, "platform", "linux")
+    monkeypatch.setenv("ECC_THREADS", "2")
+    assert sta.sta_workers(workspace, SimpleNamespace(tool="ecc", name="sta")) == 2
+
+
 @pytest.mark.parametrize("workers", [1, 2, 3, 4, 13])
 def test_cli_tool_dispatch_uses_the_sta_config(tmp_path, monkeypatch, workers):
     config_path = tmp_path / "sta.json"

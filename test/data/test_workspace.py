@@ -1730,3 +1730,74 @@ def test_create_workspace_keeps_a_routing_override_carried_by_the_pdk_root(
     )
     assert workspace is not None
     assert json_read(workspace.config["routing"])["RT"]["-bottom_routing_layer"] == "MET3"
+
+
+def test_dreamplace_num_threads_defaults_to_the_thread_budget(
+    tmp_path, monkeypatch, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    import os
+
+    monkeypatch.delenv("ECC_THREADS", raising=False)
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+    parameters = {k: v for k, v in default_ics55_parameters.items() if k != "num_threads"}
+
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(64)))
+    workspace = create_workspace(
+        directory=str(tmp_path / "ws_many_cpus"),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=parameters,
+        pdk_root=str(pdk_root),
+    )
+    assert workspace is not None
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 8
+
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1, 2})
+    small_ws = create_workspace(
+        directory=str(tmp_path / "ws_few_cpus"),
+        origin_def="",
+        origin_verilog=str(rtl_path),
+        pdk="ics55",
+        parameters=parameters,
+        pdk_root=str(pdk_root),
+    )
+    assert small_ws is not None
+    assert json_read(small_ws.config["dreamplace"])["num_threads"] == 3
+
+    # Refreshing after an explicit ECC_THREADS=24 run must restore the template cap, not latch 24.
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(64)))
+    monkeypatch.setenv("ECC_THREADS", "24")
+    refresh_workspace_config(workspace)
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 24
+    monkeypatch.delenv("ECC_THREADS")
+    refresh_workspace_config(workspace)
+    assert json_read(workspace.config["dreamplace"])["num_threads"] == 8
+
+
+def test_explicit_dreamplace_num_threads_beats_the_thread_budget(
+    tmp_path, monkeypatch, minimal_ics55_pdk_factory, default_ics55_parameters
+):
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    rtl_path = tmp_path / "gcd.v"
+    rtl_path.write_text("module gcd(input clk, output y); assign y = clk; endmodule\n")
+
+    def make(name, extra):
+        workspace = create_workspace(
+            directory=str(tmp_path / name),
+            origin_def="",
+            origin_verilog=str(rtl_path),
+            pdk="ics55",
+            parameters={**default_ics55_parameters, **extra},
+            pdk_root=str(pdk_root),
+        )
+        assert workspace is not None
+        return json_read(workspace.config["dreamplace"])["num_threads"]
+
+    monkeypatch.setenv("ECC_THREADS", "7")
+    assert make("budget_down", {}) == 7
+    monkeypatch.setenv("ECC_THREADS", "12")
+    assert make("budget_up", {}) == 12
+    assert make("explicit", {"dreamplace": {"num_threads": 3}}) == 3
