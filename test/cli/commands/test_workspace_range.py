@@ -347,3 +347,77 @@ def test_existing_workspace_allows_from_inserted_lec_step(
     assert seen == ["lec@synthesis"]
     records = plain_records(capsys.readouterr().out)
     assert records[-1]["executed_steps"] == "[lec@synthesis]"
+
+
+def test_rejected_from_with_extend_to_does_not_mutate_workspace(
+    tmp_path, capsys, create_cli_project, minimal_ics55_pdk_factory, plain_records
+):
+    from chipcompiler.data.workspace.config import save_workspace_config
+    from chipcompiler.rtl2gds.builder import build_rtl2gds_flow
+    from test.flow_fixture import step_fields
+
+    pdk_root = minimal_ics55_pdk_factory(tmp_path / "ics55")
+    project_dir = create_cli_project(pdk_root=pdk_root)
+    _set_design_inputs(project_dir)
+
+    tools = {
+        (step.value if hasattr(step, "value") else str(step)): str(tool)
+        for step, tool, _state in build_rtl2gds_flow()
+    }
+    ws_dir = Path(project_dir) / "ws"
+    (ws_dir / "home").mkdir(parents=True)
+    (ws_dir / "home" / "flow.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "steps": [
+                    {
+                        "name": "pre_floorplan",
+                        "tool": tools["pre_floorplan"],
+                        "state": "Success",
+                        "runtime": "",
+                        "peak memory (mb)": 0,
+                        "info": {},
+                        **step_fields("pre_floorplan", tools["pre_floorplan"]),
+                    }
+                ],
+                "options": {"geometry": {"clock_tree": False}},
+            }
+        )
+    )
+    assert save_workspace_config(
+        ws_dir,
+        {
+            "pdk": "ics55",
+            "pdk_root": str(pdk_root),
+            "design": "gcd",
+            "top_module": "gcd",
+            "clock": "clk",
+        },
+        {"start": "pre_floorplan", "end": "pre_floorplan"},
+    )
+    flow_before = (ws_dir / "home" / "flow.json").read_text()
+    params_before = (ws_dir / "home" / "params.toml").read_text()
+
+    rc = cli_main.run(
+        [
+            "run",
+            "--project",
+            project_dir,
+            "--workspace",
+            "ws",
+            "--from",
+            "synthesis",
+            "--to",
+            "post_floorplan",
+            "--plain",
+        ]
+    )
+
+    assert rc == 1
+    [record] = plain_records(capsys.readouterr().out)
+    assert record["error"] == "unknown_step"
+    assert "synthesis" in record["reason"]
+    assert (ws_dir / "home" / "flow.json").read_text() == flow_before
+    assert (ws_dir / "home" / "params.toml").read_text() == params_before
+    assert not (ws_dir / "log").exists()

@@ -79,6 +79,7 @@ def _execute_workspace_run(
     from chipcompiler.engine import EngineFlow, rerun
     from chipcompiler.engine.reconcile import (
         classify_workspace,
+        proposed_step_names,
         reconcile_workspace_locked,
     )
     from chipcompiler.utility.workspace_lock import workspace_lock
@@ -153,6 +154,18 @@ def _execute_workspace_run(
         probe = classify_workspace(workspace_path, extend_to=extend_to)
         if probe.outcome == "mismatch":
             return mismatch_error(probe.error or "")
+
+        proposed_steps = proposed_step_names(probe)
+        if proposed_steps:
+            try:
+                rerun.validate_step_selection(
+                    proposed_steps,
+                    from_step=command_input.from_step,
+                    through=command_input.to_step,
+                    only=command_input.only,
+                )
+            except ValueError as exc:
+                return error("unknown_step", workspace=workspace_path, reason=str(exc))
 
         try:
             workspace = load_workspace(workspace_path)

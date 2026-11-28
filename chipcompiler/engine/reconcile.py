@@ -460,6 +460,21 @@ def classify_workspace(
     return probe
 
 
+def proposed_step_names(probe: ReconcileResult) -> list[str]:
+    """Step names the ledger would hold after applying *probe*, in order."""
+    persisted = getattr(probe, "persisted", ())
+    if not isinstance(persisted, (list, tuple)) or not persisted:
+        return []
+    target = getattr(probe, "target", ())
+    present = set(persisted)
+    suffix = [
+        name
+        for name in (target if isinstance(target, (list, tuple)) else ())
+        if name not in present
+    ]
+    return [*persisted, *suffix]
+
+
 def reconcile_workspace_locked(
     workspace_dir: str | Path,
     target_section: dict | None = None,

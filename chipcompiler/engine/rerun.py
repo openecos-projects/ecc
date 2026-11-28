@@ -9,6 +9,7 @@ waves, stays in ``EngineFlow.run_steps``.
 """
 
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -186,25 +187,52 @@ def run_only(
     return _run_selected(flow, [(workspace_step, output_dir)], event_sink=event_sink)
 
 
-def _require_step_index(flow: "EngineFlow", name: str) -> int:
-    steps = flow.workspace.flow.data.get("steps", [])
-    for index, step in enumerate(steps):
-        if step.get("name") == name:
+def _step_name_index(step_names: Sequence[str], name: str) -> int:
+    for index, step_name in enumerate(step_names):
+        if step_name == name:
             return index
-    available = ", ".join(str(step.get("name")) for step in steps)
+    available = ", ".join(step_names)
     raise ValueError(f"unknown step '{name}'; available steps: {available}")
+
+
+def _through_name_index(step_names: Sequence[str], name: str) -> int:
+    from chipcompiler.data import inserted_step_kind
+
+    index = _step_name_index(step_names, name)
+    while index + 1 < len(step_names) and inserted_step_kind(step_names[index + 1]):
+        index += 1
+    return index
+
+
+def validate_step_selection(
+    step_names: Sequence[str],
+    *,
+    from_step: str | None = None,
+    through: str | None = None,
+    only: str | None = None,
+) -> None:
+    """Validate explicit run selectors against *step_names* without mutating flow state."""
+    if only is not None:
+        _step_name_index(step_names, only)
+        return
+    if from_step is not None:
+        first = _step_name_index(step_names, from_step)
+        if through is not None:
+            last = _through_name_index(step_names, through)
+            if last < first:
+                raise ValueError(f"step '{through}' is before '{from_step}'")
+
+
+def _require_step_index(flow: "EngineFlow", name: str) -> int:
+    step_names = [str(step.get("name", "")) for step in flow.workspace.flow.data.get("steps", [])]
+    return _step_name_index(step_names, name)
 
 
 def _through_index(flow: "EngineFlow", name: str) -> int:
     """The index of the step that ends a range: *name*, or the last inserted
     step right after it (``--to cts`` includes ``lec@cts``, the check of cts)."""
-    from chipcompiler.data import inserted_step_kind
-
-    steps = flow.workspace.flow.data.get("steps", [])
-    index = _require_step_index(flow, name)
-    while index + 1 < len(steps) and inserted_step_kind(str(steps[index + 1].get("name", ""))):
-        index += 1
-    return index
+    step_names = [str(step.get("name", "")) for step in flow.workspace.flow.data.get("steps", [])]
+    return _through_name_index(step_names, name)
 
 
 def _require_steps_available(flow: "EngineFlow", last_index: int) -> None:
