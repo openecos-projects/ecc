@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -393,3 +394,49 @@ def test_workspace_param_list_hydrates_persisted_flow_ledger(
     records = plain_records(capsys.readouterr().out)
     assert [record["id"] for record in records] == synthesis_parameter_ids
     assert records[0]["step_id"] == "synthesis"
+
+
+def test_snapshot_toggle_persists_without_invalidating_successful_steps(
+    create_cli_project, monkeypatch
+):
+    from chipcompiler.data.flow.options import sync_flow_options_projection
+    from chipcompiler.data.parameter import load_parameter
+
+    project_dir = create_cli_project()
+    _write_manifest(project_dir)
+    workspace = _workspace(Path(project_dir) / "baseline")
+    workspace.parameters.data["geometry"] = {"clock_tree": True}
+    workspace.flow.data["options"] = {"custom": "retained", "geometry": {"custom": "retained"}}
+    steps = deepcopy(workspace.flow.data["steps"])
+    monkeypatch.setattr("chipcompiler.data.load_workspace", lambda _: workspace)
+    monkeypatch.setattr("chipcompiler.data.refresh_workspace_config", lambda _: None)
+    monkeypatch.setattr("chipcompiler.engine.EngineFlow", _Flow)
+
+    for arguments, enabled in [
+        (["set", "geometry.snapshot", "false"], False),
+        (["unset", "geometry.snapshot"], True),
+    ]:
+        assert (
+            cli_main.run(
+                [
+                    "param",
+                    *arguments,
+                    "--project",
+                    project_dir,
+                    "--workspace",
+                    "baseline",
+                    "--plain",
+                ]
+            )
+            == 0
+        )
+        assert workspace.parameters.path is not None
+        workspace.parameters = load_parameter(workspace.parameters.path)
+        sync_flow_options_projection(workspace)
+        assert workspace.flow.data["steps"] == steps
+        expected = {
+            "custom": "retained",
+            "geometry": {"custom": "retained", "snapshot": enabled, "clock_tree": enabled},
+        }
+        assert workspace.flow.data["options"] == expected
+        assert json.loads(workspace.flow.path.read_text())["options"] == expected

@@ -4,7 +4,8 @@ from typing import Any
 
 import pytest
 
-from chipcompiler.data import StepMetrics
+from chipcompiler.data import EccStep, OriginDesign, StepMetrics, Workspace
+from chipcompiler.data.parameter import Parameters
 from chipcompiler.tools import eda
 
 
@@ -76,14 +77,19 @@ def test_build_step_metrics_loads_sizer_without_binary_dependency(monkeypatch):
     assert seen == {"workspace": workspace, "step": step}
 
 
+@pytest.mark.parametrize("snapshot_enabled", [True, False])
 def test_create_step_defers_unselected_optional_tool_when_module_is_unavailable(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, snapshot_enabled
 ):
     def fail_if_imported(*_args, **_kwargs):
         raise AssertionError("unselected optional tools must not be imported")
 
     monkeypatch.setattr(eda, "load_tool", fail_if_imported)
-    workspace = _ns(directory=tmp_path, design=_ns(name="gcd"))
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(data={"geometry": {"snapshot": snapshot_enabled}}),
+    )
 
     step = eda.create_step(
         workspace=workspace,
@@ -94,10 +100,11 @@ def test_create_step_defers_unselected_optional_tool_when_module_is_unavailable(
         check_dependency=False,
     )
 
-    assert step is not None
+    assert isinstance(step, EccStep)
     assert step.tool == "dreamplace"
     assert step.directory == tmp_path / "placement_dreamplace"
     assert step.input.def_ == tmp_path / "input.def"
+    assert (step.output.geometry is not None) is snapshot_enabled
 
 
 def test_create_step_does_not_defer_selected_optional_tool_when_module_is_unavailable(
@@ -118,12 +125,19 @@ def test_create_step_does_not_defer_selected_optional_tool_when_module_is_unavai
     assert step is None
 
 
-def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypatch, tmp_path):
+@pytest.mark.parametrize("snapshot_enabled", [True, False])
+def test_create_step_defers_unselected_sizer_with_sizer_path_convention(
+    monkeypatch, tmp_path, snapshot_enabled
+):
     def fail_if_imported(*_args, **_kwargs):
         raise AssertionError("unselected optional tools must not be imported")
 
     monkeypatch.setattr(eda, "load_tool", fail_if_imported)
-    workspace = _ns(directory=tmp_path, design=_ns(name="gcd"))
+    workspace = Workspace(
+        directory=tmp_path,
+        design=OriginDesign(name="gcd"),
+        parameters=Parameters(data={"geometry": {"snapshot": snapshot_enabled}}),
+    )
 
     step = eda.create_step(
         workspace=workspace,
@@ -134,11 +148,12 @@ def test_create_step_defers_unselected_sizer_with_sizer_path_convention(monkeypa
         check_dependency=False,
     )
 
-    assert step is not None
+    assert isinstance(step, EccStep)
     assert step.directory == tmp_path / "timing_optimization_sizer"
     assert step.output.verilog == (
         tmp_path / "timing_optimization_sizer" / "output" / "gcd_timing_optimization.v.gz"
     )
+    assert (step.output.geometry is not None) is snapshot_enabled
 
 
 def test_load_tool_rejects_unknown_names_without_importing_them(monkeypatch):

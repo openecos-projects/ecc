@@ -435,8 +435,8 @@ def save_data(
         return False
     ecc_module.def_save(def_path=step.output.def_ or "")
     ecc_module.verilog_save(output_verilog=step.output.verilog or "")
-    if step.name in _GEOMETRY_SNAPSHOT_STEPS:
-        geometry_dir = step.output.geometry or ""
+    if step.name in _GEOMETRY_SNAPSHOT_STEPS and step.output.geometry is not None:
+        geometry_dir = step.output.geometry
         geometry_manifest = step.output.geometry_manifest
         clock_tree_stage = clock_tree_stage_for_step(workspace, step.name)
         if not ecc_module.geometry_snapshot_save(

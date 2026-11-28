@@ -217,6 +217,23 @@ tech = "prtech/techLEF/N551P6M_ecos.lef"
 
 完整命令输出示例见 [ECC CLI 用户指南 §9](ecc-user-guide.cn.md)（终端：`ecc doc ug --lang cn`）。
 
+#### 自动几何快照
+
+`geometry.snapshot` 默认为 `true`。已有 workspace 可关闭自动生成的 Chip Viewer
+几何快照和布局缩略图：
+
+```bash
+ecc param set geometry.snapshot false --project /path/to/project --workspace default
+ecc run --project /path/to/project --workspace default --resume
+```
+
+新 workspace 可用 `ecc run --workspace fast --set geometry.snapshot=false`；
+`ecc param set` 不带 `--workspace` 则保存为项目默认值。改回 `true` 恢复输出。
+此参数不会让已成功的步骤失效，也不会删除已有快照，只影响之后执行的步骤。
+DEF、网表、GDS、报告和分析不受影响。关闭期间，即使 `geometry.clock_tree=true`，
+也不采集时钟树可视化数据。显式执行 `ecc defview` 仍输出几何快照；DreamPlace
+自己的迭代绘图由对应步骤的绘图参数单独控制。
+
 ### 1.6 按步骤的 DreamPlace 参数
 
 主目标为 DreamPlace 配置的参数（`place.*`、`legalization.*`、diff_opt 与 diff_sizing 参数）**每个流程步骤各有一个取值**：macro_placement、placement、diff_opt、diff_sizing、legalization 以及 timing_optimization 的内部合法化，各自由 workspace 基线 `config/dreamplace_ecc.json` 加该步骤的取值解析出 `<step dir>/config/dreamplace_ecc.json`，步骤之间不会互相改写。参数只能设置在其 `applies` 声明的步骤上（见 `ecc param show KEY`）；legalization 只接受 `legalization.*` 参数；不带步骤设置按步骤参数会返回 `parameter_step_required`。

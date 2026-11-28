@@ -11,6 +11,7 @@ import pytest
 
 from chipcompiler.cli import main as cli_main
 from chipcompiler.data import load_workspace
+from chipcompiler.data.flow.options import geometry_snapshot_requested
 from chipcompiler.engine import EngineFlow
 
 
@@ -63,7 +64,7 @@ def test_fresh_workspace_ledger_carries_the_options_projection(fresh_project, co
     # Read the file as the command left it: nothing has loaded the workspace yet.
     flow_json = fresh_project / "fresh" / "home" / "flow.json"
     persisted = flow_json.read_bytes()
-    assert json.loads(persisted)["options"] == {"geometry": {"clock_tree": False}}
+    assert json.loads(persisted)["options"] == {"geometry": {"snapshot": True, "clock_tree": False}}
 
     assert load_workspace(fresh_project / "fresh") is not None
     assert flow_json.read_bytes() == persisted
@@ -73,3 +74,25 @@ def test_fresh_run_requests_one_persisted_projection(create_cli_project, flow_mo
     assert cli_main.run(["run", "--project", create_cli_project()]) == 0
 
     assert flow_mocks.capture["options_projections"] == [{"persist": True}]
+
+
+@pytest.mark.parametrize("scope", ["project", "run"])
+def test_snapshot_override_reaches_loaded_workspace(fresh_project, scope):
+    command = ["run", "--workspace", "fast", "--project", str(fresh_project)]
+    if scope == "project":
+        assert (
+            cli_main.run(
+                ["param", "set", "geometry.snapshot", "false", "--project", str(fresh_project)]
+            )
+            == 0
+        )
+    else:
+        command.extend(["--set", "geometry.snapshot=false"])
+    assert cli_main.run(command) == 0
+
+    workspace = load_workspace(fresh_project / "fast")
+    assert workspace is not None
+    assert geometry_snapshot_requested(workspace) is False
+    assert json.loads((fresh_project / "fast/home/flow.json").read_text())["options"] == {
+        "geometry": {"snapshot": False, "clock_tree": False}
+    }
