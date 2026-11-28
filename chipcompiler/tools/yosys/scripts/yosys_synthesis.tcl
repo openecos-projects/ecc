@@ -384,7 +384,7 @@ if {$use_slang} {
     set arg $rtl_file
   }
   yosys read_slang {*}$arg --top $top_design \
-    --compat-mode --keep-hierarchy \
+    --compat=vcs --keep-hierarchy \
     +define+SYNTHESIS \
     --allow-use-before-declare \
     --ignore-timing \
