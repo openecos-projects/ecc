@@ -71,7 +71,7 @@ class DreamplaceModule:
         for name in config:
             setattr(params, f"_{name}_explicit", True)
 
-        from dreamplace.flows.flow_config import apply_flow_defaults
+        from dreamplace.flows.config.resolver import apply_flow_defaults
 
         apply_flow_defaults(params)
         # Params normalizes path-like values to str on assignment (they are also
@@ -153,17 +153,40 @@ class DreamplaceModule:
 
     def _ecc_design_inputs(self, params) -> dict:
         existing = dict(getattr(params, "design_inputs", {}) or {})
-        gr_timing = getattr(params, "timing_rc_mode", "placement") == "gr"
+        rc_mode = getattr(params, "timing_rc_mode", "placement")
+        spef_rc = rc_mode == "spef"
+        if spef_rc:
+            spef_input = str(getattr(params, "spef_input", "") or "").strip()
+            if not spef_input:
+                fallback = (
+                    existing.get("spef_input")
+                    or existing.get("spef")
+                    or getattr(self.workspace.pdk, "spef", None)
+                    or ""
+                )
+                spef_input = str(fallback).strip()
+            if spef_input:
+                candidate = Path(spef_input)
+                if not candidate.is_absolute() and getattr(self.workspace, "directory", None):
+                    ws_candidate = Path(self.workspace.directory) / candidate
+                    if ws_candidate.is_file():
+                        candidate = ws_candidate
+                    else:
+                        candidate = Path(self._resolve_pdk_path(spef_input))
+                params.spef_input = str(candidate)
         sta_config = existing.get("sta_config")
         if not sta_config:
             sta_config = self.workspace.config.get("sta", "")
         rcx_config = existing.get("rcx_config", "")
-        if gr_timing:
-            # Native STA supplies cell/SDC metadata. GRParasiticsOp owns wire
-            # RC, so neither initial nor terminal export needs native RCX/SPEF.
+        if rc_mode in {"placement", "gr", "spef"}:
+            # Placement, GR, and SPEF timing modes supply wire RC without
+            # running native RCX extraction. Only SPEF mode forwards a SPEF
+            # snapshot to native STA; placement and GR modes must not inherit a
+            # stale PDK SPEF.
             rcx_config = ""
             existing.pop("spef_path", None)
-        return {
+        spef = str(getattr(params, "spef_input", "") or "") if spef_rc else ""
+        design_inputs = {
             **existing,
             "tech_lef": getattr(self.workspace.pdk, "tech", None) or "",
             "lef": list(getattr(self.workspace.pdk, "lefs", None) or []),
@@ -171,13 +194,16 @@ class DreamplaceModule:
             "def": self.input_def or "",
             "verilog": self.input_verilog or "",
             "sdc": step_tcl_path(self.workspace, self.step) or "",
-            "spef": ("" if gr_timing else (getattr(self.workspace.pdk, "spef", None) or "")),
+            "spef": spef,
             "sta_config": sta_config or "",
             "rcx_config": rcx_config or "",
             "work_dir": Path(self.result_dir) / "native_sta",
             "thread_number": int(getattr(params, "num_threads", 2) or 2),
             "max_paths": 20,
         }
+        if spef_rc:
+            design_inputs.setdefault("timing_mode", "complete")
+        return design_inputs
 
     def _log_path(self, *, mode: DreamplaceRunMode) -> str:
         log_name = {

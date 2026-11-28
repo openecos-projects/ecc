@@ -73,7 +73,7 @@ def apply_diff_buffering_defaults(params: dict) -> dict:
 
 
 def prepare_drive_table(workspace: Workspace, step: WorkspaceStep, params: dict) -> dict:
-    from dreamplace.flows.buffer_drive_table import build_drive_strength_table
+    from dreamplace.ops.buffer_insertion.drive_type_table import build_drive_strength_table
 
     directory = require_path(step.data.workdir_for(step.name), "DreamPlace diff-buffering workdir")
     table_path = directory / "buffer_drive_strength.json"
@@ -105,6 +105,7 @@ def finalize_diff_buffering(
     *,
     flow_kind: str = "buffering",
     summary_stem: str = "diff_buffering",
+    write_summary: bool = True,
 ) -> dict:
     from dreamplace.NonLinearPlace import NonLinearPlace
 
@@ -123,6 +124,8 @@ def finalize_diff_buffering(
 
     params = copy(engine.params)
     params.flow_kind = "placement"
+    params.placement_sizing_mode = "place_only"
+    params.sizing_parameterization = "logits"
     params.global_place_flag = 0
     params.legalize_flag = 1
     params.differentiable_timing_obj = 0
@@ -166,6 +169,7 @@ def finalize_diff_buffering(
     }
     summary = _json_safe(summary)
     assert isinstance(summary, dict)
-    json_write(Path(engine.params.result_dir) / f"{summary_stem}_summary.json", summary)
+    if write_summary:
+        json_write(Path(engine.params.result_dir) / f"{summary_stem}_summary.json", summary)
     engine.last_run_result = summary
     return summary

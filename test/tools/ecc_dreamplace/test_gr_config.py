@@ -54,11 +54,37 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     actual = module._build_params(FakeParams, mode=DreamplaceRunMode.PLACEMENT)
     assert {key: getattr(actual, key) for key in values} == {
         **values,
-        "timing_surrogate_mode": "surrogate_only",
+        "timing_surrogate_mode": "lut_only",
     }
     assert (actual.design_inputs["spef"], actual.design_inputs["rcx_config"]) == ("", "")
     geometry = module._build_params(FakeParams, mode=DreamplaceRunMode.LEGALIZATION)
     assert (geometry.timing_rc_mode, geometry.with_sta) == ("placement", 0)
+
+
+def test_placement_rc_clears_stale_pdk_spef_and_rcx_config(tmp_path):
+    from types import SimpleNamespace
+
+    workspace = Workspace(directory=tmp_path, design=OriginDesign(name="clocked"))
+    workspace.pdk.spef = tmp_path / "stale.spef"
+    workspace.config[StepEnum.RCX.value] = tmp_path / "rcx.json"
+    step = EccStep(
+        name=StepEnum.PLACEMENT.value,
+        data=EccData(steps={StepEnum.PLACEMENT.value: tmp_path / "pl"}),
+        directory=tmp_path / "placement",
+    )
+    module = DreamplaceModule(workspace, step, None, None, None, None, None)
+    params = SimpleNamespace(
+        timing_rc_mode="placement",
+        num_threads=2,
+        design_inputs={
+            "spef": str(tmp_path / "existing.spef"),
+            "spef_path": str(tmp_path / "stale_path.spef"),
+            "rcx_config": str(tmp_path / "stale_rcx.json"),
+        },
+    )
+    design_inputs = module._ecc_design_inputs(params)
+    assert (design_inputs["spef"], design_inputs["rcx_config"]) == ("", "")
+    assert "spef_path" not in design_inputs
 
 
 @pytest.mark.parametrize(
@@ -72,7 +98,7 @@ def test_gr_public_handoff_and_geometry_isolation(tmp_path, dreamplace_default_c
     ],
 )
 def test_gr_rejects_unqualified_flows(override, dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -92,7 +118,7 @@ def test_gr_rejects_unqualified_flows(override, dreamplace_default_config):
 )
 def test_gr_routing_stays_on_cpu(requested, expected, dreamplace_default_config, monkeypatch):
     import torch
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     config = {
@@ -123,7 +149,7 @@ def test_gr_routing_stays_on_cpu(requested, expected, dreamplace_default_config,
 def test_gr_sizing_resolves_diff_sizing_continuous_steps(
     steps, parameterization, execution, dynamics, dreamplace_default_config
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -166,7 +192,7 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
     dreamplace_default_config,
     timing_device,
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -208,7 +234,7 @@ def test_gr_sizing_lut_action_uses_real_size_discrete_owner(
 def test_gr_sizing_lut_action_rejects_continuous_warmup(
     dreamplace_default_config,
 ):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,
@@ -232,7 +258,7 @@ def test_gr_sizing_lut_action_rejects_continuous_warmup(
 
 @pytest.mark.parametrize("steps", [-1, 1001, 1.5, True])
 def test_gr_sizing_rejects_invalid_diff_sizing_continuous_steps(steps, dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = {
         **dreamplace_default_config,

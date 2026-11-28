@@ -27,7 +27,7 @@ def _validate_parasitic_source(params):
 
 
 def _apply_common_diff_opt_defaults(result, *, mode, flows):
-    from dreamplace.flows.diff_opt_spec import DIFF_OPT_SCHEMA_VERSION
+    from dreamplace.flows.config.specs import DIFF_OPT_SCHEMA_VERSION
 
     result = apply_discrete_timing_defaults(result, flows[0].coefficients.to_dict())
     result.update(
@@ -58,7 +58,7 @@ def _apply_common_diff_opt_defaults(result, *, mode, flows):
 def apply_diff_opt_defaults(params: dict) -> dict:
     """Resolve the placement-parasitic ``diff_opt`` profile."""
 
-    from dreamplace.flows.diff_opt_spec import parse_diff_opt_flows
+    from dreamplace.flows.config.specs import parse_diff_opt_flows
 
     result = deepcopy(params)
     _validate_parasitic_source(result)
@@ -96,6 +96,7 @@ def finalize_diff_opt(engine) -> dict:
         engine,
         flow_kind="diff_opt",
         summary_stem="diff_opt",
+        write_summary=False,
     )
     result = dict(result)
     result["diff_opt_parasitic_source"] = "placement"

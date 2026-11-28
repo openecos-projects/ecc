@@ -709,7 +709,7 @@ diff_sizing_optimization_flows = [
 单一指标求导。该参数只影响 action 排序分数，不改变最终提交后的真实 STA 评估。
 
 `place.timing_coeff_growth_factor` 控制每次 GP density-weight 更新时，WNS/TNS
-系数共同乘上的倍率，默认 `1.01`，逐次增长；设为 `1.0` 表示不增长，设为 `0.99` 则逐次衰减。
+系数共同乘上的倍率，默认 `1.0`（不增长）；设为大于 `1.0` 的值（如 `1.01`）逐次增长，设为 `0.99` 则逐次衰减。
 倍率必须为正的有限数值，累计增长最多为 placement 起始 WNS/TNS 系数的
 `1000` 倍；slew/cap 和 norm 外层权重沿用各自设置。
 窗口的继承模式读取增长后的实时系数，固定模式使用指定值；独立
@@ -744,7 +744,7 @@ timing_metric_scope = "setup_plus_recovery"
 | `density_weight` | 8e-05 | 密度项初始权重（自动调整的起点） |
 | `inflation_density_weight_scale` | 0.001 | inflation 后按 Xplace 的 `||∇WL||₁ / ||∇density||₁` 重启密度权重时的倍率，默认让重启后的密度力保持较小；设为 `1.0` 直接使用归一化比例，设为 `0.1` 可复现 DreamPlace 历史重启比例 |
 | `inflation_filler_consumption_mode` | `filler_first` | routability inflation 消耗空白区域的方式：`filler_first` 先缩小 filler，filler 用尽后才提高 target density；`proportional` 按同一比例缩小 filler 和其他空白区域；`capacity_only` 保留 filler，直到达到布局区域容量上限 |
-| `timing_coeff_growth_factor` | 1.01 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
+| `timing_coeff_growth_factor` | 1.0 `*place.timing_coeff_growth_factor` | GP density-weight 更新时 WNS/TNS 系数的共同倍率；1.0 停止增长，`size_only` 不应用 |
 | `timing_grad_balance_target_ratio` | 0.01 `*place.timing_grad_balance_target_ratio` | direct-loss placement 初始 timing / wirelength 梯度 L1 范数比例目标；0.0 关闭 |
 | `timing_grad_balance_reset_on_restart` | 0 `*place.timing_grad_balance_reset_on_restart` | inflation/GP restart 后是否重新初始化 timing balance 权重；1 表示重新初始化，0 表示保留当前权重 |
 | `timing_aggregation_mode` | `smooth` `*place.timing_aggregation_mode` | AAT/RAT 传播聚合方式：`hard` 或 `smooth`（LSE） |

@@ -166,7 +166,7 @@ def test_detailed_place_default_respects_run_mode(
     tmp_path, dreamplace_default_config, mode, step_name, expected
 ):
     module: Any = _module_for_owner(tmp_path, step_name)
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = resolve_flow_config(dreamplace_default_config, explicit_keys=())
     json_write(module.param_path, config)
@@ -176,7 +176,7 @@ def test_detailed_place_default_respects_run_mode(
 
 def test_placement_respects_explicit_detailed_place_disable(tmp_path, dreamplace_default_config):
     module: Any = _module_for_owner(tmp_path, StepEnum.PLACEMENT.value)
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     config = resolve_flow_config(dreamplace_default_config, explicit_keys=())
     config["detailed_place_flag"] = 0

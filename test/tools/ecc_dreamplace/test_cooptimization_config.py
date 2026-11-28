@@ -24,7 +24,7 @@ from .test_module import FakeParams
 
 
 def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     profile = json.loads(
         (
@@ -46,7 +46,12 @@ def test_default_placement_recipe_preserves_tested_optimization_policy(dreamplac
         "timing_aggregation_tau_ps",
     )
     effective = resolve_flow_config(dreamplace_default_config)
-    assert {key: effective[key] for key in fields} == {key: profile[key] for key in fields}
+    expected = {key: profile[key] for key in fields} | {
+        "timing_placement_carrier": "star_pin_pair",
+        "timing_opt_buffering_enabled": 1,
+        "timing_coeff_growth_factor": 1.0,
+    }
+    assert {key: effective[key] for key in fields} == expected
     assert effective["overflow_reference_mode"] == "initial"
     assert profile["overflow_reference_mode"] == "ordinary"
     assert dreamplace_default_config["inflation_density_weight_scale"] == 0.001
@@ -122,7 +127,7 @@ def test_window_override_reaches_dreamplace_config(public, dreamplace_default_co
 
 
 def test_coefficient_mode_can_switch_without_removing_fixed_preset(dreamplace_default_config):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     preset = {"mode": "fixed", "wns": 500.0, "tns": 5.0, "slew": 1.0, "cap": 1.0}
     config = dreamplace_default_config | {"timing_opt_coefficients": preset}

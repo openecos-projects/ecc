@@ -33,7 +33,9 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "density_weight": "initial weight of density cost",
     "cell_model_schema": "cell timing model schema; null uses the existing flow default",
     "piecewise_gradient_mode": "piecewise cell gradient, linear6_ste | native_piecewise",
-    "timing_rc_mode": "timing parasitics, placement | gr; gr requires native ECC CPU sizing or STA",
+    "timing_rc_mode": (
+        "timing parasitics, placement | gr | spef; gr and spef require native ECC CPU sizing or STA"
+    ),
     "detailed_place_command": "commands for external detailed placement engine",
     "detailed_place_engine": "external detailed placement engine to be called after placement",
     "detailed_place_flag": "whether use internal detailed placement",
@@ -190,6 +192,7 @@ DREAMPLACE_PARAMETER_DESCRIPTIONS = {
     "with_sta": (
         "enable integrated STA initialization and differentiable timing updates during placement"
     ),
+    "zero_clock_net_weight_flag": "whether to zero out clock net weights in placement",
 }
 
 
@@ -233,7 +236,7 @@ SCHEMAS = (
     _place(
         "piecewise_gradient_mode", "native_piecewise", choices=("linear6_ste", "native_piecewise")
     ),
-    _place("timing_rc_mode", "placement", choices=("placement", "gr")),
+    _place("timing_rc_mode", "placement", choices=("placement", "gr", "spef")),
     _place("detailed_place_command", ""),
     _place("detailed_place_engine", ""),
     _place("detailed_place_flag", 1),
@@ -367,4 +370,5 @@ SCHEMAS = (
     _place("unit_vertical_capacity", 1.45),
     _place("use_bb", 0),
     _place("with_sta", 1),
+    _place("zero_clock_net_weight_flag", 0),
 )

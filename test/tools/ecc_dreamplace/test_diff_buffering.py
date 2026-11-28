@@ -28,18 +28,18 @@ def test_placement_candidate_mode_expands_internal_lane_settings(monkeypatch):
         "buffering_mode": "candidate",
         "buffering_segment_strategy": "continuous",
         "buffering_candidate_strategy": "discrete_net_gradient",
-        "buffering_candidate_drive_type_mode": "four_strength_table",
-        "buffering_candidate_drive_strength_table": "generated.json",
-        "buffering_continuous_steps": 1,
+        "buffering_candidate_policy": "rebuffer_sites",
+        "buffering_candidate_drive_type_mode": "fast_buffers",
+        "timing_opt_buffering_rounds": 3,
         "buffering_fixed_buffer_master": "",
         "buffering_fixed_bsu_index": None,
     }
     assert internal_keys == {
         "buffering_segment_strategy",
         "buffering_candidate_strategy",
+        "buffering_candidate_policy",
         "buffering_candidate_drive_type_mode",
-        "buffering_candidate_drive_strength_table",
-        "buffering_continuous_steps",
+        "timing_opt_buffering_rounds",
         "buffering_fixed_buffer_master",
         "buffering_fixed_bsu_index",
     }
@@ -75,6 +75,8 @@ def test_terminal_refresh_discards_virtual_model_before_legalization(monkeypatch
                 key: getattr(params, key)
                 for key in [
                     "flow_kind",
+                    "placement_sizing_mode",
+                    "sizing_parameterization",
                     "global_place_flag",
                     "legalize_flag",
                     "enable_relaxed_buffer_timing",
@@ -83,6 +85,8 @@ def test_terminal_refresh_discards_virtual_model_before_legalization(monkeypatch
             }
             assert actual == {
                 "flow_kind": "placement",
+                "placement_sizing_mode": "place_only",
+                "sizing_parameterization": "logits",
                 "global_place_flag": 0,
                 "legalize_flag": 1,
                 "enable_relaxed_buffer_timing": False,

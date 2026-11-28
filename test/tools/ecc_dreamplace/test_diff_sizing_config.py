@@ -29,7 +29,7 @@ from chipcompiler.utility import json_read
 def test_public_s50_coefficients_survive_step_resolution_without_changing_placement(
     tmp_path, monkeypatch, make_ics55_parameters, dreamplace_default_config, override
 ):
-    from dreamplace.flows.diff_sizing import _validate_action_profile
+    from dreamplace.flows.post_gp.diff_sizing import _validate_action_profile
     from dreamplace.Params import Params
 
     public = {"diff_sizing:place.diff_sizing_coefficients": override}
@@ -203,7 +203,7 @@ def test_public_action_score_objective_parses_and_resolves(objective):
     assert step_params == {"diff_sizing": {"place.timing_action_score_objective": objective}}
 
 
-@pytest.mark.parametrize("rc_mode", ["placement", "gr"])
+@pytest.mark.parametrize("rc_mode", ["placement", "gr", "spef"])
 def test_public_diff_sizing_timing_rc_mode_parses_and_resolves(rc_mode):
     expected = {"diff_sizing:place.diff_sizing_timing_rc_mode": rc_mode}
     cli, errors = parse_cli_overrides([f"diff_sizing:place.diff_sizing_timing_rc_mode={rc_mode}"])
@@ -311,6 +311,16 @@ def test_diff_sizing_optimization_flows_reject_invalid_phases(dreamplace_default
     [
         ([], "gr"),
         (["diff_sizing:place.diff_sizing_timing_rc_mode=placement"], "placement"),
+        (
+            [
+                "diff_sizing:place.diff_sizing_timing_rc_mode=spef",
+                "diff_sizing:place.diff_sizing_spef_input=post_route.spef.gz",
+                "diff_sizing:place.diff_sizing_spef_coupling_cap_scale=0.5",
+                "diff_sizing:place.diff_sizing_spef_reconcile_lumped_cap=1",
+                'diff_sizing:place.diff_sizing_optimization_flows=[["vt_fast",20,[500,5,1,1],1.0]]',
+            ],
+            "spef",
+        ),
     ],
 )
 def test_public_lut_action_mode_survives_step_resolution(
@@ -323,6 +333,8 @@ def test_public_lut_action_mode_survives_step_resolution(
     )
     assert errors == []
     step_params = build_step_params(resolve_parameters(cli_overrides=cli)[0])
+    sdc_path = tmp_path / "user.sdc"
+    sdc_path.write_text("create_clock -period 10 [get_ports clk]\n")
     workspace = Workspace(
         directory=tmp_path / "workspace",
         design=OriginDesign(name="gcd"),
@@ -332,6 +344,7 @@ def test_public_lut_action_mode_survives_step_resolution(
             root=tmp_path / "pdk",
             tech=Path("tech.lef"),
             lefs=[Path("std.lef")],
+            sdc=sdc_path,
         ),
         parameters=make_ics55_parameters({"step_params": step_params}),
     )
@@ -372,6 +385,22 @@ def test_public_lut_action_mode_survives_step_resolution(
     assert sizing.gr_sizing_rrr_iters == (3 if expected_rc_mode == "gr" else 0)
     assert sizing.sizing_parameterization == "real_size"
     assert sizing.continuous_size_dynamics_mode == "none"
+    expected_phase = "post_CTS" if expected_rc_mode == "spef" else "pre_CTS"
+    assert (
+        sizing.design_inputs["sdc"]
+        == workspace.directory / "origin" / expected_phase / "user.sdc.ecc.tcl"
+    )
+    if expected_rc_mode == "spef":
+        assert sizing.spef_coupling_cap_scale == 0.5
+        assert sizing.spef_reconcile_lumped_cap == 1
+        assert sizing.spef_input.endswith("post_route.spef.gz")
+        assert sizing.design_inputs["spef"] == sizing.spef_input
+        assert sizing.design_inputs["timing_mode"] == "complete"
+        assert sizing.design_inputs["rcx_config"] == ""
+    else:
+        assert sizing.spef_reconcile_lumped_cap == 0
+        assert sizing.design_inputs["spef"] == ""
+        assert "timing_mode" not in sizing.design_inputs
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import math
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -66,27 +67,31 @@ def _apply_placement_buffering_profile(
 
     if step.name != StepEnum.PLACEMENT.value or params.get("buffering_mode") != "candidate":
         return params, set()
+    drive_type_mode = params.get("buffering_candidate_drive_type_mode") or "fast_buffers"
+    candidate_policy = params.get("buffering_candidate_policy") or "rebuffer_sites"
+    buffering_rounds = int(params.get("timing_opt_buffering_rounds", 3))
     params = params | {
         "buffering_segment_strategy": "continuous",
         "buffering_candidate_strategy": "discrete_net_gradient",
-        "buffering_candidate_drive_type_mode": "four_strength_table",
-        # Placement S5B1 owns one Route-B scheduler round per window.  The
-        # general buffering default is intentionally larger for standalone
-        # buffering flows, so make the placement profile explicit here.
-        "buffering_continuous_steps": 1,
+        "buffering_candidate_policy": candidate_policy,
+        "buffering_candidate_drive_type_mode": drive_type_mode,
+        "timing_opt_buffering_rounds": buffering_rounds,
         "buffering_fixed_buffer_master": "",
         "buffering_fixed_bsu_index": None,
     }
-    params = prepare_diff_opt_drive_table(workspace, step, params)
-    return params, {
+    internal_keys = {
         "buffering_segment_strategy",
         "buffering_candidate_strategy",
+        "buffering_candidate_policy",
         "buffering_candidate_drive_type_mode",
-        "buffering_candidate_drive_strength_table",
-        "buffering_continuous_steps",
+        "timing_opt_buffering_rounds",
         "buffering_fixed_buffer_master",
         "buffering_fixed_bsu_index",
     }
+    if drive_type_mode == "four_strength_table":
+        params = prepare_diff_opt_drive_table(workspace, step, params)
+        internal_keys.add("buffering_candidate_drive_strength_table")
+    return params, internal_keys
 
 
 STEP_CONFIG_FILE = "dreamplace_ecc.json"
@@ -127,9 +132,39 @@ def _resolve_diff_sizing_rc_mode(result: dict, explicit_keys) -> str:
     else:
         mode = "gr"
     mode = str(mode or "gr")
-    if mode not in {"placement", "gr"}:
-        raise ValueError("diff_sizing_timing_rc_mode must be one of: placement, gr")
+    if mode not in {"placement", "gr", "spef"}:
+        raise ValueError("diff_sizing_timing_rc_mode must be one of: placement, gr, spef")
     return mode
+
+
+def _apply_workspace_dreamplace_overrides(
+    base_params: dict, workspace: Workspace, *, step_name: str | None = None
+) -> tuple[dict, dict, set[str]]:
+    parameter_data = _current_parameter_data(workspace)
+    if step_name is not None:
+        parameter_data = step_parameter_view(parameter_data, step_name)
+    params = apply_parameter_overrides(base_params, parameter_data)
+    params = apply_direct_config_overrides(params, parameter_data)
+    dreamplace_overrides = parameter_data.get("dreamplace")
+    explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
+    explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
+    return params, parameter_data, explicit_keys
+
+
+def diff_sizing_rc_mode(workspace: Workspace, step: WorkspaceStep) -> str:
+    workdir = step.data.workdir_for(step.name) if step.data is not None else None
+    if workdir is not None:
+        generated_path = Path(workdir) / "dreamplace_diff_sizing.json"
+        if generated_path.is_file():
+            return _resolve_diff_sizing_rc_mode(json_read(generated_path), None)
+    config_path = (workspace.config or {}).get("dreamplace")
+    if not config_path and workspace.directory:
+        config_path = build_workspace_config_paths(workspace)["dreamplace"]
+    base_params = json_read(config_path) if config_path and os.path.isfile(config_path) else {}
+    params, _, explicit_keys = _apply_workspace_dreamplace_overrides(
+        base_params, workspace, step_name=step.name
+    )
+    return _resolve_diff_sizing_rc_mode(params, explicit_keys)
 
 
 def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
@@ -155,7 +190,7 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
         raise ValueError(
             "lut_action standalone diff_sizing requires diff_sizing_continuous_steps=0"
         )
-    from dreamplace.flows.diff_sizing_spec import parse_diff_sizing_flows
+    from dreamplace.flows.config.specs import parse_diff_sizing_flows
 
     coefficients = resolve_timing_coefficients(result, "diff_sizing_coefficients")
     flow_config = result.get("diff_sizing_optimization_flows")
@@ -169,11 +204,32 @@ def _apply_diff_sizing_defaults(params: dict, *, explicit_keys=None) -> dict:
     if flows is not None:
         result["diff_sizing_optimization_flows"] = [spec.to_list() for spec in flows]
     timing_rc_mode = _resolve_diff_sizing_rc_mode(result, explicit_keys)
+    if timing_rc_mode == "spef" and bool(terminal_gr_sta_enabled):
+        raise ValueError(
+            "diff_sizing_terminal_gr_sta_enabled requires diff_sizing_timing_rc_mode=gr"
+        )
+    raw_spef_scale = result.get("spef_coupling_cap_scale", 1.0)
+    if isinstance(raw_spef_scale, bool):
+        raise ValueError("spef_coupling_cap_scale must be a finite nonnegative float")
+    try:
+        spef_coupling_cap_scale = float(1.0 if raw_spef_scale is None else raw_spef_scale)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("spef_coupling_cap_scale must be a finite nonnegative float") from exc
+    if not math.isfinite(spef_coupling_cap_scale) or spef_coupling_cap_scale < 0.0:
+        raise ValueError("spef_coupling_cap_scale must be a finite nonnegative float")
+    raw_spef_reconcile = result.get("spef_reconcile_lumped_cap", 0)
+    if raw_spef_reconcile not in (0, 1, False, True):
+        raise ValueError("spef_reconcile_lumped_cap must be 0 or 1")
+    spef_reconcile_lumped_cap = int(bool(raw_spef_reconcile))
+    spef_input = str(result.get("spef_input", "") or "").strip()
     result["diff_sizing_coefficients"] = coefficients
     result.update(
         flow_kind="sizing",
         place_io_engine="ecc",
         timing_rc_mode=timing_rc_mode,
+        spef_input=spef_input,
+        spef_coupling_cap_scale=spef_coupling_cap_scale,
+        spef_reconcile_lumped_cap=spef_reconcile_lumped_cap,
         placement_sizing_mode="size_only",
         sizing_parameterization="real_size",
         real_size_execution_mode="warmup_to_discrete",
@@ -298,22 +354,18 @@ def write_step_config(workspace: Workspace, step: EccStep) -> Path:
     """Resolve *step*'s DreamPlace config from the workspace baseline into its step directory."""
     if not workspace.config:
         workspace.config = build_workspace_config_paths(workspace)
-    params = json_read(workspace.config["dreamplace"])
     # The step's own values replay as part of its direct config patch.
-    parameter_data = step_parameter_view(_current_parameter_data(workspace), step.name)
-    params = apply_parameter_overrides(params, parameter_data)
-    params = apply_direct_config_overrides(params, parameter_data)
+    params, parameter_data, explicit_keys = _apply_workspace_dreamplace_overrides(
+        json_read(workspace.config["dreamplace"]), workspace, step_name=step.name
+    )
     params, internal_buffering_keys = _apply_placement_buffering_profile(workspace, step, params)
-    dreamplace_overrides = parameter_data.get("dreamplace")
-    explicit_keys = set(dreamplace_overrides) if isinstance(dreamplace_overrides, dict) else set()
-    explicit_keys.update(apply_direct_config_overrides({}, parameter_data))
     explicit_keys.update(internal_buffering_keys)
     if step.name == SkippableStepEnum.DIFF_OPT.value:
         params = prepare_diff_opt_drive_table(workspace, step, apply_diff_opt_defaults(params))
     elif step.name == StepEnum.DIFF_SIZING.value:
         params = _apply_diff_sizing_defaults(params, explicit_keys=explicit_keys)
 
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     # Process bindings and generated candidate tables are explicit inputs;
     # generic flow profiles must not replace them with schema placeholders.

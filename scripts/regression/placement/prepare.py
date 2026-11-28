@@ -194,7 +194,7 @@ def prepare(
 
 
 def prepare_workspaces(batch: Path):
-    from dreamplace.flows.flow_config import resolve_flow_config
+    from dreamplace.flows.config.resolver import resolve_flow_config
 
     from chipcompiler.data.workspace import create_workspace
     from chipcompiler.project.api import create_project_manifest, mutate_project_manifest

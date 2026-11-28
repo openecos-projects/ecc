@@ -40,11 +40,11 @@ SCHEMAS = (
         "place.timing_placement_carrier",
         "dreamplace",
         ("timing_placement_carrier",),
-        "direct_loss",
+        "star_pin_pair",
         applies="placement",
         description=(
-            "coordinate timing method; explicit direct_loss or pin2pin selects "
-            "mutually exclusive GP controls; "
+            "coordinate timing method; explicit direct_loss, star_pin_pair, or pin2pin "
+            "selects mutually exclusive GP controls; "
             "gradient_net_weight retains gradient projection"
         ),
     ),
@@ -68,7 +68,7 @@ SCHEMAS = (
         "place.timing_objective_lane",
         "dreamplace",
         ("timing_objective_lane",),
-        "timing_slew_cap",
+        "timing_only",
         applies="placement",
         description="timing objective terms, timing_only | timing_slew_cap",
     ),
@@ -349,7 +349,7 @@ SCHEMAS = (
         "place.timing_opt_buffering_enabled",
         "dreamplace",
         ("timing_opt_buffering_enabled",),
-        0,
+        1,
         applies="placement",
         description="enable segment buffering in electrical timing-optimization windows",
     ),
@@ -382,10 +382,19 @@ SCHEMAS = (
         description="maximum discrete size/VT rounds in each timing-optimization window, up to ten",
     ),
     config_param(
+        "place.timing_opt_buffering_rounds",
+        "dreamplace",
+        ("timing_opt_buffering_rounds",),
+        3,
+        range=(1, 10),
+        applies="placement",
+        description="maximum incremental buffering rounds in each timing-optimization window",
+    ),
+    config_param(
         "place.timing_coeff_growth_factor",
         "dreamplace",
         ("timing_coeff_growth_factor",),
-        1.01,
+        1.0,
         applies="placement",
         description=(
             "positive finite multiplier applied to WNS/TNS coefficients at each GP "
@@ -416,7 +425,7 @@ SCHEMAS = (
         "place.buffering_mode",
         "dreamplace",
         ("buffering_mode",),
-        "segment",
+        "candidate",
         applies="placement",
         description="buffering representation, segment | candidate",
     ),

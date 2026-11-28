@@ -257,16 +257,21 @@ def _run_placement_mode(
 
     if ecc_module is None:
         return False
-    ecc_module.feature_placement_map(json_path=step.feature.map or "")
 
     sub_flow.update_step(
         step_name=run_stage,
         state=StateEnum.Success,
     )
 
+    # Persist committed DEF/Verilog/DB artifacts before feature_placement_map:
+    # native placement-map evaluation runs EarlyRouter (runERT), which clears
+    # existing + ROUTED regular-net wire lists on the in-memory IdbDesign.
     reslut = ecc_runner.save_data(
         workspace=workspace, step=step, ecc_module=ecc_module, feature_step=False
     )
+
+    if reslut:
+        ecc_module.feature_placement_map(json_path=step.feature.map or "")
 
     sub_flow.update_step(
         step_name=EccSubFlowEnum.save_data.value,
